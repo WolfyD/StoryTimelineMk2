@@ -1,0 +1,242 @@
+<script setup lang="ts">
+	import ProjectContainer from "./components/ProjectContainer.vue";
+	import SplashTitle from "./components/SplashTitle.vue";
+	import { BackendAPI } from "./bridge/api";
+	import { ref } from "vue";
+	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots } from "@phosphor-icons/vue";
+	import { useTimelineStore } from '@/stores/timelineStore';
+
+	const store = useTimelineStore();
+
+	const newProjectOpen = ref<boolean>(false)
+
+	async function HandleImportDatabase() {
+		const container = await BackendAPI.ImportDatabase();
+		if(container){
+			store.projects = container.data
+		}
+	}
+
+	async function HandleExportDatabase() {
+		const container = await BackendAPI.ImportDatabase();
+		if(container){
+			store.projects = container.data
+		}
+	}
+
+	async function HandleToggleNewProject() {
+		newProjectOpen.value = !newProjectOpen.value;
+	}
+
+	async function HandleStartProject() {
+		let title = "";
+		title = document.getElementById("new-project-title")?.value || "New Project";
+		BackendAPI.CreateNewProject(title);
+	}
+
+	async function HandleGetTimelines() {
+		const container = await BackendAPI.GetAllTimelines();
+		if(container){
+			store.projects = container.data
+		}
+	}
+
+	onload = function(){
+		HandleGetTimelines();
+	}
+</script>
+
+
+<template>
+	<div id="center">
+		<SplashTitle />
+		<ProjectContainer :timelines="store.projects" />
+		<div id="bottom-menu-container">
+			<div id="import-export-container">
+				<div v-on:click="HandleImportDatabase()">
+					<PhTrayArrowDown class="button-icon" :size="36" color="#79876b" />
+				</div>
+				<div v-on:click="HandleExportDatabase()">
+					<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
+				</div>
+			</div>
+
+			<div id="new-project-container" :class="{'open': newProjectOpen}">
+				<div v-on:click="HandleToggleNewProject()">
+					<PhPlusCircle
+						class="button-icon"
+						id="new-project-open-button"
+						:class="{'open': newProjectOpen}"
+						:size="42"
+						color="#79876b"
+					/>
+				</div>
+
+				<div id="new-project-setup">
+					<input id="new-project-title" type="text" placeholder="Project name..." />
+
+					<div id="checkbox-div">
+						<input name="CustomCal" id="custom-cal" type="checkbox" />
+						<label class="cal-icon-label" title="Has custom calendar" for="custom-cal">
+							<PhCalendarDots :size="24" />
+						</label>
+					</div>
+
+					<div id="start-project-button" v-on:click="HandleStartProject()">
+						<PhPlayCircle class="button-icon" :size="42" color="#79876b" />
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</template>
+
+<style scoped lang="scss">
+
+	#center {
+		display: flex;
+		position: relative;
+		flex-direction: column;
+		justify-content: stretch;
+		justify-self: stretch;
+		align-items: center;
+		width: 100%;
+		height: 100vh;
+	}
+
+	#bottom-menu-container {
+		position: relative; /* Changed from inherit for stability */
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+		margin-top: 22px;
+	}
+
+	#import-export-container {
+		display: flex;
+		gap: 12px;
+		margin-left: 20px;
+	}
+
+	/* Base interactive button styling for all of them */
+	.button-icon {
+		cursor: pointer;
+		transition: transform 0.2s ease, filter 0.2s ease;
+	}
+	.button-icon:hover {
+		filter: brightness(1.1);
+		transform: scale(1.05); /* Subtle pop on hover */
+		fill: #762f69 !important;
+	}
+
+	/* The expanding container */
+	#new-project-container {
+		display: flex;
+		align-items: center;
+		margin-right: 20px;
+		width: 42px;
+		height: 48px;
+		overflow: hidden;
+		/* This cubic-bezier gives it a sleek, snappy "whip" motion */
+		transition: width 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+	}
+
+	#new-project-container.open {
+		width: 480px; /* Adjusted slightly so it matches standard flex content */
+	}
+
+	/* FIXING THE "UNDER THE RUG" SLIDE:
+	We wrap the form and fade it in *only* when open, preventing text-squeezing */
+	#new-project-setup {
+		display: flex;
+		align-items: center;
+		gap: 15px;
+		margin-left: 15px;
+		opacity: 0;
+		transform: translateX(10px);
+		transition: opacity 0.2s ease, transform 0.3s ease;
+		pointer-events: none; /* Block clicks while hidden */
+	}
+
+	#new-project-container.open #new-project-setup {
+		opacity: 1;
+		transform: translateX(0);
+		pointer-events: auto;
+		/* Delay the form fade slightly until the bar is wide enough */
+		transition-delay: 0.15s;
+	}
+
+	#new-project-setup input[type="text"] {
+		font-size: 1.2em; /* 2em was massive, making it hard to fit everything */
+		padding: 6px 10px;
+		border: 1px solid #ccc;
+		border-radius: 6px;
+		outline: none;
+		flex-grow: 1;
+	}
+
+	/* THE PLUS TO X BUTTON */
+	#new-project-open-button {
+		cursor: pointer;
+		transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); /* Bouncy rotation */
+	}
+
+	#new-project-open-button.open {
+		transform: rotate(45deg);
+	}
+
+	/* THE WIGGLE: When it's an X (open), hovering shakes it gently */
+	#new-project-open-button.open:hover {
+		animation: gentle-wiggle 0.3s ease-in-out infinite alternate;
+	}
+
+	@keyframes gentle-wiggle {
+		0% { transform: rotate(41deg); }
+		100% { transform: rotate(49deg); }
+	}
+
+	/* CLEAN CALENDAR CHECKBOX STYLING */
+	#checkbox-div {
+		display: flex;
+		align-items: center;
+		position: relative;
+	}
+
+	/* Hide the ugly native checkbox completely */
+	#custom-cal {
+		position: absolute;
+		opacity: 0;
+		cursor: pointer;
+		height: 0;
+		width: 0;
+	}
+
+	/* Use the label as the button wrapper */
+	.cal-icon-label {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 6px;
+		border-radius: 6px;
+		cursor: pointer;
+		background: #f0f2ee;
+		color: #79876b;
+		transition: all 0.2s ease;
+		border: 1px solid transparent;
+	}
+
+	/* Hover state for the fake checkbox button */
+	.cal-icon-label:hover {
+		background: #e2e7dc;
+		box-shadow: 0 0 0 4px rgba(121, 135, 107, 0.15);
+	}
+
+	/* Active/Checked State: When the checkbox is checked, light up the label! */
+	#custom-cal:checked + .cal-icon-label {
+		background: #79876b;
+		color: #ffffff;
+		border-color: #637056;
+	}
+</style>

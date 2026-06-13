@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Models\" />
+    <Folder Include="Frontend\src\components\" />
+    <Folder Include="Frontend\src\bridge\" />
+    <Folder Include="Frontend\src\assets\" />
+    <Folder Include="Frontend\src\stores\" />
+    <Folder Include="Frontend\src\pages\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="Frontend\**" />
+    <Compile Remove="Frontend\**" />
+    <EmbeddedResource Remove="Frontend\**" />
+    <None Remove="Frontend\**" />
+  </ItemGroup>
+
+</Project>

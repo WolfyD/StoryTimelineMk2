@@ -1,0 +1,52 @@
+html, body, #app {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+    min-width: 800px;
+    min-height: 600px;
+
+	/* For desktop apps, preventing accidental scrollbars on the body is usually a good idea */
+	overflow: auto;
+
+	/* Set your global background and text colors here */
+	background-color: #0f172a;
+	color: #e2e8f0;
+}
+
+.splitpanes__splitter {
+	background: transparent;
+	position: relative;
+	background: #fefefe33;
+}
+
+.splitpanes--horizontal > .splitpanes__splitter {
+	height: 8px;
+	cursor: row-resize;
+}
+
+.splitpanes--vertical > .splitpanes__splitter {
+	width: 8px;
+	cursor: col-resize;
+}
+
+.button {
+	position: inherit;
+	display: block;
+	border-radius: 8px;
+	padding: 0 8px;
+
+	transition-duration: .3s;
+
+	cursor: pointer;
+
+	&.default {
+		background: #fefefe22;
+	}
+
+	&:hover {
+		background: #fefefe;
+		color: #333;
+		transition-duration: .3s;
+	}
+}

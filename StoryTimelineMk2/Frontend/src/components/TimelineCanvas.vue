@@ -1,0 +1,618 @@
+<script setup lang="ts">
+import { ref, reactive, onMounted, watch } from 'vue';
+import { useTimelineStore } from '@/stores/timelineStore';
+import Konva from 'konva';
+import 'splitpanes/dist/splitpanes.css';
+import type { LayoutSettings, TimelineItem, TimelineProject, TimelineSettings } from '@/types/models';
+import type { Stage } from 'konva/lib/Stage';
+
+import {
+	TICK_SPACING, FormatRegistry, getXFromTime, getTimeFromX,
+    isLeftOfNow, getAssignedLane, type LaneLock
+} from '@/utils/timelineLayout';
+import { buildNode, updateAbsolutePositions, setNodeVisibility } from '@/utils/timelineNodes';
+
+const stemsMaster = new Konva.Group();
+const boxesMaster = new Konva.Group();
+
+const store = useTimelineStore();
+const containerRef = ref<HTMLElement | null>(null);
+
+let localYearCache = store.currentNowYear;
+let stage: Stage | null = null;
+
+const gridLayer = new Konva.Layer();
+const uiLayer = new Konva.Layer();
+const itemLayer = new Konva.Layer();
+
+let lastFrameTime = performance.now();
+let frameCount = 0;
+let fpsSum = 0;
+
+const props = defineProps<{
+    timelineItems: TimelineItem[] | null,
+    timelineSettings: TimelineSettings | null,
+	layoutSettings: LayoutSettings | null,
+    timelineInfo: TimelineProject
+}>();
+
+// --- VIEWPORT & CACHE STATE ---
+const viewport = reactive({
+    width: 0,
+    height: 0,
+    centerTime: props.timelineInfo?.StartYear || 0,
+    lodStepFraction: 1 // Controls the physical math independent of the store
+});
+
+const nodeCache = new Map<string, any>();
+const lockedLanes = new Map<string, LaneLock>();
+
+// --- SAFE PROPERTY ACCESSORS ---
+const getId = (item: any) => (item.Id ?? item.id)?.toString() || '';
+const getAbsoluteStart = (item: any) => item.AbsoluteStart ?? item.absolute_start ?? item.Year;
+const getAbsoluteEnd = (item: any) => item.AbsoluteEnd ?? item.absolute_end ?? getAbsoluteStart(item);
+// Fixed Casing Trap for MinLod!
+const getMinLod = (item: any) => item.MinLodLevel ?? item.min_lod_level ?? 3;
+const getItemIndex = (item: any) => item.ItemIndex ?? item.item_index ?? 0;
+const getTitle = (item: any) => item.Title ?? item.title ?? 'Untitled';
+const getColor = (item: any) => item.Color ?? item.color ?? '#ffffff';
+const getTypeId = (item: any) => item.TypeId ?? item.type_id ?? 1;
+
+const getTypeName = (item: any) => {
+    const tId = getTypeId(item);
+    if (store.ItemTypes && store.ItemTypes.length > 0) return store.ItemTypes[tId - 1] || "Event";
+    if (tId === 2) return "Period";
+    if ([3, 6, 8, 9].includes(tId)) return "Age";
+    return "Event";
+};
+
+const contextMenu = reactive({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    type: 'canvas', // 'canvas' for empty space, 'item' for a specific object
+    itemId: null as string | null,
+    absoluteTime: 0,
+    displayYear: 0,
+    displayFraction: 0
+});
+
+// Helper to close the menu when interacting elsewhere
+const closeContextMenu = () => {
+    contextMenu.isOpen = false;
+};
+
+// --- LOD ANIMATION WATCHER ---
+let lodAnim: number | null = null;
+watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
+    lockedLanes.clear(); // Clear collision cache so shapes can re-evaluate on zoom
+
+    const oldStep = store.lodProfile?.[oldIdx]?.stepFraction || 1;
+    const targetStep = store.lodProfile?.[newIdx]?.stepFraction || 1;
+
+    if (props.layoutSettings?.TimelineAnimateLodChange) {
+        const duration = props.layoutSettings.TimelineLodChangeAnimationLength || 300;
+        const startTime = performance.now();
+
+        function step(currentTime: number) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const ease = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
+
+            // Dynamically stretch the math over time
+            viewport.lodStepFraction = oldStep + (targetStep - oldStep) * ease;
+
+            // FIX: Clear the lane cache EVERY frame so they dynamically dodge
+            // each other and re-pack as they compress or expand!
+            lockedLanes.clear();
+
+            renderGrid(gridLayer, props.layoutSettings);
+            renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+
+            if (progress < 1) {
+                lodAnim = requestAnimationFrame(step);
+            }
+        }
+
+        if (lodAnim) cancelAnimationFrame(lodAnim);
+        lodAnim = requestAnimationFrame(step);
+    } else {
+        viewport.lodStepFraction = targetStep;
+        renderGrid(gridLayer, props.layoutSettings);
+        setTimeout(()=>{
+			renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+		}, 100)
+    }
+});
+
+// --- RENDER LOOPS ---
+const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
+    layer.destroyChildren();
+
+    const currentLod = store.lodProfile?.[store.currentLodIndex];
+    if (!currentLod) return;
+
+    // Use the animating viewport step instead of the static store step
+    const step = viewport.lodStepFraction;
+
+    const leftMostTime = getTimeFromX(0, viewport.centerTime, step, viewport.width, store.layoutSettings!);
+    const rightMostTime = getTimeFromX(viewport.width, viewport.centerTime, step, viewport.width, store.layoutSettings!);
+
+    // We still format text based on the TARGET step (e.g. decades), to prevent the text from glitching mid-animation
+    const targetStep = currentLod.stepFraction || 1;
+    const startTickIndex = Math.floor(leftMostTime / targetStep);
+    const endTickIndex = Math.ceil(rightMostTime / targetStep);
+
+    for (let i = startTickIndex; i <= endTickIndex; i++) {
+        const tickTime = i * targetStep;
+        const cleanTime = parseFloat(tickTime.toFixed(8));
+        const year = Math.floor(cleanTime);
+        let fraction = cleanTime - year;
+        if (fraction > 0.99) fraction = 0;
+
+        const x = getXFromTime(cleanTime, viewport.centerTime, step, viewport.width, store.layoutSettings!);
+        const formatter = FormatRegistry[currentLod.formatKey] || FormatRegistry['YEARS'];
+
+		const tick = new Konva.Line({ points: [x, viewport.height / 2 - 10, x, viewport.height / 2 + 10], stroke: '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth });
+
+		const text = new Konva.Text({ x: x - 50, y: viewport.height / 2 + 15,
+			text: formatter(year, fraction), fill: layoutSettings.TimelineTickMarkerTextColor, align: 'center',
+			width: 100, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily });
+
+        layer.add(tick);
+        layer.add(text);
+    }
+    layer.batchDraw();
+};
+
+const renderItems = (items: any[], ls: LayoutSettings) => {
+    const screenBuffer = 400;
+    const activeItemIds = new Set();
+    const stageCenterY = viewport.height / 2;
+    const currentLodIndex = store.currentLodIndex;
+
+    // Animate using the active viewport step!
+    const activeStep = viewport.lodStepFraction;
+
+    const sortedItems = [...items].sort((a, b) => getAbsoluteStart(a) - getAbsoluteStart(b));
+
+    for (let i = 0; i < sortedItems.length; i++) {
+        const item = sortedItems[i];
+        const itemIdStr = getId(item);
+        const typeName = getTypeName(item);
+
+        const minLod = parseInt(getMinLod(item), 10);
+        if (!isNaN(minLod) && minLod > currentLodIndex) continue;
+
+        const absoluteStart = getAbsoluteStart(item);
+        if (absoluteStart === undefined) continue;
+
+        const itemX = getXFromTime(absoluteStart, viewport.centerTime, activeStep, viewport.width, ls);
+        const isAgeOrPeriod = typeName === "Age" || typeName === "Period";
+        let endX = itemX;
+
+        if (isAgeOrPeriod) {
+            const absoluteEnd = getAbsoluteEnd(item) || (absoluteStart + activeStep);
+            endX = getXFromTime(absoluteEnd, viewport.centerTime, activeStep, viewport.width, ls);
+            if (Math.max(itemX, endX) < -screenBuffer || Math.min(itemX, endX) > viewport.width + screenBuffer) {
+                lockedLanes.delete(itemIdStr);
+                continue;
+            }
+        } else {
+            if (itemX < -screenBuffer || itemX > viewport.width + screenBuffer) {
+                lockedLanes.delete(itemIdStr);
+                continue;
+            }
+        }
+
+        activeItemIds.add(itemIdStr);
+
+        let elements = nodeCache.get(itemIdStr);
+        if (!elements) {
+            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls);
+            nodeCache.set(itemIdStr, elements);
+        }
+
+        setNodeVisibility(elements, true);
+
+        let targetY = 0;
+        const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX) : ls.TimelineEventBoxWidth;
+
+        if (typeName === "Age") {
+            targetY = stageCenterY - ls.TimelineAgeHeight / 2;
+        } else {
+            const isAboveLine = getItemIndex(item) % 2 !== 0;
+            targetY = stageCenterY + getAssignedLane(
+                itemIdStr, itemX, boxWidth, isAboveLine, isAgeOrPeriod,
+                absoluteStart, getAbsoluteEnd(item), viewport.centerTime, activeStep,
+                viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, lockedLanes, ls
+            );
+        }
+
+        const isLeft = isLeftOfNow(itemX, viewport.width);
+        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeft, stageCenterY, ls);
+    }
+
+    for (const [id, elements] of nodeCache.entries()) {
+        if (!activeItemIds.has(id)) setNodeVisibility(elements, false);
+    }
+
+    itemLayer.batchDraw();
+};
+
+function RenderUiLayer(ui_layer: Konva.Layer, ls: LayoutSettings) {
+    ui_layer.destroyChildren();
+
+    const nowLine = new Konva.Line({ points: [viewport.width / 2, 0, viewport.width / 2, viewport.height], stroke: '#ff0000', strokeWidth: 2});
+    const nowText = new Konva.Text({ text: "Now", stroke: '#0000', fill: '#ff0000', x: viewport.width / 2 + 10, y: 0, fontFamily: "Times", fontSize: 32 });
+    const nowTextBottom = new Konva.Text({ align: 'right', text: "Now", stroke: '#0000', fill: '#ff0000', x: -10, y: viewport.height - 32, fontFamily: "Times", fontSize: 32, width: viewport.width / 2 });
+    const centerLine = new Konva.Line({ points: [0, viewport.height / 2, viewport.width, viewport.height / 2], stroke: '#ffffff88', strokeWidth: 2 });
+    const dataRange = new Konva.Rect({ x: viewport.width / 2 - (ls.TimelineDataRangeWidth / 2), width: ls.TimelineDataRangeWidth, y: 0, height: viewport.height, fill: ls.TimelineDataRangeColor });
+
+	switch (ls.TimelineNowLineStyle) {
+		case "dotted": nowLine.dash([1, 1]); break;
+		case "solid": nowLine.dash([0]); break;
+		default: nowLine.dash([5, 5]); break;
+	}
+
+	nowLine.stroke(ls.TimelineNowLineColor);
+	nowText.fill(ls.TimelineNowLineColor);
+	nowTextBottom.fill(ls.TimelineNowLineColor);
+
+	if(ls.TimelineShowNowLine){ ui_layer.add(nowLine); }
+	if(ls.TimelineShowNowLineText){ ui_layer.add(nowText, nowTextBottom); }
+
+	if(ls.TimelineIsDataRangeVisible) {
+		ui_layer.add(dataRange);
+	}
+
+    ui_layer.add(centerLine);
+}
+
+// --- STATE MANAGEMENT ---
+
+function jumpToYear(targetYear: number) {
+    viewport.centerTime = targetYear;
+    localYearCache = Math.floor(parseInt(targetYear));
+    store.setNowYear(localYearCache);
+
+    if (stage) {
+		renderGrid(gridLayer, props.layoutSettings);
+		renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+		updateCurrentYearInStore();
+	}
+}
+
+function updateStageSize() {
+    if (!stage || !containerRef.value) return;
+    stage.width(containerRef.value.clientWidth);
+    stage.height(containerRef.value.clientHeight);
+    viewport.width = containerRef.value.clientWidth;
+    viewport.height = containerRef.value.clientHeight;
+
+    renderGrid(gridLayer, props.layoutSettings);
+    RenderUiLayer(uiLayer, props.layoutSettings!);
+    lockedLanes.clear();
+    renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+}
+
+const updateCurrentYearInStore = () => {
+    const currentYear = Math.floor(viewport.centerTime);
+    if (currentYear !== localYearCache) {
+        localYearCache = currentYear;
+        store.setNowYear(currentYear);
+    }
+};
+
+function trackFps() {
+    const now = performance.now();
+    const deltaTime = now - lastFrameTime;
+    lastFrameTime = now;
+
+    if (deltaTime <= 0) return;
+    fpsSum += 1000 / deltaTime;
+    frameCount++;
+
+    if (frameCount >= 100) {
+        store.setFpsDisplay(Math.round(fpsSum / frameCount));
+        frameCount = 0;
+        fpsSum = 0;
+    }
+}
+
+function animateJumpToYear(targetYear: number, durationMs: number = 600) {
+    const startYear = viewport.centerTime;
+    const yearDifference = targetYear - startYear;
+    const startTime = performance.now();
+
+    function step(currentTime: number) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / durationMs, 1);
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+        viewport.centerTime = startYear + (yearDifference * easeProgress);
+
+        renderGrid(gridLayer, props.layoutSettings);
+        renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+
+        if (progress < 1) {
+            requestAnimationFrame(step);
+        } else {
+            localYearCache = Math.floor(targetYear);
+            store.setNowYear(localYearCache);
+        }
+    }
+
+    requestAnimationFrame(step);
+}
+
+function findNextFullYear(nowY: number, positive: boolean) {
+	if (viewport.lodStepFraction < 1) {
+		jumpToYear(positive ? Math.floor(nowY) + 1 : Math.ceil(nowY) - 1);
+	} else {
+		jumpToYear(findNearestTick(positive));
+	}
+}
+
+function findNearestTick(positive: boolean): number {
+	const frac = viewport.lodStepFraction;
+	const currentIndex = Math.round(viewport.centerTime / frac);
+	return (currentIndex + (positive ? 1 : -1)) * frac;
+}
+
+// --- INITIALIZATION ---
+onMounted(() => {
+    let block_index = 1;
+    let period_index = 1;
+    if (props.timelineItems) {
+        props.timelineItems.forEach(item => {
+            const tId = getTypeId(item);
+            if (tId == 2) {
+                item.ItemIndex = period_index++;
+            } else if ([3, 6, 8, 9].indexOf(tId) < 0) {
+                item.ItemIndex = block_index++;
+            }
+        });
+    }
+
+    if (!containerRef.value) return;
+    stage = new Konva.Stage({
+        container: containerRef.value,
+        width: containerRef.value.clientWidth,
+        height: containerRef.value.clientHeight
+    });
+
+    viewport.width = stage.width();
+    viewport.height = stage.height();
+
+    // Set initial LOD to prevent NaN issues
+    viewport.lodStepFraction = store.lodProfile?.[store.currentLodIndex]?.stepFraction || 1;
+
+    itemLayer.add(stemsMaster);
+    itemLayer.add(boxesMaster);
+
+	stage.add(uiLayer);
+
+	if(store.layoutSettings?.TimelineTickMarkerTextAlwaysOnTop) {
+		stage.add(itemLayer);
+		stage.add(gridLayer);
+	}else {
+		stage.add(gridLayer);
+		stage.add(itemLayer);
+	}
+
+    renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+
+	stage.on('contextmenu', (e) => {
+        e.evt.preventDefault(); // Stop the default browser right-click menu
+
+        const pos = stage.getPointerPosition();
+        if (!pos || !store.layoutSettings) return;
+
+        // Calculate the exact time at the mouse position
+        const absoluteTime = getTimeFromX(pos.x, viewport.centerTime, viewport.lodStepFraction, viewport.width, store.layoutSettings);
+
+        // Break the fractional time down into Year and Decimal for your UI
+        const cleanTime = parseFloat(absoluteTime.toFixed(8));
+        const year = Math.floor(cleanTime);
+        const fraction = cleanTime - year;
+
+        // Update the menu state
+        contextMenu.x = pos.x;
+        contextMenu.y = pos.y;
+        contextMenu.absoluteTime = absoluteTime;
+        contextMenu.displayYear = year;
+        contextMenu.displayFraction = parseFloat(fraction.toFixed(4));
+
+        // Determine what we clicked on
+        const targetId = e.target.id();
+
+        // Because we flattened the layers, our shapes have IDs like "box-123", "label-123"
+        if (targetId && (targetId.startsWith('box-') || targetId.startsWith('label-') || targetId.startsWith('stem-'))) {
+            // We clicked an item! Extract the real ID (everything after the first dash)
+            const itemId = targetId.split('-').slice(1).join('-');
+
+            contextMenu.type = 'item';
+            contextMenu.itemId = itemId;
+        } else {
+            // We clicked empty canvas space
+            contextMenu.type = 'canvas';
+            contextMenu.itemId = null;
+        }
+
+        contextMenu.isOpen = true;
+    });
+
+    // 2. Close the context menu if the user left-clicks or drags anywhere else
+    stage.on('mousedown click dragstart wheel', () => {
+        if (contextMenu.isOpen) closeContextMenu();
+    });
+
+    let isDragging = false;
+    let lastPointerX = 0;
+
+    stage.on('mousedown', () => {
+        if (!stage) return;
+        const pos = stage.getPointerPosition();
+        if (!pos) return;
+		if(event.which > 1){ return; }
+        isDragging = true;
+        lastPointerX = pos.x;
+
+    });
+
+    window.addEventListener('mouseup', () => {
+        isDragging = false;
+        document.body.style.cursor = 'default';
+    });
+
+    stage.on('mousemove', () => {
+        if (!isDragging || !stage) return;
+        const pos = stage.getPointerPosition();
+        if (!pos) return;
+
+        const deltaX = pos.x - lastPointerX;
+
+		if(deltaX == 0)  return;
+
+		document.body.style.cursor = 'grabbing';
+
+        // Panning speed naturally scales alongside the zoom animation!
+        viewport.centerTime -= (deltaX / store.layoutSettings!.TimelineTickDistance) * viewport.lodStepFraction;
+        lastPointerX = pos.x;
+
+        renderGrid(gridLayer, props.layoutSettings);
+        renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+        updateCurrentYearInStore();
+    });
+
+    stage.on('wheel', (event) => {
+        const e = event.evt as WheelEvent;
+        if (!e) return;
+		if (e.deltaY) {
+			const positive = e.deltaY < 0;
+			if (e.shiftKey) {
+				findNextFullYear(viewport.centerTime, positive);
+			} else {
+				jumpToYear(findNearestTick(positive));
+			}
+		} else if (e.deltaX) {
+			jumpToYear(findNearestTick(e.deltaX > 0));
+		}
+    });
+
+    RenderUiLayer(uiLayer, props.layoutSettings!);
+    renderGrid(gridLayer, props.layoutSettings);
+
+    window.setInterval(trackFps, 20);
+});
+
+defineExpose({
+    animateJumpToYear,
+	jumpToYear,
+    updateStageSize,
+    gridLayer,
+    uiLayer
+});
+</script>
+
+<template>
+    <div style="position: relative; width: 100%; height: 100%;" @click="closeContextMenu">
+        <div ref="containerRef" style="width: 100%; height: 100%;"></div>
+
+        <div v-if="contextMenu.isOpen"
+             class="context-menu"
+             :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+             @click.stop> <template v-if="contextMenu.type === 'canvas'">
+                <div class="menu-header">
+                    Year: {{ contextMenu.displayYear }} <br/>
+                    <small>Fraction: {{ contextMenu.displayFraction }}</small>
+                </div>
+                <button class="menu-item" @click="console.log('Add Event')">
+                    <i class="ri-calendar-event-line"></i> Add Event Here
+                </button>
+                <button class="menu-item" @click="console.log('Add Period')">
+                    <i class="ri-expand-left-right-line"></i> Add Period Here
+                </button>
+            </template>
+
+            <template v-else>
+                <div class="menu-header">Item Options</div>
+                <button class="menu-item" @click="console.log('Edit', contextMenu.itemId)">
+                    <i class="ri-edit-line"></i> Edit Item
+                </button>
+                <div class="menu-separator"></div>
+                <button class="menu-item danger" @click="console.log('Delete', contextMenu.itemId)">
+                    <i class="ri-delete-bin-line"></i> Delete Item
+                </button>
+            </template>
+
+        </div>
+    </div>
+</template>
+
+<style scoped lang="scss">
+.context-menu {
+    position: absolute;
+    z-index: 1000;
+    min-width: 180px;
+    background-color: #1e293b; /* Dark theme background */
+    border: 1px solid #334155;
+    border-radius: 8px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+    font-family: sans-serif;
+    color: #f8fafc;
+
+    .menu-header {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #94a3b8;
+        border-bottom: 1px solid #334155;
+        margin-bottom: 4px;
+
+        small {
+            font-weight: normal;
+            font-size: 0.75rem;
+        }
+    }
+
+    .menu-separator {
+        height: 1px;
+        background-color: #334155;
+        margin: 4px 0;
+    }
+
+    .menu-item {
+        background: none;
+        border: none;
+        color: #f8fafc;
+        text-align: left;
+        padding: 8px 12px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background-color 0.1s ease;
+
+        &:hover {
+            background-color: #334155;
+        }
+
+        &.danger {
+            color: #ef4444;
+            &:hover {
+                background-color: rgba(239, 68, 68, 0.1);
+            }
+        }
+
+        i {
+            font-size: 1.1em;
+        }
+    }
+}
+</style>
