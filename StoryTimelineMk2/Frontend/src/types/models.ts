@@ -68,6 +68,7 @@ export interface Calendar {
 	NameAfter0: string;
 	DefaultCalendar: boolean;
 	Year0AtDefault: number;
+	YearDefinition: string;   // JSON string describing months, weeks, seasons
 	LodProfile: LodProfile;
 }
 
@@ -113,6 +114,71 @@ export interface LodLevel {
 	index: number;
 	formatKey: string;
 	stepFraction: number;
+}
+
+export interface CharacterItem {
+	Id: string;
+	Name: string;
+	Nicknames: string | null;
+	Aliases: string | null;
+	Race: string | null;
+	Description: string | null;
+	Color: string | null;
+	Importance: number;
+	TimelineId: number;
+}
+
+export interface Tag {
+	Id: number;
+	Name: string;
+}
+
+export interface Story {
+	Id: string;
+	Title: string;
+	Description: string | null;
+}
+
+export interface Book {
+	Id: string;
+	Title: string;
+	Author: string | null;
+}
+
+export interface Chapter {
+	Id: string;
+	BookId: string;
+	Number: number;
+	Title: string | null;
+}
+
+export interface ItemCharacterAppearance {
+	CharacterId: string;
+	CharacterName: string;
+	CharacterColor: string | null;
+	Role: string | null;
+}
+
+export interface ItemChapterRef {
+	ChapterId: string;
+	ChapterNumber: number;
+	ChapterTitle: string | null;
+	BookId: string;
+	BookTitle: string;
+}
+
+export interface ItemStoryRef {
+	StoryId: string;
+	StoryTitle: string;
+}
+
+export interface ItemForEdit {
+	Item: TimelineItem;
+	Tags: Tag[];
+	Characters: ItemCharacterAppearance[];
+	StoryRefs: ItemStoryRef[];
+	ChapterRefs: ItemChapterRef[];
+	Calendar: Calendar;
 }
 
 // Reusable layoutSettings, can be attached to timeline

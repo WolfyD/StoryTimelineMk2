@@ -62,7 +62,7 @@ namespace StoryTimelineMk2.Database
 
             // Fetch all edges for this timeline once into memory (extremely fast in C#)
             var edges = db.Query<CharacterEdge>(
-                "SELECT character_id_1 as SourceId, character_id_2 as TargetId, relationship_type as RelationshipType FROM character_relationships WHERE timeline_id = @Id",
+                "SELECT character_1_id as SourceId, character_2_id as TargetId, relationship_type as RelationshipType FROM character_relationships WHERE timeline_id = @Id",
                 new { Id = timelineId }).ToList();
 
             var visited = new HashSet<string> { startCharId };

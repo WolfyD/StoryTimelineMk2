@@ -5,11 +5,27 @@ import { PhArrowArcRight, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircl
 import { Splitpanes, Pane } from 'splitpanes'
 import { ref, onMounted } from 'vue';
 import TimelineCanvas from "@/components/TimelineCanvas.vue" ;
+import { BackendAPI } from '@/bridge/api';
 
 const store = useTimelineStore()
 
 const loadError = ref<boolean>(false)
 const timelineCanvasRef = ref();
+
+function onItemClick(itemId: string) {
+    BackendAPI.send('OpenAddEditItemWindow', {
+        timelineId: store.currentProject?.Id,
+        itemId,
+    })
+}
+
+function onAddItem(typeId: number, year: number) {
+    BackendAPI.send('OpenAddEditItemWindow', {
+        timelineId: store.currentProject?.Id,
+        typeId,
+        year,
+    })
+}
 
 // functions
 async function HandleLoadTimeline() {
@@ -119,6 +135,8 @@ onMounted(() => {
 				:timeline-settings="store.settings"
 				:timeline-info="store.currentProject"
 				:layout-settings="store.layoutSettings"
+				@item-click="onItemClick"
+				@add-item="onAddItem"
 			></TimelineCanvas>
         </Pane>
 

@@ -59,8 +59,15 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection($"Data Source={sourceFilePath};Mode=ReadOnly");
             db.Open();
-            string sql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='calendars'";
-            return db.QuerySingle<int>(sql) > 0;
+            // v2 databases have the calendars table; v1 does not
+            return db.QuerySingle<int>("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='calendars'") > 0;
+        }
+
+        private static bool TableExistsInBackup(SqliteConnection db, Microsoft.Data.Sqlite.SqliteTransaction tx, string tableName)
+        {
+            return db.QuerySingle<int>(
+                $"SELECT COUNT(*) FROM BackupDb.sqlite_master WHERE type='table' AND name='{tableName}'",
+                transaction: tx) > 0;
         }
 
         private static void ImportV2Backup(string sourceFilePath, string targetFilePath)
@@ -137,18 +144,36 @@ namespace StoryTimelineMk2.Database
                         file_type = excluded.file_type, width = excluded.width, height = excluded.height, 
                         title = excluded.title, description = excluded.description;", transaction: tx);
 
-                // 8. Junction Tables
+                // 8. Junction Tables (always present in v2)
                 dbTarget.Execute("INSERT OR IGNORE INTO main.item_tags SELECT * FROM BackupDb.item_tags", transaction: tx);
                 dbTarget.Execute("INSERT OR IGNORE INTO main.item_pictures SELECT * FROM BackupDb.item_pictures", transaction: tx);
                 dbTarget.Execute("INSERT OR IGNORE INTO main.item_characters SELECT * FROM BackupDb.item_characters", transaction: tx);
-                dbTarget.Execute("INSERT OR IGNORE INTO main.character_relationships SELECT * FROM BackupDb.character_relationships", transaction: tx);
 
-                // 8.5 Timeline Calendars (Coupling Table)
-                bool hasTimelineCalendars = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='timeline_calendars' AND database='BackupDb'", transaction: tx) > 0;
+                // 8.5 Tables added progressively — check existence before copying
+                bool hasTimelineCalendars = TableExistsInBackup(dbTarget, tx, "timeline_calendars");
                 if (hasTimelineCalendars)
-                {
                     dbTarget.Execute("INSERT OR IGNORE INTO main.timeline_calendars SELECT * FROM BackupDb.timeline_calendars", transaction: tx);
+
+                bool hasCharRel = TableExistsInBackup(dbTarget, tx, "character_relationships");
+                if (hasCharRel)
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.character_relationships SELECT * FROM BackupDb.character_relationships", transaction: tx);
+
+                bool hasItemStoryRefs = TableExistsInBackup(dbTarget, tx, "item_story_refs");
+                if (hasItemStoryRefs)
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.item_story_refs SELECT * FROM BackupDb.item_story_refs", transaction: tx);
+
+                bool hasBooks = TableExistsInBackup(dbTarget, tx, "books");
+                if (hasBooks)
+                {
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.books SELECT * FROM BackupDb.books", transaction: tx);
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.book_stories SELECT * FROM BackupDb.book_stories", transaction: tx);
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.chapters SELECT * FROM BackupDb.chapters", transaction: tx);
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.item_chapters SELECT * FROM BackupDb.item_chapters", transaction: tx);
                 }
+
+                bool hasAppearances = TableExistsInBackup(dbTarget, tx, "item_character_appearances");
+                if (hasAppearances)
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.item_character_appearances SELECT * FROM BackupDb.item_character_appearances", transaction: tx);
 
                 // 9. Settings
                 dbTarget.Execute(@"
@@ -289,7 +314,17 @@ namespace StoryTimelineMk2.Database
                         var charRels = dbV1.Query("SELECT * FROM character_relationships");
                         foreach (var cr in charRels)
                         {
-                            dbV2.Execute("INSERT OR IGNORE INTO character_relationships (character_id_1, character_id_2, relationship_type, timeline_id) VALUES (@character_id_1, @character_id_2, @relationship_type, @timeline_id)", (object)cr, transaction);
+                            // v1 uses character_1_id / character_2_id (not character_id_1 / character_id_2)
+                            dbV2.Execute(@"
+                                INSERT OR IGNORE INTO character_relationships
+                                    (character_1_id, character_2_id, relationship_type, custom_relationship_type,
+                                     relationship_degree, relationship_modifier, relationship_strength,
+                                     is_bidirectional, notes, timeline_id)
+                                VALUES
+                                    (@character_1_id, @character_2_id, @relationship_type, @custom_relationship_type,
+                                     @relationship_degree, @relationship_modifier, @relationship_strength,
+                                     @is_bidirectional, @notes, @timeline_id)",
+                                (object)cr, transaction);
                         }
                     }
 
@@ -301,6 +336,21 @@ namespace StoryTimelineMk2.Database
                 {
                     dbV2.Execute("INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (@item_id, @tag_id)", (object)it, transaction);
                 }
+
+                // item_story_refs — v1 many-to-many (items.story_id is the primary FK in v2, this preserves additional refs)
+                try
+                {
+                    int hasRefs = dbV1.QuerySingle<int>("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='item_story_refs'");
+                    if (hasRefs > 0)
+                    {
+                        var itemStoryRefs = dbV1.Query("SELECT * FROM item_story_refs");
+                        foreach (var r in itemStoryRefs)
+                        {
+                            dbV2.Execute("INSERT OR IGNORE INTO item_story_refs (item_id, story_id) VALUES (@item_id, @story_id)", (object)r, transaction);
+                        }
+                    }
+                }
+                catch { }
 
                 // Settings
                 var settings = dbV1.Query("SELECT * FROM settings");

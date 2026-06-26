@@ -1,14 +1,9 @@
-﻿using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Core;
 using StoryTimelineMk2.Bridge;
+using StoryTimelineMk2.Database;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-
 
 namespace StoryTimelineMk2.Forms
 {
@@ -17,18 +12,26 @@ namespace StoryTimelineMk2.Forms
         public MessageRouter _messageRouter;
         private const string ViteDevServerUrl = "http://localhost:5173";
 
+
+        private readonly System.Windows.Forms.Timer _moveTimer = new() { Interval = 500 };
+
         public f_Main()
         {
             InitializeComponent();
 
             Load += F_Main_Load;
+            ResizeEnd += F_Main_ResizeEnd;
+            LocationChanged += F_Main_LocationChanged;
+            _moveTimer.Tick += MoveTimer_Tick;
         }
 
         private async void F_Main_Load(object? sender, EventArgs e)
         {
+            RestoreWindowState();
+
             try
             {
-                string cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StoryTimelineMk2_Cache");
+                string cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StoryTimelineMk2_Cache", "main");
                 var webEnvironment = await CoreWebView2Environment.CreateAsync(null, cacheFolder);
 
                 await webView21.EnsureCoreWebView2Async(webEnvironment);
@@ -43,22 +46,56 @@ namespace StoryTimelineMk2.Forms
             }
         }
 
+        private void RestoreWindowState()
+        {
+            var repo = new SettingsRepo();
+            var saved = repo.GetOrCreateAppSettings();
+
+            if (saved.WindowSizeX > 0 && saved.WindowSizeY > 0)
+            {
+                var screen = Screen.FromPoint(new Point(saved.WindowPositionX, saved.WindowPositionY));
+                var target = new Point(saved.WindowPositionX, saved.WindowPositionY);
+
+                // Clamp so the window is never fully off-screen.
+                target.X = Math.Max(screen.WorkingArea.Left, Math.Min(target.X, screen.WorkingArea.Right - 100));
+                target.Y = Math.Max(screen.WorkingArea.Top, Math.Min(target.Y, screen.WorkingArea.Bottom - 100));
+
+                this.Size = new Size(saved.WindowSizeX, saved.WindowSizeY);
+                this.Location = target;
+            }
+        }
+
+        private void F_Main_ResizeEnd(object? sender, EventArgs e) => PersistWindowState();
+
+        private void F_Main_LocationChanged(object? sender, EventArgs e)
+        {
+            _moveTimer.Stop();
+            _moveTimer.Start();
+        }
+
+        private void MoveTimer_Tick(object? sender, EventArgs e)
+        {
+            _moveTimer.Stop();
+            PersistWindowState();
+        }
+
+        private void PersistWindowState()
+        {
+            if (this.WindowState != FormWindowState.Normal) return;
+            new SettingsRepo().SaveAppWindowState(this.Left, this.Top, this.Width, this.Height);
+        }
+
         private void LoadFrontend()
         {
 #if DEBUG
-            // --- DEVELOPMENT MODE ---
-            // Enables right-click inspect and points the browser to your live Vite server.
-            // This allows Hot Module Replacement (HMR) to update the UI instantly when you save a Vue file.
             webView21.CoreWebView2.Settings.AreDevToolsEnabled = true;
             webView21.CoreWebView2.Navigate(ViteDevServerUrl);
 #else
-            // --- PRODUCTION MODE ---
-            // Locks down the browser and loads the static, compiled HTML files from your hard drive.
             webView21.CoreWebView2.Settings.AreDevToolsEnabled = false;
             webView21.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 
             string prodFilePath = Path.Combine(Application.StartupPath, "Frontend", "dist", "index.html");
-            
+
             if (File.Exists(prodFilePath))
             {
                 webView21.CoreWebView2.Navigate(prodFilePath);

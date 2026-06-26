@@ -304,6 +304,81 @@ namespace StoryTimelineMk2.Database
                     timeline_animate_lod_change INTEGER NOT NULL DEFAULT 1,
                     timeline_lod_change_animation_length INTEGER NOT NULL
                 );
+
+                -- Character-to-character relationships (ported from v1, kept separate from relationship_types lookup)
+                CREATE TABLE IF NOT EXISTS character_relationships (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    character_1_id TEXT NOT NULL,
+                    character_2_id TEXT NOT NULL,
+                    relationship_type TEXT NOT NULL,
+                    custom_relationship_type TEXT,
+                    relationship_degree TEXT,
+                    relationship_modifier TEXT,
+                    relationship_strength INTEGER DEFAULT 50,
+                    is_bidirectional INTEGER DEFAULT 0,
+                    notes TEXT,
+                    timeline_id INTEGER NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (character_1_id) REFERENCES characters(id) ON DELETE CASCADE,
+                    FOREIGN KEY (character_2_id) REFERENCES characters(id) ON DELETE CASCADE,
+                    FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE
+                );
+
+                -- Many-to-many between items and stories (ported from v1 item_story_refs)
+                CREATE TABLE IF NOT EXISTS item_story_refs (
+                    item_id TEXT NOT NULL,
+                    story_id TEXT NOT NULL,
+                    PRIMARY KEY (item_id, story_id),
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+                    FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE
+                );
+
+                -- Book/chapter reference system (new in v2)
+                CREATE TABLE IF NOT EXISTS books (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    author TEXT,
+                    description TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS book_stories (
+                    book_id TEXT NOT NULL,
+                    story_id TEXT NOT NULL,
+                    PRIMARY KEY (book_id, story_id),
+                    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+                    FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS chapters (
+                    id TEXT PRIMARY KEY,
+                    book_id TEXT NOT NULL,
+                    number INTEGER NOT NULL,
+                    title TEXT,
+                    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS item_chapters (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id TEXT NOT NULL,
+                    chapter_id TEXT NOT NULL,
+                    UNIQUE (item_id, chapter_id),
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+                    FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
+                );
+
+                -- Event-character appearances with freetext role (replaces the old 1-to-1 item_characters purpose)
+                CREATE TABLE IF NOT EXISTS item_character_appearances (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    role TEXT,
+                    UNIQUE (item_id, character_id),
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+                    FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
+                );
             ";
 
             db.Execute(createTablesSql);
@@ -313,12 +388,25 @@ namespace StoryTimelineMk2.Database
 
         private static void CreateIndexes(SqliteConnection db)
         {
-            // Run all your documented performance indexes
             db.Execute(@"
                 CREATE INDEX IF NOT EXISTS idx_items_timeline_id ON items(timeline_id);
                 CREATE INDEX IF NOT EXISTS idx_items_year_subtick ON items(year, subtick);
                 CREATE INDEX IF NOT EXISTS idx_item_pictures_combined ON item_pictures(item_id, picture_id);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+
+                CREATE INDEX IF NOT EXISTS idx_char_rel_char1 ON character_relationships(character_1_id);
+                CREATE INDEX IF NOT EXISTS idx_char_rel_char2 ON character_relationships(character_2_id);
+                CREATE INDEX IF NOT EXISTS idx_char_rel_timeline ON character_relationships(timeline_id);
+
+                CREATE INDEX IF NOT EXISTS idx_item_story_refs_item ON item_story_refs(item_id);
+                CREATE INDEX IF NOT EXISTS idx_item_story_refs_story ON item_story_refs(story_id);
+
+                CREATE INDEX IF NOT EXISTS idx_chapters_book ON chapters(book_id);
+                CREATE INDEX IF NOT EXISTS idx_item_chapters_item ON item_chapters(item_id);
+                CREATE INDEX IF NOT EXISTS idx_item_chapters_chapter ON item_chapters(chapter_id);
+
+                CREATE INDEX IF NOT EXISTS idx_item_char_app_item ON item_character_appearances(item_id);
+                CREATE INDEX IF NOT EXISTS idx_item_char_app_char ON item_character_appearances(character_id);
             ");
         }
 

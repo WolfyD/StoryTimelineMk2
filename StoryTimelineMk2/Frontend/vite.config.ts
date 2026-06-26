@@ -21,7 +21,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
-        settings: resolve(__dirname, 'timeline.html')
+        timeline: resolve(__dirname, 'timeline.html'),
+        editItem: resolve(__dirname, 'editItem.html')
       }
     }
   }

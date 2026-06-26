@@ -16,8 +16,8 @@ namespace StoryTimelineMk2.Database
         public int Subtick { get; set; }
         public int OriginalSubtick { get; set; }
         public int EndYear { get; set; }
-        public int AbsoluteStart { get; set; }
-        public int AbsoluteEnd { get; set; }
+        public double AbsoluteStart { get; set; }
+        public double AbsoluteEnd { get; set; }
         public int EndSubtick { get; set; }
         public int OriginalEndSubtick { get; set; }
         public string BookTitle { get; set; }

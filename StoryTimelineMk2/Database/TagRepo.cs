@@ -28,10 +28,16 @@ namespace StoryTimelineMk2.Database
             db.Execute("INSERT OR IGNORE INTO tags (name) VALUES (@Name)", new { Name = tagName.ToLowerInvariant() });
         }
 
+        public IEnumerable<TagItem> SearchTags(string query)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<TagItem>("SELECT * FROM tags WHERE name LIKE @Query ORDER BY name LIMIT 10",
+                new { Query = $"%{query.ToLowerInvariant()}%" });
+        }
+
         public void DeleteTag(int id)
         {
             using var db = new SqliteConnection(_connString);
-            // SQLite CASCADE will wipe this tag from the item_tags junction table instantly
             db.Execute("DELETE FROM tags WHERE id = @Id", new { Id = id });
         }
     }
