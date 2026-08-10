@@ -2,8 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import LodDateInput from '@/components/LodDateInput.vue'
+import ImagePickerModal from '@/components/ImagePickerModal.vue'
 import type {
   TimelineItem,
+  MediaItem,
   Tag,
   CharacterItem,
   Story,
@@ -78,6 +80,8 @@ const tags               = ref<Tag[]>([])
 const characterAppearances = ref<ItemCharacterAppearance[]>([])
 const storyRefs          = ref<ItemStoryRef[]>([])
 const chapterRefs        = ref<ItemChapterRef[]>([])
+const images             = ref<MediaItem[]>([])
+const showImagePicker    = ref(false)
 
 // Lookup data
 const allCharacters   = ref<CharacterItem[]>([])
@@ -174,6 +178,7 @@ onMounted(async () => {
     characterAppearances.value = data.Characters ?? []
     storyRefs.value          = data.StoryRefs ?? []
     chapterRefs.value        = data.ChapterRefs ?? []
+    images.value             = data.Pictures ?? []
 
     if (data.Calendar) {
       // Extract LOD profile (it comes as a raw JSON string in LodProfile.Profile)
@@ -373,6 +378,25 @@ async function save() {
 function cancel() {
   window.close()
 }
+
+// ---------------------------------------------------------------------------
+// Images
+// ---------------------------------------------------------------------------
+function addImage() {
+  showImagePicker.value = true
+}
+
+function onImageLinked(picture: MediaItem) {
+  if (!images.value.some(i => i.Id === picture.Id)) {
+    images.value.push(picture)
+  }
+  showImagePicker.value = false
+}
+
+async function removeImage(pictureId: string) {
+  await BackendAPI.RemoveImageFromItem(pictureId, item.value.Id)
+  images.value = images.value.filter(img => img.Id !== pictureId)
+}
 </script>
 
 <template>
@@ -533,7 +557,37 @@ function cancel() {
       <!-- Images -->
       <div class="section">
         <h3 class="section-title">Images</h3>
-        <p class="placeholder-note">Image management coming soon.</p>
+
+        <p v-if="isNew" class="placeholder-note">Save the item first to attach images.</p>
+
+        <template v-else>
+          <div class="image-grid" v-if="images.length">
+            <div class="image-thumb" v-for="img in images" :key="img.Id">
+              <img
+                :src="`https://media.app/${img.FilePath}`"
+                :alt="img.Title || img.FileName"
+                @error="($event.target as HTMLImageElement).src = ''"
+                class="image-thumb-img"
+              />
+              <div class="image-thumb-footer">
+                <span class="image-label" :title="img.Title || img.FileName">
+                  {{ img.Title || img.FileName }}
+                </span>
+                <button class="btn-icon btn-icon--danger" @click="removeImage(img.Id)" title="Remove">×</button>
+              </div>
+            </div>
+          </div>
+          <p v-else class="placeholder-note">No images attached.</p>
+          <button class="btn btn-secondary btn-sm mt-6" @click="addImage">+ Add Image</button>
+
+          <ImagePickerModal
+            v-if="showImagePicker"
+            :item-id="item.Id"
+            :already-linked="images.map(i => i.Id)"
+            @close="showImagePicker = false"
+            @linked="onImageLinked"
+          />
+        </template>
       </div>
 
       <!-- Characters -->
@@ -1180,4 +1234,50 @@ function cancel() {
   font-style: italic;
   margin: 0;
 }
+
+// ---- Image grid ----
+.image-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.image-thumb {
+  width: 110px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #f5f5f5;
+
+  img {
+    width: 100%;
+    height: 84px;
+    object-fit: cover;
+    display: block;
+    background: #e0e0e0;  // visible when src is empty / file missing
+  }
+}
+
+.image-thumb-footer {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+}
+
+.image-label {
+  flex: 1;
+  font-size: 10px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-icon--danger:hover {
+  color: #c0392b;
+}
+
+.mt-6 { margin-top: 6px; }
 </style>

@@ -195,6 +195,22 @@ export const BackendAPI = {
 		return await this.request<{ status: string; message?: string; path?: string }>('CreateBackup', { includeMedia });
 	},
 
+	async GetAllPictures() {
+		return await this.request<import('@/types/models').MediaItem[]>('GetAllPictures', {});
+	},
+
+	async LinkImageToItem(pictureId: string, itemId: string) {
+		return await this.request<{ status: string; message?: string }>('LinkImageToItem', { pictureId, itemId });
+	},
+
+	async AddImageToItem(itemId: string) {
+		return await this.request<{ status: string; message?: string; Picture?: import('@/types/models').MediaItem }>('AddImageToItem', { itemId });
+	},
+
+	async RemoveImageFromItem(pictureId: string, itemId: string) {
+		return await this.request<{ status: string; message?: string }>('RemoveImageFromItem', { pictureId, itemId });
+	},
+
 	async GetLayoutSettingsById(id: string) {
 		return await this.request<LayoutSettings>('GetLayoutSettingsById', { id });
 	},

@@ -40,6 +40,15 @@ namespace StoryTimelineMk2.Forms
 
             wv_AddEditItem.CoreWebView2.WindowCloseRequested += (_, _) => Close();
 
+            // Map the media folder so Vue can load images via https://media.app/{filename}
+            // Ensure the folder exists — SetVirtualHostNameToFolderMapping throws if it doesn't
+            string mediaFolder = AppConfig.Instance.GetMediaFolder();
+            Directory.CreateDirectory(mediaFolder);
+            wv_AddEditItem.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "media.app",
+                mediaFolder,
+                CoreWebView2HostResourceAccessKind.Allow);
+
             _messageRouter = new MessageRouter(wv_AddEditItem.CoreWebView2);
 
             var query = $"?timelineId={TimelineId}";

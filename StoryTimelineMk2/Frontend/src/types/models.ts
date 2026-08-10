@@ -206,6 +206,19 @@ export interface ItemStoryRef {
 	StoryTitle: string;
 }
 
+export interface MediaItem {
+	Id: string;
+	FilePath: string;
+	FileName: string;
+	FileSize: number;
+	FileType: string;
+	Width: number;
+	Height: number;
+	Title: string;
+	Description: string;
+	CreatedAt: string;
+}
+
 export interface ItemForEdit {
 	Item: TimelineItem;
 	Tags: Tag[];
@@ -213,6 +226,7 @@ export interface ItemForEdit {
 	StoryRefs: ItemStoryRef[];
 	ChapterRefs: ItemChapterRef[];
 	Calendar: Calendar;
+	Pictures: MediaItem[];
 }
 
 // Reusable layoutSettings, can be attached to timeline

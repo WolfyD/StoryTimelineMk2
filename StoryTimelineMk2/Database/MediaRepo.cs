@@ -62,6 +62,35 @@ namespace StoryTimelineMk2.Database
             return mediaItem; // Return to Vue so it can render the image immediately
         }
 
+        public IEnumerable<MediaItem> GetItemPictures(string itemId)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<MediaItem>(@"
+                SELECT p.* FROM pictures p
+                INNER JOIN item_pictures ip ON ip.picture_id = p.id
+                WHERE ip.item_id = @ItemId
+                ORDER BY p.created_at", new { ItemId = itemId });
+        }
+
+        public void LinkPictureToItem(string pictureId, string itemId)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Execute("INSERT OR IGNORE INTO item_pictures (item_id, picture_id) VALUES (@itemId, @pictureId)",
+                new { itemId, pictureId });
+        }
+
+        public void UnlinkAndPruneImage(string pictureId, string itemId)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Execute("DELETE FROM item_pictures WHERE picture_id = @pictureId AND item_id = @itemId",
+                new { pictureId, itemId });
+
+            int remaining = db.QuerySingle<int>(
+                "SELECT COUNT(*) FROM item_pictures WHERE picture_id = @Id", new { Id = pictureId });
+            if (remaining == 0)
+                DeleteMedia(pictureId);
+        }
+
         public string GetFullPath(string fileNameOrPath)
         {
             // Handles both legacy absolute paths and new filename-only values

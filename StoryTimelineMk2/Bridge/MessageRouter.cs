@@ -59,6 +59,10 @@ namespace StoryTimelineMk2.Bridge
                 case "SearchBooks":             HandleSearchBooks(message); break;
                 case "GetBookChapters":         HandleGetBookChapters(message); break;
                 case "GetLayoutSettingsList":   HandleGetLayoutSettingsList(message); break;
+                case "AddImageToItem":          HandleAddImageToItem(message); break;
+                case "RemoveImageFromItem":     HandleRemoveImageFromItem(message); break;
+                case "GetAllPictures":          HandleGetAllPictures(message); break;
+                case "LinkImageToItem":         HandleLinkImageToItem(message); break;
                 case "DeleteTimeline":          HandleDeleteTimeline(message); break;
                 case "DuplicateTimeline":       HandleDuplicateTimeline(message); break;
                 case "ExportTimeline":          HandleExportTimeline(message); break;
@@ -237,6 +241,9 @@ namespace StoryTimelineMk2.Bridge
                 StoryRefs = itemRepo.GetItemStoryRefs(item.Id),
                 ChapterRefs = itemRepo.GetItemChapterRefs(item.Id),
                 Calendar = timeline.Calendar,
+                Pictures = string.IsNullOrEmpty(itemId)
+                    ? new List<MediaItem>()
+                    : new MediaRepo().GetItemPictures(item.Id).ToList(),
             });
         }
 
@@ -663,6 +670,76 @@ namespace StoryTimelineMk2.Bridge
             var response = new { messageId, payload };
             string json = JsonSerializer.Serialize(response);
             _webView.PostWebMessageAsJson(json);
+        }
+
+        // -----------------------------------------------------------------------
+        // Image handlers
+        // -----------------------------------------------------------------------
+
+        private void HandleAddImageToItem(BridgeMessage message)
+        {
+            var itemId = message.Payload.GetProperty("itemId").GetString();
+
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Select Image",
+                Filter = "Image files|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff|All files|*.*",
+                Multiselect = false,
+            };
+
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                ReplyToVue(message.MessageId, new { status = "cancelled" });
+                return;
+            }
+
+            try
+            {
+                var mediaRepo = new MediaRepo();
+                var title = Path.GetFileNameWithoutExtension(dialog.FileName);
+                var picture = mediaRepo.ImportAndSaveMedia(dialog.FileName, title, "");
+                mediaRepo.LinkPictureToItem(picture.Id, itemId);
+                ReplyToVue(message.MessageId, new { status = "ok", Picture = picture });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleGetAllPictures(BridgeMessage message)
+        {
+            ReplyToVue(message.MessageId, new MediaRepo().GetAllMedia().ToList());
+        }
+
+        private void HandleLinkImageToItem(BridgeMessage message)
+        {
+            var pictureId = message.Payload.GetProperty("pictureId").GetString();
+            var itemId    = message.Payload.GetProperty("itemId").GetString();
+            try
+            {
+                new MediaRepo().LinkPictureToItem(pictureId, itemId);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleRemoveImageFromItem(BridgeMessage message)
+        {
+            var pictureId = message.Payload.GetProperty("pictureId").GetString();
+            var itemId    = message.Payload.GetProperty("itemId").GetString();
+            try
+            {
+                new MediaRepo().UnlinkAndPruneImage(pictureId, itemId);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
         }
 
         // -----------------------------------------------------------------------
