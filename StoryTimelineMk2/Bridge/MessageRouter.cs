@@ -79,8 +79,13 @@ namespace StoryTimelineMk2.Bridge
                 case "DeleteCalendar":              HandleDeleteCalendar(message); break;
                 case "OpenCalendarEditorWindow":    HandleOpenCalendarEditorWindow(message); break;
 
-                case "OpenSettings":
-                    break;
+                // App-level settings
+                case "GetAppConfig":    HandleGetAppConfig(message); break;
+                case "BrowseDataFolder": HandleBrowseDataFolder(message); break;
+                case "SetDataRoot":     HandleSetDataRoot(message); break;
+                case "MoveDataFolder":  HandleMoveDataFolder(message); break;
+                case "OpenDataFolder":  HandleOpenDataFolder(message); break;
+                case "CreateBackup":    HandleCreateBackup(message); break;
 
                 default:
                     Console.WriteLine($"Unknown Action: {message.Action}");
@@ -658,6 +663,146 @@ namespace StoryTimelineMk2.Bridge
             var response = new { messageId, payload };
             string json = JsonSerializer.Serialize(response);
             _webView.PostWebMessageAsJson(json);
+        }
+
+        // -----------------------------------------------------------------------
+        // App-level settings handlers
+        // -----------------------------------------------------------------------
+
+        private void HandleGetAppConfig(BridgeMessage message)
+        {
+            var cfg = AppConfig.Instance;
+            ReplyToVue(message.MessageId, new
+            {
+                DataRoot   = cfg.DataRoot,
+                DbPath     = cfg.GetDbPath(),
+                MediaFolder = cfg.GetMediaFolder(),
+            });
+        }
+
+        private void HandleBrowseDataFolder(BridgeMessage message)
+        {
+            string? selected = null;
+            using var dialog = new FolderBrowserDialog
+            {
+                Description        = "Select data folder",
+                UseDescriptionForTitle = true,
+                SelectedPath       = AppConfig.Instance.DataRoot,
+                ShowNewFolderButton = true,
+            };
+            if (dialog.ShowDialog() == DialogResult.OK)
+                selected = dialog.SelectedPath;
+            ReplyToVue(message.MessageId, new { path = selected });
+        }
+
+        private void HandleSetDataRoot(BridgeMessage message)
+        {
+            var newPath = message.Payload.GetProperty("path").GetString()?.Trim();
+            if (string.IsNullOrEmpty(newPath))
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = "Invalid path." });
+                return;
+            }
+            try
+            {
+                Directory.CreateDirectory(newPath);
+                AppConfig.Instance.DataRoot = newPath;
+                AppConfig.Instance.Save();
+                DbInitializer.Initialize();
+                ReplyToVue(message.MessageId, new { status = "ok", path = newPath });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleMoveDataFolder(BridgeMessage message)
+        {
+            var newPath = message.Payload.GetProperty("path").GetString()?.Trim();
+            if (string.IsNullOrEmpty(newPath))
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = "Invalid path." });
+                return;
+            }
+            try
+            {
+                Directory.CreateDirectory(newPath);
+
+                string oldDb    = AppConfig.Instance.GetDbPath();
+                string oldMedia = AppConfig.Instance.GetMediaFolder();
+
+                if (File.Exists(oldDb))
+                    File.Copy(oldDb, Path.Combine(newPath, "timeline.sqlite"), overwrite: true);
+
+                if (Directory.Exists(oldMedia))
+                    CopyDirectory(oldMedia, Path.Combine(newPath, "Media"));
+
+                AppConfig.Instance.DataRoot = newPath;
+                AppConfig.Instance.Save();
+                DbInitializer.Initialize();
+                ReplyToVue(message.MessageId, new { status = "ok", path = newPath });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleOpenDataFolder(BridgeMessage message)
+        {
+            System.Diagnostics.Process.Start("explorer.exe", AppConfig.Instance.DataRoot);
+        }
+
+        private void HandleCreateBackup(BridgeMessage message)
+        {
+            bool includeMedia = message.Payload.TryGetProperty("includeMedia", out var im) && im.GetBoolean();
+
+            using var dialog = new FolderBrowserDialog
+            {
+                Description        = "Choose backup destination folder",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true,
+            };
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                ReplyToVue(message.MessageId, new { status = "cancelled" });
+                return;
+            }
+
+            try
+            {
+                string backupName = $"StoryTimeline_Backup_{DateTime.Now:yyyyMMdd_HHmmss}";
+                string backupPath = Path.Combine(dialog.SelectedPath, backupName);
+                Directory.CreateDirectory(backupPath);
+
+                string dbFile = AppConfig.Instance.GetDbPath();
+                if (File.Exists(dbFile))
+                    File.Copy(dbFile, Path.Combine(backupPath, "timeline.sqlite"), overwrite: true);
+
+                if (includeMedia)
+                {
+                    string mediaFolder = AppConfig.Instance.GetMediaFolder();
+                    if (Directory.Exists(mediaFolder))
+                        CopyDirectory(mediaFolder, Path.Combine(backupPath, "Media"));
+                }
+
+                System.Diagnostics.Process.Start("explorer.exe", backupPath);
+                ReplyToVue(message.MessageId, new { status = "ok", path = backupPath });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private static void CopyDirectory(string src, string dst)
+        {
+            Directory.CreateDirectory(dst);
+            foreach (var file in Directory.GetFiles(src))
+                File.Copy(file, Path.Combine(dst, Path.GetFileName(file)), overwrite: true);
+            foreach (var dir in Directory.GetDirectories(src))
+                CopyDirectory(dir, Path.Combine(dst, Path.GetFileName(dir)));
         }
     }
 }

@@ -15,9 +15,7 @@ namespace StoryTimelineMk2.Database
         {
             _connString = DbInitializer.GetConnectionString();
 
-            // Ensure the physical media directory exists
-            string dataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StoryTimelineMk2_Data");
-            _mediaFolder = Path.Combine(dataFolder, "Media");
+            _mediaFolder = AppConfig.Instance.GetMediaFolder();
             Directory.CreateDirectory(_mediaFolder);
 
             DefaultTypeMap.MatchNamesWithUnderscores = true;
@@ -46,8 +44,8 @@ namespace StoryTimelineMk2.Database
             var mediaItem = new MediaItem
             {
                 Id = newId,
-                FilePath = destinationPath,
-                FileName = Path.GetFileName(sourceFilePath), // Store original name for UI reference
+                FilePath = newFileName, // Filename only — full path resolved at runtime via AppConfig.GetMediaFolder()
+                FileName = Path.GetFileName(sourceFilePath),
                 FileSize = (int)fileInfo.Length,
                 FileType = extension.Replace(".", ""),
                 Title = title,
@@ -64,12 +62,19 @@ namespace StoryTimelineMk2.Database
             return mediaItem; // Return to Vue so it can render the image immediately
         }
 
+        public string GetFullPath(string fileNameOrPath)
+        {
+            // Handles both legacy absolute paths and new filename-only values
+            if (Path.IsPathRooted(fileNameOrPath)) return fileNameOrPath;
+            return Path.Combine(_mediaFolder, fileNameOrPath);
+        }
+
         public void DeleteMedia(string id)
         {
             using var db = new SqliteConnection(_connString);
 
-            // Get path before deleting record
-            string filePath = db.QuerySingleOrDefault<string>("SELECT file_path FROM pictures WHERE id = @Id", new { Id = id });
+            string storedPath = db.QuerySingleOrDefault<string>("SELECT file_path FROM pictures WHERE id = @Id", new { Id = id });
+            string filePath = storedPath != null ? GetFullPath(storedPath) : null;
 
             // 1. Delete from SQLite (CASCADE removes item_pictures junctions)
             db.Execute("DELETE FROM pictures WHERE id = @Id", new { Id = id });

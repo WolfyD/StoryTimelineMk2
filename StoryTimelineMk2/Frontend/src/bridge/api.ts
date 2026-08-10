@@ -171,6 +171,30 @@ export const BackendAPI = {
 		return await this.request<{ status: string }>('DeleteCalendar', { id });
 	},
 
+	async GetAppConfig() {
+		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string }>('GetAppConfig', {});
+	},
+
+	async BrowseDataFolder() {
+		return await this.request<{ path: string | null }>('BrowseDataFolder', {});
+	},
+
+	async SetDataRoot(path: string) {
+		return await this.request<{ status: string; message?: string; path?: string }>('SetDataRoot', { path });
+	},
+
+	async MoveDataFolder(path: string) {
+		return await this.request<{ status: string; message?: string; path?: string }>('MoveDataFolder', { path });
+	},
+
+	OpenDataFolder() {
+		this.send('OpenDataFolder', {});
+	},
+
+	async CreateBackup(includeMedia: boolean) {
+		return await this.request<{ status: string; message?: string; path?: string }>('CreateBackup', { includeMedia });
+	},
+
 	async GetLayoutSettingsById(id: string) {
 		return await this.request<LayoutSettings>('GetLayoutSettingsById', { id });
 	},

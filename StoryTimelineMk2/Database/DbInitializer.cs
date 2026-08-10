@@ -7,9 +7,9 @@ namespace StoryTimelineMk2.Database
     {
         public static string GetConnectionString()
         {
-            string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StoryTimelineMk2_Data");
-            Directory.CreateDirectory(folder);
-            return $"Data Source={Path.Combine(folder, "timeline.sqlite")}";
+            string dataRoot = AppConfig.Instance.DataRoot;
+            Directory.CreateDirectory(dataRoot);
+            return AppConfig.Instance.GetConnectionString();
         }
 
         public static void Initialize()

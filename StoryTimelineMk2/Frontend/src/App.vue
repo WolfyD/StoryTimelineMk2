@@ -3,12 +3,14 @@
 	import SplashTitle from "./components/SplashTitle.vue";
 	import { BackendAPI } from "./bridge/api";
 	import { ref } from "vue";
-	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots } from "@phosphor-icons/vue";
+	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhGear } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
+	import AppSettingsModal from './components/AppSettingsModal.vue';
 
 	const store = useTimelineStore();
 
 	const newProjectOpen = ref<boolean>(false)
+	const showAppSettings = ref(false)
 
 	async function HandleImportDatabase() {
 		const container = await BackendAPI.ImportDatabase();
@@ -59,6 +61,9 @@
 				<div v-on:click="HandleExportDatabase()">
 					<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
 				</div>
+				<div @click="showAppSettings = true" title="App Settings">
+					<PhGear class="button-icon" :size="36" color="#79876b" />
+				</div>
 			</div>
 
 			<div id="new-project-container" :class="{'open': newProjectOpen}">
@@ -88,6 +93,11 @@
 				</div>
 			</div>
 		</div>
+	<AppSettingsModal
+		v-if="showAppSettings"
+		@close="showAppSettings = false"
+		@refresh="HandleGetTimelines"
+	/>
 	</div>
 </template>
 
