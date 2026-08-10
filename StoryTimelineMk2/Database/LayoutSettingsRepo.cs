@@ -119,7 +119,7 @@ namespace StoryTimelineMk2.Database
                     @TimelineEventBorderColor,
                     @TimelineEventBorderWidth,
                     @TimelineEventBorderRadius,
-                    @TimelineEventPaddingJsonArray,
+                    @TimelineEventPadding,
                     @TimelineEventYMargin,
                     @TimelineEventTextColor,
                     @TimelineEventBackgroundColor,
@@ -173,7 +173,7 @@ namespace StoryTimelineMk2.Database
                     @TimelineJumpToYearAnimationLength,
 
                     @TimelineAnimateLodChange,
-                    @TimelineLodChangeAnimationLengthIntegerNotNull
+                    @TimelineLodChangeAnimationLength
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
@@ -241,6 +241,21 @@ namespace StoryTimelineMk2.Database
                     timeline_lod_change_animation_length = excluded.timeline_lod_change_animation_length;";
 
             db.Execute(sql, settings);
+        }
+
+        public void UpdateDisplayFields(string id, string fontFamily, int fontSize, string tickTextColor, string bgColor)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Execute(@"
+                UPDATE layout_settings SET
+                    timeline_tick_marker_font_family  = @FontFamily,
+                    timeline_event_font_family        = @FontFamily,
+                    timeline_tick_marker_font_size    = @FontSize,
+                    timeline_event_font_size          = @FontSize,
+                    timeline_tick_marker_text_color   = @TickTextColor,
+                    timeline_canvas_background_color  = @BgColor
+                WHERE id = @Id",
+                new { Id = id, FontFamily = fontFamily, FontSize = fontSize, TickTextColor = tickTextColor, BgColor = bgColor });
         }
 
         public void Delete(string id)

@@ -91,6 +91,19 @@ const closeContextMenu = () => {
     contextMenu.isOpen = false;
 };
 
+// --- LAYOUT SETTINGS WATCHER ---
+// Re-render the full canvas whenever layout settings change (e.g. after saving settings)
+watch(() => props.layoutSettings, (newLs) => {
+    if (!stage || !newLs) return;
+    nodeCache.clear();
+    lockedLanes.clear();
+    stemsMaster.destroyChildren();
+    boxesMaster.destroyChildren();
+    renderGrid(gridLayer, newLs);
+    RenderUiLayer(uiLayer, newLs);
+    renderItems(store.items || props.timelineItems || [], newLs);
+});
+
 // --- LOD ANIMATION WATCHER ---
 let lodAnim: number | null = null;
 watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
@@ -525,6 +538,7 @@ onMounted(() => {
 
     // 2. Left-click on an item emits itemClick; otherwise close context menu
     stage.on('click', (e) => {
+        if (hasDragged) { hasDragged = false; return; }
         if (contextMenu.isOpen) { closeContextMenu(); return; }
         const targetId = e.target.id();
         if (targetId && (targetId.startsWith('box-') || targetId.startsWith('label-') || targetId.startsWith('stem-'))) {
@@ -537,17 +551,21 @@ onMounted(() => {
         if (contextMenu.isOpen) closeContextMenu();
     });
 
+    const DRAG_THRESHOLD = 5;
     let isDragging = false;
+    let hasDragged = false;
     let lastPointerX = 0;
+    let dragStartX = 0;
 
-    stage.on('mousedown', () => {
+    stage.on('mousedown', (e) => {
         if (!stage) return;
         const pos = stage.getPointerPosition();
         if (!pos) return;
-		if(event.which > 1){ return; }
+        if (e.evt.button !== 0) { return; }
         isDragging = true;
+        hasDragged = false;
         lastPointerX = pos.x;
-
+        dragStartX = pos.x;
     });
 
     window.addEventListener('keydown', (e) => { if (e.key === 'Shift') { shiftHeld = true;  if (mouseOnCanvas && lastMouseX !== null) updateCursor(lastMouseX); } });
@@ -564,6 +582,11 @@ onMounted(() => {
         if (!pos) return;
 
         if (isDragging) {
+            if (!hasDragged && Math.abs(pos.x - dragStartX) < DRAG_THRESHOLD) {
+                lastPointerX = pos.x;
+                return;
+            }
+            hasDragged = true;
             const deltaX = pos.x - lastPointerX;
             if (deltaX === 0) return;
 

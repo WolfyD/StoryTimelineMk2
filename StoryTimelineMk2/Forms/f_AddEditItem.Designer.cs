@@ -40,18 +40,19 @@
             wv_AddEditItem.Dock = DockStyle.Fill;
             wv_AddEditItem.Location = new Point(0, 0);
             wv_AddEditItem.Name = "wv_AddEditItem";
-            wv_AddEditItem.Size = new Size(800, 450);
+            wv_AddEditItem.Size = new Size(940, 1100);
             wv_AddEditItem.TabIndex = 0;
             wv_AddEditItem.ZoomFactor = 1D;
-            // 
+            //
             // AddEditItem
-            // 
+            //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(800, 450);
+            ClientSize = new Size(940, 1100);
             Controls.Add(wv_AddEditItem);
             Name = "AddEditItem";
-            Text = "AddEditItem";
+            StartPosition = FormStartPosition.CenterScreen;
+            Text = "Edit Item";
             ((System.ComponentModel.ISupportInitialize)wv_AddEditItem).EndInit();
             ResumeLayout(false);
         }

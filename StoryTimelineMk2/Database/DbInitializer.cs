@@ -532,7 +532,7 @@ namespace StoryTimelineMk2.Database
                             1,
                             'Arial',
                             'normal',
-                            '#fff',
+                            '#2a1a0e',
                             14,
                             0,
                             1,
@@ -551,6 +551,16 @@ namespace StoryTimelineMk2.Database
 
             db.Execute(insertSql);
 
+            // Migrations: fix default values that changed after initial seed
+            db.Execute(@"
+                UPDATE layout_settings SET timeline_period_height = 15
+                    WHERE id = 'ls_default' AND timeline_period_height != 15;
+                UPDATE layout_settings SET timeline_tick_marker_text_color = '#2a1a0e'
+                    WHERE id = 'ls_default' AND timeline_tick_marker_text_color = '#fff';
+            ");
+
+            // Schema migrations: ALTER TABLE statements that may already exist on older DBs
+            try { db.Execute("ALTER TABLE timelines ADD COLUMN color TEXT DEFAULT NULL;"); } catch { }
         }
     }
 }

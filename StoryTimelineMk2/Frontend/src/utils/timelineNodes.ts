@@ -84,6 +84,7 @@ export const buildNode = (
         } else {
             // Reset glow
             elements.box.to({ shadowBlur: 0, duration: 0.15, easing: Konva.Easings.EaseOut });
+            elements.stem.to({ shadowBlur: 0, duration: 0.15, easing: Konva.Easings.EaseOut });
         }
     };
 

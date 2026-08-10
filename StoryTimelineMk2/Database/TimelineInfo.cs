@@ -11,6 +11,7 @@ namespace StoryTimelineMk2.Database
         public string Author { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public int StartYear { get; set; }
+        public string? Color { get; set; }
         public string CalendarId { get; set; } = "cal_default_gregorian";
         public CalendarItem Calendar { get; set; } = new CalendarItem();
         public SettingsItem Settings { get; set; } = new SettingsItem();

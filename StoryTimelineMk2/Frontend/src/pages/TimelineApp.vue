@@ -1,16 +1,18 @@
 <script setup lang="ts">
 // imports
 import { useTimelineStore } from '@/stores/timelineStore'
-import { PhArrowArcRight, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhArrowArcRight, PhGear, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
 import { Splitpanes, Pane } from 'splitpanes'
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import TimelineCanvas from "@/components/TimelineCanvas.vue" ;
+import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
 import { BackendAPI } from '@/bridge/api';
 
 const store = useTimelineStore()
 
 const loadError = ref<boolean>(false)
 const timelineCanvasRef = ref();
+const showSettings = ref(false);
 
 function onItemClick(itemId: string) {
     BackendAPI.send('OpenAddEditItemWindow', {
@@ -83,11 +85,26 @@ function handleResizeEvent(){
 	}
 }
 
+function onHotkey(e: KeyboardEvent) {
+    if (e.key === 'F11') {
+        e.preventDefault()
+        BackendAPI.send('ToggleFullscreen', { timelineId: store.currentProject?.Id })
+    } else if (e.key === 'F10') {
+        e.preventDefault()
+        BackendAPI.send('ToggleCustomScaling', { timelineId: store.currentProject?.Id })
+    }
+}
+
 onMounted(() => {
 	HandleLoadTimeline();
 	window.onresize = function(){
 		handleResizeEvent();
 	}
+    window.addEventListener('keydown', onHotkey)
+})
+
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onHotkey)
 })
 </script>
 
@@ -105,11 +122,29 @@ onMounted(() => {
 
 		<div v-else id="timeline-workspace">
     <div id="timeline-header">
+        <div class="timeline-header-spacer"></div>
         <div id="timeline-header-info-container">
             <h1>{{ store.title }}</h1>
             <h2>{{ store.author }}</h2>
         </div>
+        <div class="timeline-header-actions">
+            <button class="header-icon-btn" title="Settings" @click="showSettings = true">
+                <PhGear :size="22" />
+            </button>
+        </div>
+        <div
+            v-if="store.currentProject?.Color"
+            class="timeline-header-color-strip"
+            :style="{ background: store.currentProject.Color }"
+        ></div>
     </div>
+
+    <TimelineSettingsModal
+        v-if="showSettings"
+        :settings="store.settings"
+        :layout-settings="store.layoutSettings"
+        @close="showSettings = false"
+    />
 
     <Splitpanes horizontal class="timeline-splitpanes-wrapper" @resize="handleResizeEvent();">
 
@@ -217,32 +252,67 @@ onMounted(() => {
 }
 
 #timeline-header {
+	position: relative;
 	display: flex;
 	width: 100%;
 	height: auto !important;
-	background-color: #2a2a2a66; /* Adjust to your theme */
+	background-color: #2a2a2a66;
 	border-bottom: 1px solid #333;
 	color: #fff;
-	justify-content: center;
+	align-items: center;
+
+	.timeline-header-spacer,
+	.timeline-header-actions {
+		flex: 0 0 48px;
+	}
+
+	.timeline-header-actions {
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+		padding-right: 8px;
+	}
+
+	#timeline-header-info-container {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
 
 	h1, h2 {
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		align-self: center;
-		align-content: center;
 		width: 100%;
-		margin: 10px auto;
+		margin: 6px auto;
 	}
 
 	h2 {
 		font-size: medium;
 		font-style: italic;
-		margin-left: 17%;
 	}
 
 	h2::before {
 		content: url("data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjZmZmIiB3aWR0aD0iMzAiIGhlaWdodD0iMjAiIHZpZXdCb3g9Ii0xIDIgMjAgMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcvPjxnIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjx0aXRsZT5lbWRhc2g8L3RpdGxlPjxwYXRoIGQ9Ik0xOS42NTYgMTIuOTA2djIuMjgxSC0uNDM4di0yLjI4MXoiLz48L3N2Zz4=");
+	}
+
+	.header-icon-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: none;
+		color: #aaa;
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
+		transition: color 0.15s, background 0.15s;
+
+		&:hover {
+			color: #fff;
+			background: #ffffff18;
+		}
 	}
 }
 
@@ -336,10 +406,6 @@ onMounted(() => {
     flex-shrink: 0;
 }
 
-#timeline-main {
-    __background-color: #6b406188;
-}
-
 /* 4. Let the inner splitpanes handle the height */
 #timeline-data .timeline-data-block {
     height: 100%;
@@ -374,15 +440,12 @@ onMounted(() => {
 	scale: .8;
 }
 
-#timeline-data-images {
-
-}
-
-#timeline-data-notes {
-
-}
-
-#timeline-data-contents {
-
+.timeline-header-color-strip {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    pointer-events: none;
 }
 </style>

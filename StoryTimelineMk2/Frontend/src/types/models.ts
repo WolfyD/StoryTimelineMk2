@@ -10,6 +10,8 @@ export interface TimelineProject {
     Author: string;
     Description: string;
     StartYear: number;
+    Color: string | null;
+    CalendarId: string;
 	Calendar: Calendar;
 	Settings: TimelineSettings;
 	LayoutSettings: LayoutSettings;
@@ -66,10 +68,42 @@ export interface Calendar {
 	AlternateName: string;
 	NameBefore0: string;
 	NameAfter0: string;
-	DefaultCalendar: boolean;
-	Year0AtDefault: number;
-	YearDefinition: string;   // JSON string describing months, weeks, seasons
+	LodProfileId: string;
+	YearDefinition: string;
 	LodProfile: LodProfile;
+}
+
+export interface MonthDef {
+	name: string;
+	short_name?: string;
+	length: number;
+	season?: number;
+}
+
+export interface WeekDef {
+	length: number;
+	days_have_names?: boolean;
+	days?: string[];
+	days_have_short_names?: boolean;
+	days_short?: string[];
+	weekend?: number[];
+}
+
+export interface SeasonDef {
+	name: string;
+	short_name?: string;
+	start: number;
+	end: number;
+	significance?: string;
+}
+
+export interface YearDefinition {
+	length: number;
+	months?: number;
+	month_definition?: Record<string, any>;
+	seasons?: number;
+	season_definition?: Record<string, any>;
+	week_definition?: WeekDef;
 }
 
 export interface TimelineItem {

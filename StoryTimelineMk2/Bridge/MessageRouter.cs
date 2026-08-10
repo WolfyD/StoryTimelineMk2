@@ -2,6 +2,8 @@ using Microsoft.Web.WebView2.Core;
 using StoryTimelineMk2.Database;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Forms;
@@ -12,11 +14,13 @@ namespace StoryTimelineMk2.Bridge
     public class MessageRouter
     {
         private readonly CoreWebView2 _webView;
+        private readonly Form _parentForm;
         private static readonly JsonSerializerOptions _jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-        public MessageRouter(CoreWebView2 webView)
+        public MessageRouter(CoreWebView2 webView, Form parentForm = null)
         {
             _webView = webView;
+            _parentForm = parentForm;
             _webView.WebMessageReceived += OnWebMessageReceived;
         }
 
@@ -54,6 +58,26 @@ namespace StoryTimelineMk2.Bridge
                 case "GetTimelineStories":      HandleGetTimelineStories(message); break;
                 case "SearchBooks":             HandleSearchBooks(message); break;
                 case "GetBookChapters":         HandleGetBookChapters(message); break;
+                case "GetLayoutSettingsList":   HandleGetLayoutSettingsList(message); break;
+                case "DeleteTimeline":          HandleDeleteTimeline(message); break;
+                case "DuplicateTimeline":       HandleDuplicateTimeline(message); break;
+                case "ExportTimeline":          HandleExportTimeline(message); break;
+                case "SaveTimelineInfo":        HandleSaveTimelineInfo(message); break;
+                case "SaveSettings":            HandleSaveSettings(message); break;
+                case "GetSystemFonts":          HandleGetSystemFonts(message); break;
+                case "GetCalendarList":         HandleGetCalendarList(message); break;
+                case "GetLayoutSettingsById":   HandleGetLayoutSettingsById(message); break;
+                case "CreateLayoutPreset":      HandleCreateLayoutPreset(message); break;
+                case "SaveLayoutSettings":      HandleSaveLayoutSettings(message); break;
+                case "ToggleFullscreen":        HandleToggleFullscreen(message); break;
+                case "ToggleCustomScaling":     HandleToggleCustomScaling(message); break;
+
+                // Calendar actions
+                case "GetCalendarById":             HandleGetCalendarById(message); break;
+                case "SaveCalendar":                HandleSaveCalendar(message); break;
+                case "CreateCalendar":              HandleCreateCalendar(message); break;
+                case "DeleteCalendar":              HandleDeleteCalendar(message); break;
+                case "OpenCalendarEditorWindow":    HandleOpenCalendarEditorWindow(message); break;
 
                 case "OpenSettings":
                     break;
@@ -167,6 +191,7 @@ namespace StoryTimelineMk2.Bridge
             // WebView2 WebMessageReceived handler creates a nested COM message loop
             // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
             addEditItemWindow.Show();
+            addEditItemWindow.Activate();
         }
 
         // -----------------------------------------------------------------------
@@ -201,12 +226,12 @@ namespace StoryTimelineMk2.Bridge
 
             ReplyToVue(message.MessageId, new
             {
-                item,
-                tags = itemRepo.GetItemTags(item.Id),
-                characters = itemRepo.GetItemCharacterAppearances(item.Id),
-                storyRefs = itemRepo.GetItemStoryRefs(item.Id),
-                chapterRefs = itemRepo.GetItemChapterRefs(item.Id),
-                calendar = timeline.Calendar,
+                Item = item,
+                Tags = itemRepo.GetItemTags(item.Id),
+                Characters = itemRepo.GetItemCharacterAppearances(item.Id),
+                StoryRefs = itemRepo.GetItemStoryRefs(item.Id),
+                ChapterRefs = itemRepo.GetItemChapterRefs(item.Id),
+                Calendar = timeline.Calendar,
             });
         }
 
@@ -279,6 +304,342 @@ namespace StoryTimelineMk2.Bridge
             string bookId = message.Payload.GetProperty("bookId").GetString();
             var chapters = new BookRepo().GetChaptersForBook(bookId);
             ReplyToVue(message.MessageId, chapters);
+        }
+
+        private void HandleGetLayoutSettingsList(BridgeMessage message)
+        {
+            var presets = new LayoutSettingsRepo().GetAll()
+                .Select(ls => new { ls.Id, ls.Name });
+            ReplyToVue(message.MessageId, presets);
+        }
+
+        private void HandleDeleteTimeline(BridgeMessage message)
+        {
+            int id = message.Payload.GetProperty("id").GetInt32();
+            new TimelineRepo().DeleteTimeline(id);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleDuplicateTimeline(BridgeMessage message)
+        {
+            int id = message.Payload.GetProperty("id").GetInt32();
+            string newTitle = message.Payload.GetProperty("newTitle").GetString() ?? "Duplicate";
+            try
+            {
+                int newId = new TimelineRepo().DuplicateTimeline(id, newTitle);
+                ReplyToVue(message.MessageId, new { status = "ok", newId });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleSaveTimelineInfo(BridgeMessage message)
+        {
+            int id          = message.Payload.GetProperty("id").GetInt32();
+            string title    = message.Payload.GetProperty("title").GetString() ?? "";
+            string author   = message.Payload.GetProperty("author").GetString() ?? "";
+            string desc     = message.Payload.GetProperty("description").GetString() ?? "";
+            int startYear   = message.Payload.GetProperty("startYear").GetInt32();
+            string? color      = message.Payload.TryGetProperty("color", out var cp)  ? cp.GetString()  : null;
+            string? calendarId = message.Payload.TryGetProperty("calendarId", out var cal) ? cal.GetString() : null;
+
+            new TimelineRepo().UpdateTimelineInfo(id, title, author, desc, startYear, color, calendarId);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleSaveSettings(BridgeMessage message)
+        {
+            var p = message.Payload;
+            int timelineId = p.GetProperty("timelineId").GetInt32();
+
+            string layoutPresetId = "ls_default";
+            if (p.TryGetProperty("layoutPresetId", out var lpEl) && lpEl.GetString() is string lp)
+                layoutPresetId = lp;
+
+            var settingsRepo = new SettingsRepo();
+            var settings = settingsRepo.GetOrCreateSettings(timelineId);
+            if (p.TryGetProperty("font",             out var e1)) settings.Font             = e1.GetString() ?? settings.Font;
+            if (p.TryGetProperty("fontSizeScale",    out var e2)) settings.FontSizeScale    = e2.GetSingle();
+            if (p.TryGetProperty("pixelsPerSubtick", out var e3)) settings.PixelsPerSubtick = e3.GetInt32();
+            if (p.TryGetProperty("showGuides",       out var e4)) settings.ShowGuides       = e4.GetBoolean();
+            if (p.TryGetProperty("displayRadius",    out var e5)) settings.DisplayRadius    = e5.GetInt32();
+            if (p.TryGetProperty("isFullscreen",     out var e6)) settings.IsFullscreen     = e6.GetBoolean();
+            if (p.TryGetProperty("useCustomScaling", out var e7)) settings.UseCustomScaling = e7.GetBoolean();
+            if (p.TryGetProperty("customScale",      out var e8)) settings.CustomScale      = e8.GetSingle();
+
+            settingsRepo.SaveSettings(settings);
+            new TimelineRepo().SetLayoutPreset(timelineId, layoutPresetId);
+
+            if (_parentForm != null)
+            {
+                _parentForm.BeginInvoke((MethodInvoker)(() =>
+                {
+                    if (settings.IsFullscreen)
+                    {
+                        _parentForm.FormBorderStyle = FormBorderStyle.None;
+                        _parentForm.WindowState = FormWindowState.Maximized;
+                    }
+                    else
+                    {
+                        _parentForm.FormBorderStyle = FormBorderStyle.Sizable;
+                        if (_parentForm.WindowState == FormWindowState.Maximized)
+                            _parentForm.WindowState = FormWindowState.Normal;
+                    }
+                }));
+            }
+
+            double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
+            _ = _webView.ExecuteScriptAsync($"document.documentElement.style.zoom = '{zoom:F2}'");
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleGetLayoutSettingsById(BridgeMessage message)
+        {
+            try
+            {
+                string id = message.Payload.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "ls_default" : "ls_default";
+                var ls = new LayoutSettingsRepo().GetById(id);
+                ReplyToVue(message.MessageId, ls);
+            }
+            catch
+            {
+                ReplyToVue(message.MessageId, null);
+            }
+        }
+
+        private void HandleCreateLayoutPreset(BridgeMessage message)
+        {
+            try
+            {
+                string name      = message.Payload.TryGetProperty("name",      out var np) ? np.GetString() ?? "New Preset" : "New Preset";
+                string cloneFrom = message.Payload.TryGetProperty("cloneFrom", out var cp) ? cp.GetString() ?? "ls_default" : "ls_default";
+
+                var repo   = new LayoutSettingsRepo();
+                var source = repo.GetById(cloneFrom);
+                source.Id   = Guid.NewGuid().ToString();
+                source.Name = name;
+                repo.SaveLayoutSettings(source);
+
+                ReplyToVue(message.MessageId, new { status = "ok", preset = new { source.Id, source.Name }, layoutSettings = source });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleToggleFullscreen(BridgeMessage message)
+        {
+            int timelineId = message.Payload.TryGetProperty("timelineId", out var tlEl) ? tlEl.GetInt32() : 0;
+            if (timelineId == 0 || _parentForm == null) return;
+
+            var settingsRepo = new SettingsRepo();
+            var settings = settingsRepo.GetOrCreateSettings(timelineId);
+            settings.IsFullscreen = !settings.IsFullscreen;
+            settingsRepo.SaveSettings(settings);
+
+            bool goFullscreen = settings.IsFullscreen;
+            _parentForm.BeginInvoke((MethodInvoker)(() =>
+            {
+                if (goFullscreen)
+                {
+                    _parentForm.FormBorderStyle = FormBorderStyle.None;
+                    _parentForm.WindowState = FormWindowState.Maximized;
+                }
+                else
+                {
+                    _parentForm.FormBorderStyle = FormBorderStyle.Sizable;
+                    _parentForm.WindowState = FormWindowState.Normal;
+                }
+            }));
+        }
+
+        private void HandleToggleCustomScaling(BridgeMessage message)
+        {
+            int timelineId = message.Payload.TryGetProperty("timelineId", out var tlEl) ? tlEl.GetInt32() : 0;
+            if (timelineId == 0) return;
+
+            var settingsRepo = new SettingsRepo();
+            var settings = settingsRepo.GetOrCreateSettings(timelineId);
+            settings.UseCustomScaling = !settings.UseCustomScaling;
+            settingsRepo.SaveSettings(settings);
+
+            double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
+            _ = _webView.ExecuteScriptAsync($"document.documentElement.style.zoom = '{zoom:F2}'");
+        }
+
+        private void HandleSaveLayoutSettings(BridgeMessage message)
+        {
+            try
+            {
+                var ls = JsonSerializer.Deserialize<LayoutSettingsItem>(message.Payload.GetRawText(), _jsonOpts);
+                if (ls == null)
+                {
+                    ReplyToVue(message.MessageId, new { status = "error", message = "Invalid payload" });
+                    return;
+                }
+                new LayoutSettingsRepo().SaveLayoutSettings(ls);
+                ReplyToVue(message.MessageId, new { status = "ok", layoutSettings = ls });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleGetSystemFonts(BridgeMessage message)
+        {
+            var fonts = System.Drawing.FontFamily.Families
+                .Select(f => f.Name)
+                .OrderBy(n => n)
+                .ToArray();
+            ReplyToVue(message.MessageId, fonts);
+        }
+
+        private void HandleGetCalendarList(BridgeMessage message)
+        {
+            var calendars = new CalendarRepo().GetAll()
+                .Select(c => new { c.Id, c.Name });
+            ReplyToVue(message.MessageId, calendars);
+        }
+
+        private void HandleExportTimeline(BridgeMessage message)
+        {
+            int id          = message.Payload.GetProperty("id").GetInt32();
+            bool includeIds = message.Payload.TryGetProperty("includeIds", out var ip) && ip.GetBoolean();
+
+            var repo        = new TimelineRepo();
+            var itemRepo    = new ItemRepo();
+            var charRepo    = new CharacterRepo();
+            var noteRepo    = new NoteRepo();
+            var tagRepo     = new TagRepo();
+
+            var timeline    = repo.GetTimelineById(id);
+            var items       = itemRepo.GetItemsByTimeline(id).ToList();
+            var characters  = charRepo.GetCharactersByTimeline(id).ToList();
+            var notes       = noteRepo.GetTimelineNotes(id).ToList();
+
+            var exportData  = new
+            {
+                exportVersion   = 1,
+                exportedAt      = DateTime.UtcNow.ToString("O"),
+                includeIds,
+                timeline        = includeIds ? (object)timeline : new { timeline.Title, timeline.Author, timeline.Description, timeline.StartYear, timeline.Color },
+                items           = includeIds ? (object)items : items.Select(i => new { i.Title, i.Description, i.Content, i.Year, i.Subtick, i.EndYear, i.EndSubtick, i.Color, i.Importance, TypeId = i.TypeId }),
+                characters      = includeIds ? (object)characters : characters.Select(c => new { c.Name, c.Race, c.Description }),
+                notes           = includeIds ? (object)notes : notes.Select(n => new { n.NoteContents }),
+            };
+
+            string json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
+
+            using var dlg = new SaveFileDialog
+            {
+                Title       = "Export Timeline",
+                Filter      = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                FileName    = $"{timeline.Title}.json",
+                DefaultExt  = "json"
+            };
+
+            if (dlg.ShowDialog() == DialogResult.OK)
+            {
+                File.WriteAllText(dlg.FileName, json);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            else
+            {
+                ReplyToVue(message.MessageId, new { status = "cancelled" });
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Calendar handlers
+        // -----------------------------------------------------------------------
+
+        private void HandleGetCalendarById(BridgeMessage message)
+        {
+            try
+            {
+                string id = message.Payload.GetProperty("id").GetString();
+                var cal = new CalendarRepo().GetCalendarById(id);
+                ReplyToVue(message.MessageId, cal);
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleSaveCalendar(BridgeMessage message)
+        {
+            try
+            {
+                var cal = JsonSerializer.Deserialize<CalendarItem>(message.Payload.GetRawText(), _jsonOpts);
+                if (cal == null) { ReplyToVue(message.MessageId, new { status = "error", message = "Invalid payload" }); return; }
+                new CalendarRepo().SaveCalendarWithLod(cal);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleCreateCalendar(BridgeMessage message)
+        {
+            try
+            {
+                string cloneFrom = "cal_default_gregorian";
+                if (message.Payload.TryGetProperty("cloneFrom", out var cfProp) && cfProp.GetString() != null)
+                    cloneFrom = cfProp.GetString();
+
+                var calRepo = new CalendarRepo();
+                var lodRepo = new LodRepo();
+
+                var source = calRepo.GetCalendarById(cloneFrom);
+
+                var newLod = new LodItem { Id = Guid.NewGuid().ToString(), Name = "Custom LOD Profile", Profile = source.LodProfile?.Profile ?? "[]" };
+                lodRepo.SaveLodProfile(newLod);
+
+                source.Id = Guid.NewGuid().ToString();
+                source.Name = "New Calendar";
+                source.LodProfileId = newLod.Id;
+                source.LodProfile = newLod;
+                calRepo.SaveCalendar(source);
+
+                ReplyToVue(message.MessageId, new { status = "ok", calendarId = source.Id });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleDeleteCalendar(BridgeMessage message)
+        {
+            try
+            {
+                string id = message.Payload.GetProperty("id").GetString();
+                new CalendarRepo().DeleteCalendar(id);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleOpenCalendarEditorWindow(BridgeMessage message)
+        {
+            string calendarId = null;
+            if (message.Payload.TryGetProperty("calendarId", out var idProp))
+                calendarId = idProp.GetString();
+
+            var calendarWindow = new f_Calendar { CalendarId = calendarId };
+            calendarWindow.Show();
+            calendarWindow.Activate();
         }
 
         // -----------------------------------------------------------------------

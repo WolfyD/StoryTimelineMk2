@@ -9,6 +9,7 @@ import type {
 	Chapter,
 	ItemCharacterAppearance,
 	TimelineItem,
+	LayoutSettings,
 } from '@/types/models';
 import { useTimelineStore } from '@/stores/timelineStore';
 
@@ -109,6 +110,77 @@ export const BackendAPI = {
 
 	async GetBookChapters(bookId: string) {
 		return await this.request<Chapter[]>('GetBookChapters', { bookId });
+	},
+
+	async GetLayoutSettingsList() {
+		return await this.request<{ Id: string; Name: string }[]>('GetLayoutSettingsList', {});
+	},
+
+	async DeleteTimeline(id: number) {
+		return await this.request<{ status: string }>('DeleteTimeline', { id });
+	},
+
+	async DuplicateTimeline(id: number, newTitle: string) {
+		return await this.request<{ status: string; newId?: number }>('DuplicateTimeline', { id, newTitle });
+	},
+
+	async SaveTimelineInfo(id: number, title: string, author: string, description: string, startYear: number, color: string | null, calendarId?: string) {
+		return await this.request<{ status: string }>('SaveTimelineInfo', { id, title, author, description, startYear, color, calendarId });
+	},
+
+	async ExportTimeline(id: number, includeIds: boolean) {
+		return await this.request<{ status: string }>('ExportTimeline', { id, includeIds });
+	},
+
+	async SaveSettings(payload: {
+		timelineId: number;
+		font: string;
+		fontSizeScale: number;
+		pixelsPerSubtick: number;
+		showGuides: boolean;
+		displayRadius: number;
+		isFullscreen: boolean;
+		useCustomScaling: boolean;
+		customScale: number;
+		layoutPresetId: string;
+	}) {
+		return await this.request<{ status: string }>('SaveSettings', payload);
+	},
+
+	async GetSystemFonts() {
+		return await this.request<string[]>('GetSystemFonts', {});
+	},
+
+	async GetCalendarList() {
+		return await this.request<{ Id: string; Name: string }[]>('GetCalendarList', {});
+	},
+
+	async GetCalendarById(id: string) {
+		return await this.request<import('@/types/models').Calendar>('GetCalendarById', { id });
+	},
+
+	async SaveCalendar(calendar: object) {
+		return await this.request<{ status: string; message?: string }>('SaveCalendar', calendar);
+	},
+
+	async CreateCalendar(cloneFrom = 'cal_default_gregorian') {
+		return await this.request<{ status: string; calendarId?: string }>('CreateCalendar', { cloneFrom });
+	},
+
+	async DeleteCalendar(id: string) {
+		return await this.request<{ status: string }>('DeleteCalendar', { id });
+	},
+
+	async GetLayoutSettingsById(id: string) {
+		return await this.request<LayoutSettings>('GetLayoutSettingsById', { id });
+	},
+
+	async CreateLayoutPreset(name: string, cloneFrom = 'ls_default') {
+		return await this.request<{ status: string; preset?: { Id: string; Name: string }; layoutSettings?: LayoutSettings }>('CreateLayoutPreset', { name, cloneFrom });
+	},
+
+	async SaveLayoutSettings(ls: LayoutSettings) {
+		return await this.request<{ status: string; layoutSettings?: LayoutSettings }>('SaveLayoutSettings', ls);
 	},
 };
 

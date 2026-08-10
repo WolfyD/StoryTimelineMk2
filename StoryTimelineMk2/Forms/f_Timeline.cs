@@ -11,6 +11,7 @@ namespace StoryTimelineMk2.Forms
     public partial class f_Timeline : Form
     {
         private MessageRouter _messageRouter;
+        private Database.SettingsItem _savedSettings;
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int TimelineId { get; set; }
@@ -37,7 +38,10 @@ namespace StoryTimelineMk2.Forms
 
             await wv_Timeline.EnsureCoreWebView2Async(webEnvironment);
 
-            _messageRouter = new MessageRouter(wv_Timeline.CoreWebView2);
+            _messageRouter = new MessageRouter(wv_Timeline.CoreWebView2, this);
+
+            // Apply CSS zoom once the page finishes loading
+            wv_Timeline.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
 
             string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "timeline.html");
             string query = $"?id={TimelineId}";
@@ -52,21 +56,35 @@ namespace StoryTimelineMk2.Forms
             }
         }
 
+        private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            // Fire only once (the initial page load)
+            wv_Timeline.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+            if (_savedSettings != null && _savedSettings.UseCustomScaling && _savedSettings.CustomScale > 0)
+                _ = wv_Timeline.CoreWebView2.ExecuteScriptAsync($"document.documentElement.style.zoom = '{_savedSettings.CustomScale:F2}'");
+        }
+
         private void RestoreWindowState()
         {
             var repo = new SettingsRepo();
-            var saved = repo.GetOrCreateSettings(TimelineId);
+            _savedSettings = repo.GetOrCreateSettings(TimelineId);
 
-            if (saved.WindowSizeX > 0 && saved.WindowSizeY > 0)
+            if (_savedSettings.WindowSizeX > 0 && _savedSettings.WindowSizeY > 0)
             {
-                var screen = Screen.FromPoint(new Point(saved.WindowPositionX, saved.WindowPositionY));
-                var target = new Point(saved.WindowPositionX, saved.WindowPositionY);
+                var screen = Screen.FromPoint(new Point(_savedSettings.WindowPositionX, _savedSettings.WindowPositionY));
+                var target = new Point(_savedSettings.WindowPositionX, _savedSettings.WindowPositionY);
 
                 target.X = Math.Max(screen.WorkingArea.Left, Math.Min(target.X, screen.WorkingArea.Right - 100));
                 target.Y = Math.Max(screen.WorkingArea.Top, Math.Min(target.Y, screen.WorkingArea.Bottom - 100));
 
-                this.Size = new Size(saved.WindowSizeX, saved.WindowSizeY);
+                this.Size = new Size(_savedSettings.WindowSizeX, _savedSettings.WindowSizeY);
                 this.Location = target;
+            }
+
+            if (_savedSettings.IsFullscreen)
+            {
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.WindowState = FormWindowState.Maximized;
             }
         }
 

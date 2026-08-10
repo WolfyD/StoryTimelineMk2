@@ -50,7 +50,7 @@
 <template>
 	<div id="center">
 		<SplashTitle />
-		<ProjectContainer :timelines="store.projects" />
+		<ProjectContainer :timelines="store.projects" @refresh="HandleGetTimelines" />
 		<div id="bottom-menu-container">
 			<div id="import-export-container">
 				<div v-on:click="HandleImportDatabase()">

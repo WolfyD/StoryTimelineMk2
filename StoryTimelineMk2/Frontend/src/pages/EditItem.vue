@@ -444,29 +444,32 @@ function cancel() {
         </div>
 
         <!-- Start date -->
-        <LodDateInput
-          label="Start"
-          :lodIndex="item.CreationGranularity"
-          :lodProfile="lodProfile"
-          :monthNames="monthNames"
-          :year="startYear"
-          :subtick="startSubtick"
-          @update:year="startYear = $event"
-          @update:subtick="startSubtick = $event"
-        />
+        <div class="date-row">
+          <LodDateInput
+            label="Start"
+            :lodIndex="item.CreationGranularity"
+            :lodProfile="lodProfile"
+            :monthNames="monthNames"
+            :year="startYear"
+            :subtick="startSubtick"
+            @update:year="startYear = $event"
+            @update:subtick="startSubtick = $event"
+          />
+        </div>
 
         <!-- End date (only for Period / Age) -->
-        <LodDateInput
-          v-if="isRangeType"
-          label="End"
-          :lodIndex="item.CreationGranularity"
-          :lodProfile="lodProfile"
-          :monthNames="monthNames"
-          :year="endYear"
-          :subtick="endSubtick"
-          @update:year="endYear = $event"
-          @update:subtick="endSubtick = $event"
-        />
+        <div v-if="isRangeType" class="date-row">
+          <LodDateInput
+            label="End"
+            :lodIndex="item.CreationGranularity"
+            :lodProfile="lodProfile"
+            :monthNames="monthNames"
+            :year="endYear"
+            :subtick="endSubtick"
+            @update:year="endYear = $event"
+            @update:subtick="endSubtick = $event"
+          />
+        </div>
       </div>
 
       <!-- Right: specifics -->
@@ -492,7 +495,7 @@ function cancel() {
         </div>
 
         <!-- Tags -->
-        <div class="field">
+        <div class="field spaced-field">
           <label>Tags</label>
           <div class="tag-input-wrap">
             <div class="tag-chips">
@@ -521,16 +524,17 @@ function cancel() {
           </div>
         </div>
 
-        <!-- Images placeholder -->
-        <div class="field">
-          <label>Images</label>
-          <p class="placeholder-note">Image management coming soon.</p>
-        </div>
       </div>
     </div>
 
     <!-- ===== FOOTER ===== -->
     <div class="footer-sections">
+
+      <!-- Images -->
+      <div class="section">
+        <h3 class="section-title">Images</h3>
+        <p class="placeholder-note">Image management coming soon.</p>
+      </div>
 
       <!-- Characters -->
       <div class="section collapsible-section">
@@ -639,7 +643,7 @@ function cancel() {
           </div>
 
           <!-- Book / chapter refs -->
-          <div class="subsection">
+          <div class="subsection spaced-subsection">
             <h4 class="subsection-title">Book &amp; chapter references</h4>
             <div class="chapter-ref-list">
               <div class="chapter-ref" v-for="(ref, i) in chapterRefs" :key="ref.ChapterId">
@@ -731,15 +735,18 @@ function cancel() {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #555;
+  user-select: none;
 }
 
 .subsection { margin-top: 12px; }
+.spaced-subsection { margin-top: 20px; }
 
 .subsection-title {
   margin: 0 0 6px 0;
   font-size: 0.8rem;
   font-weight: 600;
   color: #666;
+  user-select: none;
 }
 
 // ---- Header ----
@@ -795,6 +802,7 @@ function cancel() {
     color: #666;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    user-select: none;
   }
 
   input[type='text'],
@@ -830,9 +838,14 @@ function cancel() {
   display: flex;
   gap: 10px;
   align-items: flex-end;
+  margin-top: 20px;
 }
 
 .flex-1 { flex: 1; }
+
+.date-row { margin-top: 16px; }
+
+.spaced-field { margin-top: 16px; }
 
 .color-field { flex-shrink: 0; }
 
