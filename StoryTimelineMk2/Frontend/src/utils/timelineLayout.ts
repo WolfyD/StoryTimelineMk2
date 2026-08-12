@@ -3,7 +3,7 @@
  * Handles spatial coordinates, time translation, and 1D collision packing.
  */
 
-import type { LayoutSettings } from "@/types/models";
+import type { LayoutSettings, HiddenRange } from "@/types/models";
 
 
 // Formatting Registry for LODs
@@ -37,18 +37,84 @@ export const FormatRegistry: Record<string, (year: number, fraction: number) => 
     }
 };
 
+// --- Hidden Range Transform ---
+
+// A hidden range collapses (endYear - startYear) real time units down to BREAK_TICKS tick-widths.
+// At tickDistance=100px and step=1 this equals 30px, and scales proportionally with zoom.
+export const BREAK_TICKS = 0.3;
+
+// Maps absolute time → visual time, accounting for compressed hidden ranges.
+// Ranges must be sorted ascending by StartYear before calling.
+export function absoluteToVisual(t: number, ranges: HiddenRange[], step: number): number {
+    if (!ranges || ranges.length === 0) return t;
+    const breakSize = BREAK_TICKS * step;
+    let offset = 0;
+    for (const r of ranges) {
+        if (t <= r.StartYear) break;
+        const hiddenSize = r.EndYear - r.StartYear;
+        if (t >= r.EndYear) {
+            // This range is entirely before t — subtract the compressed net amount
+            offset -= (hiddenSize - breakSize);
+        } else {
+            // t is inside this range: map proportionally into the break strip
+            const fraction = (t - r.StartYear) / hiddenSize;
+            return r.StartYear + offset + fraction * breakSize;
+        }
+    }
+    return t + offset;
+}
+
+// Inverse of absoluteToVisual. Maps visual time → absolute time.
+export function visualToAbsolute(v: number, ranges: HiddenRange[], step: number): number {
+    if (!ranges || ranges.length === 0) return v;
+    const breakSize = BREAK_TICKS * step;
+    let offset = 0; // accumulated net shrinkage (negative value)
+    for (const r of ranges) {
+        const rVisualStart = r.StartYear + offset;
+        const rVisualEnd = rVisualStart + breakSize;
+        const hiddenSize = r.EndYear - r.StartYear;
+        if (v <= rVisualStart) break;
+        if (v >= rVisualEnd) {
+            offset -= (hiddenSize - breakSize);
+        } else {
+            // v falls inside the break strip — interpolate back to absolute
+            const fraction = (v - rVisualStart) / breakSize;
+            return r.StartYear + fraction * hiddenSize;
+        }
+    }
+    return v - offset;
+}
+
 // --- Time & X-Coordinate Math ---
 
-export const getXFromTime = (absoluteTime: number, centerTime: number, activeLodStep: number, viewportWidth: number, layoutSettings: LayoutSettings) => {
+export const TICK_SPACING = 100; // legacy export kept for existing imports
+
+export const getXFromTime = (
+    absoluteTime: number,
+    centerTime: number,
+    activeLodStep: number,
+    viewportWidth: number,
+    layoutSettings: LayoutSettings,
+    hiddenRanges: HiddenRange[] = []
+) => {
     const centerScreenX = viewportWidth / 2;
-    const timeDifference = absoluteTime - centerTime;
-    return centerScreenX + ((timeDifference / activeLodStep) * layoutSettings.TimelineTickDistance);
+    const visualTime   = absoluteToVisual(absoluteTime, hiddenRanges, activeLodStep);
+    const visualCenter = absoluteToVisual(centerTime,   hiddenRanges, activeLodStep);
+    return centerScreenX + ((visualTime - visualCenter) / activeLodStep) * layoutSettings.TimelineTickDistance;
 };
 
-export const getTimeFromX = (x: number, centerTime: number, activeLodStep: number, viewportWidth: number, layoutSettings: LayoutSettings) => {
+export const getTimeFromX = (
+    x: number,
+    centerTime: number,
+    activeLodStep: number,
+    viewportWidth: number,
+    layoutSettings: LayoutSettings,
+    hiddenRanges: HiddenRange[] = []
+) => {
     const centerScreenX = viewportWidth / 2;
-    const pixelDifference = x - centerScreenX;
-    return centerTime + ((pixelDifference / layoutSettings.TimelineTickDistance) * activeLodStep);
+    const visualCenter  = absoluteToVisual(centerTime, hiddenRanges, activeLodStep);
+    const visualTime    = visualCenter + ((x - centerScreenX) / layoutSettings.TimelineTickDistance) * activeLodStep;
+    return visualToAbsolute(visualTime, hiddenRanges, activeLodStep);
 };
 
 export const isLeftOfNow = (xPos: number, viewportWidth: number) => xPos < (viewportWidth / 2);
@@ -66,7 +132,7 @@ export interface LaneLock {
 export const getAssignedLane = (
     itemId: string,
     xPos: number,
-    width: number, // If the user changes box width in settings, it passes here and updates packing!
+    width: number,
     isAboveLine: boolean,
     isCenterOut: boolean,
     absoluteStart: number,
@@ -76,7 +142,8 @@ export const getAssignedLane = (
     viewportHeight: number,
     viewportWidth: number,
     lockedLanes: Map<string, LaneLock>,
-	layoutSettings: LayoutSettings
+    layoutSettings: LayoutSettings,
+    hiddenRanges: HiddenRange[] = []
 ): number => {
 
     // 1. If already locked, return the physical Y offset
@@ -97,14 +164,14 @@ export const getAssignedLane = (
 
                 // --- PERIOD COLLISION (Exact bounding box) ---
                 if (isCenterOut) {
-                    const tStart = getXFromTime(lock.absoluteStart, centerTime, activeLodStep, viewportWidth, layoutSettings);
-                    const tEnd = getXFromTime(lock.absoluteEnd, centerTime, activeLodStep, viewportWidth, layoutSettings);
-                    const theirLeft = Math.min(tStart, tEnd);
+                    const tStart = getXFromTime(lock.absoluteStart, centerTime, activeLodStep, viewportWidth, layoutSettings, hiddenRanges);
+                    const tEnd   = getXFromTime(lock.absoluteEnd,   centerTime, activeLodStep, viewportWidth, layoutSettings, hiddenRanges);
+                    const theirLeft  = Math.min(tStart, tEnd);
                     const theirRight = Math.max(tStart, tEnd);
 
-                    const myStart = getXFromTime(absoluteStart, centerTime, activeLodStep, viewportWidth, layoutSettings);
-                    const myEnd = getXFromTime(absoluteEnd, centerTime, activeLodStep, viewportWidth, layoutSettings);
-                    const myLeft = Math.min(myStart, myEnd);
+                    const myStart = getXFromTime(absoluteStart, centerTime, activeLodStep, viewportWidth, layoutSettings, hiddenRanges);
+                    const myEnd   = getXFromTime(absoluteEnd,   centerTime, activeLodStep, viewportWidth, layoutSettings, hiddenRanges);
+                    const myLeft  = Math.min(myStart, myEnd);
                     const myRight = Math.max(myStart, myEnd);
 
                     if (myLeft < theirRight && myRight > theirLeft) {
@@ -114,11 +181,9 @@ export const getAssignedLane = (
                 }
                 // --- EVENT COLLISION (Stem Distance Check) ---
                 else {
-                    const theirAnchorX = getXFromTime(lock.absoluteStart, centerTime, activeLodStep, viewportWidth, layoutSettings);
-                    const myAnchorX = getXFromTime(absoluteStart, centerTime, activeLodStep, viewportWidth, layoutSettings);
+                    const theirAnchorX = getXFromTime(lock.absoluteStart, centerTime, activeLodStep, viewportWidth, layoutSettings, hiddenRanges);
+                    const myAnchorX    = getXFromTime(absoluteStart,      centerTime, activeLodStep, viewportWidth, layoutSettings, hiddenRanges);
 
-                    // The stems must be placed further apart than the width of the box + 15px padding.
-                    // This guarantees they will never overlap regardless of which way the boxes flip!
                     if (Math.abs(myAnchorX - theirAnchorX) < width + 15) {
                         hasOverlap = true;
                         break;
@@ -154,11 +219,9 @@ const convertLaneIndexToY = (laneIndex: number, isAbove: boolean, isCenterOut: b
         distanceFromCenter = layoutSettings.TimelinePeriodYOffset + (laneIndex * layoutSettings.TimelinePeriodYMargin);
     } else {
         // EVENTS: Start at absolute container edges and push inward
-        // Outermost starting distance: half screen height, minus box size, minus 10px outer padding
         const absoluteEdge = (viewportHeight / 2) - (layoutSettings.TimelineEventBoxHeight * (isAbove ? 0 : 1)) - 10;
         distanceFromCenter = absoluteEdge - (laneIndex * layoutSettings.TimelineEventBoxHeight) - (laneIndex * layoutSettings.TimelineEventYMargin);
     }
 
-    // Multiply by -1 if rendering in the top hemisphere
     return distanceFromCenter * (isAbove ? -1 : 1);
 };

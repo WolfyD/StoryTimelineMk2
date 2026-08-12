@@ -21,7 +21,10 @@ namespace StoryTimelineMk2.Forms
         public int DefaultTypeId { get; set; } = 1;
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public int? DefaultYear { get; set; }
+        public double? DefaultYear { get; set; }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public int? DefaultGranularity { get; set; }
 
         public f_AddEditItem()
         {
@@ -60,7 +63,9 @@ namespace StoryTimelineMk2.Forms
             {
                 query += $"&typeId={DefaultTypeId}";
                 if (DefaultYear.HasValue)
-                    query += $"&year={DefaultYear.Value}";
+                    query += $"&year={DefaultYear.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}";
+                if (DefaultGranularity.HasValue)
+                    query += $"&granularity={DefaultGranularity.Value}";
             }
 
             string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "editItem.html");

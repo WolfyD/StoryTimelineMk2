@@ -10,5 +10,6 @@ namespace StoryTimelineMk2.Database
         public TimelineItem[] Items { get; set; }
         public SettingsItem Settings { get; set; }
         public NoteItem[] Notes { get; set; }
+        public HiddenRangeItem[] HiddenRanges { get; set; }
     }
 }

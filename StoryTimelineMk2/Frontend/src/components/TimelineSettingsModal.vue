@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { PhX, PhPlus } from '@phosphor-icons/vue'
-import type { TimelineSettings, LayoutSettings } from '@/types/models'
+import { PhX, PhPlus, PhTrash } from '@phosphor-icons/vue'
+import type { TimelineSettings, LayoutSettings, HiddenRange } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import FontPicker from './FontPicker.vue'
@@ -96,6 +96,39 @@ const saveError = ref('')
 const showNewPreset = ref(false)
 const newPresetName = ref('')
 
+// --- hidden ranges ---
+const hiddenRanges = ref<HiddenRange[]>([...store.hiddenRanges])
+const newRangeStart = ref<number | null>(null)
+const newRangeEnd   = ref<number | null>(null)
+const newRangeLabel = ref('')
+const rangeError    = ref('')
+
+async function addRange() {
+    rangeError.value = ''
+    const s = newRangeStart.value
+    const e = newRangeEnd.value
+    if (s === null || e === null || isNaN(s) || isNaN(e)) { rangeError.value = 'Enter both years.'; return }
+    if (e <= s) { rangeError.value = 'End year must be greater than start year.'; return }
+    const result = await BackendAPI.SaveHiddenRange(store.currentProject!.Id, s, e, newRangeLabel.value.trim() || null)
+    if (result?.status === 'ok' && result.range) {
+        hiddenRanges.value = [...hiddenRanges.value, result.range].sort((a, b) => a.StartYear - b.StartYear)
+        store.hiddenRanges = hiddenRanges.value
+        newRangeStart.value = null
+        newRangeEnd.value   = null
+        newRangeLabel.value = ''
+    } else {
+        rangeError.value = 'Failed to save range.'
+    }
+}
+
+async function deleteRange(id: number) {
+    const result = await BackendAPI.DeleteHiddenRange(id)
+    if (result?.status === 'ok') {
+        hiddenRanges.value = hiddenRanges.value.filter(r => r.Id !== id)
+        store.hiddenRanges = hiddenRanges.value
+    }
+}
+
 onMounted(async () => {
     const [presets, fonts] = await Promise.all([
         BackendAPI.GetLayoutSettingsList(),
@@ -184,6 +217,29 @@ async function save() {
             </div>
 
             <div class="modal-body">
+
+                <!-- HIDDEN RANGES -->
+                <div class="section-title">Hidden Time Ranges</div>
+
+                <div v-if="hiddenRanges.length === 0" class="ranges-empty">No hidden ranges — all years visible.</div>
+                <div v-for="r in hiddenRanges" :key="r.Id" class="range-row">
+                    <span class="range-years">{{ r.StartYear }} – {{ r.EndYear }}</span>
+                    <span class="range-label">{{ r.Label || '' }}</span>
+                    <button class="icon-btn icon-btn--danger" type="button" title="Remove" @click="deleteRange(r.Id)">
+                        <PhTrash :size="13" />
+                    </button>
+                </div>
+
+                <div class="range-add-form">
+                    <input class="s-input s-input--year" type="number" v-model.number="newRangeStart" placeholder="Start year" />
+                    <span class="range-sep">–</span>
+                    <input class="s-input s-input--year" type="number" v-model.number="newRangeEnd" placeholder="End year" />
+                    <input class="s-input range-label-input" type="text" v-model="newRangeLabel" placeholder="Label (optional)" @keydown.enter="addRange" />
+                    <button class="icon-btn icon-btn--ok" type="button" @click="addRange">
+                        <PhPlus :size="13" /> Add
+                    </button>
+                </div>
+                <p v-if="rangeError" class="range-error">{{ rangeError }}</p>
 
                 <!-- GENERAL -->
                 <div class="section-title">General</div>
@@ -768,6 +824,78 @@ select.s-input {
 
     &:hover:not(:disabled) {
         background: #52804c;
+    }
+}
+
+// --- Hidden Ranges ---
+.ranges-empty {
+    font-size: 12px;
+    color: #4a6080;
+    font-style: italic;
+    margin-bottom: 6px;
+}
+
+.range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid #1e2b44;
+
+    .range-years {
+        font-size: 13px;
+        color: #e2e8f0;
+        min-width: 110px;
+        font-family: monospace;
+    }
+
+    .range-label {
+        flex: 1;
+        font-size: 12px;
+        color: #64748b;
+        font-style: italic;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.range-add-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+
+    .s-input--year {
+        width: 90px;
+    }
+
+    .range-label-input {
+        flex: 1;
+        min-width: 100px;
+    }
+}
+
+.range-sep {
+    color: #64748b;
+    font-size: 13px;
+}
+
+.range-error {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #f87171;
+}
+
+.icon-btn--danger {
+    background: transparent;
+    border: 1px solid #4a2020;
+    color: #f87171;
+
+    &:hover {
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
     }
 }
 </style>

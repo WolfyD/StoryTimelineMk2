@@ -211,6 +211,22 @@ export const BackendAPI = {
 		return await this.request<{ status: string; message?: string }>('RemoveImageFromItem', { pictureId, itemId });
 	},
 
+	async DeleteItem(itemId: string) {
+		return await this.request<{ status: string }>('DeleteItem', { itemId });
+	},
+
+	async GetHiddenRanges(timelineId: number) {
+		return await this.request<import('@/types/models').HiddenRange[]>('GetHiddenRanges', { timelineId });
+	},
+
+	async SaveHiddenRange(timelineId: number, startYear: number, endYear: number, label: string | null = null, id = 0) {
+		return await this.request<{ status: string; range?: import('@/types/models').HiddenRange }>('SaveHiddenRange', { timelineId, startYear, endYear, label, id });
+	},
+
+	async DeleteHiddenRange(id: number) {
+		return await this.request<{ status: string }>('DeleteHiddenRange', { id });
+	},
+
 	async GetLayoutSettingsById(id: string) {
 		return await this.request<LayoutSettings>('GetLayoutSettingsById', { id });
 	},

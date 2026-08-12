@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings } from '@/types/models';
+import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange } from '@/types/models';
 import { BackendAPI } from '@/bridge/api';
 
 
@@ -24,6 +24,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const currentLodTitle = ref<string>('Year');
 	const lodProfile = ref<LodLevel[]>([]);
 	const calendar = ref<Calendar>();
+	const hiddenRanges = ref<HiddenRange[]>([]);
 	//const konvaItems = ref<KonvaGroupObject[]>([]);
 
 	const ItemTypes = [
@@ -71,6 +72,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 			layoutSettings.value = response.Project.LayoutSettings;
 			currentProject.value = response.Project;
 			calendar.value = response.Project.Calendar;
+			hiddenRanges.value = (response.HiddenRanges ?? []).sort((a, b) => a.StartYear - b.StartYear);
 			const lProf = response.Project.Calendar.LodProfile;
 			const _lp = lProf.Profile;
 			if(_lp){
@@ -92,7 +94,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 	}
 
 	function removeItem(id: string) {
-		items.value = items.value.filter(i => i.id !== id);
+		items.value = items.value.filter(i => i.Id !== id);
 	}
 
 	function setFpsDisplay(_fps:number) {
@@ -131,7 +133,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 	return {
 		// variables
 		items, currentNowYear, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex,
-		pastItems, futureItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle,
+		pastItems, futureItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle, hiddenRanges,
 
 		// functions
 		loadItems, addItem, removeItem, setNowYear, setProjects, loadTimelines, loadTimelineData,setFpsDisplay,lodZoomIn, lodZoomOut,

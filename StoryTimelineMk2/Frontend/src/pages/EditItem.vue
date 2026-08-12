@@ -20,13 +20,14 @@ import type {
 // ---------------------------------------------------------------------------
 // URL params
 // ---------------------------------------------------------------------------
-const params       = new URLSearchParams(window.location.search)
-const timelineId   = parseInt(params.get('timelineId') ?? '0')
-const itemId       = params.get('itemId')           // null for new items
-const defaultType  = parseInt(params.get('typeId') ?? '1')
-const defaultYear  = parseInt(params.get('year') ?? '0') || 0
+const params            = new URLSearchParams(window.location.search)
+const timelineId        = parseInt(params.get('timelineId') ?? '0')
+const itemId            = params.get('itemId')           // null for new items
+const defaultType       = parseInt(params.get('typeId') ?? '1')
+const defaultAbsoluteTime = parseFloat(params.get('year') ?? '0') || 0
+const defaultGranularity  = parseInt(params.get('granularity') ?? '3')
 
-const isNew = !itemId
+const isNew = ref(!itemId)
 
 const ITEM_TYPES = [
   { id: 1, name: 'Event' },
@@ -101,7 +102,12 @@ const saveError         = ref('')
 // Tag autocomplete
 const tagInputValue     = ref('')
 const tagSuggestions    = ref<Tag[]>([])
+const topTags           = ref<Tag[]>([])
+const tagInputFocused   = ref(false)
 let tagDebounce: ReturnType<typeof setTimeout>
+
+// Lightbox
+const lightboxSrc = ref<string | null>(null)
 
 // Character picker
 const showCharPicker     = ref(false)
@@ -160,19 +166,17 @@ onMounted(async () => {
   ])
 
   if (data) {
-    if (!isNew) {
+    if (!isNew.value) {
       item.value = data.Item
     } else {
       item.value.TimelineId = timelineId
       item.value.TypeId = defaultType
-      if (defaultYear) item.value.Year = defaultYear
+      item.value.CreationGranularity = defaultGranularity
+      if (defaultAbsoluteTime) {
+        item.value.Year    = Math.floor(defaultAbsoluteTime)
+        item.value.EndYear = item.value.Year
+      }
     }
-
-    // Sync split date fields
-    startYear.value    = item.value.Year
-    startSubtick.value = item.value.Subtick
-    endYear.value      = item.value.EndYear
-    endSubtick.value   = item.value.EndSubtick
 
     tags.value               = data.Tags ?? []
     characterAppearances.value = data.Characters ?? []
@@ -189,12 +193,37 @@ onMounted(async () => {
           : rawProfile as unknown as LodLevel[]
       }
       monthNames.value = extractMonthNames(data.Calendar.YearDefinition ?? '')
+
+      // Decompose fractional absoluteTime into subtick now that lodProfile is loaded
+      if (isNew.value && defaultAbsoluteTime) {
+        const frac = defaultAbsoluteTime - Math.floor(defaultAbsoluteTime)
+        if (frac > 0.000001) {
+          const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
+          const step = lod?.stepFraction ?? 1
+          const maxSubticks = step > 0 ? Math.round(1 / step) : 1
+          const subtick = step > 0 ? Math.max(0, Math.min(Math.round(frac / step), maxSubticks - 1)) : 0
+          item.value.Subtick = subtick
+          item.value.OriginalSubtick = subtick
+          item.value.EndSubtick = subtick
+          item.value.OriginalEndSubtick = subtick
+        }
+      }
     }
+
+    // Sync split date fields after all item+calendar setup
+    startYear.value    = item.value.Year
+    startSubtick.value = item.value.Subtick
+    endYear.value      = item.value.EndYear
+    endSubtick.value   = item.value.EndSubtick
   }
 
   allCharacters.value = characters ?? []
   allStories.value    = stories ?? []
   isLoading.value = false
+
+  BackendAPI.SearchTags('').then(results => {
+    topTags.value = (results ?? []).slice(0, 8)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -207,6 +236,10 @@ function onTagInput(e: Event) {
   tagDebounce = setTimeout(async () => {
     tagSuggestions.value = await BackendAPI.SearchTags(tagInputValue.value)
   }, 200)
+}
+
+function onTagFocus() {
+  tagInputFocused.value = true
 }
 
 async function onTagKeydown(e: KeyboardEvent) {
@@ -237,8 +270,14 @@ function removeTag(index: number) {
 }
 
 function dismissTagSuggestions() {
-  setTimeout(() => { tagSuggestions.value = [] }, 150)
+  setTimeout(() => {
+    tagSuggestions.value = []
+    tagInputFocused.value = false
+  }, 150)
 }
+
+function openLightbox(src: string) { lightboxSrc.value = src }
+function closeLightbox() { lightboxSrc.value = null }
 
 // ---------------------------------------------------------------------------
 // Characters
@@ -336,7 +375,7 @@ function removeChapterRef(index: number) {
 // ---------------------------------------------------------------------------
 // Save
 // ---------------------------------------------------------------------------
-async function save() {
+async function save(closeOnSuccess = true) {
   saveError.value = ''
   isSaving.value = true
 
@@ -364,7 +403,9 @@ async function save() {
     )
 
     if (result?.status === 'ok') {
-      window.close()
+      isNew.value = false
+      item.value.Id = result.itemId
+      if (closeOnSuccess) window.close()
     } else {
       saveError.value = result?.itemId ?? 'Save failed'
     }
@@ -382,7 +423,11 @@ function cancel() {
 // ---------------------------------------------------------------------------
 // Images
 // ---------------------------------------------------------------------------
-function addImage() {
+async function addImage() {
+  if (isNew.value) {
+    await save(false)
+    if (saveError.value) return
+  }
   showImagePicker.value = true
 }
 
@@ -405,13 +450,16 @@ async function removeImage(pictureId: string) {
     <!-- ===== HEADER ===== -->
     <div class="section header-section">
       <div class="header-row">
-        <span class="item-id-label">{{ isNew ? 'New Item' : item.Id.slice(0, 8) }}</span>
+        <span class="type-pill" :style="{ backgroundColor: item.Color }">
+          {{ ITEM_TYPES.find(t => t.id === item.TypeId)?.name ?? 'Item' }}
+        </span>
         <div class="header-actions">
           <button class="btn btn-secondary" @click="cancel">Cancel</button>
           <button class="btn btn-primary" :disabled="isSaving" @click="save">
             {{ isSaving ? 'Saving…' : 'Save' }}
           </button>
         </div>
+        <span class="item-id-label">{{ isNew ? '' : item.Id.slice(0, 8) }}</span>
       </div>
       <p v-if="saveError" class="save-error">{{ saveError }}</p>
 
@@ -423,7 +471,7 @@ async function removeImage(pictureId: string) {
       <div class="row">
         <div class="field flex-1">
           <label>Description</label>
-          <input type="text" v-model="item.Description" placeholder="Short description" />
+          <textarea rows="2" v-model="item.Description" placeholder="Short description" />
         </div>
         <div class="field color-field">
           <label>Color</label>
@@ -459,9 +507,14 @@ async function removeImage(pictureId: string) {
 
           <div class="field flex-1">
             <label>Visible from LOD</label>
-            <select v-model="item.MinLodLevel">
-              <option v-for="lod in lodProfile" :key="lod.index" :value="lod.index">
-                {{ lod.formatKey }}
+            <select v-model="item.MinLodLevel" class="lod-select">
+              <option
+                v-for="lod in lodProfile"
+                :key="lod.index"
+                :value="lod.index"
+                :class="lod.index > item.MinLodLevel ? 'lod-implied' : (lod.index < item.MinLodLevel ? 'lod-hidden' : 'lod-selected')"
+              >
+                {{ lod.index < item.MinLodLevel ? '✕ ' : lod.index > item.MinLodLevel ? '✓ ' : '▶ ' }}{{ lod.formatKey }}
               </option>
             </select>
           </div>
@@ -534,13 +587,14 @@ async function removeImage(pictureId: string) {
                 placeholder="Add tag…"
                 @input="onTagInput"
                 @keydown="onTagKeydown"
+                @focus="onTagFocus"
                 @blur="dismissTagSuggestions"
               />
             </div>
-            <div class="suggestions" v-if="tagSuggestions.length">
+            <div class="suggestions" v-if="tagInputFocused && !tagInputValue ? topTags.length : tagSuggestions.length">
               <div
                 class="suggestion-item"
-                v-for="s in tagSuggestions"
+                v-for="s in (tagInputFocused && !tagInputValue ? topTags : tagSuggestions)"
                 :key="s.Id"
                 @mousedown.prevent="addTagFromSuggestion(s)"
               >{{ s.Name }}</div>
@@ -558,36 +612,33 @@ async function removeImage(pictureId: string) {
       <div class="section">
         <h3 class="section-title">Images</h3>
 
-        <p v-if="isNew" class="placeholder-note">Save the item first to attach images.</p>
-
-        <template v-else>
-          <div class="image-grid" v-if="images.length">
-            <div class="image-thumb" v-for="img in images" :key="img.Id">
-              <img
-                :src="`https://media.app/${img.FilePath}`"
-                :alt="img.Title || img.FileName"
-                @error="($event.target as HTMLImageElement).src = ''"
-                class="image-thumb-img"
-              />
-              <div class="image-thumb-footer">
-                <span class="image-label" :title="img.Title || img.FileName">
-                  {{ img.Title || img.FileName }}
-                </span>
-                <button class="btn-icon btn-icon--danger" @click="removeImage(img.Id)" title="Remove">×</button>
-              </div>
+        <div class="image-grid" v-if="images.length">
+          <div class="image-thumb" v-for="img in images" :key="img.Id">
+            <img
+              :src="`https://media.app/${img.FilePath}`"
+              :alt="img.Title || img.FileName"
+              @error="($event.target as HTMLImageElement).src = ''"
+              class="image-thumb-img"
+              @click="openLightbox(`https://media.app/${img.FilePath}`)"
+            />
+            <div class="image-thumb-footer">
+              <span class="image-label" :title="img.Title || img.FileName">
+                {{ img.Title || img.FileName }}
+              </span>
+              <button class="btn-icon btn-icon--danger" @click="removeImage(img.Id)" title="Remove">×</button>
             </div>
           </div>
-          <p v-else class="placeholder-note">No images attached.</p>
-          <button class="btn btn-secondary btn-sm mt-6" @click="addImage">+ Add Image</button>
+        </div>
+        <p v-else class="placeholder-note">No images attached.</p>
+        <button class="btn btn-secondary btn-sm mt-6" @click="addImage">+ Add Image</button>
 
-          <ImagePickerModal
-            v-if="showImagePicker"
-            :item-id="item.Id"
-            :already-linked="images.map(i => i.Id)"
-            @close="showImagePicker = false"
-            @linked="onImageLinked"
-          />
-        </template>
+        <ImagePickerModal
+          v-if="showImagePicker"
+          :item-id="item.Id"
+          :already-linked="images.map(i => i.Id)"
+          @close="showImagePicker = false"
+          @linked="onImageLinked"
+        />
       </div>
 
       <!-- Characters -->
@@ -745,6 +796,12 @@ async function removeImage(pictureId: string) {
       </div>
 
     </div>
+
+    <Teleport to="body">
+      <div v-if="lightboxSrc" class="lightbox-overlay" @click="closeLightbox">
+        <img :src="lightboxSrc" class="lightbox-img" @click.stop />
+      </div>
+    </Teleport>
   </div>
 
   <div v-else class="loading-screen">Loading…</div>
@@ -816,10 +873,24 @@ async function removeImage(pictureId: string) {
   align-items: center;
 }
 
+.type-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
 .item-id-label {
   font-size: 0.75rem;
   color: #aaa;
   font-family: monospace;
+  min-width: 64px;
+  text-align: right;
 }
 
 .header-actions {
@@ -871,6 +942,7 @@ async function removeImage(pictureId: string) {
     color: #222;
     width: 100%;
     &:focus { outline: 2px solid #4a90d9; border-color: transparent; }
+    &::placeholder { color: rgb(150, 150, 150); }
   }
 
   input[type='color'] {
@@ -1255,7 +1327,8 @@ async function removeImage(pictureId: string) {
     height: 84px;
     object-fit: cover;
     display: block;
-    background: #e0e0e0;  // visible when src is empty / file missing
+    background: #e0e0e0;
+    cursor: zoom-in;
   }
 }
 
@@ -1280,4 +1353,40 @@ async function removeImage(pictureId: string) {
 }
 
 .mt-6 { margin-top: 6px; }
+
+// ---- LOD dropdown ----
+.lod-select {
+  option.lod-hidden {
+    color: #bbb;
+  }
+  option.lod-selected {
+    font-weight: 700;
+    color: #222;
+  }
+  option.lod-implied {
+    color: #999;
+    font-style: italic;
+  }
+}
+
+// ---- Lightbox ----
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  cursor: zoom-out;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  cursor: default;
+}
 </style>

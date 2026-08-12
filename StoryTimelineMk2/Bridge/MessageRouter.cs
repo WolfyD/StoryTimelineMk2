@@ -83,6 +83,14 @@ namespace StoryTimelineMk2.Bridge
                 case "DeleteCalendar":              HandleDeleteCalendar(message); break;
                 case "OpenCalendarEditorWindow":    HandleOpenCalendarEditorWindow(message); break;
 
+                // Item deletion
+                case "DeleteItem":          HandleDeleteItem(message); break;
+
+                // Hidden ranges
+                case "GetHiddenRanges":     HandleGetHiddenRanges(message); break;
+                case "SaveHiddenRange":     HandleSaveHiddenRange(message); break;
+                case "DeleteHiddenRange":   HandleDeleteHiddenRange(message); break;
+
                 // App-level settings
                 case "GetAppConfig":    HandleGetAppConfig(message); break;
                 case "BrowseDataFolder": HandleBrowseDataFolder(message); break;
@@ -113,7 +121,8 @@ namespace StoryTimelineMk2.Bridge
                 {
                     Project = repo.GetTimelineById(gtd_timeline_id),
                     Items = item_repo.GetItemsByTimeline(gtd_timeline_id).ToArray(),
-                    Notes = notes_repo.GetTimelineNotes(gtd_timeline_id).ToArray()
+                    Notes = notes_repo.GetTimelineNotes(gtd_timeline_id).ToArray(),
+                    HiddenRanges = new HiddenRangeRepo().GetByTimeline(gtd_timeline_id).ToArray(),
                 };
                 ReplyToVue(message.MessageId, timelineObject);
                 return;
@@ -184,16 +193,21 @@ namespace StoryTimelineMk2.Bridge
             if (message.Payload.TryGetProperty("typeId", out var typeProp) && typeProp.TryGetInt32(out int ty))
                 typeId = ty;
 
-            int? year = null;
-            if (message.Payload.TryGetProperty("year", out var yearProp) && yearProp.TryGetInt32(out int y))
+            double? year = null;
+            if (message.Payload.TryGetProperty("year", out var yearProp) && yearProp.TryGetDouble(out double y))
                 year = y;
+
+            int? granularity = null;
+            if (message.Payload.TryGetProperty("granularity", out var granProp) && granProp.TryGetInt32(out int g))
+                granularity = g;
 
             var addEditItemWindow = new f_AddEditItem
             {
                 TimelineId = timelineId,
                 ItemId = itemId,
                 DefaultTypeId = typeId,
-                DefaultYear = year
+                DefaultYear = year,
+                DefaultGranularity = granularity,
             };
 
             // Use Show() instead of ShowDialog(): calling ShowDialog from inside a
@@ -323,6 +337,13 @@ namespace StoryTimelineMk2.Bridge
             var presets = new LayoutSettingsRepo().GetAll()
                 .Select(ls => new { ls.Id, ls.Name });
             ReplyToVue(message.MessageId, presets);
+        }
+
+        private void HandleDeleteItem(BridgeMessage message)
+        {
+            string itemId = message.Payload.GetProperty("itemId").GetString();
+            new ItemRepo().DeleteItem(itemId);
+            ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
         private void HandleDeleteTimeline(BridgeMessage message)
@@ -734,6 +755,53 @@ namespace StoryTimelineMk2.Bridge
             try
             {
                 new MediaRepo().UnlinkAndPruneImage(pictureId, itemId);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Hidden range handlers
+        // -----------------------------------------------------------------------
+
+        private void HandleGetHiddenRanges(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new HiddenRangeRepo().GetByTimeline(timelineId).ToList());
+        }
+
+        private void HandleSaveHiddenRange(BridgeMessage message)
+        {
+            try
+            {
+                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+                int startYear  = message.Payload.GetProperty("startYear").GetInt32();
+                int endYear    = message.Payload.GetProperty("endYear").GetInt32();
+                string? label  = message.Payload.TryGetProperty("label", out var lp) ? lp.GetString() : null;
+                int id = 0;
+                if (message.Payload.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out int existingId))
+                    id = existingId;
+
+                var item = new HiddenRangeItem { Id = id, TimelineId = timelineId, StartYear = startYear, EndYear = endYear, Label = label };
+                int savedId = new HiddenRangeRepo().Save(item);
+                item.Id = savedId;
+                ReplyToVue(message.MessageId, new { status = "ok", range = item });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleDeleteHiddenRange(BridgeMessage message)
+        {
+            try
+            {
+                int id = message.Payload.GetProperty("id").GetInt32();
+                new HiddenRangeRepo().Delete(id);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)

@@ -55,10 +55,19 @@ export interface TimelineNote {
 	UpdatedAt: Date;
 }
 
+export interface HiddenRange {
+    Id: number;
+    TimelineId: number;
+    StartYear: number;
+    EndYear: number;
+    Label: string | null;
+}
+
 export interface FullTimelineProject {
     Project: TimelineProject;
     Items: TimelineItem[];
 	Notes: TimelineNote[];
+    HiddenRanges: HiddenRange[];
 }
 
 export interface Calendar {

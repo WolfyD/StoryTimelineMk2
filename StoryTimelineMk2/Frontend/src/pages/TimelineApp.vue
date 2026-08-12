@@ -21,11 +21,12 @@ function onItemClick(itemId: string) {
     })
 }
 
-function onAddItem(typeId: number, year: number) {
+function onAddItem(typeId: number, absoluteTime: number, lodIndex: number) {
     BackendAPI.send('OpenAddEditItemWindow', {
         timelineId: store.currentProject?.Id,
         typeId,
-        year,
+        year: absoluteTime,
+        granularity: lodIndex,
     })
 }
 

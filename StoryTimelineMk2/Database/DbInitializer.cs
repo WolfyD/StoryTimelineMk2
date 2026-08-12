@@ -369,6 +369,16 @@ namespace StoryTimelineMk2.Database
                     FOREIGN KEY (chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
                 );
 
+                -- Per-timeline hidden year ranges (collapsed on canvas with a break indicator)
+                CREATE TABLE IF NOT EXISTS timeline_hidden_ranges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timeline_id INTEGER NOT NULL,
+                    start_year INTEGER NOT NULL,
+                    end_year INTEGER NOT NULL,
+                    label TEXT,
+                    FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE
+                );
+
                 -- Event-character appearances with freetext role (replaces the old 1-to-1 item_characters purpose)
                 CREATE TABLE IF NOT EXISTS item_character_appearances (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -407,6 +417,8 @@ namespace StoryTimelineMk2.Database
 
                 CREATE INDEX IF NOT EXISTS idx_item_char_app_item ON item_character_appearances(item_id);
                 CREATE INDEX IF NOT EXISTS idx_item_char_app_char ON item_character_appearances(character_id);
+
+                CREATE INDEX IF NOT EXISTS idx_hidden_ranges_timeline ON timeline_hidden_ranges(timeline_id);
             ");
         }
 
