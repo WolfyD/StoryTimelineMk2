@@ -48,11 +48,13 @@ export interface CanvasSettingsObject {
 }
 
 export interface TimelineNote {
-	Id: string; // UUID
+	Id: string;
     NoteContents: string;
     ConnectedItemId: string;
 	TimelineId: number;
-	UpdatedAt: Date;
+	NearestYear: number;
+	AbsoluteTime: number;
+	UpdatedAt: string;
 }
 
 export interface HiddenRange {

@@ -32,6 +32,26 @@ export const buildNode = (
 
         // Ages/Periods don't have stems, just add the box to the upper layer
         boxesMaster.add(elements.box);
+    } else if (typeName === "Picture") {
+        const size = layoutSettings.TimelineBoxTypesBoxWidth || layoutSettings.TimelineEventBoxHeight;
+        elements.stem = new Konva.Line({
+            id: `stem-${id}`,
+            points: [0, 0, 0, 0],
+            stroke: safeColor,
+            strokeWidth: 2,
+        });
+        elements.box = new Konva.Image({
+            id: `box-${id}`,
+            image: undefined as any,
+            width: size,
+            height: size,
+            fill: '#00000022',
+            stroke: safeColor,
+            strokeWidth: layoutSettings.TimelineEventBorderWidth,
+            cornerRadius: 4,
+        });
+        stemsMaster.add(elements.stem);
+        boxesMaster.add(elements.box);
     } else {
         const boxWidth = layoutSettings.TimelineEventBoxWidth;
         const boxHeight = layoutSettings.TimelineEventBoxHeight;
@@ -133,6 +153,14 @@ export const updateAbsolutePositions = (
 
 		// Set position, adding half the height because the shape's anchor is now in its center
 		elements.box.position({ x: anchorX, y: boxy + (height / 2) });
+    } else if (typeName === "Picture") {
+        // Square image centered on the stem; stem runs straight up/down
+        const size = boxWidth;
+        elements.box.width(size);
+        elements.box.height(size);
+        elements.box.position({ x: anchorX - size / 2, y: targetY });
+        const stemEndY = targetY < stageCenterY ? targetY + size : targetY;
+        elements.stem.points([anchorX, stageCenterY, anchorX, stemEndY]);
     } else {
         // Calculate the absolute X position for the box
         const boxAbsoluteX = isLeft ? anchorX - boxWidth : anchorX;

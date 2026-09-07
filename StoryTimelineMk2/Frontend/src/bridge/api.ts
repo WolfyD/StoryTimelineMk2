@@ -204,7 +204,7 @@ export const BackendAPI = {
 	},
 
 	async AddImageToItem(itemId: string) {
-		return await this.request<{ status: string; message?: string; Picture?: import('@/types/models').MediaItem }>('AddImageToItem', { itemId });
+		return await this.request<{ status: string; message?: string; Pictures?: import('@/types/models').MediaItem[] }>('AddImageToItem', { itemId });
 	},
 
 	async RemoveImageFromItem(pictureId: string, itemId: string) {
@@ -213,6 +213,14 @@ export const BackendAPI = {
 
 	async DeleteItem(itemId: string) {
 		return await this.request<{ status: string }>('DeleteItem', { itemId });
+	},
+
+	async SaveNote(note: import('@/types/models').TimelineNote) {
+		return await this.request<{ status: string; noteId: string }>('SaveNote', note);
+	},
+
+	async DeleteNote(noteId: string) {
+		return await this.request<{ status: string }>('DeleteNote', { noteId });
 	},
 
 	async GetHiddenRanges(timelineId: number) {

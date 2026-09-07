@@ -11,6 +11,7 @@ namespace StoryTimelineMk2.Database
         public int TimelineId { get; set; }
         public string ConnectedItemId { get; set; } = string.Empty;
         public int NearestYear { get; set; }
+        public double AbsoluteTime { get; set; } = 0.0;
         public DateTime UpdatedAt { get; set; }
     }
 }

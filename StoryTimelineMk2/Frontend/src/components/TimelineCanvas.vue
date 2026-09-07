@@ -30,6 +30,9 @@ const uiLayer = new Konva.Layer();
 const itemLayer = new Konva.Layer();
 const boundaryOverlayLayer = new Konva.Layer();
 const cursorLayer = new Konva.Layer();
+const tooltipLayer = new Konva.Layer();
+
+let tooltipLabel: Konva.Label | null = null;
 
 let cursorLine: Konva.Line | null = null;
 let cursorLabel: Konva.Text | null = null;
@@ -54,6 +57,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     itemClick: [itemId: string]
+    viewItem: [itemId: string]
     addItem: [typeId: number, absoluteTime: number, lodIndex: number]
 }>();
 
@@ -67,10 +71,19 @@ const viewport = reactive({
 
 const nodeCache = new Map<string, any>();
 const bookmarkNodeCache = new Map<string, { group: Konva.Group; line: Konva.Line; dot: Konva.Circle }>();
+const pictureImageCache = new Map<string, HTMLImageElement>();
+const pictureLoadingSet = new Set<string>();
 const lockedLanes = new Map<string, LaneLock>();
 
 const expandedRangeIds = new Set<number>();
 const getActiveRanges = () => store.hiddenRanges.filter(r => !expandedRangeIds.has(r.Id));
+
+// Pan transform state: layers are translated by panDrift px on each drag frame;
+// a full re-render happens every DRIFT_THRESHOLD px. GRID_EXTRA_PX is pre-rendered
+// beyond the viewport on each side so the buffer never runs out between re-renders.
+let panDrift = 0;
+const DRIFT_THRESHOLD = 300;
+const GRID_EXTRA_PX   = 500;
 const toggleRange = (id: number) => {
     if (expandedRangeIds.has(id)) expandedRangeIds.delete(id);
     else expandedRangeIds.add(id);
@@ -96,6 +109,7 @@ const getTypeName = (item: any) => {
     const tId = getTypeId(item);
     if (store.ItemTypes && store.ItemTypes.length > 0) return store.ItemTypes[tId - 1] || "Event";
     if (tId === 2) return "Period";
+    if (tId === 4) return "Picture";
     if ([3, 6, 8, 9].includes(tId)) return "Age";
     return "Event";
 };
@@ -111,7 +125,26 @@ const contextMenu = reactive({
     displayYear: 0,
     displayFraction: 0,
     boundaryLabel: '',
+    itemTypeId: 1,
+    itemAbsoluteStart: 0,
+    itemAbsoluteEnd: 0,
 });
+
+function setCanvasDistancePoint(which: 'from' | 'to') {
+    const step = viewport.lodStepFraction;
+    const snapped = step > 0 ? Math.round(contextMenu.absoluteTime / step) * step : contextMenu.absoluteTime;
+    if (which === 'from') store.setDistanceFrom(snapped);
+    else store.setDistanceTo(snapped);
+    store.setNotesDistanceTab('distance');
+    closeContextMenu();
+}
+
+function setItemDistancePoint(which: 'from' | 'to' | 'both') {
+    if (which === 'from' || which === 'both') store.setDistanceFrom(contextMenu.itemAbsoluteStart);
+    if (which === 'to'   || which === 'both') store.setDistanceTo(contextMenu.itemAbsoluteEnd);
+    store.setNotesDistanceTab('distance');
+    closeContextMenu();
+}
 
 // Helper to close the menu when interacting elsewhere
 const closeContextMenu = () => {
@@ -184,7 +217,7 @@ const addBookmark = async (absoluteTime: number) => {
         Year: year, AbsoluteStart: absoluteTime, Subtick: subtick, OriginalSubtick: subtick,
         EndYear: year, AbsoluteEnd: absoluteTime, EndSubtick: subtick, OriginalEndSubtick: subtick,
         BookTitle: '', Chapter: '', Page: '',
-        Color: '#f59e0b',
+        Color: '#4b5563',
         CreationGranularity: store.currentLodIndex,
         TimelineId: props.timelineInfo.Id,
         ItemIndex: 0, ShowInNotes: false, Importance: 5, MinLodLevel: 0,
@@ -215,6 +248,22 @@ const removeBoundaryItem = async (itemId: string) => {
 
 const deleteItem = async (itemId: string) => {
     closeContextMenu();
+
+    // Snapshot full item + relations for undo before deletion
+    const timelineId = store.currentProject?.Id;
+    if (timelineId) {
+        const snapshot = await BackendAPI.GetItemForEdit(timelineId, itemId);
+        if (snapshot?.Item) {
+            store.setLastDeleted({
+                item: snapshot.Item,
+                tagNames: snapshot.Tags.map(t => t.Name),
+                characterAppearances: snapshot.Characters.map(c => ({ CharacterId: c.CharacterId, Role: c.Role })),
+                storyRefs: snapshot.StoryRefs.map(s => s.StoryId),
+                chapterRefs: snapshot.ChapterRefs.map(c => c.ChapterId),
+            });
+        }
+    }
+
     const result = await BackendAPI.DeleteItem(itemId);
     if (result?.status === 'ok') {
         store.removeItem(itemId);
@@ -233,6 +282,7 @@ const deleteItem = async (itemId: string) => {
 watch(() => props.layoutSettings, (newLs) => {
     if (!stage || !newLs) return;
     nodeCache.clear();
+    pictureLoadingSet.clear();
     for (const bm of bookmarkNodeCache.values()) bm.group.destroy();
     bookmarkNodeCache.clear();
     lockedLanes.clear();
@@ -308,6 +358,9 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
 
 // --- RENDER LOOPS ---
 const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
+    panDrift = 0;
+    layer.x(0);
+    boundaryOverlayLayer.x(0);
     layer.destroyChildren();
 
     const currentLod = store.lodProfile?.[store.currentLodIndex];
@@ -320,8 +373,9 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
     // at ~(viewport.width / tickDistance) regardless of how large any hidden range is.
     const visualCenter    = absoluteToVisual(viewport.centerTime, ranges, step);
     const halfVisual      = ((viewport.width / 2) / layoutSettings.TimelineTickDistance) * step;
-    const leftMostVisual  = visualCenter - halfVisual;
-    const rightMostVisual = visualCenter + halfVisual;
+    const extraVisual     = (GRID_EXTRA_PX / layoutSettings.TimelineTickDistance) * step;
+    const leftMostVisual  = visualCenter - halfVisual - extraVisual;
+    const rightMostVisual = visualCenter + halfVisual + extraVisual;
 
     // Precompute visual extents of each break strip so we can skip ticks inside them.
     const breakExtents = ranges.map(r => {
@@ -427,6 +481,21 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         layer.add(collapseBtn);
     }
 
+    // --- Note dots: small marker at the timeline center line for each note ---
+    for (const note of store.notes) {
+        const nx = getXFromTime(note.AbsoluteTime, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        if (nx < -20 || nx > viewport.width + 20) continue;
+        layer.add(new Konva.Circle({
+            x: nx,
+            y: viewport.height / 2,
+            radius: 4,
+            fill: '#1e293b',
+            stroke: '#94a3b8',
+            strokeWidth: 1.5,
+            listening: false,
+        }));
+    }
+
     layer.batchDraw();
 
     // --- Boundary overlays and markers (always above items) ---
@@ -481,6 +550,8 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
 };
 
 const renderItems = (items: any[], ls: LayoutSettings) => {
+    panDrift = 0;
+    itemLayer.x(0);
     const screenBuffer = 400;
     const activeItemIds = new Set();
     const stageCenterY = viewport.height / 2;
@@ -597,12 +668,25 @@ const renderItems = (items: any[], ls: LayoutSettings) => {
         if (!elements) {
             elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls);
             nodeCache.set(itemIdStr, elements);
+            if (typeName === 'Age' || typeName === 'Period' || typeName === 'Picture') {
+                const itemTitle = getTitle(item);
+                elements.box.on('mouseenter', () => {
+                    const pos = stage?.getPointerPosition();
+                    if (pos) showTooltip(itemTitle, pos.x, pos.y);
+                });
+                elements.box.on('mouseleave', hideTooltip);
+            }
+            if (typeName === 'Picture') {
+                loadPictureImage(itemIdStr);
+            }
         }
 
         setNodeVisibility(elements, true);
 
         let targetY = 0;
-        const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX) : ls.TimelineEventBoxWidth;
+        const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX)
+            : typeName === 'Picture' ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
+            : ls.TimelineEventBoxWidth;
 
         if (typeName === "Age") {
             targetY = stageCenterY - ls.TimelineAgeHeight / 2;
@@ -626,6 +710,7 @@ const renderItems = (items: any[], ls: LayoutSettings) => {
         if (!activeItemIds.has(id)) bm.group.visible(false);
     }
 
+    store.setVisibleItems(activeItemIds.size);
     itemLayer.batchDraw();
 };
 
@@ -668,6 +753,13 @@ let shiftHeld = false;
 // Refresh when the view pans or LOD animates, even without mouse movement
 watch(() => [viewport.centerTime, viewport.lodStepFraction], () => {
     if (mouseOnCanvas && lastMouseX !== null && lastMouseY !== null) updateCursor(lastMouseX, lastMouseY);
+});
+
+// Re-render when items are added externally (e.g. undo delete)
+watch(() => store.items.length, (newLen, oldLen) => {
+    if (newLen > oldLen && props.layoutSettings) {
+        renderItems(store.items, props.layoutSettings);
+    }
 });
 
 function initCursorShapes() {
@@ -761,6 +853,53 @@ function hideCursor() {
     cursorLayer.batchDraw();
 }
 
+function showTooltip(text: string, x: number, y: number) {
+    if (!tooltipLabel) return;
+    tooltipLabel.getText().text(text);
+    const tx = Math.min(x + 14, viewport.width - 160);
+    tooltipLabel.position({ x: tx, y: Math.max(4, y - 34) });
+    tooltipLabel.show();
+    tooltipLayer.batchDraw();
+}
+
+function hideTooltip() {
+    if (!tooltipLabel) return;
+    tooltipLabel.hide();
+    tooltipLayer.batchDraw();
+}
+
+function loadPictureImage(itemId: string) {
+    if (pictureLoadingSet.has(itemId)) return;
+    const cached = pictureImageCache.get(itemId);
+    if (cached) {
+        const els = nodeCache.get(itemId);
+        if (els?.box) {
+            els.box.image(cached);
+            itemLayer.batchDraw();
+        }
+        return;
+    }
+    pictureLoadingSet.add(itemId);
+    // typeId 4 = Picture — ensures the backend includes the Pictures relation
+    BackendAPI.GetItemForEdit(props.timelineInfo.Id, itemId, 4).then(result => {
+        pictureLoadingSet.delete(itemId);
+        const filePath = result?.Pictures?.[0]?.FilePath;
+        if (!filePath) return;
+        const url = `https://media.app/${filePath}`;
+        // Use Konva's own image loader so WebView2 URL resolution is handled correctly
+        Konva.Image.fromURL(url, (konvaImg) => {
+            const htmlImg = (konvaImg as Konva.Image).image() as HTMLImageElement;
+            (konvaImg as Konva.Image).destroy();
+            pictureImageCache.set(itemId, htmlImg);
+            const els = nodeCache.get(itemId);
+            if (els?.box) {
+                els.box.image(htmlImg);
+                itemLayer.batchDraw();
+            }
+        });
+    });
+}
+
 // --- STATE MANAGEMENT ---
 
 function jumpToYear(targetYear: number) {
@@ -781,6 +920,7 @@ function updateStageSize() {
     stage.height(containerRef.value.clientHeight);
     viewport.width = containerRef.value.clientWidth;
     viewport.height = containerRef.value.clientHeight;
+    store.setViewportWidth(viewport.width);
 
     renderGrid(gridLayer, props.layoutSettings);
     RenderUiLayer(uiLayer, props.layoutSettings!);
@@ -789,6 +929,7 @@ function updateStageSize() {
 }
 
 const updateCurrentYearInStore = () => {
+    store.setCenterAbsoluteTime(viewport.centerTime);
     const currentYear = Math.floor(viewport.centerTime);
     if (currentYear !== localYearCache) {
         localYearCache = currentYear;
@@ -876,6 +1017,7 @@ onMounted(() => {
 
     viewport.width = stage.width();
     viewport.height = stage.height();
+    store.setViewportWidth(viewport.width);
 
     // Set initial LOD to prevent NaN issues
     viewport.lodStepFraction = store.lodProfile?.[store.currentLodIndex]?.stepFraction || 1;
@@ -895,6 +1037,14 @@ onMounted(() => {
 		stage.add(itemLayer);
 	}
     stage.add(boundaryOverlayLayer); // above items
+
+    // Tooltip layer sits above everything
+    tooltipLabel = new Konva.Label({ opacity: 0.92, listening: false });
+    tooltipLabel.add(new Konva.Tag({ fill: '#1e293b', cornerRadius: 3, shadowColor: '#000', shadowBlur: 6, shadowOpacity: 0.35 }));
+    tooltipLabel.add(new Konva.Text({ text: '', fontFamily: 'sans-serif', fontSize: 12, padding: 5, fill: '#f1f5f9' }));
+    tooltipLabel.hide();
+    tooltipLayer.add(tooltipLabel);
+    stage.add(tooltipLayer);
 
     initCursorShapes();
 
@@ -942,6 +1092,9 @@ onMounted(() => {
             contextMenu.type = 'item';
             contextMenu.itemId = itemId;
             contextMenu.itemTitle = clickedItem ? getTitle(clickedItem) : 'Item';
+            contextMenu.itemTypeId = clickedItem ? getTypeId(clickedItem) : 1;
+            contextMenu.itemAbsoluteStart = clickedItem ? (getAbsoluteStart(clickedItem) ?? 0) : 0;
+            contextMenu.itemAbsoluteEnd   = clickedItem ? (getAbsoluteEnd(clickedItem)   ?? contextMenu.itemAbsoluteStart) : 0;
             positionMenu(e.evt.clientX, e.evt.clientY, 200, 120);
         } else {
             // Empty canvas right-click → all item types + special
@@ -966,7 +1119,7 @@ onMounted(() => {
         const targetId = e.target.id();
         if (targetId && (targetId.startsWith('box-') || targetId.startsWith('label-') || targetId.startsWith('stem-') || targetId.startsWith('bookmark-'))) {
             const itemId = targetId.split('-').slice(1).join('-');
-            emit('itemClick', itemId);
+            emit('viewItem', itemId);
         } else if (targetId && targetId.startsWith('boundary-')) {
             // Left-click on boundary flag → show remove menu
             const itemId = targetId.slice('boundary-'.length);
@@ -1034,8 +1187,19 @@ onMounted(() => {
             ));
             lastPointerX = pos.x;
 
-            renderGrid(gridLayer, props.layoutSettings!);
-            renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+            panDrift += deltaX;
+            if (Math.abs(panDrift) > DRIFT_THRESHOLD) {
+                renderGrid(gridLayer, props.layoutSettings!);
+                renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+            } else {
+                gridLayer.x(panDrift);
+                itemLayer.x(panDrift);
+                boundaryOverlayLayer.x(panDrift);
+                gridLayer.batchDraw();
+                itemLayer.batchDraw();
+                boundaryOverlayLayer.batchDraw();
+            }
+            hideTooltip();
             updateCurrentYearInStore();
             hideCursor();
             return;
@@ -1086,21 +1250,31 @@ onMounted(() => {
         const initClamped = clampToBoundaries(viewport.centerTime);
         if (initClamped !== viewport.centerTime) {
             viewport.centerTime = initClamped;
-            store.setNowYear(Math.floor(initClamped));
             renderGrid(gridLayer, props.layoutSettings);
             renderItems(store.items || props.timelineItems || [], props.layoutSettings);
         }
     }
 
+    // Always set the initial year and visible count after all startup renders
+    store.setNowYear(Math.floor(viewport.centerTime));
+
     window.setInterval(trackFps, 20);
 });
+
+function refreshItems() {
+    if (!props.layoutSettings) return;
+    lockedLanes.clear();
+    renderGrid(gridLayer, props.layoutSettings);
+    renderItems(store.items, props.layoutSettings);
+}
 
 defineExpose({
     animateJumpToYear,
 	jumpToYear,
     updateStageSize,
     gridLayer,
-    uiLayer
+    uiLayer,
+    refreshItems,
 });
 </script>
 
@@ -1152,6 +1326,13 @@ defineExpose({
                     <i class="ri-sticky-note-fill"></i> Note
                 </button>
                 <div class="menu-separator"></div>
+                <button class="menu-item dist-from" @click="setCanvasDistancePoint('from')">
+                    <i class="ri-map-pin-2-fill"></i> Distance – From
+                </button>
+                <button class="menu-item dist-to" @click="setCanvasDistancePoint('to')">
+                    <i class="ri-map-pin-time-fill"></i> Distance – To
+                </button>
+                <div class="menu-separator"></div>
                 <!-- Special flyout submenu -->
                 <div class="has-submenu">
                     <div class="menu-item menu-item--special">
@@ -1186,6 +1367,18 @@ defineExpose({
                 <button class="menu-item" @click="emit('itemClick', contextMenu.itemId!); closeContextMenu()">
                     <i class="ri-edit-line"></i> Edit
                 </button>
+                <div class="menu-separator"></div>
+                <button class="menu-item dist-from" @click="setItemDistancePoint('from')">
+                    <i class="ri-map-pin-2-fill"></i> Distance – From
+                </button>
+                <button class="menu-item dist-to" @click="setItemDistancePoint('to')">
+                    <i class="ri-map-pin-time-fill"></i> Distance – To
+                </button>
+                <template v-if="contextMenu.itemTypeId === 2 || contextMenu.itemTypeId === 3">
+                    <button class="menu-item dist-both" @click="setItemDistancePoint('both')">
+                        <i class="ri-ruler-2-line"></i> Calculate Distance
+                    </button>
+                </template>
                 <div class="menu-separator"></div>
                 <button class="menu-item danger" @click="deleteItem(contextMenu.itemId!)">
                     <i class="ri-delete-bin-line"></i> Delete
@@ -1263,6 +1456,19 @@ defineExpose({
         &.danger {
             color: #ef4444;
             &:hover { background-color: rgba(239, 68, 68, 0.1); }
+        }
+
+        &.dist-from {
+            color: #34d399;
+            &:hover { background-color: rgba(52, 211, 153, 0.1); }
+        }
+        &.dist-to {
+            color: #60a5fa;
+            &:hover { background-color: rgba(96, 165, 250, 0.1); }
+        }
+        &.dist-both {
+            color: #a78bfa;
+            &:hover { background-color: rgba(167, 139, 250, 0.1); }
         }
 
         &.menu-item--disabled {

@@ -1,7 +1,15 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange } from '@/types/models';
+import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote } from '@/types/models';
 import { BackendAPI } from '@/bridge/api';
+
+interface LastDeletedState {
+    item: TimelineItem;
+    tagNames: string[];
+    characterAppearances: { CharacterId: string; Role: string | null }[];
+    storyRefs: string[];
+    chapterRefs: string[];
+}
 
 
 export const useTimelineStore = defineStore('timeline', () => {
@@ -25,6 +33,14 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const lodProfile = ref<LodLevel[]>([]);
 	const calendar = ref<Calendar>();
 	const hiddenRanges = ref<HiddenRange[]>([]);
+	const notes = ref<TimelineNote[]>([]);
+	const lastDeleted = ref<LastDeletedState | null>(null);
+	const centerAbsoluteTime = ref<number>(0); // fractional center position (e.g. 1495.8), unlike currentNowYear which is floored
+	const distanceFrom = ref<number | null>(null);
+	const distanceTo = ref<number | null>(null);
+	const notesDistanceTab = ref<'notes' | 'distance'>('notes');
+	const viewportWidthPx = ref<number>(0); // pixel width of the main timeline canvas, used by minimap
+	let _undoTimer: ReturnType<typeof setTimeout> | null = null;
 	//const konvaItems = ref<KonvaGroupObject[]>([]);
 
 	const ItemTypes = [
@@ -73,6 +89,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 			currentProject.value = response.Project;
 			calendar.value = response.Project.Calendar;
 			hiddenRanges.value = (response.HiddenRanges ?? []).sort((a, b) => a.StartYear - b.StartYear);
+			notes.value = (response.Notes ?? []).sort((a, b) => a.AbsoluteTime - b.AbsoluteTime);
 			const lProf = response.Project.Calendar.LodProfile;
 			const _lp = lProf.Profile;
 			if(_lp){
@@ -105,6 +122,55 @@ export const useTimelineStore = defineStore('timeline', () => {
 		currentNowYear.value = year;
 	}
 
+	function setVisibleItems(count: number) {
+		visibleItems.value = count;
+	}
+
+	function setDistanceFrom(value: number | null) {
+		distanceFrom.value = value;
+	}
+
+	function setDistanceTo(value: number | null) {
+		distanceTo.value = value;
+	}
+
+	function setNotesDistanceTab(tab: 'notes' | 'distance') {
+		notesDistanceTab.value = tab;
+	}
+
+	function setCenterAbsoluteTime(t: number) {
+		centerAbsoluteTime.value = t;
+	}
+
+	function setViewportWidth(w: number) {
+		viewportWidthPx.value = w;
+	}
+
+	function addNote(note: TimelineNote) {
+		notes.value.push(note);
+		notes.value.sort((a, b) => a.AbsoluteTime - b.AbsoluteTime);
+	}
+
+	function updateNote(note: TimelineNote) {
+		const idx = notes.value.findIndex(n => n.Id === note.Id);
+		if (idx !== -1) notes.value[idx] = note;
+	}
+
+	function removeNote(noteId: string) {
+		notes.value = notes.value.filter(n => n.Id !== noteId);
+	}
+
+	function setLastDeleted(data: LastDeletedState) {
+		if (_undoTimer) clearTimeout(_undoTimer);
+		lastDeleted.value = data;
+		_undoTimer = setTimeout(() => { lastDeleted.value = null; _undoTimer = null; }, 30000);
+	}
+
+	function clearLastDeleted() {
+		if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+		lastDeleted.value = null;
+	}
+
 
 	function lodZoomIn(){
 		if(!lodProfile.value) return;
@@ -132,11 +198,15 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// Expose everything so Vue components can use them
 	return {
 		// variables
-		items, currentNowYear, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex,
+		items, currentNowYear, centerAbsoluteTime, viewportWidthPx, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex,
 		pastItems, futureItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle, hiddenRanges,
+		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab,
 
 		// functions
-		loadItems, addItem, removeItem, setNowYear, setProjects, loadTimelines, loadTimelineData,setFpsDisplay,lodZoomIn, lodZoomOut,
+		loadItems, addItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
+		setDistanceFrom, setDistanceTo, setNotesDistanceTab,
+		addNote, updateNote, removeNote,
+		setLastDeleted, clearLastDeleted,
 
 		// constants
 		ItemTypes

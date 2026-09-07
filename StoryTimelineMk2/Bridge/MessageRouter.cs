@@ -86,6 +86,10 @@ namespace StoryTimelineMk2.Bridge
                 // Item deletion
                 case "DeleteItem":          HandleDeleteItem(message); break;
 
+                // Timeline notes
+                case "SaveNote":            HandleSaveNote(message); break;
+                case "DeleteNote":          HandleDeleteNote(message); break;
+
                 // Hidden ranges
                 case "GetHiddenRanges":     HandleGetHiddenRanges(message); break;
                 case "SaveHiddenRange":     HandleSaveHiddenRange(message); break;
@@ -344,6 +348,35 @@ namespace StoryTimelineMk2.Bridge
             string itemId = message.Payload.GetProperty("itemId").GetString();
             new ItemRepo().DeleteItem(itemId);
             ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleSaveNote(BridgeMessage message)
+        {
+            try
+            {
+                var note = JsonSerializer.Deserialize<NoteItem>(message.Payload.GetRawText(), _jsonOpts);
+                if (note == null) { ReplyToVue(message.MessageId, new { status = "error", message = "Invalid payload" }); return; }
+                string savedId = new NoteRepo().SaveNote(note);
+                ReplyToVue(message.MessageId, new { status = "ok", noteId = savedId });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleDeleteNote(BridgeMessage message)
+        {
+            try
+            {
+                string noteId = message.Payload.GetProperty("noteId").GetString();
+                new NoteRepo().DeleteNote(noteId);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
         }
 
         private void HandleDeleteTimeline(BridgeMessage message)
@@ -703,9 +736,9 @@ namespace StoryTimelineMk2.Bridge
 
             using var dialog = new OpenFileDialog
             {
-                Title = "Select Image",
+                Title = "Select Images",
                 Filter = "Image files|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff|All files|*.*",
-                Multiselect = false,
+                Multiselect = true,
             };
 
             if (dialog.ShowDialog() != DialogResult.OK)
@@ -717,10 +750,15 @@ namespace StoryTimelineMk2.Bridge
             try
             {
                 var mediaRepo = new MediaRepo();
-                var title = Path.GetFileNameWithoutExtension(dialog.FileName);
-                var picture = mediaRepo.ImportAndSaveMedia(dialog.FileName, title, "");
-                mediaRepo.LinkPictureToItem(picture.Id, itemId);
-                ReplyToVue(message.MessageId, new { status = "ok", Picture = picture });
+                var pictures = new List<MediaItem>();
+                foreach (var filePath in dialog.FileNames)
+                {
+                    var title = Path.GetFileNameWithoutExtension(filePath);
+                    var picture = mediaRepo.ImportAndSaveMedia(filePath, title, "");
+                    mediaRepo.LinkPictureToItem(picture.Id, itemId);
+                    pictures.Add(picture);
+                }
+                ReplyToVue(message.MessageId, new { status = "ok", Pictures = pictures });
             }
             catch (Exception ex)
             {

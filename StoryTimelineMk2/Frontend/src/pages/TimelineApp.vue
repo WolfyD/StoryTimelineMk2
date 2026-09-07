@@ -4,8 +4,13 @@ import { useTimelineStore } from '@/stores/timelineStore'
 import { PhArrowArcRight, PhGear, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import TimelineCanvas from "@/components/TimelineCanvas.vue" ;
+import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
+import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
+import TimelineDataPanel from "@/components/TimelineDataPanel.vue";
+import TimelineGalleryPanel from "@/components/TimelineGalleryPanel.vue";
+import TimelineMinimap from "@/components/TimelineMinimap.vue";
+import TimelineItemViewModal from "@/components/TimelineItemViewModal.vue";
 import { BackendAPI } from '@/bridge/api';
 
 const store = useTimelineStore()
@@ -13,12 +18,25 @@ const store = useTimelineStore()
 const loadError = ref<boolean>(false)
 const timelineCanvasRef = ref();
 const showSettings = ref(false);
+const viewItemId = ref<string | null>(null);
+const lightboxUrl = ref<string | null>(null);
 
 function onItemClick(itemId: string) {
     BackendAPI.send('OpenAddEditItemWindow', {
         timelineId: store.currentProject?.Id,
         itemId,
     })
+}
+
+async function onViewItem(itemId: string) {
+    const storeItem = store.items.find((i: { Id?: string; id?: string; TypeId?: number }) => (i.Id ?? i.id) === itemId);
+    if (storeItem?.TypeId === 4) {
+        const data = await BackendAPI.GetItemForEdit(store.currentProject!.Id, itemId, 4);
+        const fp = data?.Pictures?.[0]?.FilePath;
+        if (fp) lightboxUrl.value = `https://media.app/${fp}`;
+    } else {
+        viewItemId.value = itemId;
+    }
 }
 
 function onAddItem(typeId: number, absoluteTime: number, lodIndex: number) {
@@ -28,6 +46,16 @@ function onAddItem(typeId: number, absoluteTime: number, lodIndex: number) {
         year: absoluteTime,
         granularity: lodIndex,
     })
+}
+
+async function undoDelete() {
+    const d = store.lastDeleted;
+    if (!d) return;
+    const result = await BackendAPI.SaveItem(d.item, d.tagNames, d.characterAppearances, d.storyRefs, d.chapterRefs);
+    if (result?.status === 'ok') {
+        store.addItem(d.item);
+        store.clearLastDeleted();
+    }
 }
 
 // functions
@@ -51,7 +79,7 @@ let throttleTimer:number = -1;
 let debounceTimer:number;
 
 function jump() {
-	const input = document.querySelector("#jump-to-year-input");
+	const input = document.querySelector("#jump-to-year-input") as HTMLInputElement | null;
 	if(input){
 		if(store.layoutSettings?.TimelineAnimateOnJumpToYear){
 			timelineCanvasRef.value.animateJumpToYear(input.value);
@@ -84,6 +112,14 @@ function handleResizeEvent(){
 			});
 		}
 	}
+}
+
+function onMinimapJump(year: number) {
+    if (store.layoutSettings?.TimelineAnimateOnJumpToYear) {
+        timelineCanvasRef.value?.animateJumpToYear(year);
+    } else {
+        timelineCanvasRef.value?.jumpToYear(year);
+    }
 }
 
 function onHotkey(e: KeyboardEvent) {
@@ -150,16 +186,16 @@ onBeforeUnmount(() => {
     <Splitpanes horizontal class="timeline-splitpanes-wrapper" @resize="handleResizeEvent();">
 
         <Pane id="timeline-data" :size="40" min-size="20" max-size="70">
-            <Splitpanes >
+            <Splitpanes>
                 <Pane id="timeline-data-images" class="timeline-data-block" :size="27">
-
-				</Pane>
+                    <TimelineGalleryPanel :layout-settings="store.layoutSettings ?? null" />
+                </Pane>
                 <Pane id="timeline-data-notes" class="timeline-data-block" :size="27">
-
-				</Pane>
+                    <TimelineNotesPanel :layout-settings="store.layoutSettings ?? null" />
+                </Pane>
                 <Pane id="timeline-data-contents" class="timeline-data-block" :size="46">
-
-				</Pane>
+                    <TimelineDataPanel :layout-settings="store.layoutSettings ?? null" />
+                </Pane>
             </Splitpanes>
         </Pane>
 
@@ -168,10 +204,11 @@ onBeforeUnmount(() => {
 			<TimelineCanvas
 				ref="timelineCanvasRef"
 				:timeline-items="store.items"
-				:timeline-settings="store.settings"
+				:timeline-settings="store.settings ?? null"
 				:timeline-info="store.currentProject"
-				:layout-settings="store.layoutSettings"
+				:layout-settings="store.layoutSettings ?? null"
 				@item-click="onItemClick"
+				@view-item="onViewItem"
 				@add-item="onAddItem"
 			></TimelineCanvas>
         </Pane>
@@ -179,13 +216,33 @@ onBeforeUnmount(() => {
     </Splitpanes>
 
     <div id="timeline-overview">
+        <TimelineMinimap @jump-to-year="onMinimapJump" />
+    </div>
 
-	</div>
+    <!-- Item view modal -->
+    <TimelineItemViewModal
+        v-if="viewItemId && store.currentProject"
+        :item-id="viewItemId"
+        :timeline-id="store.currentProject.Id"
+        @close="viewItemId = null"
+    />
+
+    <!-- Picture lightbox -->
+    <Teleport to="body">
+        <div v-if="lightboxUrl" class="picture-lightbox-backdrop" @click="lightboxUrl = null">
+            <img :src="lightboxUrl" class="picture-lightbox-img" @click.stop />
+        </div>
+    </Teleport>
 
 	<div id="timeline-nav">
+		<div id="undo-delete-bar" v-if="store.lastDeleted">
+			<span class="undo-text">Undo deletion of <em>"{{ store.lastDeleted.item.Title }}"</em></span>
+			<button class="undo-btn" @click="undoDelete">↩ Undo</button>
+			<button class="undo-dismiss" @click="store.clearLastDeleted">✕</button>
+		</div>
 		<div id="timeline-nav-container">
 			<p>Jump to year</p>
-			<input id="jump-to-year-input" type="number" :step="1" :value="0" />
+			<input id="jump-to-year-input" type="number" :step="1" :value="store.currentNowYear" />
 			<div id="jump-to-year-button" class="button default" @click="jump"><PhArrowArcRight :size="32" /></div>
 		</div>
 
@@ -368,6 +425,55 @@ onBeforeUnmount(() => {
 	user-select: none;
 }
 
+#undo-delete-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 12px;
+	margin: auto 0;
+	flex-shrink: 0;
+
+	.undo-text {
+		font-size: 0.85em;
+		color: #fde68a;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 280px;
+
+		em {
+			font-style: italic;
+			color: #fbbf24;
+		}
+	}
+
+	.undo-btn {
+		background: #d97706;
+		color: #fff;
+		border: none;
+		border-radius: 4px;
+		padding: 3px 10px;
+		font-size: 0.82em;
+		cursor: pointer;
+		white-space: nowrap;
+		transition: background 0.15s;
+
+		&:hover { background: #b45309; }
+	}
+
+	.undo-dismiss {
+		background: transparent;
+		color: #9ca3af;
+		border: none;
+		cursor: pointer;
+		font-size: 0.9em;
+		padding: 2px 4px;
+		line-height: 1;
+
+		&:hover { color: #fff; }
+	}
+}
+
 #timeline-nav-container {
 	position: relative;
 	display: flex;
@@ -402,9 +508,10 @@ onBeforeUnmount(() => {
 }
 
 #timeline-overview {
-    background-color: #6b564088;
     height: 100px !important;
     flex-shrink: 0;
+    border-top: 2px solid #00000033;
+    box-shadow: inset 0 4px 8px #00000018;
 }
 
 /* 4. Let the inner splitpanes handle the height */
@@ -448,5 +555,25 @@ onBeforeUnmount(() => {
     right: 0;
     height: 3px;
     pointer-events: none;
+}
+
+.picture-lightbox-backdrop {
+    position: fixed;
+    inset: 0;
+    background: #000000cc;
+    z-index: 9500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+}
+
+.picture-lightbox-img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 6px;
+    box-shadow: 0 8px 60px #00000099;
+    cursor: default;
 }
 </style>

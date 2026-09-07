@@ -38,6 +38,13 @@ namespace StoryTimelineMk2.Forms
 
             await wv_Timeline.EnsureCoreWebView2Async(webEnvironment);
 
+            string mediaFolder = AppConfig.Instance.GetMediaFolder();
+            Directory.CreateDirectory(mediaFolder);
+            wv_Timeline.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "media.app",
+                mediaFolder,
+                CoreWebView2HostResourceAccessKind.Allow);
+
             _messageRouter = new MessageRouter(wv_Timeline.CoreWebView2, this);
 
             // Apply CSS zoom once the page finishes loading

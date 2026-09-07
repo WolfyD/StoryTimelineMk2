@@ -573,6 +573,7 @@ namespace StoryTimelineMk2.Database
 
             // Schema migrations: ALTER TABLE statements that may already exist on older DBs
             try { db.Execute("ALTER TABLE timelines ADD COLUMN color TEXT DEFAULT NULL;"); } catch { }
+            try { db.Execute("ALTER TABLE notes ADD COLUMN absolute_time REAL NOT NULL DEFAULT 0;"); } catch { }
         }
     }
 }

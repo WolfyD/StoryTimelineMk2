@@ -96,6 +96,40 @@ const saveError = ref('')
 const showNewPreset = ref(false)
 const newPresetName = ref('')
 
+// --- data range color with alpha support ---
+function parseHexAlpha(hex: string): { rgb: string; alpha: number } {
+    if (!hex) return { rgb: '#3b6ec4', alpha: 30 };
+    const h = hex.replace('#', '');
+    if (h.length === 4) {
+        // #RGBA short form
+        const r = h[0] + h[0], g = h[1] + h[1], b = h[2] + h[2], a = h[3] + h[3];
+        return { rgb: `#${r}${g}${b}`, alpha: Math.round(parseInt(a, 16) / 255 * 100) };
+    }
+    if (h.length === 8) {
+        // #RRGGBBAA
+        return { rgb: `#${h.slice(0, 6)}`, alpha: Math.round(parseInt(h.slice(6, 8), 16) / 255 * 100) };
+    }
+    if (h.length === 6) return { rgb: `#${h}`, alpha: 100 };
+    if (h.length === 3) {
+        const r = h[0] + h[0], g = h[1] + h[1], b = h[2] + h[2];
+        return { rgb: `#${r}${g}${b}`, alpha: 100 };
+    }
+    return { rgb: '#3b6ec4', alpha: 30 };
+}
+
+function buildHexAlpha(rgb: string, alphaPct: number): string {
+    const a = Math.round((alphaPct / 100) * 255).toString(16).padStart(2, '0');
+    return rgb + a;
+}
+
+const _initDRC = parseHexAlpha(localLayout.TimelineDataRangeColor);
+const dataRangeRGB   = ref(_initDRC.rgb);
+const dataRangeAlpha = ref(_initDRC.alpha);
+
+watch([dataRangeRGB, dataRangeAlpha], ([rgb, alpha]) => {
+    localLayout.TimelineDataRangeColor = buildHexAlpha(rgb, alpha);
+});
+
 // --- hidden ranges ---
 const hiddenRanges = ref<HiddenRange[]>([...store.hiddenRanges])
 const newRangeStart = ref<number | null>(null)
@@ -490,8 +524,14 @@ async function save() {
 
                     <span class="s-label">Color</span>
                     <div class="color-row">
-                        <input class="s-color" type="color" v-model="localLayout.TimelineDataRangeColor" />
+                        <input class="s-color" type="color" v-model="dataRangeRGB" />
                         <span class="color-hex">{{ localLayout.TimelineDataRangeColor }}</span>
+                    </div>
+
+                    <span class="s-label">Opacity</span>
+                    <div class="color-row alpha-row">
+                        <input type="range" class="s-range" min="0" max="100" step="1" v-model.number="dataRangeAlpha" />
+                        <span class="color-hex">{{ dataRangeAlpha }}%</span>
                     </div>
                 </div>
 
@@ -733,6 +773,12 @@ select.s-input {
     font-size: 12px;
     color: #64748b;
     font-family: monospace;
+}
+
+.s-range {
+    flex: 1;
+    accent-color: #3b6ec4;
+    cursor: pointer;
 }
 
 .preset-row {

@@ -11,7 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     close: []
-    linked: [picture: MediaItem]
+    linked: [pictures: MediaItem[]]
 }>()
 
 const allPictures   = ref<MediaItem[]>([])
@@ -51,7 +51,7 @@ async function useSelected() {
     isBusy.value = false
     if (result?.status === 'ok') {
         const picture = allPictures.value.find(p => p.Id === selectedId.value)
-        if (picture) emit('linked', picture)
+        if (picture) emit('linked', [picture])
     }
 }
 
@@ -59,9 +59,11 @@ async function importNew() {
     isBusy.value = true
     const result = await BackendAPI.AddImageToItem(props.itemId)
     isBusy.value = false
-    if (result?.status === 'ok' && result.Picture) {
-        allPictures.value.unshift(result.Picture)
-        emit('linked', result.Picture)
+    if (result?.status === 'ok' && result.Pictures?.length) {
+        for (const pic of result.Pictures) {
+            allPictures.value.unshift(pic)
+        }
+        emit('linked', result.Pictures)
     }
 }
 

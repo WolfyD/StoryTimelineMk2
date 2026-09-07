@@ -431,9 +431,11 @@ async function addImage() {
   showImagePicker.value = true
 }
 
-function onImageLinked(picture: MediaItem) {
-  if (!images.value.some(i => i.Id === picture.Id)) {
-    images.value.push(picture)
+function onImageLinked(pictures: MediaItem[]) {
+  for (const picture of pictures) {
+    if (!images.value.some(i => i.Id === picture.Id)) {
+      images.value.push(picture)
+    }
   }
   showImagePicker.value = false
 }
@@ -450,7 +452,7 @@ async function removeImage(pictureId: string) {
     <!-- ===== HEADER ===== -->
     <div class="section header-section">
       <div class="header-row">
-        <span class="type-pill" :style="{ backgroundColor: item.Color }">
+        <span class="type-pill">
           {{ ITEM_TYPES.find(t => t.id === item.TypeId)?.name ?? 'Item' }}
         </span>
         <div class="header-actions">
@@ -876,10 +878,12 @@ async function removeImage(pictureId: string) {
 .type-pill {
   display: inline-block;
   padding: 3px 10px;
-  border-radius: 12px;
+  border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #fff;
+  color: #ffffff;
+  background: #db0000;
+  border: 1px solid #460000;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   user-select: none;
