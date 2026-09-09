@@ -419,6 +419,9 @@ namespace StoryTimelineMk2.Database
                 CREATE INDEX IF NOT EXISTS idx_item_char_app_char ON item_character_appearances(character_id);
 
                 CREATE INDEX IF NOT EXISTS idx_hidden_ranges_timeline ON timeline_hidden_ranges(timeline_id);
+                CREATE INDEX IF NOT EXISTS idx_settings_timeline_id ON settings(timeline_id);
+                CREATE INDEX IF NOT EXISTS idx_characters_timeline_id ON characters(timeline_id);
+                CREATE INDEX IF NOT EXISTS idx_notes_timeline_id ON notes(timeline_id);
             ");
         }
 

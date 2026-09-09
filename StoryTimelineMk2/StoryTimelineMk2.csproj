@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- WebView2 WPF shim targets net5.0-windows; WinForms project doesn't use WPF so the conflict is irrelevant -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +16,12 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
     <!-- Pin transitive SQLite native lib to patched version (fixes GHSA-2m69-gcr7-jv3q) -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>StoryTimelineMk2.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +38,10 @@
     <Compile Remove="Frontend\**" />
     <EmbeddedResource Remove="Frontend\**" />
     <None Remove="Frontend\**" />
+    <Content Remove="StoryTimelineMk2.Tests\**" />
+    <Compile Remove="StoryTimelineMk2.Tests\**" />
+    <EmbeddedResource Remove="StoryTimelineMk2.Tests\**" />
+    <None Remove="StoryTimelineMk2.Tests\**" />
   </ItemGroup>
 
 </Project>

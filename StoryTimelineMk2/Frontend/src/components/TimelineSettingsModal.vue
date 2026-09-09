@@ -146,7 +146,7 @@ async function addRange() {
     const result = await BackendAPI.SaveHiddenRange(store.currentProject!.Id, s, e, newRangeLabel.value.trim() || null)
     if (result?.status === 'ok' && result.range) {
         hiddenRanges.value = [...hiddenRanges.value, result.range].sort((a, b) => a.StartYear - b.StartYear)
-        store.hiddenRanges = hiddenRanges.value
+        store.setHiddenRanges(hiddenRanges.value)
         newRangeStart.value = null
         newRangeEnd.value   = null
         newRangeLabel.value = ''
@@ -159,7 +159,7 @@ async function deleteRange(id: number) {
     const result = await BackendAPI.DeleteHiddenRange(id)
     if (result?.status === 'ok') {
         hiddenRanges.value = hiddenRanges.value.filter(r => r.Id !== id)
-        store.hiddenRanges = hiddenRanges.value
+        store.setHiddenRanges(hiddenRanges.value)
     }
 }
 
@@ -231,7 +231,7 @@ async function save() {
             store.settings.UseCustomScaling = local.UseCustomScaling
             store.settings.CustomScale = local.CustomScale
         }
-        if (lsResult.layoutSettings) store.layoutSettings = lsResult.layoutSettings
+        if (lsResult.layoutSettings) store.setLayoutSettings(lsResult.layoutSettings)
         emit('close')
     } else {
         saveError.value = 'Save failed. Please try again.'

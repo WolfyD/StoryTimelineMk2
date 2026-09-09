@@ -407,7 +407,7 @@ async function save(closeOnSuccess = true) {
       item.value.Id = result.itemId
       if (closeOnSuccess) window.close()
     } else {
-      saveError.value = result?.itemId ?? 'Save failed'
+      saveError.value = (result as { message?: string })?.message ?? 'Save failed'
     }
   } catch (err) {
     saveError.value = String(err)

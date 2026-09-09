@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
 import Konva from 'konva';
 import 'splitpanes/dist/splitpanes.css';
@@ -24,6 +24,9 @@ const boundaryEndPx   = ref<number | null>(null);
 
 let localYearCache = store.currentNowYear;
 let stage: Stage | null = null;
+let _fpsInterval: ReturnType<typeof setInterval> | null = null;
+let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+let _keyupHandler:   ((e: KeyboardEvent) => void) | null = null;
 
 const gridLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
@@ -1155,8 +1158,10 @@ onMounted(() => {
         dragStartX = pos.x;
     });
 
-    window.addEventListener('keydown', (e) => { if (e.key === 'Shift') { shiftHeld = true;  if (mouseOnCanvas && lastMouseX !== null && lastMouseY !== null) updateCursor(lastMouseX, lastMouseY); } });
-    window.addEventListener('keyup',   (e) => { if (e.key === 'Shift') { shiftHeld = false; if (mouseOnCanvas && lastMouseX !== null && lastMouseY !== null) updateCursor(lastMouseX, lastMouseY); } });
+    _keydownHandler = (e) => { if (e.key === 'Shift') { shiftHeld = true;  if (mouseOnCanvas && lastMouseX !== null && lastMouseY !== null) updateCursor(lastMouseX, lastMouseY); } };
+    _keyupHandler   = (e) => { if (e.key === 'Shift') { shiftHeld = false; if (mouseOnCanvas && lastMouseX !== null && lastMouseY !== null) updateCursor(lastMouseX, lastMouseY); } };
+    window.addEventListener('keydown', _keydownHandler);
+    window.addEventListener('keyup',   _keyupHandler);
 
     window.addEventListener('mouseup', () => {
         isDragging = false;
@@ -1258,7 +1263,18 @@ onMounted(() => {
     // Always set the initial year and visible count after all startup renders
     store.setNowYear(Math.floor(viewport.centerTime));
 
-    window.setInterval(trackFps, 20);
+    _fpsInterval = window.setInterval(trackFps, 20);
+});
+
+onBeforeUnmount(() => {
+    if (_fpsInterval !== null) clearInterval(_fpsInterval);
+    if (_keydownHandler) window.removeEventListener('keydown', _keydownHandler);
+    if (_keyupHandler)   window.removeEventListener('keyup',   _keyupHandler);
+    stage?.destroy();
+    nodeCache.clear();
+    bookmarkNodeCache.clear();
+    pictureImageCache.clear();
+    pictureLoadingSet.clear();
 });
 
 function refreshItems() {

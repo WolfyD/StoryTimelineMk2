@@ -19,13 +19,13 @@ export const FormatRegistry: Record<string, (year: number, fraction: number) => 
     },
 	'SEASONS': (y, f) => {
         if (f === 0) return `${Math.floor(y)}`;
-        const months = ['Spring', 'Summer', 'Fall', 'Winter']; //TODO: replace with calendar setup
-        return months[Math.round(f * 4)] || '';
+        const seasons = ['Spring', 'Summer', 'Fall', 'Winter']; //TODO: replace with calendar setup
+        return seasons[Math.min(Math.round(f * 4), 3)];
     },
     'MONTHS': (y, f) => {
         if (f === 0) return `${Math.floor(y)}`;
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; //TODO: replace with calendar setup
-        return months[Math.round(f * 12)] || '';
+        return months[Math.min(Math.round(f * 12), 11)];
     },
 	'WEEKS': (y, f) => {
         if (f === 0) return `${Math.floor(y)}`;

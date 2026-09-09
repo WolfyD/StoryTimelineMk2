@@ -18,30 +18,62 @@ namespace StoryTimelineMk2.Database
         public bool CheckIfTimelineTitleExists(string title)
         {
             using var db = new SqliteConnection(_connString);
-            var q = db.QuerySingle<int>($@"SELECT count(*) FROM timelines WHERE title='{title}';");
+            var q = db.QuerySingle<int>("SELECT COUNT(*) FROM timelines WHERE title = @Title", new { Title = title });
             return q > 0;
         }
 
-        public int CreateTimeline(string title)
+        public int CreateTimeline(string title, string author = "", string? calendarId = null)
         {
             if (CheckIfTimelineTitleExists(title)) { return -1; }
 
             using var db = new SqliteConnection(_connString);
+
+            string color = GenerateRandomColor();
+            string effectiveCalendarId = string.IsNullOrEmpty(calendarId) ? "cal_default_gregorian" : calendarId;
 
             TimelineInfo timelineInfo = new TimelineInfo()
             {
                 Title = title,
                 StartYear = 0,
                 Description = "",
-                Author = ""
+                Author = author
             };
 
-            string sql = @"INSERT INTO timelines (title, author, description, start_year, granularity)
-                            VALUES (@Title, @Author, @Description, @StartYear, @Granularity)";
-            db.Execute(sql, timelineInfo);
+            string sql = @"INSERT INTO timelines (title, author, description, start_year, color, calendar_id)
+                            VALUES (@Title, @Author, @Description, @StartYear, @Color, @CalendarId)";
+            db.Execute(sql, new { timelineInfo.Title, timelineInfo.Author, timelineInfo.Description, timelineInfo.StartYear, Color = color, CalendarId = effectiveCalendarId });
 
             var q = db.QuerySingle<int>("SELECT max(id) FROM timelines;");
             return q;
+        }
+
+        private static string GenerateRandomColor()
+        {
+            double h = Random.Shared.NextDouble() * 360.0;
+            double s = 0.50 + Random.Shared.NextDouble() * 0.20; // 50–70%
+            double l = 0.45 + Random.Shared.NextDouble() * 0.15; // 45–60%
+            var (r, g, b) = HslToRgb(h, s, l);
+            return $"#{r:X2}{g:X2}{b:X2}";
+        }
+
+        private static (int r, int g, int b) HslToRgb(double h, double s, double l)
+        {
+            double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            double p = 2 * l - q;
+            int r = (int)Math.Round(HueToRgb(p, q, h / 360.0 + 1.0 / 3.0) * 255);
+            int g = (int)Math.Round(HueToRgb(p, q, h / 360.0)              * 255);
+            int b = (int)Math.Round(HueToRgb(p, q, h / 360.0 - 1.0 / 3.0) * 255);
+            return (r, g, b);
+        }
+
+        private static double HueToRgb(double p, double q, double t)
+        {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1.0 / 6.0) return p + (q - p) * 6 * t;
+            if (t < 1.0 / 2.0) return q;
+            if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6;
+            return p;
         }
 
         public IEnumerable<TimelineInfo> GetAll()
@@ -53,7 +85,7 @@ namespace StoryTimelineMk2.Database
         public TimelineInfo GetTimelineById(int id)
         {
             using var db = new SqliteConnection(_connString);
-            var TL = db.QueryFirst<TimelineInfo>($"SELECT * FROM timelines WHERE id='{id}' LIMIT 1;");
+            var TL = db.QueryFirst<TimelineInfo>("SELECT * FROM timelines WHERE id = @Id LIMIT 1", new { Id = id });
             var cal = new CalendarRepo().GetCalendarById(TL.CalendarId);
             var set = new SettingsRepo().GetTimelineSettings(id);
             var ls = new LayoutSettingsRepo().GetById(TL.LayoutSettingsId);
@@ -67,14 +99,13 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection(_connString);
             string sql = @"
-                INSERT INTO timelines (id, title, author, description, start_year, granularity) 
-                VALUES (@Id, @Title, @Author, @Description, @StartYear, @Granularity)
-                ON CONFLICT(id) DO UPDATE SET 
+                INSERT INTO timelines (id, title, author, description, start_year)
+                VALUES (@Id, @Title, @Author, @Description, @StartYear)
+                ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     author = excluded.author,
                     description = excluded.description,
                     start_year = excluded.start_year,
-                    granularity = excluded.granularity,
                     updated_at = CURRENT_TIMESTAMP;";
                     
             db.Execute(sql, timeline);
@@ -223,9 +254,9 @@ namespace StoryTimelineMk2.Database
                     if (rawConnectedId != null)
                         itemMap.TryGetValue(rawConnectedId, out newConnectedId);
                     db.Execute(@"
-                        INSERT INTO notes (id, note_contents, timeline_id, connected_item_id, nearest_year)
-                        VALUES (@Id, @NoteContents, @TimelineId, @ConnectedItemId, @NearestYear)",
-                        new { Id = Guid.NewGuid().ToString(), NoteContents = note.note_contents, TimelineId = newId, ConnectedItemId = newConnectedId, note.nearest_year }, tx);
+                        INSERT INTO notes (id, note_contents, timeline_id, connected_item_id, nearest_year, absolute_time)
+                        VALUES (@Id, @NoteContents, @TimelineId, @ConnectedItemId, @NearestYear, @AbsoluteTime)",
+                        new { Id = Guid.NewGuid().ToString(), NoteContents = note.note_contents, TimelineId = newId, ConnectedItemId = newConnectedId, note.nearest_year, AbsoluteTime = note.absolute_time }, tx);
                 }
 
 

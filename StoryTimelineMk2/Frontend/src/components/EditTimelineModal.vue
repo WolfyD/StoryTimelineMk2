@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, onUnmounted } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
 import type { TimelineProject } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
@@ -20,14 +20,40 @@ const calendars = ref<{ Id: string; Name: string }[]>([])
 const isSaving = ref(false)
 const error = ref('')
 
+let calEditorWasOpened = false
+
+function openCalendarEditor(calendarId: string | null) {
+    calEditorWasOpened = true
+    BackendAPI.send('OpenCalendarEditorWindow', { calendarId })
+}
+
+async function refreshCalendars() {
+    const prevIds = new Set(calendars.value.map(c => c.Id))
+    const list = await BackendAPI.GetCalendarList()
+    if (list) {
+        calendars.value = list
+        // Auto-select any newly added calendar
+        const newCal = list.find(c => !prevIds.has(c.Id))
+        if (newCal) local.calendarId = newCal.Id
+    }
+}
+
+function onWindowFocus() {
+    if (calEditorWasOpened) {
+        calEditorWasOpened = false
+        refreshCalendars()
+    }
+}
+
 onMounted(async () => {
     const list = await BackendAPI.GetCalendarList()
     if (list) calendars.value = list
+    window.addEventListener('focus', onWindowFocus)
 })
 
-function openCalendarEditor(calendarId: string | null) {
-    BackendAPI.send('OpenCalendarEditorWindow', { calendarId })
-}
+onUnmounted(() => {
+    window.removeEventListener('focus', onWindowFocus)
+})
 
 async function save() {
     if (!local.title.trim()) { error.value = 'Title is required.'; return }

@@ -59,8 +59,8 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// 2. Getters (Computed derived data)
 	// ==========================================
 	// Useful for the Konva layout algorithm to split items based on the NOW line
-	const pastItems = computed(() => items.value.filter(i => i.year < currentNowYear.value));
-	const futureItems = computed(() => items.value.filter(i => i.year >= currentNowYear.value));
+	const pastItems = computed(() => items.value.filter(i => i.Year < currentNowYear.value));
+	const futureItems = computed(() => items.value.filter(i => i.Year >= currentNowYear.value));
 
 	// ==========================================
 	// 3. Actions (Functions to mutate the state)
@@ -70,15 +70,15 @@ export const useTimelineStore = defineStore('timeline', () => {
 	}
 
 	async function loadTimelines() {
-			projects.value = await BackendAPI.request("GetTimelines", { args: [] });
+		const response = await BackendAPI.request("GetAllTimelines", { args: [] });
+		projects.value = response?.data ?? [];
 	}
 
 	async function loadTimelineData (id:number) {
 		try {
 			// 1. Fire the request across the bridge to C#
 			const response:FullTimelineProject = await BackendAPI.LoadTimelineData(id);
-
-			console.log(response);
+			if (!response) return;
 
 			// 2. Populate the state with the C# response
 			title.value = response.Project.Title;
@@ -136,6 +136,14 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 	function setNotesDistanceTab(tab: 'notes' | 'distance') {
 		notesDistanceTab.value = tab;
+	}
+
+	function setHiddenRanges(ranges: HiddenRange[]) {
+		hiddenRanges.value = ranges;
+	}
+
+	function setLayoutSettings(ls: LayoutSettings) {
+		layoutSettings.value = ls;
 	}
 
 	function setCenterAbsoluteTime(t: number) {
@@ -204,7 +212,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 		// functions
 		loadItems, addItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
-		setDistanceFrom, setDistanceTo, setNotesDistanceTab,
+		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setHiddenRanges, setLayoutSettings,
 		addNote, updateNote, removeNote,
 		setLastDeleted, clearLastDeleted,
 

@@ -30,11 +30,11 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection(_connString);
             string sql = @"
-                INSERT INTO lod_profiles (id, name, lod_profile) 
-                VALUES (@Id, @Name, @LodProfile)
-                ON CONFLICT(id) DO UPDATE SET 
+                INSERT INTO lod_profiles (id, name, profile)
+                VALUES (@Id, @Name, @Profile)
+                ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
-                    lod_profile = excluded.lod_profile";
+                    profile = excluded.profile";
 
             db.Execute(sql, lod);
         }

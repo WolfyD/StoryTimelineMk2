@@ -98,10 +98,13 @@ namespace StoryTimelineMk2.Database
 
                 // 2. Calendars
                 dbTarget.Execute(@"
-                    INSERT INTO main.calendars (id, name, short_name, alternate_name, lod_profile_id, year_definition)
-                    SELECT id, name, short_name, alternate_name, lod_profile_id, year_definition FROM BackupDb.calendars
-                    ON CONFLICT(id) DO UPDATE SET 
-                        name = excluded.name, short_name = excluded.short_name, alternate_name = excluded.alternate_name, 
+                    INSERT INTO main.calendars (id, name, short_name, alternate_name, name_before_0, name_after_0, lod_profile_id, year_definition)
+                    SELECT id, name, short_name, alternate_name,
+                        COALESCE(name_before_0, ''), COALESCE(name_after_0, ''),
+                        lod_profile_id, year_definition FROM BackupDb.calendars
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name, short_name = excluded.short_name, alternate_name = excluded.alternate_name,
+                        name_before_0 = excluded.name_before_0, name_after_0 = excluded.name_after_0,
                         lod_profile_id = excluded.lod_profile_id, year_definition = excluded.year_definition;", transaction: tx);
 
                 // 3. Stories
@@ -249,12 +252,11 @@ namespace StoryTimelineMk2.Database
                 var items = dbV1.Query("SELECT * FROM items");
                 foreach (var item in items)
                 {
-                    Console.WriteLine(item);
                     try
                     {
                         dbV2.Execute(@"
                         INSERT OR IGNORE INTO items (
-                            id, title, description, content, story_id, type_id, 
+                            id, title, description, content, story_id, type_id,
                             year, subtick, original_subtick, end_year, end_subtick, original_end_subtick,
                             book_title, chapter, page, color, creation_granularity, timeline_id,
                             item_index, show_in_notes, importance
@@ -264,11 +266,8 @@ namespace StoryTimelineMk2.Database
                             @book_title, @chapter, @page, @color, @creation_granularity, @timeline_id,
                             @item_index, @show_in_notes, @importance
                         )", (object)item, transaction);
-                    } 
-                    catch(Exception ex)
-                    {
-                        Console.WriteLine(ex.Message);
                     }
+                    catch { }
                 }
 
                 //// Notes (Merge into items as Type 5)

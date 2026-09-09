@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import type { LodLevel } from '@/types/models'
+import WeekDayPicker from '@/components/WeekDayPicker.vue'
+import CalendarDayPicker from '@/components/CalendarDayPicker.vue'
+import RelativeRuleEditor from '@/components/RelativeRuleEditor.vue'
+import { defaultRelativeRule } from '@/utils/relativeRule'
+import type { RelativeRule } from '@/utils/relativeRule'
 
 const params = new URLSearchParams(window.location.search)
 const calendarIdParam = params.get('calendarId')
@@ -25,6 +30,88 @@ const lodProfileName = ref('LOD Profile')
 const lodLevels = ref<LodLevel[]>([])
 const KNOWN_FORMAT_KEYS = ['MILLENNIA', 'CENTURIES', 'DECADES', 'YEARS', 'SEASONS', 'MONTHS', 'WEEKS', 'DAYS']
 const useFractions = ref(false)
+const lodManuallyEdited = ref(false)
+
+// ---- LOD add-level form ----
+const showAddLodForm = ref(false)
+const addLodKey = ref('YEARS')
+const addLodStep = ref(1)
+
+function openAddLodForm() { showAddLodForm.value = true; addLodKey.value = 'YEARS'; addLodStep.value = 1 }
+function confirmAddLod() {
+    lodManuallyEdited.value = true
+    lodLevels.value.push({ index: lodLevels.value.length, formatKey: addLodKey.value, stepFraction: addLodStep.value })
+    showAddLodForm.value = false
+}
+
+function addLodLevelManual() {
+    lodManuallyEdited.value = true
+    lodLevels.value.push({ index: lodLevels.value.length, formatKey: 'YEARS', stepFraction: 1 })
+}
+
+function removeLodLevelManual(i: number) {
+    if (lodLevels.value[i]?.formatKey === 'YEARS') return
+    lodManuallyEdited.value = true
+    lodLevels.value.splice(i, 1)
+}
+
+function autoSetLod() {
+    const levels: LodLevel[] = [
+        { index: 0, formatKey: 'MILLENNIA', stepFraction: 1000 },
+        { index: 1, formatKey: 'CENTURIES', stepFraction: 100 },
+        { index: 2, formatKey: 'DECADES',   stepFraction: 10 },
+        { index: 3, formatKey: 'YEARS',     stepFraction: 1 },
+    ]
+    if (hasSeasons.value && seasons.value.length > 0)
+        levels.push({ index: levels.length, formatKey: 'SEASONS', stepFraction: 1 / seasons.value.length })
+    if (months.value.length > 0)
+        levels.push({ index: levels.length, formatKey: 'MONTHS', stepFraction: 1 / months.value.length })
+    if (hasWeekDef.value && yearLength.value > 0)
+        levels.push({ index: levels.length, formatKey: 'WEEKS', stepFraction: weekLength.value / yearLength.value })
+    if (yearLength.value > 0)
+        levels.push({ index: levels.length, formatKey: 'DAYS', stepFraction: 1 / yearLength.value })
+    lodLevels.value = levels
+    lodManuallyEdited.value = false
+}
+
+function syncLodStepFractions() {
+    // Remove SEASONS row if seasons disabled
+    if (!hasSeasons.value) {
+        lodLevels.value = lodLevels.value.filter(l => l.formatKey !== 'SEASONS')
+    }
+    // Remove WEEKS row if weeks disabled
+    if (!hasWeekDef.value) {
+        lodLevels.value = lodLevels.value.filter(l => l.formatKey !== 'WEEKS')
+    }
+    // Update or add SEASONS
+    if (hasSeasons.value && seasons.value.length > 0) {
+        const frac = 1 / seasons.value.length
+        const row = lodLevels.value.find(l => l.formatKey === 'SEASONS')
+        if (row) { row.stepFraction = frac }
+        else { lodLevels.value.push({ index: 0, formatKey: 'SEASONS', stepFraction: frac }) }
+    }
+    // Update or add MONTHS
+    if (months.value.length > 0) {
+        const frac = 1 / months.value.length
+        const row = lodLevels.value.find(l => l.formatKey === 'MONTHS')
+        if (row) { row.stepFraction = frac }
+        else { lodLevels.value.push({ index: 0, formatKey: 'MONTHS', stepFraction: frac }) }
+    }
+    // Update or add WEEKS
+    if (hasWeekDef.value && yearLength.value > 0) {
+        const frac = weekLength.value / yearLength.value
+        const row = lodLevels.value.find(l => l.formatKey === 'WEEKS')
+        if (row) { row.stepFraction = frac }
+        else { lodLevels.value.push({ index: 0, formatKey: 'WEEKS', stepFraction: frac }) }
+    }
+    // Update DAYS
+    if (yearLength.value > 0) {
+        const row = lodLevels.value.find(l => l.formatKey === 'DAYS')
+        if (row) row.stepFraction = 1 / yearLength.value
+    }
+    // Re-index
+    lodLevels.value.forEach((l, i) => l.index = i)
+}
 
 // ---- Help system ----
 const openHelp = ref<string | null>(null)
@@ -60,6 +147,88 @@ const hasSeasons = ref(false)
 const seasonsHaveShortName = ref(false)
 interface SeasonEntry { name: string; shortName: string; start: number; end: number; significance: string }
 const seasons = ref<SeasonEntry[]>([])
+
+// ---- Season track ----
+const SEASON_PALETTE = ['#e8944a', '#5ba55b', '#5b8ec4', '#b36eb3', '#d4a843', '#5baaaa', '#c0636b', '#6baec0']
+
+interface SeasonSegment { name: string; length: number; color: string }
+const seasonSegments = computed((): SeasonSegment[] => {
+    if (!hasSeasons.value || seasons.value.length === 0) return []
+    return seasons.value.map((s, i) => {
+        let len = s.end - s.start + 1
+        if (len <= 0) len += yearLength.value
+        return { name: s.name || `Season ${i + 1}`, length: Math.max(len, 1), color: SEASON_PALETTE[i % SEASON_PALETTE.length] }
+    })
+})
+
+// ---- Season DOY modal ----
+const showSeasonDoyModal = ref(false)
+const seasonStartInput = ref(1)
+
+function openSeasonDoyModal() {
+    seasonStartInput.value = seasons.value.length > 0 ? seasons.value[0].start + 1 : 1
+    showSeasonDoyModal.value = true
+}
+
+function applySeasonDOY() {
+    showSeasonDoyModal.value = false
+    const n = seasons.value.length
+    if (n === 0) return
+    const startIdx = Math.max(0, seasonStartInput.value - 1) // convert to 0-indexed
+    const base = Math.floor(yearLength.value / n)
+    const extra = yearLength.value % n
+    let cur = startIdx
+    seasons.value.forEach((s, i) => {
+        const len = base + (i < extra ? 1 : 0)
+        s.start = cur % yearLength.value
+        s.end = (cur + len - 1) % yearLength.value
+        cur += len
+    })
+}
+
+// ---- Memorable Days ----
+const hasMemorableDays = ref(false)
+
+interface MemorableDay {
+    id: string
+    name: string
+    color: string
+    type: 'fixed' | 'weekly' | 'relative'
+    startMonth: number   // 0-indexed
+    startDay: number     // 1-indexed within month
+    endMonth: number
+    endDay: number
+    isRange: boolean
+    weekDays: number[]   // for type='weekly': 0-indexed day-of-week indices
+    rule: RelativeRule   // for type='relative'
+}
+const memorableDays = ref<MemorableDay[]>([])
+
+function addMemorableDay() {
+    memorableDays.value.push({
+        id: crypto.randomUUID(),
+        name: 'New Day',
+        color: '#e8944a',
+        type: 'fixed',
+        startMonth: 0,
+        startDay: 1,
+        endMonth: 0,
+        endDay: 1,
+        isRange: false,
+        weekDays: [],
+        rule: defaultRelativeRule(),
+    })
+}
+
+const dayLabelsForPicker = computed((): string[] | undefined => {
+    if (!hasWeekDef.value || weekLength.value === 0) return undefined
+    if (daysHaveShortNames.value && dayShortNames.value.length >= weekLength.value)
+        return dayShortNames.value.slice(0, weekLength.value)
+    if (daysHaveNames.value && dayNames.value.length >= weekLength.value)
+        return dayNames.value.slice(0, weekLength.value)
+    return undefined
+})
+function removeMemorableDay(i: number) { memorableDays.value.splice(i, 1) }
 
 // ---- Fraction conversion ----
 function toFraction(value: number): string {
@@ -108,6 +277,12 @@ watch(weekLength, (newLen) => {
     weekendDays.value = weekendDays.value.filter(d => d < newLen)
 })
 
+// ---- Auto-sync LOD step fractions when not manually edited ----
+watch([months, hasSeasons, seasons, hasWeekDef, weekLength, yearLength], () => {
+    if (lodManuallyEdited.value) return
+    syncLodStepFractions()
+}, { deep: true })
+
 // ---- Parse YearDefinition JSON ----
 function parseYearDefinition(json: string) {
     if (!json) return
@@ -143,6 +318,16 @@ function parseYearDefinition(json: string) {
                 const s = yd.season_definition[String(i)]
                 seasons.value.push({ name: s?.name ?? `Season ${i + 1}`, shortName: s?.short_name ?? '', start: s?.start ?? 0, end: s?.end ?? 89, significance: s?.significance ?? '' })
             }
+        }
+
+        if (yd.memorable_days && Array.isArray(yd.memorable_days)) {
+            hasMemorableDays.value = true
+            memorableDays.value = (yd.memorable_days as Record<string, unknown>[]).map(d => ({
+                ...d,
+                type: (d.type as 'fixed' | 'weekly' | 'relative') ?? 'fixed',
+                weekDays: (d.weekDays as number[]) ?? [],
+                rule: (d.rule as RelativeRule) ?? defaultRelativeRule(),
+            })) as MemorableDay[]
         }
     } catch (e) {
         console.error('Failed to parse YearDefinition', e)
@@ -216,11 +401,17 @@ function buildYearDefinition(): string {
         yd.season_definition = sd
     }
 
+    if (hasMemorableDays.value && memorableDays.value.length > 0) {
+        yd.memorable_days = memorableDays.value
+    }
+
     return JSON.stringify(yd)
 }
 
 async function save() {
     if (!calName.value.trim()) { saveError.value = 'Name is required'; return }
+    if (lodLevels.value.length === 0) { saveError.value = 'LOD Profile must have at least one level.'; return }
+    if (!lodLevels.value.some(l => l.formatKey === 'YEARS')) { saveError.value = 'LOD Profile must include a YEARS level.'; return }
     saveError.value = ''
     isSaving.value = true
     try {
@@ -252,8 +443,6 @@ async function save() {
 // ---- Helpers ----
 function addMonth()    { months.value.push({ name: `Month ${months.value.length + 1}`, shortName: '', length: 30, season: 0 }) }
 function removeMonth(i: number) { months.value.splice(i, 1) }
-function addLodLevel() { lodLevels.value.push({ index: lodLevels.value.length, formatKey: 'YEARS', stepFraction: 1 }) }
-function removeLodLevel(i: number) { lodLevels.value.splice(i, 1) }
 function addSeason()   { seasons.value.push({ name: `Season ${seasons.value.length + 1}`, shortName: '', start: 0, end: 89, significance: '' }) }
 function removeSeason(i: number) { seasons.value.splice(i, 1) }
 function isWeekend(d: number) { return weekendDays.value.includes(d) }
@@ -318,7 +507,10 @@ function toggleWeekend(d: number) {
         <div class="section">
           <div class="section-header-row">
             <h3 class="section-title">LOD Profile</h3>
-            <button class="info-btn" :class="{ active: openHelp === 'lod' }" @click="toggleHelp('lod')" title="Help">i</button>
+            <div class="header-right">
+              <button class="btn btn-secondary btn-sm" @click="autoSetLod" title="Reset LOD to defaults">Auto LOD</button>
+              <button class="info-btn" :class="{ active: openHelp === 'lod' }" @click="toggleHelp('lod')" title="Help">i</button>
+            </div>
           </div>
           <div v-if="openHelp === 'lod'" class="help-bubble">{{ helpTexts.lod }}</div>
           <div class="field" style="margin-bottom:10px">
@@ -346,7 +538,8 @@ function toggleWeekend(d: number) {
               <tr v-for="(lod, i) in lodLevels" :key="i">
                 <td class="num-cell">{{ i }}</td>
                 <td>
-                  <input type="text" class="tbl-input" v-model="lod.formatKey" list="format-keys" />
+                  <input type="text" class="tbl-input" v-model="lod.formatKey" list="format-keys"
+                    @input="lodManuallyEdited = true" @change="lodManuallyEdited = true" />
                   <datalist id="format-keys">
                     <option v-for="k in KNOWN_FORMAT_KEYS" :key="k" :value="k" />
                   </datalist>
@@ -357,7 +550,7 @@ function toggleWeekend(d: number) {
                     type="text"
                     class="tbl-input step-input frac-input"
                     :value="toFraction(lod.stepFraction)"
-                    @change="updateStepFraction(lod, ($event.target as HTMLInputElement).value)"
+                    @change="updateStepFraction(lod, ($event.target as HTMLInputElement).value); lodManuallyEdited = true"
                   />
                   <input
                     v-else
@@ -366,13 +559,28 @@ function toggleWeekend(d: number) {
                     v-model.number="lod.stepFraction"
                     step="any"
                     min="0"
+                    @input="lodManuallyEdited = true"
+                    @change="lodManuallyEdited = true"
                   />
                 </td>
-                <td><button class="btn-icon" @click="removeLodLevel(i)">×</button></td>
+                <td>
+                  <button v-if="lod.formatKey !== 'YEARS'" class="btn-icon" @click="removeLodLevelManual(i)">×</button>
+                  <span v-else class="years-lock" title="YEARS level cannot be removed">🔒</span>
+                </td>
               </tr>
             </tbody>
           </table>
-          <button class="btn btn-secondary btn-sm mt-8" @click="addLodLevel">+ Add Level</button>
+          <template v-if="showAddLodForm">
+            <div class="add-lod-row mt-8">
+              <select v-model="addLodKey" class="tbl-input" style="width:130px">
+                <option v-for="k in KNOWN_FORMAT_KEYS" :key="k" :value="k">{{ k }}</option>
+              </select>
+              <input type="number" v-model.number="addLodStep" step="any" min="0" class="tbl-input step-input" />
+              <button class="btn btn-primary btn-sm" @click="confirmAddLod">Add</button>
+              <button class="btn btn-secondary btn-sm" @click="showAddLodForm = false">Cancel</button>
+            </div>
+          </template>
+          <button v-else class="btn btn-secondary btn-sm mt-8" @click="openAddLodForm">+ Add Level</button>
         </div>
 
       </div>
@@ -494,10 +702,25 @@ function toggleWeekend(d: number) {
           </div>
           <div v-if="openHelp === 'seasons'" class="help-bubble">{{ helpTexts.seasons }}</div>
           <template v-if="hasSeasons">
-            <label class="toggle-label mt-8">
-              <input type="checkbox" v-model="seasonsHaveShortName" />
-              Short names
-            </label>
+            <!-- Season track -->
+            <div v-if="seasonSegments.length > 0" class="season-track">
+              <div
+                v-for="(seg, i) in seasonSegments"
+                :key="i"
+                class="season-seg"
+                :style="{ flex: seg.length, background: seg.color }"
+                :title="seg.name + ' · ' + seg.length + ' days'"
+              >
+                <span class="season-seg-label">{{ seg.name }}</span>
+              </div>
+            </div>
+            <div class="header-right mt-8" style="justify-content:flex-start;gap:8px">
+              <label class="toggle-label">
+                <input type="checkbox" v-model="seasonsHaveShortName" />
+                Short names
+              </label>
+              <button class="btn btn-secondary btn-sm" @click="openSeasonDoyModal" :disabled="seasons.length === 0" title="Auto-calculate season start/end days">Auto DOY</button>
+            </div>
             <table class="data-table mt-8">
               <thead>
                 <tr>
@@ -526,8 +749,106 @@ function toggleWeekend(d: number) {
           </template>
         </div>
 
+        <!-- Memorable Days -->
+        <div class="section">
+          <div class="section-header-row">
+            <h3 class="section-title">Memorable Days</h3>
+            <div class="header-right">
+              <label class="toggle-label">
+                <input type="checkbox" v-model="hasMemorableDays" />
+                {{ hasMemorableDays ? 'Enabled' : 'Disabled' }}
+              </label>
+            </div>
+          </div>
+          <template v-if="hasMemorableDays">
+            <div v-for="(md, i) in memorableDays" :key="md.id" class="mem-day-card">
+              <div class="mem-day-top">
+                <input type="color" class="mem-color" v-model="md.color" title="Color" />
+                <input type="text" class="tbl-input mem-name" v-model="md.name" placeholder="Holiday…" />
+                <select class="tbl-input mem-type" v-model="md.type">
+                  <option value="fixed">Fixed Date</option>
+                  <option value="weekly" :disabled="!hasWeekDef">Weekly</option>
+                  <option value="relative">Relative</option>
+                </select>
+                <button class="btn-icon" @click="removeMemorableDay(i)">×</button>
+              </div>
+              <div class="mem-day-bottom">
+                <template v-if="md.type === 'fixed'">
+                  <div class="mem-day-picker-wrap">
+                    <label class="toggle-label mb-0">
+                      <input type="checkbox" v-model="md.isRange" /> Range
+                    </label>
+                    <CalendarDayPicker
+                      :startMonth="md.startMonth"
+                      :startDay="md.startDay"
+                      :endMonth="md.endMonth"
+                      :endDay="md.endDay"
+                      :isRange="md.isRange"
+                      :months="months"
+                      :weekLength="hasWeekDef ? weekLength : 7"
+                      :dayLabels="dayLabelsForPicker"
+                      :weekendDays="hasWeekDef ? weekendDays : [5, 6]"
+                      @select="v => { md.startMonth = v.startMonth; md.startDay = v.startDay; md.endMonth = v.endMonth; md.endDay = v.endDay }"
+                    />
+                    <div class="date-summary">
+                      <span class="date-label">From:</span>
+                      <span class="date-val">{{ months[md.startMonth]?.name ?? `M${md.startMonth + 1}` }} {{ md.startDay }}</span>
+                      <template v-if="md.isRange">
+                        <span class="date-sep">→</span>
+                        <span class="date-val">{{ months[md.endMonth]?.name ?? `M${md.endMonth + 1}` }} {{ md.endDay }}</span>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+                <template v-else-if="md.type === 'weekly'">
+                  <WeekDayPicker
+                    v-model="md.weekDays"
+                    :weekLength="weekLength"
+                    :dayLabels="dayLabelsForPicker"
+                  />
+                </template>
+                <template v-else>
+                  <RelativeRuleEditor
+                    v-model="md.rule"
+                    :seasons="seasons"
+                    :hasSeasons="hasSeasons"
+                    :months="months"
+                    :hasWeekDef="hasWeekDef"
+                    :weekLength="hasWeekDef ? weekLength : 7"
+                    :dayLabels="dayLabelsForPicker"
+                    :weekendDays="hasWeekDef ? weekendDays : [5, 6]"
+                    :otherMemDays="memorableDays.filter(d => d.id !== md.id).map(d => ({ id: d.id, name: d.name }))"
+                  />
+                </template>
+              </div>
+            </div>
+            <p v-if="memorableDays.length === 0" class="empty-note mt-8">No memorable days yet.</p>
+            <button class="btn btn-secondary btn-sm mt-8" @click="addMemorableDay">+ Add Day</button>
+          </template>
+        </div>
+
       </div>
     </div>
+
+    <!-- Season DOY modal -->
+    <div v-if="showSeasonDoyModal" class="doy-backdrop" @click.self="showSeasonDoyModal = false">
+      <div class="doy-panel">
+        <h4 class="doy-title">Auto-calculate Season Days</h4>
+        <p class="doy-desc">
+          Divides the {{ yearLength }}-day year evenly across {{ seasons.length }} seasons.
+          Enter the first day of <strong>{{ seasons[0]?.name || 'Season 1' }}</strong> (1 = first day of year).
+        </p>
+        <div class="doy-row">
+          <label>First day of {{ seasons[0]?.name || 'Season 1' }}</label>
+          <input type="number" v-model.number="seasonStartInput" min="1" :max="yearLength" style="width:80px" />
+        </div>
+        <div class="doy-actions">
+          <button class="btn btn-secondary btn-sm" @click="showSeasonDoyModal = false">Cancel</button>
+          <button class="btn btn-primary btn-sm" @click="applySeasonDOY">Apply</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <div v-else class="loading-screen">Loading…</div>
@@ -542,19 +863,19 @@ function toggleWeekend(d: number) {
   height: 100vh;
   font-family: Arial, sans-serif;
   font-size: 14px;
-  color: #222;
-  background: #f5f5f5;
+  color: #e2e8f0;
+  background: #0d1521;
   overflow: hidden;
 }
 
 .loading-screen {
   display: flex; align-items: center; justify-content: center;
-  height: 100vh; font-size: 1.2rem; color: #888;
+  height: 100vh; font-size: 1.2rem; color: #4a6080;
 }
 
 .section {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: #141e33;
+  border: 1px solid #2d3a56;
   border-radius: 6px;
   padding: 14px 16px;
 }
@@ -565,7 +886,7 @@ function toggleWeekend(d: number) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #555;
+  color: #94a3b8;
   user-select: none;
 }
 
@@ -584,69 +905,62 @@ function toggleWeekend(d: number) {
 
 // ---- Info button & help bubble ----
 .info-btn {
-  width: 20px;
-  height: 20px;
+  width: 20px; height: 20px;
   border-radius: 50%;
-  border: 1.5px solid #bbb;
+  border: 1.5px solid #2d3a56;
   background: transparent;
-  color: #999;
-  font-size: 11px;
-  font-style: italic;
-  font-weight: 700;
+  color: #4a6080;
+  font-size: 11px; font-style: italic; font-weight: 700;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; padding: 0; line-height: 1;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
   font-family: Georgia, serif;
 
   &:hover, &.active {
-    border-color: #4a90d9;
-    color: #4a90d9;
-    background: #e8f0fe;
+    border-color: #3b6ec4;
+    color: #7aa8e8;
+    background: #1e2b44;
   }
 }
 
 .help-bubble {
-  background: #f0f7ff;
-  border: 1px solid #b8d4f5;
+  background: #1a2d44;
+  border: 1px solid #2a4468;
   border-radius: 5px;
   padding: 8px 12px;
   margin-bottom: 10px;
   font-size: 0.82rem;
-  color: #3a5a80;
+  color: #7aa8e8;
   line-height: 1.55;
 }
 
 // ---- LOD fraction toggle ----
 .frac-btn {
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid #ccc;
-  background: #f5f5f5;
-  border-radius: 3px;
-  cursor: pointer;
-  padding: 1px 6px;
-  margin-left: 6px;
-  vertical-align: middle;
-  line-height: 1.4;
-  color: #555;
+  font-size: 11px; font-weight: 600;
+  border: 1px solid #2d3a56;
+  background: #0c1524;
+  border-radius: 3px; cursor: pointer;
+  padding: 1px 6px; margin-left: 6px;
+  vertical-align: middle; line-height: 1.4;
+  color: #94a3b8;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 
-  &:hover { background: #e8e8e8; }
-  &.active { background: #4a90d9; border-color: #3578c5; color: #fff; }
+  &:hover { background: #1e2b44; color: #e2e8f0; }
+  &.active { background: #3b6ec4; border-color: #4a7fd4; color: #fff; }
 }
 
 .frac-input { font-family: monospace; }
+.years-lock { font-size: 0.8rem; opacity: 0.5; cursor: default; }
+.add-lod-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 // ---- Header ----
 .cal-header {
   flex-shrink: 0;
   border-radius: 0 !important;
   border-left: none; border-right: none; border-top: none;
+  background: #1e2b44 !important;
+  border-bottom: 1px solid #2d3a56 !important;
 }
 
 .header-row {
@@ -657,7 +971,7 @@ function toggleWeekend(d: number) {
 
 .id-label {
   font-size: 0.72rem;
-  color: #aaa;
+  color: #4a6080;
   font-family: monospace;
   white-space: nowrap;
   user-select: none;
@@ -666,15 +980,16 @@ function toggleWeekend(d: number) {
 .name-input {
   flex: 1;
   padding: 5px 10px;
-  border: 1px solid #ccc;
+  border: 1px solid #2d3a56;
   border-radius: 4px;
-  font-size: 1rem;
-  font-weight: 600;
-  &:focus { outline: 2px solid #4a90d9; border-color: transparent; }
+  font-size: 1rem; font-weight: 600;
+  background: #0c1524; color: #e2e8f0;
+  &:focus { outline: 2px solid #3b6ec4; border-color: transparent; }
+  &::placeholder { color: #4a6080; }
 }
 
 .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
-.save-error { margin: 6px 0 0; color: #c0392b; font-size: 0.85rem; }
+.save-error { margin: 6px 0 0; color: #e05555; font-size: 0.85rem; }
 
 // ---- Body ----
 .cal-body {
@@ -700,19 +1015,19 @@ function toggleWeekend(d: number) {
   gap: 3px;
 
   label {
-    font-size: 0.73rem; font-weight: 600; color: #666;
+    font-size: 0.73rem; font-weight: 600; color: #4a6080;
     text-transform: uppercase; letter-spacing: 0.04em; user-select: none;
   }
 
   input[type='text'], input[type='number'] {
     padding: 5px 8px;
-    border: 1px solid #ccc;
+    border: 1px solid #2d3a56;
     border-radius: 4px;
     font-size: 0.9rem;
-    background: #fafafa;
-    color: #222;
+    background: #0c1524; color: #e2e8f0;
     width: 100%;
-    &:focus { outline: 2px solid #4a90d9; border-color: transparent; }
+    &:focus { outline: 2px solid #3b6ec4; border-color: transparent; }
+    &::placeholder { color: #4a6080; }
   }
 }
 
@@ -723,7 +1038,7 @@ function toggleWeekend(d: number) {
 }
 
 .field-label {
-  font-size: 0.73rem; font-weight: 600; color: #666;
+  font-size: 0.73rem; font-weight: 600; color: #4a6080;
   text-transform: uppercase; letter-spacing: 0.04em; user-select: none;
 }
 
@@ -741,7 +1056,7 @@ function toggleWeekend(d: number) {
   align-items: center;
   gap: 5px;
   font-size: 0.82rem;
-  color: #444;
+  color: #94a3b8;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -756,34 +1071,35 @@ function toggleWeekend(d: number) {
 
   th {
     text-align: left;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #777;
+    font-size: 0.72rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    color: #4a6080;
     padding: 4px 6px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #2d3a56;
     user-select: none;
   }
 
   td { padding: 3px 4px; vertical-align: middle; }
 }
 
-.num-cell { color: #aaa; font-size: 0.78rem; width: 24px; text-align: right; user-select: none; }
+.num-cell { color: #4a6080; font-size: 0.78rem; width: 24px; text-align: right; user-select: none; }
 .center-cell { text-align: center; }
 
 .tbl-input {
   padding: 4px 6px;
-  border: 1px solid #ddd;
+  border: 1px solid #253048;
   border-radius: 3px;
   font-size: 0.85rem;
-  background: #fafafa;
+  background: #0c1524; color: #e2e8f0;
   width: 100%;
-  &:focus { outline: 2px solid #4a90d9; border-color: transparent; }
+  &:focus { outline: 2px solid #3b6ec4; border-color: transparent; }
+  &::placeholder { color: #4a6080; }
 }
 
+select.tbl-input option { background: #0c1524; color: #e2e8f0; }
+
 .short-input  { width: 70px; }
-.narrow-input { width: 64px; }
+.narrow-input { width: 60px; }
 .step-input   { width: 110px; }
 
 // ---- Weekend row ----
@@ -794,24 +1110,157 @@ function toggleWeekend(d: number) {
   flex-wrap: wrap;
 }
 
+// ---- Season track ----
+.season-track {
+  display: flex;
+  height: 28px;
+  border-radius: 5px;
+  overflow: hidden;
+  margin: 8px 0 10px;
+  border: 1px solid #2d3a56;
+}
+.season-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-width: 2px;
+  cursor: default;
+  transition: flex 0.3s ease;
+}
+.season-seg-label {
+  font-size: 0.72rem; font-weight: 600;
+  color: rgba(255,255,255,0.9);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding: 0 6px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+
+// ---- Season DOY modal ----
+.doy-backdrop {
+  position: fixed; inset: 0; background: #00000070; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+.doy-panel {
+  background: #141e33; border: 1px solid #2d3a56; border-radius: 8px;
+  padding: 20px 24px; max-width: 400px; width: 90%;
+  box-shadow: 0 8px 24px #00000066;
+}
+.doy-title { margin: 0 0 8px; font-size: 0.95rem; font-weight: 700; color: #e2e8f0; }
+.doy-desc { font-size: 0.82rem; color: #94a3b8; margin: 0 0 14px; line-height: 1.5; }
+.doy-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  label { font-size: 0.8rem; font-weight: 600; color: #4a6080; text-transform: uppercase; letter-spacing: 0.04em; }
+  input {
+    padding: 4px 8px; border: 1px solid #2d3a56; border-radius: 4px;
+    font-size: 0.9rem; background: #0c1524; color: #e2e8f0;
+    &:focus { outline: 2px solid #3b6ec4; }
+  }
+}
+.doy-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+// ---- Memorable Days ----
+.empty-note { color: #4a6080; font-size: 0.82rem; font-style: italic; margin: 0; }
+
+.mem-day-card {
+  border: 1px solid #253048;
+  border-radius: 5px;
+  background: #0d1929;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.mem-day-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mem-color {
+  width: 32px; height: 28px;
+  padding: 1px;
+  border: 1px solid #2d3a56;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #0c1524;
+  flex-shrink: 0;
+}
+
+.mem-name { flex: 1; min-width: 0; }
+.mem-type { width: 110px; flex-shrink: 0; }
+
+.mem-day-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-left: 2px;
+}
+
+.md-date-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.date-label {
+  font-size: 0.72rem; font-weight: 600;
+  color: #4a6080;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.date-sep {
+  color: #4a6080;
+  font-size: 0.85rem;
+  padding: 0 2px;
+}
+
+.mem-day-picker-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mb-0 { margin-bottom: 0 !important; }
+
+.date-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  padding-left: 2px;
+}
+
+.date-val {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
 // ---- Buttons ----
 .btn {
   padding: 6px 16px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.9rem; font-weight: 500;
   &:disabled { opacity: 0.55; cursor: not-allowed; }
-  &.btn-primary   { background: #4a90d9; color: #fff; &:hover:not(:disabled) { background: #3578c5; } }
-  &.btn-secondary { background: #eee; color: #333; &:hover:not(:disabled) { background: #ddd; } }
+  &.btn-primary   { background: #2c5f8a; color: #e2e8f0; &:hover:not(:disabled) { background: #3572a8; } }
+  &.btn-secondary { background: #1e2b44; color: #94a3b8; border: 1px solid #2d3a56; &:hover:not(:disabled) { background: #253252; color: #e2e8f0; } }
   &.btn-sm { padding: 4px 12px; font-size: 0.82rem; }
 }
 
 .btn-icon {
   border: none; background: none; cursor: pointer;
-  font-size: 1.1rem; color: #aaa; padding: 0 2px; line-height: 1;
-  &:hover { color: #c0392b; }
+  font-size: 1.1rem; color: #4a6080;
+  padding: 0 2px; line-height: 1;
+  flex-shrink: 0;
+  &:hover { color: #e05555; }
 }
 
 .mt-8 { margin-top: 8px; }

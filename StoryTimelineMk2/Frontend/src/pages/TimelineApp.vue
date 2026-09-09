@@ -82,9 +82,9 @@ function jump() {
 	const input = document.querySelector("#jump-to-year-input") as HTMLInputElement | null;
 	if(input){
 		if(store.layoutSettings?.TimelineAnimateOnJumpToYear){
-			timelineCanvasRef.value.animateJumpToYear(input.value);
+			timelineCanvasRef.value.animateJumpToYear(input.valueAsNumber);
 		} else {
-			timelineCanvasRef.value.jumpToYear(input.value);
+			timelineCanvasRef.value.jumpToYear(input.valueAsNumber);
 		}
 	}
 }

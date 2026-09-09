@@ -58,8 +58,8 @@ export const BackendAPI = {
 		return await this.request<TimelineProjectContainer>('GetAllTimelines', { args: [] });
 	},
 
-	async CreateNewProject(title: string) {
-		this.send('CreateProject', { title });
+	async CreateNewProject(title: string, author?: string, calendarId?: string) {
+		return await this.request<number>('CreateProject', { title, author: author ?? '', calendarId: calendarId ?? null });
 	},
 
 	async OpenTimeline(id: number) {

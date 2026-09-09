@@ -6,11 +6,21 @@
 	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhGear } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
 	import AppSettingsModal from './components/AppSettingsModal.vue';
+	import AuthorReminderModal from './components/AuthorReminderModal.vue';
+	import SelectCalendarModal from './components/SelectCalendarModal.vue';
 
 	const store = useTimelineStore();
 
 	const newProjectOpen = ref<boolean>(false)
 	const showAppSettings = ref(false)
+	const newProjectTitle = ref('')
+	const hasCustomCal = ref(false)
+
+	const showAuthorModal = ref(false)
+	const showCalendarModal = ref(false)
+	const pendingTitle = ref('')
+	const pendingAuthor = ref('')
+	const pendingCalendarId = ref<string | null>(null)
 
 	async function HandleImportDatabase() {
 		const container = await BackendAPI.ImportDatabase();
@@ -31,9 +41,54 @@
 	}
 
 	async function HandleStartProject() {
-		let title = "";
-		title = document.getElementById("new-project-title")?.value || "New Project";
-		BackendAPI.CreateNewProject(title);
+		const title = newProjectTitle.value.trim() || 'New Project'
+		pendingTitle.value = title
+		pendingAuthor.value = localStorage.getItem('lastAuthor') ?? ''
+		pendingCalendarId.value = null
+
+		if (!pendingAuthor.value) {
+			showAuthorModal.value = true
+		} else if (hasCustomCal.value) {
+			showCalendarModal.value = true
+		} else {
+			await doCreateTimeline()
+		}
+	}
+
+	function onAuthorResult(author: string) {
+		showAuthorModal.value = false
+		pendingAuthor.value = author
+		if (hasCustomCal.value) {
+			showCalendarModal.value = true
+		} else {
+			doCreateTimeline()
+		}
+	}
+
+	function onCalendarSelected(calId: string) {
+		showCalendarModal.value = false
+		pendingCalendarId.value = calId
+		doCreateTimeline()
+	}
+
+	function onCalendarSkipped() {
+		showCalendarModal.value = false
+		doCreateTimeline()
+	}
+
+	async function doCreateTimeline() {
+		await BackendAPI.CreateNewProject(
+			pendingTitle.value,
+			pendingAuthor.value,
+			pendingCalendarId.value ?? undefined
+		)
+		if (pendingAuthor.value) {
+			localStorage.setItem('lastAuthor', pendingAuthor.value)
+		}
+		newProjectTitle.value = ''
+		hasCustomCal.value = false
+		newProjectOpen.value = false
+		await HandleGetTimelines()
 	}
 
 	async function HandleGetTimelines() {
@@ -78,10 +133,10 @@
 				</div>
 
 				<div id="new-project-setup">
-					<input id="new-project-title" type="text" placeholder="Project name..." />
+					<input id="new-project-title" type="text" placeholder="Project name..." v-model="newProjectTitle" />
 
 					<div id="checkbox-div">
-						<input name="CustomCal" id="custom-cal" type="checkbox" />
+						<input name="CustomCal" id="custom-cal" type="checkbox" v-model="hasCustomCal" />
 						<label class="cal-icon-label" title="Has custom calendar" for="custom-cal">
 							<PhCalendarDots :size="24" />
 						</label>
@@ -98,6 +153,8 @@
 		@close="showAppSettings = false"
 		@refresh="HandleGetTimelines"
 	/>
+	<AuthorReminderModal v-if="showAuthorModal" @set="onAuthorResult" @skip="onAuthorResult('')" />
+	<SelectCalendarModal v-if="showCalendarModal" @selected="onCalendarSelected" @skipped="onCalendarSkipped" />
 	</div>
 </template>
 

@@ -157,9 +157,18 @@ namespace StoryTimelineMk2.Bridge
             TimelineRepo repo = new TimelineRepo();
             JsonElement pl = message.Payload.GetProperty("title");
             var title = pl.GetString();
+
+            string author = "";
+            if (message.Payload.TryGetProperty("author", out var authorEl) && authorEl.GetString() is string a)
+                author = a;
+
+            string? calendarId = null;
+            if (message.Payload.TryGetProperty("calendarId", out var calEl) && calEl.GetString() is string cal)
+                calendarId = cal;
+
             int ret_id = -1;
             if (!string.IsNullOrEmpty(title))
-                ret_id = repo.CreateTimeline(title);
+                ret_id = repo.CreateTimeline(title, author, calendarId);
             ReplyToVue(message.MessageId, ret_id);
         }
 
