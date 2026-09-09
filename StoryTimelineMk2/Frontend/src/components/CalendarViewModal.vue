@@ -336,6 +336,7 @@ function memDayDescription(d: MemDay): string {
             :week-length="weekLength"
             :day-labels="effectiveDayLabels"
             :weekend-days="weekendDays"
+            :memorable-days="memDays"
             @close="showYearView = false"
         />
     </Teleport>

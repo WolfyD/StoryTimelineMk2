@@ -1,20 +1,31 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+export interface MemDayMarker {
+    id: string
+    name: string
+    color: string
+    type: 'fixed' | 'weekly' | 'relative'
+    startMonth: number
+    startDay: number
+    endMonth: number
+    endDay: number
+    isRange: boolean
+    weekDays: number[]
+}
+
 const props = defineProps<{
     monthName: string
+    monthIndex: number
     days: number
     weekLength: number
     dayLabels: string[]
     weekendDays: number[]
+    memorableDays?: MemDayMarker[]
 }>()
 
-// How many chars to show in the day header abbreviation
 const abbrevLen = computed(() => props.weekLength > 10 ? 1 : 2)
-
-function abbrev(label: string): string {
-    return label.slice(0, abbrevLen.value)
-}
+function abbrev(label: string): string { return label.slice(0, abbrevLen.value) }
 
 // Build rows of day numbers (null = empty trailing cell)
 const rows = computed(() => {
@@ -33,6 +44,32 @@ const rows = computed(() => {
 function isWeekend(col: number): boolean {
     return props.weekendDays.includes(col)
 }
+
+// Return markers that fall on (monthIndex, day, dayOfWeek)
+function markersForCell(day: number, colIndex: number): MemDayMarker[] {
+    if (!props.memorableDays?.length) return []
+    const mi = props.monthIndex
+    const key = mi * 10000 + day
+
+    return props.memorableDays.filter(md => {
+        if (md.type === 'fixed') {
+            if (!md.isRange) {
+                return md.startMonth === mi && md.startDay === day
+            }
+            // Range: compare as packed integers
+            const start = md.startMonth * 10000 + md.startDay
+            const end   = md.endMonth   * 10000 + md.endDay
+            return start <= end
+                ? key >= start && key <= end           // normal range
+                : key >= start || key <= end           // wraps year boundary
+        }
+        if (md.type === 'weekly') {
+            return md.weekDays.includes(colIndex % props.weekLength)
+        }
+        // relative: not positioned without a specific year anchor
+        return false
+    })
+}
 </script>
 
 <template>
@@ -50,7 +87,24 @@ function isWeekend(col: number): boolean {
                 <tr v-for="(row, ri) in rows" :key="ri">
                     <td v-for="(day, ci) in row" :key="ci"
                         :class="{ weekend: isWeekend(ci), empty: day === null }">
-                        {{ day ?? '' }}
+                        <div v-if="day !== null" class="cell-wrap">
+                            <span class="day-num">{{ day }}</span>
+                            <div v-if="markersForCell(day, ci).length" class="dot-row">
+                                <span
+                                    v-for="m in markersForCell(day, ci)"
+                                    :key="m.id"
+                                    class="mem-dot"
+                                    :style="{ background: m.color || '#aaa' }"
+                                />
+                            </div>
+                            <!-- Tooltip -->
+                            <div v-if="markersForCell(day, ci).length" class="cell-tooltip">
+                                <div v-for="m in markersForCell(day, ci)" :key="m.id" class="tooltip-row">
+                                    <span class="tooltip-dot" :style="{ background: m.color || '#aaa' }" />
+                                    <span class="tooltip-name">{{ m.name }}</span>
+                                </div>
+                            </div>
+                        </div>
                     </td>
                 </tr>
             </tbody>
@@ -63,7 +117,7 @@ function isWeekend(col: number): boolean {
     background: #0f1926;
     border: 1px solid #2d3a56;
     border-radius: 6px;
-    overflow: hidden;
+    overflow: visible; // allow tooltips to escape
 }
 
 .month-name {
@@ -74,6 +128,7 @@ function isWeekend(col: number): boolean {
     text-align: center;
     padding: 5px 8px;
     letter-spacing: 0.03em;
+    border-radius: 5px 5px 0 0;
 }
 
 .month-table {
@@ -95,17 +150,95 @@ function isWeekend(col: number): boolean {
 
     td {
         text-align: center;
-        padding: 3px 2px;
+        padding: 1px 2px;
         color: #b8ccec;
         font-variant-numeric: tabular-nums;
-        line-height: 1.6;
+        vertical-align: top;
 
-        &.weekend { color: #7aa8e8; }
-        &.empty    { color: transparent; }
+        &.weekend .day-num { color: #7aa8e8; }
+        &.empty { color: transparent; }
     }
 
-    tr:hover td:not(.empty) {
+    tr:hover td:not(.empty) .day-num {
         background: #162035;
+        border-radius: 3px;
     }
+}
+
+// ── Cell layout ──────────────────────────────────────────────────────────────
+
+.cell-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 1px;
+
+    &:hover .cell-tooltip {
+        display: block;
+    }
+}
+
+.day-num {
+    display: block;
+    line-height: 1.5;
+    min-width: 16px;
+}
+
+// ── Memorable day dots ───────────────────────────────────────────────────────
+
+.dot-row {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.mem-dot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+// ── Tooltip ──────────────────────────────────────────────────────────────────
+
+.cell-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0a1220;
+    border: 1px solid #3b6ec4;
+    border-radius: 5px;
+    padding: 5px 8px;
+    z-index: 9999;
+    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.7rem;
+    color: #c8d8f0;
+    line-height: 1.6;
+}
+
+.tooltip-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.tooltip-name {
+    font-size: 0.7rem;
+    color: #c8d8f0;
 }
 </style>

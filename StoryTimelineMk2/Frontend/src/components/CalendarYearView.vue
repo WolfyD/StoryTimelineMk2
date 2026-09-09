@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
 import CalendarMonthGrid from './CalendarMonthGrid.vue'
+import type { MemDayMarker } from './CalendarMonthGrid.vue'
 
 const props = defineProps<{
     calendarName: string
@@ -9,6 +10,7 @@ const props = defineProps<{
     weekLength: number
     dayLabels: string[]
     weekendDays: number[]
+    memorableDays?: MemDayMarker[]
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -40,10 +42,12 @@ const effectiveLabels = computed(() =>
                             v-for="(m, i) in months"
                             :key="i"
                             :month-name="m.name"
+                            :month-index="i"
                             :days="m.length"
                             :week-length="weekLength"
                             :day-labels="effectiveLabels"
                             :weekend-days="weekendDays"
+                            :memorable-days="memorableDays"
                         />
                     </div>
                 </div>
