@@ -803,8 +803,8 @@ async function removeImage(pictureId: string) {
   padding: 16px;
   font-family: Arial, sans-serif;
   font-size: 14px;
-  color: #222;
-  background: #f5f5f5;
+  color: #e2e8f0;
+  background: #0f172a;
   min-height: 100vh;
 }
 
@@ -814,13 +814,13 @@ async function removeImage(pictureId: string) {
   justify-content: center;
   height: 100vh;
   font-size: 1.2rem;
-  color: #888;
+  color: #64748b;
 }
 
 // ---- Sections ----
 .section {
-  background: #fff;
-  border: 1px solid #ddd;
+  background: #1e293b;
+  border: 1px solid #334155;
   border-radius: 6px;
   padding: 14px 16px;
 }
@@ -831,7 +831,7 @@ async function removeImage(pictureId: string) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #555;
+  color: #94a3b8;
   user-select: none;
 }
 
@@ -842,7 +842,7 @@ async function removeImage(pictureId: string) {
   margin: 0 0 6px 0;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #666;
+  color: #94a3b8;
   user-select: none;
 }
 
@@ -875,7 +875,7 @@ async function removeImage(pictureId: string) {
 
 .item-id-label {
   font-size: 0.75rem;
-  color: #aaa;
+  color: #64748b;
   font-family: monospace;
   min-width: 64px;
   text-align: right;
@@ -888,7 +888,7 @@ async function removeImage(pictureId: string) {
 
 .save-error {
   margin: 0;
-  color: #c0392b;
+  color: #f87171;
   font-size: 0.85rem;
 }
 
@@ -912,7 +912,7 @@ async function removeImage(pictureId: string) {
   label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #666;
+    color: #94a3b8;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     user-select: none;
@@ -923,14 +923,15 @@ async function removeImage(pictureId: string) {
   select,
   textarea {
     padding: 5px 8px;
-    border: 1px solid #ccc;
+    border: 1px solid #334155;
     border-radius: 4px;
     font-size: 0.9rem;
-    background: #fafafa;
-    color: #222;
+    background: #0f172a;
+    color: #e2e8f0;
     width: 100%;
+    color-scheme: dark;
     &:focus { outline: 2px solid #4a90d9; border-color: transparent; }
-    &::placeholder { color: rgb(150, 150, 150); }
+    &::placeholder { color: #64748b; }
   }
 
   input[type='color'] {
@@ -984,9 +985,9 @@ async function removeImage(pictureId: string) {
   flex-wrap: wrap;
   gap: 5px;
   padding: 5px 8px;
-  border: 1px solid #ccc;
+  border: 1px solid #334155;
   border-radius: 4px;
-  background: #fafafa;
+  background: #0f172a;
   min-height: 34px;
   align-items: center;
 
@@ -997,8 +998,8 @@ async function removeImage(pictureId: string) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #e8f0fe;
-  color: #2c5fbc;
+  background: #1e3a5f;
+  color: #93c5fd;
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 0.8rem;
@@ -1008,11 +1009,11 @@ async function removeImage(pictureId: string) {
   border: none;
   background: none;
   cursor: pointer;
-  color: #2c5fbc;
+  color: #93c5fd;
   font-size: 1rem;
   line-height: 1;
   padding: 0;
-  &:hover { color: #c0392b; }
+  &:hover { color: #f87171; }
 }
 
 .tag-inline-input {
@@ -1022,6 +1023,7 @@ async function removeImage(pictureId: string) {
   padding: 2px 4px !important;
   width: 120px;
   font-size: 0.9rem;
+  color: #e2e8f0;
 }
 
 .suggestions {
@@ -1029,21 +1031,22 @@ async function removeImage(pictureId: string) {
   top: 100%;
   left: 0;
   right: 0;
-  background: #fff;
-  border: 1px solid #ccc;
+  background: #1e293b;
+  border: 1px solid #334155;
   border-top: none;
   border-radius: 0 0 4px 4px;
   z-index: 100;
   max-height: 180px;
   overflow-y: auto;
-  box-shadow: 0 4px 8px rgba(0,0,0,.1);
+  box-shadow: 0 4px 8px rgba(0,0,0,.4);
 }
 
 .suggestion-item {
   padding: 7px 10px;
   cursor: pointer;
   font-size: 0.9rem;
-  &:hover { background: #f0f4ff; }
+  color: #e2e8f0;
+  &:hover { background: #1e3a5f; }
 }
 
 // ---- Footer ----
@@ -1063,7 +1066,7 @@ async function removeImage(pictureId: string) {
   .section-title { margin: 0; }
 }
 
-.collapse-toggle { color: #aaa; font-size: 0.8rem; }
+.collapse-toggle { color: #64748b; font-size: 0.8rem; }
 
 .collapsible-body { margin-top: 12px; }
 
@@ -1080,8 +1083,8 @@ async function removeImage(pictureId: string) {
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  background: #f9f9f9;
-  border: 1px solid #eee;
+  background: #162032;
+  border: 1px solid #334155;
   border-radius: 5px;
 }
 
@@ -1110,11 +1113,12 @@ async function removeImage(pictureId: string) {
 .char-name { font-weight: 600; font-size: 0.9rem; }
 
 .char-role-input {
-  border: 1px solid #ddd;
+  border: 1px solid #334155;
   border-radius: 4px;
   padding: 3px 6px;
   font-size: 0.82rem;
-  background: #fff;
+  background: #0f172a;
+  color: #e2e8f0;
   width: 100%;
   &:focus { outline: 2px solid #4a90d9; }
 }
@@ -1123,7 +1127,7 @@ async function removeImage(pictureId: string) {
 .picker-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.4);
+  background: rgba(0,0,0,.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1131,13 +1135,14 @@ async function removeImage(pictureId: string) {
 }
 
 .picker-panel {
-  background: #fff;
+  background: #1e293b;
+  border: 1px solid #334155;
   border-radius: 8px;
   width: 340px;
   max-height: 500px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
 }
 
 .picker-header {
@@ -1145,17 +1150,21 @@ async function removeImage(pictureId: string) {
   justify-content: space-between;
   align-items: center;
   padding: 12px 14px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #334155;
   font-weight: 600;
+  color: #e2e8f0;
 }
 
 .picker-search {
   margin: 10px 14px;
   padding: 6px 10px;
-  border: 1px solid #ccc;
+  border: 1px solid #334155;
   border-radius: 4px;
   font-size: 0.9rem;
+  background: #0f172a;
+  color: #e2e8f0;
   &:focus { outline: 2px solid #4a90d9; }
+  &::placeholder { color: #64748b; }
 }
 
 .picker-list {
@@ -1172,27 +1181,31 @@ async function removeImage(pictureId: string) {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9rem;
-  &:hover { background: #f0f4ff; }
-  &.selected { background: #e8f0fe; font-weight: 600; }
+  color: #e2e8f0;
+  &:hover { background: #1e3a5f; }
+  &.selected { background: #1e3a5f; font-weight: 600; }
 }
 
 .picker-empty {
   padding: 10px 0;
-  color: #aaa;
+  color: #64748b;
   font-size: 0.85rem;
 }
 
 .picker-role {
   padding: 10px 14px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid #334155;
 
   input {
     width: 100%;
     padding: 6px 10px;
-    border: 1px solid #ccc;
+    border: 1px solid #334155;
     border-radius: 4px;
     font-size: 0.9rem;
+    background: #0f172a;
+    color: #e2e8f0;
     &:focus { outline: 2px solid #4a90d9; }
+    &::placeholder { color: #64748b; }
   }
 }
 
@@ -1201,18 +1214,18 @@ async function removeImage(pictureId: string) {
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 14px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid #334155;
 }
 
 // ---- Story picker ----
 .story-picker {
   margin-top: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid #334155;
   border-radius: 5px;
   padding: 8px 10px;
   max-height: 180px;
   overflow-y: auto;
-  background: #fafafa;
+  background: #162032;
 }
 
 .story-option {
@@ -1222,6 +1235,7 @@ async function removeImage(pictureId: string) {
   padding: 5px 0;
   cursor: pointer;
   font-size: 0.9rem;
+  color: #e2e8f0;
 }
 
 .ref-chips {
@@ -1244,15 +1258,16 @@ async function removeImage(pictureId: string) {
   align-items: center;
   gap: 10px;
   padding: 5px 8px;
-  background: #f9f9f9;
-  border: 1px solid #eee;
+  background: #162032;
+  border: 1px solid #334155;
   border-radius: 5px;
   font-size: 0.88rem;
+  color: #e2e8f0;
 }
 
 .book-title { font-weight: 600; }
 
-.chapter-num { color: #666; flex: 1; }
+.chapter-num { color: #94a3b8; flex: 1; }
 
 .book-search-row {
   display: flex;
@@ -1273,7 +1288,7 @@ async function removeImage(pictureId: string) {
 
   &:disabled { opacity: 0.55; cursor: not-allowed; }
   &.btn-primary { background: #4a90d9; color: #fff; &:hover:not(:disabled) { background: #3578c5; } }
-  &.btn-secondary { background: #eee; color: #333; &:hover:not(:disabled) { background: #ddd; } }
+  &.btn-secondary { background: #334155; color: #cbd5e1; &:hover:not(:disabled) { background: #3d5068; } }
   &.btn-sm { padding: 4px 12px; font-size: 0.82rem; }
 }
 
@@ -1282,14 +1297,14 @@ async function removeImage(pictureId: string) {
   background: none;
   cursor: pointer;
   font-size: 1.1rem;
-  color: #aaa;
+  color: #64748b;
   padding: 0 2px;
   line-height: 1;
-  &:hover { color: #c0392b; }
+  &:hover { color: #f87171; }
 }
 
 .placeholder-note {
-  color: #aaa;
+  color: #64748b;
   font-size: 0.85rem;
   font-style: italic;
   margin: 0;
@@ -1305,17 +1320,17 @@ async function removeImage(pictureId: string) {
 
 .image-thumb {
   width: 110px;
-  border: 1px solid #ddd;
+  border: 1px solid #334155;
   border-radius: 5px;
   overflow: hidden;
-  background: #f5f5f5;
+  background: #1e293b;
 
   img {
     width: 100%;
     height: 84px;
     object-fit: cover;
     display: block;
-    background: #e0e0e0;
+    background: #2d3f55;
     cursor: zoom-in;
   }
 }
@@ -1330,14 +1345,14 @@ async function removeImage(pictureId: string) {
 .image-label {
   flex: 1;
   font-size: 10px;
-  color: #666;
+  color: #94a3b8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .btn-icon--danger:hover {
-  color: #c0392b;
+  color: #f87171;
 }
 
 .mt-6 { margin-top: 6px; }
@@ -1345,14 +1360,14 @@ async function removeImage(pictureId: string) {
 // ---- LOD dropdown ----
 .lod-select {
   option.lod-hidden {
-    color: #bbb;
+    color: #64748b;
   }
   option.lod-selected {
     font-weight: 700;
-    color: #222;
+    color: #e2e8f0;
   }
   option.lod-implied {
-    color: #999;
+    color: #94a3b8;
     font-style: italic;
   }
 }

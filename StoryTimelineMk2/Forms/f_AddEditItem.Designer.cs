@@ -36,7 +36,8 @@
             // 
             wv_AddEditItem.AllowExternalDrop = true;
             wv_AddEditItem.CreationProperties = null;
-            wv_AddEditItem.DefaultBackgroundColor = Color.White;
+            wv_AddEditItem.BackColor = Color.FromArgb(15, 23, 42);
+            wv_AddEditItem.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
             wv_AddEditItem.Dock = DockStyle.Fill;
             wv_AddEditItem.Location = new Point(0, 0);
             wv_AddEditItem.Name = "wv_AddEditItem";
@@ -50,6 +51,7 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(940, 1000);
             Controls.Add(wv_AddEditItem);
+            BackColor = Color.FromArgb(15, 23, 42);
             Name = "AddEditItem";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Edit Item";

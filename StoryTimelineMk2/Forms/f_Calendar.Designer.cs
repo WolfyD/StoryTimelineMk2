@@ -18,7 +18,8 @@ namespace StoryTimelineMk2.Forms
 
             wv_Calendar.AllowExternalDrop = true;
             wv_Calendar.CreationProperties = null;
-            wv_Calendar.DefaultBackgroundColor = Color.White;
+            wv_Calendar.BackColor = Color.FromArgb(15, 23, 42);
+            wv_Calendar.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
             wv_Calendar.Dock = DockStyle.Fill;
             wv_Calendar.Location = new Point(0, 0);
             wv_Calendar.Name = "wv_Calendar";
@@ -30,6 +31,7 @@ namespace StoryTimelineMk2.Forms
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1060, 820);
             Controls.Add(wv_Calendar);
+            BackColor = Color.FromArgb(15, 23, 42);
             Name = "f_Calendar";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Calendar Editor";

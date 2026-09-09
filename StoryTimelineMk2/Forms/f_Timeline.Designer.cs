@@ -36,7 +36,8 @@
             // 
             wv_Timeline.AllowExternalDrop = true;
             wv_Timeline.CreationProperties = null;
-            wv_Timeline.DefaultBackgroundColor = Color.White;
+            wv_Timeline.BackColor = Color.FromArgb(15, 23, 42);
+            wv_Timeline.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
             wv_Timeline.Dock = DockStyle.Fill;
             wv_Timeline.Location = new Point(0, 0);
             wv_Timeline.Name = "wv_Timeline";
@@ -50,6 +51,7 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(982, 623);
             Controls.Add(wv_Timeline);
+            BackColor = Color.FromArgb(15, 23, 42);
             Name = "f_Timeline";
             Text = "f_Timeline";
             ((System.ComponentModel.ISupportInitialize)wv_Timeline).EndInit();

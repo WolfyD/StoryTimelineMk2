@@ -36,7 +36,8 @@
             // 
             webView21.AllowExternalDrop = false;
             webView21.CreationProperties = null;
-            webView21.DefaultBackgroundColor = Color.FromArgb(60, 58, 54);
+            webView21.BackColor = Color.FromArgb(15, 23, 42);
+            webView21.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
             webView21.Dock = DockStyle.Fill;
             webView21.Location = new Point(0, 0);
             webView21.Margin = new Padding(0);
@@ -51,6 +52,7 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1013, 740);
             Controls.Add(webView21);
+            BackColor = Color.FromArgb(15, 23, 42);
             Name = "f_Main";
             Text = "Story Timeline Mk2";
             ((System.ComponentModel.ISupportInitialize)webView21).EndInit();
