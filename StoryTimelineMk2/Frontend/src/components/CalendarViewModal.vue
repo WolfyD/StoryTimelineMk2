@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { PhX, PhPencilSimple, PhArrowLeft } from '@phosphor-icons/vue'
+import { PhX, PhPencilSimple, PhArrowLeft, PhCalendarDots } from '@phosphor-icons/vue'
 import { BackendAPI } from '@/bridge/api'
 import type { Calendar, LodLevel } from '@/types/models'
 import type { RelativeRule } from '@/utils/relativeRule'
 import { describeRule } from '@/utils/relativeRule'
+import CalendarYearView from './CalendarYearView.vue'
 
 const props = defineProps<{ calendarId: string }>()
 const emit = defineEmits<{ close: []; edit: [id: string] }>()
@@ -15,9 +16,10 @@ interface MonthEntry  { name: string; shortName: string; length: number; season:
 interface SeasonEntry { name: string; shortName: string; start: number; end: number; significance: string }
 interface MemDay { id: string; name: string; color: string; type: 'fixed' | 'weekly' | 'relative'; startMonth: number; startDay: number; endMonth: number; endDay: number; isRange: boolean; weekDays: number[]; rule: RelativeRule }
 
-const loading = ref(true)
-const error   = ref<string | null>(null)
-const cal     = ref<Calendar | null>(null)
+const loading      = ref(true)
+const error        = ref<string | null>(null)
+const cal          = ref<Calendar | null>(null)
+const showYearView = ref(false)
 
 const yearLength  = ref(0)
 const months      = ref<MonthEntry[]>([])
@@ -87,6 +89,12 @@ onMounted(async () => {
     }
 })
 
+const effectiveDayLabels = computed(() =>
+    dayNames.value.length === weekLength.value
+        ? dayNames.value
+        : Array.from({ length: weekLength.value }, (_, i) => `D${i + 1}`)
+)
+
 // computed helpers
 const memDayDescribeCtx = computed(() => ({
     seasonNames: seasons.value.map(s => s.name),
@@ -125,7 +133,11 @@ function memDayDescription(d: MemDay): string {
                         <span class="modal-title">{{ loading ? 'Loading…' : (cal?.Name ?? 'Calendar') }}</span>
                     </div>
                     <div class="header-right">
-                        <button v-if="!loading && cal" class="edit-btn" @click="emit('edit', calendarId)">
+                        <button v-if="!loading && cal && months.length" class="action-btn" title="Show full year calendar" @click="showYearView = true">
+                            <PhCalendarDots :size="15" />
+                            Year View
+                        </button>
+                        <button v-if="!loading && cal" class="action-btn edit" @click="emit('edit', calendarId)">
                             <PhPencilSimple :size="14" />
                             Edit
                         </button>
@@ -316,6 +328,16 @@ function memDayDescription(d: MemDay): string {
 
             </div>
         </div>
+
+        <CalendarYearView
+            v-if="showYearView && cal"
+            :calendar-name="cal.Name"
+            :months="months"
+            :week-length="weekLength"
+            :day-labels="effectiveDayLabels"
+            :weekend-days="weekendDays"
+            @close="showYearView = false"
+        />
     </Teleport>
 </template>
 
@@ -387,7 +409,7 @@ function memDayDescription(d: MemDay): string {
     &:hover { background: #1e2b44; color: #e2e8f0; }
 }
 
-.edit-btn {
+.action-btn {
     display: flex;
     align-items: center;
     gap: 5px;
@@ -400,6 +422,7 @@ function memDayDescription(d: MemDay): string {
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
     &:hover { background: #1e2b44; border-color: #3b6ec4; color: #e2e8f0; }
+    &.edit:hover { border-color: #5ba55b; color: #8ecf8e; }
 }
 
 // ── Body ─────────────────────────────────────────────────────────────────────
