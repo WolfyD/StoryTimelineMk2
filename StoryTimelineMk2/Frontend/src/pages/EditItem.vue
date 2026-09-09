@@ -49,13 +49,9 @@ const item = ref<TimelineItem>({
   StoryId: null,
   TypeId: defaultType,
   Year: 0,
-  AbsoluteStart: 0,
-  Subtick: 0,
-  OriginalSubtick: 0,
   EndYear: 0,
+  AbsoluteStart: 0,
   AbsoluteEnd: 0,
-  EndSubtick: 0,
-  OriginalEndSubtick: 0,
   BookTitle: '',
   Chapter: '',
   Page: '',
@@ -68,11 +64,11 @@ const item = ref<TimelineItem>({
   MinLodLevel: 3,
 })
 
-// Separate start/end year+subtick refs (written back to item on save)
+// Separate start/end year+subYear refs (written back to item on save)
 const startYear    = ref(0)
-const startSubtick = ref(0)
+const startSubYear = ref(0)
 const endYear      = ref(0)
-const endSubtick   = ref(0)
+const endSubYear   = ref(0)
 
 // ---------------------------------------------------------------------------
 // Associated data
@@ -194,27 +190,20 @@ onMounted(async () => {
       }
       monthNames.value = extractMonthNames(data.Calendar.YearDefinition ?? '')
 
-      // Decompose fractional absoluteTime into subtick now that lodProfile is loaded
-      if (isNew.value && defaultAbsoluteTime) {
-        const frac = defaultAbsoluteTime - Math.floor(defaultAbsoluteTime)
-        if (frac > 0.000001) {
-          const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
-          const step = lod?.stepFraction ?? 1
-          const maxSubticks = step > 0 ? Math.round(1 / step) : 1
-          const subtick = step > 0 ? Math.max(0, Math.min(Math.round(frac / step), maxSubticks - 1)) : 0
-          item.value.Subtick = subtick
-          item.value.OriginalSubtick = subtick
-          item.value.EndSubtick = subtick
-          item.value.OriginalEndSubtick = subtick
-        }
-      }
     }
 
-    // Sync split date fields after all item+calendar setup
-    startYear.value    = item.value.Year
-    startSubtick.value = item.value.Subtick
-    endYear.value      = item.value.EndYear
-    endSubtick.value   = item.value.EndSubtick
+    // Derive sub-year UI position from AbsoluteStart/AbsoluteEnd, then sync date fields
+    {
+      const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
+      const step = lod?.stepFraction ?? 1
+      const maxSubYear = step > 0 ? Math.round(1 / step) : 1
+      const startFrac = item.value.AbsoluteStart - item.value.Year
+      const endFrac   = item.value.AbsoluteEnd   - item.value.EndYear
+      startSubYear.value = startFrac > 0.000001 ? Math.max(0, Math.min(Math.round(startFrac / step), maxSubYear - 1)) : 0
+      endSubYear.value   = endFrac   > 0.000001 ? Math.max(0, Math.min(Math.round(endFrac   / step), maxSubYear - 1)) : 0
+    }
+    startYear.value = item.value.Year
+    endYear.value   = item.value.EndYear
   }
 
   allCharacters.value = characters ?? []
@@ -379,19 +368,14 @@ async function save(closeOnSuccess = true) {
   saveError.value = ''
   isSaving.value = true
 
-  // Write split date fields back to item
-  item.value.Year         = startYear.value
-  item.value.Subtick      = startSubtick.value
-  item.value.OriginalSubtick = startSubtick.value
-  item.value.EndYear      = isRangeType.value ? endYear.value   : startYear.value
-  item.value.EndSubtick   = isRangeType.value ? endSubtick.value : startSubtick.value
-  item.value.OriginalEndSubtick = item.value.EndSubtick
+  // Write split date fields back to item and compute absolute positions
+  item.value.Year    = startYear.value
+  item.value.EndYear = isRangeType.value ? endYear.value : startYear.value
 
-  // Compute absolute positions
   const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
   const step = lod?.stepFraction ?? 1
-  item.value.AbsoluteStart = item.value.Year + item.value.Subtick * step
-  item.value.AbsoluteEnd   = item.value.EndYear + item.value.EndSubtick * step
+  item.value.AbsoluteStart = item.value.Year    + startSubYear.value * step
+  item.value.AbsoluteEnd   = item.value.EndYear + (isRangeType.value ? endSubYear.value : startSubYear.value) * step
 
   try {
     const result = await BackendAPI.SaveItem(
@@ -530,9 +514,9 @@ async function removeImage(pictureId: string) {
             :lodProfile="lodProfile"
             :monthNames="monthNames"
             :year="startYear"
-            :subtick="startSubtick"
+            :subtick="startSubYear"
             @update:year="startYear = $event"
-            @update:subtick="startSubtick = $event"
+            @update:subtick="startSubYear = $event"
           />
         </div>
 
@@ -544,9 +528,9 @@ async function removeImage(pictureId: string) {
             :lodProfile="lodProfile"
             :monthNames="monthNames"
             :year="endYear"
-            :subtick="endSubtick"
+            :subtick="endSubYear"
             @update:year="endYear = $event"
-            @update:subtick="endSubtick = $event"
+            @update:subtick="endSubYear = $event"
           />
         </div>
       </div>

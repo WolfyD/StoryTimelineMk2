@@ -13,13 +13,9 @@ namespace StoryTimelineMk2.Database
         public string StoryId { get; set; }
         public int TypeId { get; set; } = 1; // Default to Event
         public int Year { get; set; }
-        public int Subtick { get; set; }
-        public int OriginalSubtick { get; set; }
         public int EndYear { get; set; }
         public double AbsoluteStart { get; set; }
         public double AbsoluteEnd { get; set; }
-        public int EndSubtick { get; set; }
-        public int OriginalEndSubtick { get; set; }
         public string BookTitle { get; set; }
         public string Chapter { get; set; }
         public string Page { get; set; }

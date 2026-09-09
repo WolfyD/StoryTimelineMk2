@@ -19,7 +19,7 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection(_connString);
             // Fetch everything except characters (Type 7), which belong to CharacterRepo
-            string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND type_id != 7 ORDER BY year, subtick, item_index";
+            string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND type_id != 7 ORDER BY absolute_start, item_index";
             return db.Query<TimelineItem>(sql, new { TimelineId = timelineId });
         }
 
@@ -34,14 +34,14 @@ namespace StoryTimelineMk2.Database
                 // 1. Save or Update the Item
                 string sql = @"
                     INSERT INTO items (
-                        id, title, description, content, story_id, type_id, 
-                        year, subtick, original_subtick, end_year, end_subtick, original_end_subtick,
-                        book_title, chapter, page, color, creation_granularity, 
+                        id, title, description, content, story_id, type_id,
+                        year, end_year,
+                        book_title, chapter, page, color, creation_granularity,
                         timeline_id, item_index, show_in_notes, importance
-                    ) 
+                    )
                     VALUES (
                         @Id, @Title, @Description, @Content, @StoryId, @TypeId,
-                        @Year, @Subtick, @OriginalSubtick, @EndYear, @EndSubtick, @OriginalEndSubtick,
+                        @Year, @EndYear,
                         @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
                         @TimelineId, @ItemIndex, @ShowInNotes, @Importance
                     )
@@ -52,9 +52,7 @@ namespace StoryTimelineMk2.Database
                         story_id = excluded.story_id,
                         type_id = excluded.type_id,
                         year = excluded.year,
-                        subtick = excluded.subtick,
                         end_year = excluded.end_year,
-                        end_subtick = excluded.end_subtick,
                         book_title = excluded.book_title,
                         chapter = excluded.chapter,
                         page = excluded.page,
@@ -176,14 +174,14 @@ namespace StoryTimelineMk2.Database
                 string sql = @"
                     INSERT INTO items (
                         id, title, description, content, story_id, type_id,
-                        year, subtick, original_subtick, end_year, end_subtick, original_end_subtick,
+                        year, end_year,
                         absolute_start, absolute_end,
                         book_title, chapter, page, color, creation_granularity,
                         timeline_id, item_index, show_in_notes, importance, min_lod_level
                     )
                     VALUES (
                         @Id, @Title, @Description, @Content, @StoryId, @TypeId,
-                        @Year, @Subtick, @OriginalSubtick, @EndYear, @EndSubtick, @OriginalEndSubtick,
+                        @Year, @EndYear,
                         @AbsoluteStart, @AbsoluteEnd,
                         @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
                         @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel
@@ -191,10 +189,7 @@ namespace StoryTimelineMk2.Database
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title, description = excluded.description, content = excluded.content,
                         story_id = excluded.story_id, type_id = excluded.type_id,
-                        year = excluded.year, subtick = excluded.subtick,
-                        original_subtick = excluded.original_subtick,
-                        end_year = excluded.end_year, end_subtick = excluded.end_subtick,
-                        original_end_subtick = excluded.original_end_subtick,
+                        year = excluded.year, end_year = excluded.end_year,
                         absolute_start = excluded.absolute_start, absolute_end = excluded.absolute_end,
                         book_title = excluded.book_title, chapter = excluded.chapter, page = excluded.page,
                         color = excluded.color, creation_granularity = excluded.creation_granularity,

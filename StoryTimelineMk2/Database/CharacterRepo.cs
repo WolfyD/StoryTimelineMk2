@@ -26,22 +26,22 @@ namespace StoryTimelineMk2.Database
             using var db = new SqliteConnection(_connString);
             string sql = @"
                 INSERT INTO characters (
-                    id, name, nicknames, aliases, race, description, notes, 
-                    birth_year, birth_subtick, birth_date, birth_alternative_year, 
-                    death_year, death_subtick, death_date, death_alternative_year, 
+                    id, name, nicknames, aliases, race, description, notes,
+                    birth_year, birth_date, birth_alternative_year,
+                    death_year, death_date, death_alternative_year,
                     importance, color, timeline_id
                 ) VALUES (
                     @Id, @Name, @Nicknames, @Aliases, @Race, @Description, @Notes,
-                    @BirthYear, @BirthSubtick, @BirthDate, @BirthAlternativeYear,
-                    @DeathYear, @DeathSubtick, @DeathDate, @DeathAlternativeYear,
+                    @BirthYear, @BirthDate, @BirthAlternativeYear,
+                    @DeathYear, @DeathDate, @DeathAlternativeYear,
                     @Importance, @Color, @TimelineId
                 )
-                ON CONFLICT(id) DO UPDATE SET 
+                ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name, nicknames = excluded.nicknames, aliases = excluded.aliases,
                     race = excluded.race, description = excluded.description, notes = excluded.notes,
-                    birth_year = excluded.birth_year, birth_subtick = excluded.birth_subtick, 
+                    birth_year = excluded.birth_year,
                     birth_date = excluded.birth_date, birth_alternative_year = excluded.birth_alternative_year,
-                    death_year = excluded.death_year, death_subtick = excluded.death_subtick,
+                    death_year = excluded.death_year,
                     death_date = excluded.death_date, death_alternative_year = excluded.death_alternative_year,
                     importance = excluded.importance, color = excluded.color, updated_at = CURRENT_TIMESTAMP;";
 

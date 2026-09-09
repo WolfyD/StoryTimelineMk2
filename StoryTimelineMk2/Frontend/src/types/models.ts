@@ -125,13 +125,9 @@ export interface TimelineItem {
 	StoryId: string | null;
 	TypeId: number;
 	Year: number;
-	AbsoluteStart: number;
-	Subtick: number;
-	OriginalSubtick: number;
 	EndYear: number;
+	AbsoluteStart: number;
 	AbsoluteEnd: number;
-	EndSubtick: number;
-	OriginalEndSubtick: number;
 	BookTitle: string;
 	Chapter: string;
 	Page: string;

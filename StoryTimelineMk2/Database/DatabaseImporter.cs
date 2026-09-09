@@ -438,13 +438,13 @@ namespace StoryTimelineMk2.Database
                 // Backfill legacy items with default LOD visibility and calculated absolute time.
                 // Assumes standard decimal subticks (e.g. subtick 5 = 0.5) for legacy data.
                 db.Execute(@"
-                    UPDATE items 
-                    SET 
+                    UPDATE items
+                    SET
                         min_lod_level = COALESCE(min_lod_level, 3),
                         absolute_start = CAST(year AS REAL) + (CAST(IFNULL(subtick, 0) AS REAL) / 10.0),
-                        absolute_end = CASE 
+                        absolute_end = CASE
                             WHEN end_year IS NOT NULL THEN CAST(end_year AS REAL) + (CAST(IFNULL(end_subtick, 0) AS REAL) / 10.0)
-                            ELSE NULL 
+                            ELSE CAST(year AS REAL) + (CAST(IFNULL(subtick, 0) AS REAL) / 10.0)
                         END
                     WHERE absolute_start IS NULL;", transaction: tx);
 

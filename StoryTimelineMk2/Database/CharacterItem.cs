@@ -16,12 +16,10 @@ namespace StoryTimelineMk2.Database
 
         // Nullable integers since characters might not have known birth/death years
         public int? BirthYear { get; set; }
-        public int? BirthSubtick { get; set; }
         public string BirthDate { get; set; }
         public string BirthAlternativeYear { get; set; }
 
         public int? DeathYear { get; set; }
-        public int? DeathSubtick { get; set; }
         public string DeathDate { get; set; }
         public string DeathAlternativeYear { get; set; }
 

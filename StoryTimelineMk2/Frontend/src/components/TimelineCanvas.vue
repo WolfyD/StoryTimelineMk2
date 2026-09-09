@@ -9,7 +9,7 @@ import { BackendAPI } from '@/bridge/api';
 
 import {
 	BREAK_TICKS, absoluteToVisual, visualToAbsolute,
-	FormatRegistry, getXFromTime, getTimeFromX,
+	getXFromTime, getTimeFromX,
     isLeftOfNow, getAssignedLane, type LaneLock
 } from '@/utils/timelineLayout';
 import { buildNode, updateAbsolutePositions, setNodeVisibility } from '@/utils/timelineNodes';
@@ -178,17 +178,13 @@ const hasTimelineEnd   = computed(() => store.items.some(i => getTypeId(i) === 9
 const addBoundaryItem = async (typeId: 8 | 9, absoluteTime: number) => {
     closeContextMenu();
     const year = Math.floor(absoluteTime);
-    const frac = absoluteTime - year;
-    const step = viewport.lodStepFraction;
-    const maxSubticks = step > 0 ? Math.round(1 / step) : 1;
-    const subtick = frac > 0.000001 ? Math.max(0, Math.min(Math.round(frac / step), maxSubticks - 1)) : 0;
     const id   = crypto.randomUUID();
     const item: TimelineItem = {
         Id: id, Title: typeId === 8 ? 'Timeline Start' : 'Timeline End',
         Description: '', Content: '', StoryId: null,
         TypeId: typeId,
-        Year: year, AbsoluteStart: absoluteTime, Subtick: subtick, OriginalSubtick: subtick,
-        EndYear: year, AbsoluteEnd: absoluteTime, EndSubtick: subtick, OriginalEndSubtick: subtick,
+        Year: year, AbsoluteStart: absoluteTime,
+        EndYear: year, AbsoluteEnd: absoluteTime,
         BookTitle: '', Chapter: '', Page: '',
         Color: typeId === 8 ? '#22c55e' : '#ef4444',
         CreationGranularity: store.currentLodIndex,
@@ -208,17 +204,13 @@ const addBoundaryItem = async (typeId: 8 | 9, absoluteTime: number) => {
 const addBookmark = async (absoluteTime: number) => {
     closeContextMenu();
     const year = Math.floor(absoluteTime);
-    const frac = absoluteTime - year;
-    const step = viewport.lodStepFraction;
-    const maxSubticks = step > 0 ? Math.round(1 / step) : 1;
-    const subtick = frac > 0.000001 ? Math.max(0, Math.min(Math.round(frac / step), maxSubticks - 1)) : 0;
     const id = crypto.randomUUID();
     const bm: TimelineItem = {
         Id: id, Title: `Bookmark ${year}`,
         Description: '', Content: '', StoryId: null,
         TypeId: 6,
-        Year: year, AbsoluteStart: absoluteTime, Subtick: subtick, OriginalSubtick: subtick,
-        EndYear: year, AbsoluteEnd: absoluteTime, EndSubtick: subtick, OriginalEndSubtick: subtick,
+        Year: year, AbsoluteStart: absoluteTime,
+        EndYear: year, AbsoluteEnd: absoluteTime,
         BookTitle: '', Chapter: '', Page: '',
         Color: '#4b5563',
         CreationGranularity: store.currentLodIndex,
@@ -399,11 +391,10 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         // Convert visual position back to absolute for year label formatting
         const cleanTime = parseFloat(visualToAbsolute(visualTickTime, ranges, step).toFixed(8));
         const year      = Math.floor(cleanTime);
-        let fraction    = cleanTime - year;
-        if (fraction > 0.99) fraction = 0;
+        const fraction  = cleanTime - year;
 
         const x = getXFromTime(cleanTime, viewport.centerTime, step, viewport.width, store.layoutSettings!, ranges);
-        const formatter = FormatRegistry[currentLod.formatKey] || FormatRegistry['YEARS'];
+        const formatter = store.activeFormatRegistry[currentLod.formatKey] || store.activeFormatRegistry['YEARS'];
 
         const tick = new Konva.Line({ points: [x, viewport.height / 2 - 10, x, viewport.height / 2 + 10], stroke: '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth });
         const text = new Konva.Text({ x: x - 50, y: viewport.height / 2 + 15,
@@ -808,7 +799,7 @@ function updateCursor(mouseX: number, mouseY: number) {
     const fraction = parseFloat((snappedTime - year).toFixed(8));
     const currentLod = store.lodProfile[store.currentLodIndex];
     const formatKey = currentLod?.formatKey ?? 'YEARS';
-    const formatter = FormatRegistry[formatKey] || FormatRegistry['YEARS'];
+    const formatter = store.activeFormatRegistry[formatKey] || store.activeFormatRegistry['YEARS'];
 
     const FONT_SIZE = 14;
     const mid = viewport.height / 2;

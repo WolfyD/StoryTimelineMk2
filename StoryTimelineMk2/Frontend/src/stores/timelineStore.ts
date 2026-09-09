@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote } from '@/types/models';
 import { BackendAPI } from '@/bridge/api';
+import { buildFormatRegistry, DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
 
 interface LastDeletedState {
     item: TimelineItem;
@@ -203,12 +204,52 @@ export const useTimelineStore = defineStore('timeline', () => {
 		}
 	};
 
+	// Parse the loaded calendar's YearDefinition into a format config
+	const calendarConfig = computed((): CalendarFormatConfig => {
+		const ydStr = calendar.value?.YearDefinition
+		if (!ydStr) return DEFAULT_CALENDAR_CONFIG
+		try {
+			const yd = JSON.parse(ydStr)
+			const yearLength: number = yd.length ?? 365
+
+			const months: CalendarFormatConfig['months'] = []
+			if (yd.month_definition && yd.months) {
+				let cumulative = 0
+				for (let i = 0; i < (yd.months as number); i++) {
+					const m = yd.month_definition[String(i)]
+					const len: number = m?.length ?? 30
+					months.push({
+						name: m?.name ?? `Month ${i + 1}`,
+						shortName: m?.short_name ?? (m?.name ? String(m.name).slice(0, 3) : `M${i + 1}`),
+						startDay: cumulative,
+					})
+					cumulative += len
+				}
+			}
+
+			const seasons: CalendarFormatConfig['seasons'] = []
+			if (yd.season_definition && yd.seasons) {
+				for (let i = 0; i < (yd.seasons as number); i++) {
+					const s = yd.season_definition[String(i)]
+					seasons.push({ name: s?.name ?? `Season ${i + 1}`, start: s?.start ?? 0, end: s?.end ?? 0 })
+				}
+			}
+
+			const weekLength: number = yd.week_definition?.length ?? 7
+			return { yearLength, weekLength, months, seasons }
+		} catch {
+			return DEFAULT_CALENDAR_CONFIG
+		}
+	})
+
+	const activeFormatRegistry = computed((): FormatRegistryType => buildFormatRegistry(calendarConfig.value))
+
 	// Expose everything so Vue components can use them
 	return {
 		// variables
 		items, currentNowYear, centerAbsoluteTime, viewportWidthPx, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex,
 		pastItems, futureItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle, hiddenRanges,
-		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab,
+		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab, activeFormatRegistry, calendarConfig,
 
 		// functions
 		loadItems, addItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,

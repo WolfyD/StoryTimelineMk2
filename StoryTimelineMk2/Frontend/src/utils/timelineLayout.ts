@@ -6,36 +6,79 @@
 import type { LayoutSettings, HiddenRange } from "@/types/models";
 
 
-// Formatting Registry for LODs
-export const FormatRegistry: Record<string, (year: number, fraction: number) => string> = {
-    'MILLENNIA': (y) => `${Math.floor(y)}s`,
-    'CENTURIES': (y) => `${Math.floor(y)}`,
-    'DECADES': (y) => `${Math.floor(y)}`,
-    'YEARS': (y) => `${Math.floor(y)}`,
-    'QUARTERS': (y, f) => {
-        if (f === 0) return `${Math.floor(y)}`;
-        const q = Math.round(f / 0.25) + 1;
-        return `Q${q}`;
-    },
-	'SEASONS': (y, f) => {
-        if (f === 0) return `${Math.floor(y)}`;
-        const seasons = ['Spring', 'Summer', 'Fall', 'Winter']; //TODO: replace with calendar setup
-        return seasons[Math.min(Math.round(f * 4), 3)];
-    },
-    'MONTHS': (y, f) => {
-        if (f === 0) return `${Math.floor(y)}`;
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; //TODO: replace with calendar setup
-        return months[Math.min(Math.round(f * 12), 11)];
-    },
-	'WEEKS': (y, f) => {
-        if (f === 0) return `${Math.floor(y)}`;
-        return `W ${Math.floor(f * 52) + 1}`; //TODO: replace with calendar setup
-    },
-    'DAYS': (y, f) => {
-        if (f === 0) return `${Math.floor(y)}`;
-        return `Day ${Math.floor(f * 365) + 1}`; //TODO: replace with calendar setup
+// ── Calendar format configuration ─────────────────────────────────────────────
+
+export interface CalendarFormatConfig {
+    yearLength: number
+    weekLength: number
+    months: { name: string; shortName: string; startDay: number }[]
+    seasons: { name: string; start: number; end: number }[]
+}
+
+export const DEFAULT_CALENDAR_CONFIG: CalendarFormatConfig = {
+    yearLength: 365,
+    weekLength: 7,
+    months: [
+        { name: 'January',   shortName: 'Jan', startDay: 0   },
+        { name: 'February',  shortName: 'Feb', startDay: 31  },
+        { name: 'March',     shortName: 'Mar', startDay: 59  },
+        { name: 'April',     shortName: 'Apr', startDay: 90  },
+        { name: 'May',       shortName: 'May', startDay: 120 },
+        { name: 'June',      shortName: 'Jun', startDay: 151 },
+        { name: 'July',      shortName: 'Jul', startDay: 181 },
+        { name: 'August',    shortName: 'Aug', startDay: 212 },
+        { name: 'September', shortName: 'Sep', startDay: 243 },
+        { name: 'October',   shortName: 'Oct', startDay: 273 },
+        { name: 'November',  shortName: 'Nov', startDay: 304 },
+        { name: 'December',  shortName: 'Dec', startDay: 334 },
+    ],
+    seasons: [
+        { name: 'Spring', start: 0,   end: 91  },
+        { name: 'Summer', start: 91,  end: 183 },
+        { name: 'Fall',   start: 183, end: 274 },
+        { name: 'Winter', start: 274, end: 364 },
+    ],
+}
+
+export type FormatRegistryType = Record<string, (year: number, fraction: number) => string>
+
+export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryType {
+    const { yearLength, weekLength, months, seasons } = cfg
+
+    function monthLabel(f: number): string {
+        if (months.length === 0) return `M${Math.round(f * 12) + 1}`
+        const day = Math.round(f * yearLength)
+        for (let i = 0; i < months.length - 1; i++) {
+            if (day < months[i + 1].startDay) return months[i].shortName
+        }
+        return months[months.length - 1].shortName
     }
-};
+
+    function seasonLabel(f: number): string {
+        if (seasons.length === 0) return `Q${Math.round(f * 4) + 1}`
+        const day = Math.round(f * yearLength)
+        for (const s of seasons) {
+            if (s.start <= s.end ? (day >= s.start && day <= s.end) : (day >= s.start || day <= s.end))
+                return s.name
+        }
+        return seasons[0].name
+    }
+
+    return {
+        'MILLENNIA': (y)    => `${Math.floor(y)}s`,
+        'CENTURIES': (y)    => `${Math.floor(y)}`,
+        'DECADES':   (y)    => `${Math.floor(y)}`,
+        'YEARS':     (y)    => `${Math.floor(y)}`,
+        'QUARTERS':  (y, f) => f === 0 ? `${Math.floor(y)}` : `Q${Math.round(f / 0.25) + 1}`,
+        'SEASONS':   (y, f) => f === 0 ? `${Math.floor(y)}` : seasonLabel(f),
+        'MONTHS':    (y, f) => f === 0 ? `${Math.floor(y)}` : monthLabel(f),
+        'WEEKS':     (y, f) => f === 0 ? `${Math.floor(y)}` : `W${Math.floor(Math.round(f * yearLength) / weekLength) + 1}`,
+        'DAYS':      (y, f) => f === 0 ? `${Math.floor(y)}` : `Day ${Math.round(f * yearLength) + 1}`,
+    }
+}
+
+// Gregorian default — kept for any code that imports it directly
+export const FormatRegistry: FormatRegistryType = buildFormatRegistry(DEFAULT_CALENDAR_CONFIG)
 
 // --- Hidden Range Transform ---
 

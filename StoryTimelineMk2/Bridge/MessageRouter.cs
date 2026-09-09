@@ -603,7 +603,7 @@ namespace StoryTimelineMk2.Bridge
                 exportedAt      = DateTime.UtcNow.ToString("O"),
                 includeIds,
                 timeline        = includeIds ? (object)timeline : new { timeline.Title, timeline.Author, timeline.Description, timeline.StartYear, timeline.Color },
-                items           = includeIds ? (object)items : items.Select(i => new { i.Title, i.Description, i.Content, i.Year, i.Subtick, i.EndYear, i.EndSubtick, i.Color, i.Importance, TypeId = i.TypeId }),
+                items           = includeIds ? (object)items : items.Select(i => new { i.Title, i.Description, i.Content, i.Year, i.EndYear, i.AbsoluteStart, i.AbsoluteEnd, i.Color, i.Importance, TypeId = i.TypeId }),
                 characters      = includeIds ? (object)characters : characters.Select(c => new { c.Name, c.Race, c.Description }),
                 notes           = includeIds ? (object)notes : notes.Select(n => new { n.NoteContents }),
             };
