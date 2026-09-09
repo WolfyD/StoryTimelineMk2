@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import type { LodLevel } from '@/types/models'
 import WeekDayPicker from '@/components/WeekDayPicker.vue'
@@ -29,6 +29,7 @@ const lodProfileName = ref('LOD Profile')
 // ---- LOD levels ----
 const lodLevels = ref<LodLevel[]>([])
 const KNOWN_FORMAT_KEYS = ['MILLENNIA', 'CENTURIES', 'DECADES', 'YEARS', 'SEASONS', 'MONTHS', 'WEEKS', 'DAYS']
+const ADD_LOD_KEYS = KNOWN_FORMAT_KEYS.filter(k => k !== 'YEARS')
 const useFractions = ref(false)
 const lodManuallyEdited = ref(false)
 
@@ -37,12 +38,44 @@ const showAddLodForm = ref(false)
 const addLodKey = ref('YEARS')
 const addLodStep = ref(1)
 
-function openAddLodForm() { showAddLodForm.value = true; addLodKey.value = 'YEARS'; addLodStep.value = 1 }
+function openAddLodForm() { showAddLodForm.value = true; addLodKey.value = ''; addLodStep.value = 1 }
 function confirmAddLod() {
+    const key = addLodKey.value.trim()
+    if (!key || key === 'YEARS') return
     lodManuallyEdited.value = true
-    lodLevels.value.push({ index: lodLevels.value.length, formatKey: addLodKey.value, stepFraction: addLodStep.value })
+    lodLevels.value.push({ index: lodLevels.value.length, formatKey: key, stepFraction: addLodStep.value })
     showAddLodForm.value = false
 }
+
+function sortLodByStep() {
+    const items = [...lodLevels.value].sort((a, b) => b.stepFraction - a.stepFraction)
+    items.forEach((l, i) => l.index = i)
+    lodLevels.value = items
+    lodManuallyEdited.value = true
+}
+
+// ---- LOD drag-to-reorder ----
+const lodDragIndex = ref<number | null>(null)
+const lodDragOver  = ref<number | null>(null)
+
+function onLodDragStart(i: number, e: DragEvent) {
+    lodDragIndex.value = i
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+function onLodDragOver(i: number) { lodDragOver.value = i }
+function onLodDrop(i: number) {
+    const from = lodDragIndex.value
+    if (from === null || from === i) { lodDragIndex.value = null; lodDragOver.value = null; return }
+    const items = [...lodLevels.value]
+    const [moved] = items.splice(from, 1)
+    items.splice(i, 0, moved)
+    items.forEach((l, idx) => l.index = idx)
+    lodLevels.value = items
+    lodManuallyEdited.value = true
+    lodDragIndex.value = null
+    lodDragOver.value = null
+}
+function onLodDragEnd() { lodDragIndex.value = null; lodDragOver.value = null }
 
 function addLodLevelManual() {
     lodManuallyEdited.value = true
@@ -117,6 +150,9 @@ function syncLodStepFractions() {
 const openHelp = ref<string | null>(null)
 function toggleHelp(key: string) { openHelp.value = openHelp.value === key ? null : key }
 
+const collapsed = ref<Record<string, boolean>>({})
+function toggleCollapse(key: string) { collapsed.value[key] = !collapsed.value[key] }
+
 const helpTexts: Record<string, string> = {
     info: 'The basic details of your calendar. Short Name appears in compact displays. Alternate Name is an unofficial or historical alias. Era Before/After Year 0 are the labels used for dates on either side of year zero (e.g. BCE / CE, or BK / AK for a custom calendar).',
     lod: 'Level of Detail (LOD) controls how the timeline zooms. Each level has a Format Key — the type of unit shown at that zoom — and a Step Fraction: how many years one tick represents. Lower index = broader view (millennia), higher index = finer detail (days). Built-in Format Keys: MILLENNIA, CENTURIES, DECADES, YEARS, SEASONS, MONTHS, WEEKS, DAYS. Use the ½ toggle to enter step fractions as N/D (e.g. 1/365 for a day).',
@@ -126,12 +162,43 @@ const helpTexts: Record<string, string> = {
 }
 
 // ---- Year Definition ----
+let isScalingMonths = false  // prevents months→year feedback loop during year-driven updates
 const yearLength = ref(365)
 
 // Months
 const monthsHaveShortName = ref(true)
 interface MonthEntry { name: string; shortName: string; length: number; season: number }
 const months = ref<MonthEntry[]>([])
+
+// Months → Year: keep yearLength in sync with the sum of month lengths
+watch(months, () => {
+    if (isScalingMonths) return
+    yearLength.value = months.value.reduce((s, m) => s + m.length, 0)
+}, { deep: true })
+
+// Year → Months: scale all months proportionally when the user edits yearLength directly
+function onYearLengthInput(newVal: number) {
+    if (isNaN(newVal) || newVal < 1) return
+    const oldTotal = months.value.reduce((s, m) => s + m.length, 0)
+    if (months.value.length === 0 || oldTotal === 0) {
+        yearLength.value = newVal
+        return
+    }
+    isScalingMonths = true
+    const ratio = newVal / oldTotal
+    let distributed = 0
+    months.value.forEach((m, i) => {
+        if (i < months.value.length - 1) {
+            const scaled = Math.max(1, Math.round(m.length * ratio))
+            m.length = scaled
+            distributed += scaled
+        } else {
+            m.length = Math.max(1, newVal - distributed)
+        }
+    })
+    yearLength.value = months.value.reduce((s, m) => s + m.length, 0)
+    nextTick(() => { isScalingMonths = false })
+}
 
 // Weeks
 const hasWeekDef = ref(false)
@@ -286,6 +353,7 @@ watch([months, hasSeasons, seasons, hasWeekDef, weekLength, yearLength], () => {
 // ---- Parse YearDefinition JSON ----
 function parseYearDefinition(json: string) {
     if (!json) return
+    isScalingMonths = true
     try {
         const yd = JSON.parse(json)
         yearLength.value = yd.length ?? 365
@@ -331,6 +399,8 @@ function parseYearDefinition(json: string) {
         }
     } catch (e) {
         console.error('Failed to parse YearDefinition', e)
+    } finally {
+        nextTick(() => { isScalingMonths = false })
     }
 }
 
@@ -479,26 +549,31 @@ function toggleWeekend(d: number) {
         <!-- Calendar Info -->
         <div class="section">
           <div class="section-header-row">
-            <h3 class="section-title">Calendar Info</h3>
-            <button class="info-btn" :class="{ active: openHelp === 'info' }" @click="toggleHelp('info')" title="Help">i</button>
+            <div class="section-title-group" @click="toggleCollapse('info')">
+              <span class="collapse-chevron" :class="{ expanded: !collapsed['info'] }">›</span>
+              <h3 class="section-title">Calendar Info</h3>
+            </div>
+            <button class="info-btn" :class="{ active: openHelp === 'info' }" @click.stop="toggleHelp('info')" title="Help">i</button>
           </div>
-          <div v-if="openHelp === 'info'" class="help-bubble">{{ helpTexts.info }}</div>
-          <div class="field-grid">
-            <div class="field">
-              <label>Short Name</label>
-              <input type="text" v-model="shortName" placeholder="Greg." />
-            </div>
-            <div class="field">
-              <label>Alternate Name</label>
-              <input type="text" v-model="alternateName" placeholder="Western Calendar" />
-            </div>
-            <div class="field">
-              <label>Era Before Year 0</label>
-              <input type="text" v-model="nameBefore0" placeholder="BCE" />
-            </div>
-            <div class="field">
-              <label>Era After Year 0</label>
-              <input type="text" v-model="nameAfter0" placeholder="CE" />
+          <div v-show="!collapsed['info']">
+            <div v-if="openHelp === 'info'" class="help-bubble">{{ helpTexts.info }}</div>
+            <div class="field-grid">
+              <div class="field">
+                <label>Short Name</label>
+                <input type="text" v-model="shortName" placeholder="Greg." />
+              </div>
+              <div class="field">
+                <label>Alternate Name</label>
+                <input type="text" v-model="alternateName" placeholder="Western Calendar" />
+              </div>
+              <div class="field">
+                <label>Era Before Year 0</label>
+                <input type="text" v-model="nameBefore0" placeholder="BCE" />
+              </div>
+              <div class="field">
+                <label>Era After Year 0</label>
+                <input type="text" v-model="nameAfter0" placeholder="CE" />
+              </div>
             </div>
           </div>
         </div>
@@ -506,81 +581,150 @@ function toggleWeekend(d: number) {
         <!-- LOD Profile -->
         <div class="section">
           <div class="section-header-row">
-            <h3 class="section-title">LOD Profile</h3>
+            <div class="section-title-group" @click="toggleCollapse('lod')">
+              <span class="collapse-chevron" :class="{ expanded: !collapsed['lod'] }">›</span>
+              <h3 class="section-title">LOD Profile</h3>
+            </div>
             <div class="header-right">
-              <button class="btn btn-secondary btn-sm" @click="autoSetLod" title="Reset LOD to defaults">Auto LOD</button>
-              <button class="info-btn" :class="{ active: openHelp === 'lod' }" @click="toggleHelp('lod')" title="Help">i</button>
+              <button class="btn btn-secondary btn-sm" @click.stop="sortLodByStep" title="Sort levels by step fraction (broadest first)">Sort</button>
+              <button class="btn btn-secondary btn-sm" @click.stop="autoSetLod" title="Reset LOD to defaults">Auto LOD</button>
+              <button class="info-btn" :class="{ active: openHelp === 'lod' }" @click.stop="toggleHelp('lod')" title="Help">i</button>
             </div>
           </div>
-          <div v-if="openHelp === 'lod'" class="help-bubble">{{ helpTexts.lod }}</div>
-          <div class="field" style="margin-bottom:10px">
-            <label>Profile Name</label>
-            <input type="text" v-model="lodProfileName" />
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Format Key</th>
-                <th>
-                  Step Fraction
-                  <button
-                    class="frac-btn"
-                    :class="{ active: useFractions }"
-                    @click="useFractions = !useFractions"
-                    :title="useFractions ? 'Switch to decimal' : 'Switch to fraction (N/D)'"
-                  >{{ useFractions ? '1.0' : '½' }}</button>
-                </th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(lod, i) in lodLevels" :key="i">
-                <td class="num-cell">{{ i }}</td>
-                <td>
-                  <input type="text" class="tbl-input" v-model="lod.formatKey" list="format-keys"
-                    @input="lodManuallyEdited = true" @change="lodManuallyEdited = true" />
-                  <datalist id="format-keys">
-                    <option v-for="k in KNOWN_FORMAT_KEYS" :key="k" :value="k" />
-                  </datalist>
-                </td>
-                <td>
-                  <input
-                    v-if="useFractions"
-                    type="text"
-                    class="tbl-input step-input frac-input"
-                    :value="toFraction(lod.stepFraction)"
-                    @change="updateStepFraction(lod, ($event.target as HTMLInputElement).value); lodManuallyEdited = true"
-                  />
-                  <input
-                    v-else
-                    type="number"
-                    class="tbl-input step-input"
-                    v-model.number="lod.stepFraction"
-                    step="any"
-                    min="0"
-                    @input="lodManuallyEdited = true"
-                    @change="lodManuallyEdited = true"
-                  />
-                </td>
-                <td>
-                  <button v-if="lod.formatKey !== 'YEARS'" class="btn-icon" @click="removeLodLevelManual(i)">×</button>
-                  <span v-else class="years-lock" title="YEARS level cannot be removed">🔒</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <template v-if="showAddLodForm">
-            <div class="add-lod-row mt-8">
-              <select v-model="addLodKey" class="tbl-input" style="width:130px">
-                <option v-for="k in KNOWN_FORMAT_KEYS" :key="k" :value="k">{{ k }}</option>
-              </select>
-              <input type="number" v-model.number="addLodStep" step="any" min="0" class="tbl-input step-input" />
-              <button class="btn btn-primary btn-sm" @click="confirmAddLod">Add</button>
-              <button class="btn btn-secondary btn-sm" @click="showAddLodForm = false">Cancel</button>
+          <div v-show="!collapsed['lod']">
+            <div v-if="openHelp === 'lod'" class="help-bubble">{{ helpTexts.lod }}</div>
+            <div class="field" style="margin-bottom:10px">
+              <label>Profile Name</label>
+              <input type="text" v-model="lodProfileName" />
             </div>
-          </template>
-          <button v-else class="btn btn-secondary btn-sm mt-8" @click="openAddLodForm">+ Add Level</button>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th class="drag-th"></th>
+                  <th>#</th>
+                  <th>Format Key</th>
+                  <th>
+                    Step Fraction
+                    <button
+                      class="frac-btn"
+                      :class="{ active: useFractions }"
+                      @click="useFractions = !useFractions"
+                      :title="useFractions ? 'Switch to decimal' : 'Switch to fraction (N/D)'"
+                    >{{ useFractions ? '1.0' : '½' }}</button>
+                  </th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(lod, i) in lodLevels" :key="i"
+                  draggable="true"
+                  :class="{ 'lod-dragging': lodDragIndex === i, 'lod-drag-over': lodDragOver === i && lodDragIndex !== i }"
+                  @dragstart="onLodDragStart(i, $event)"
+                  @dragover.prevent="onLodDragOver(i)"
+                  @drop.prevent="onLodDrop(i)"
+                  @dragend="onLodDragEnd"
+                >
+                  <td class="drag-handle" title="Drag to reorder">⠿</td>
+                  <td class="num-cell">{{ i }}</td>
+                  <td>
+                    <input type="text" class="tbl-input" v-model="lod.formatKey" list="format-keys"
+                      @input="lodManuallyEdited = true" @change="lodManuallyEdited = true" />
+                    <datalist id="format-keys">
+                      <option v-for="k in KNOWN_FORMAT_KEYS" :key="k" :value="k" />
+                    </datalist>
+                  </td>
+                  <td>
+                    <input
+                      v-if="useFractions"
+                      type="text"
+                      class="tbl-input step-input frac-input"
+                      :value="toFraction(lod.stepFraction)"
+                      @change="updateStepFraction(lod, ($event.target as HTMLInputElement).value); lodManuallyEdited = true"
+                    />
+                    <input
+                      v-else
+                      type="number"
+                      class="tbl-input step-input"
+                      v-model.number="lod.stepFraction"
+                      step="any"
+                      min="0"
+                      @input="lodManuallyEdited = true"
+                      @change="lodManuallyEdited = true"
+                    />
+                  </td>
+                  <td>
+                    <button v-if="lod.formatKey !== 'YEARS'" class="btn-icon" @click="removeLodLevelManual(i)">×</button>
+                    <span v-else class="years-lock" title="YEARS level cannot be removed">🔒</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <template v-if="showAddLodForm">
+              <div class="add-lod-row mt-8">
+                <input type="text" v-model="addLodKey" list="add-lod-keys" class="tbl-input" style="width:140px" placeholder="Format key…" />
+                <datalist id="add-lod-keys">
+                  <option v-for="k in ADD_LOD_KEYS" :key="k" :value="k" />
+                </datalist>
+                <input type="number" v-model.number="addLodStep" step="any" min="0" class="tbl-input step-input" />
+                <button class="btn btn-primary btn-sm" @click="confirmAddLod"
+                  :disabled="!addLodKey.trim() || addLodKey.trim() === 'YEARS'">Add</button>
+                <button class="btn btn-secondary btn-sm" @click="showAddLodForm = false">Cancel</button>
+              </div>
+              <p v-if="addLodKey.trim() === 'YEARS'" class="add-lod-warn">YEARS level already exists and cannot be duplicated.</p>
+            </template>
+            <button v-else class="btn-add mt-8" @click="openAddLodForm">+ Add Level</button>
+          </div>
+        </div>
+
+        <!-- Months -->
+        <div class="section">
+          <div class="section-header-row">
+            <div class="section-title-group" @click="toggleCollapse('months')">
+              <span class="collapse-chevron" :class="{ expanded: !collapsed['months'] }">›</span>
+              <h3 class="section-title">Months</h3>
+            </div>
+            <button class="info-btn" :class="{ active: openHelp === 'months' }" @click.stop="toggleHelp('months')" title="Help">i</button>
+          </div>
+          <div v-show="!collapsed['months']">
+            <div v-if="openHelp === 'months'" class="help-bubble">{{ helpTexts.months }}</div>
+            <div class="inline-row mt-8">
+              <div class="field flex-1">
+                <label>Year Length (days)</label>
+                <input type="number" :value="yearLength" min="1" style="width:100px"
+                  @change="onYearLengthInput(Number(($event.target as HTMLInputElement).value))" />
+                <span v-if="months.length > 0" class="year-hint">auto-computed · edit to scale months</span>
+              </div>
+              <label class="toggle-label">
+                <input type="checkbox" v-model="monthsHaveShortName" />
+                Short names
+              </label>
+            </div>
+            <table class="data-table mt-8">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th v-if="monthsHaveShortName">Short</th>
+                  <th>Days</th>
+                  <th v-if="hasSeasons">Season</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(m, i) in months" :key="i">
+                  <td class="num-cell">{{ i + 1 }}</td>
+                  <td><input type="text" class="tbl-input" v-model="m.name" /></td>
+                  <td v-if="monthsHaveShortName"><input type="text" class="tbl-input short-input" v-model="m.shortName" /></td>
+                  <td><input type="number" class="tbl-input narrow-input" v-model.number="m.length" min="1" /></td>
+                  <td v-if="hasSeasons">
+                    <input type="number" class="tbl-input narrow-input" v-model.number="m.season" min="0" :max="seasons.length - 1" />
+                  </td>
+                  <td><button class="btn-icon" @click="removeMonth(i)">×</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <button class="btn-add mt-8" @click="addMonth">+ Add Month</button>
+          </div>
         </div>
 
       </div>
@@ -588,243 +732,217 @@ function toggleWeekend(d: number) {
       <!-- ===== RIGHT COLUMN ===== -->
       <div class="cal-col">
 
-        <!-- Months -->
-        <div class="section">
-          <div class="section-header-row">
-            <h3 class="section-title">Months</h3>
-            <button class="info-btn" :class="{ active: openHelp === 'months' }" @click="toggleHelp('months')" title="Help">i</button>
-          </div>
-          <div v-if="openHelp === 'months'" class="help-bubble">{{ helpTexts.months }}</div>
-          <div class="inline-row mt-8">
-            <div class="field flex-1">
-              <label>Year Length (days)</label>
-              <input type="number" v-model.number="yearLength" min="1" style="width:100px" />
-            </div>
-            <label class="toggle-label">
-              <input type="checkbox" v-model="monthsHaveShortName" />
-              Short names
-            </label>
-          </div>
-          <table class="data-table mt-8">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th v-if="monthsHaveShortName">Short</th>
-                <th>Days</th>
-                <th v-if="hasSeasons">Season</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(m, i) in months" :key="i">
-                <td class="num-cell">{{ i + 1 }}</td>
-                <td><input type="text" class="tbl-input" v-model="m.name" /></td>
-                <td v-if="monthsHaveShortName"><input type="text" class="tbl-input short-input" v-model="m.shortName" /></td>
-                <td><input type="number" class="tbl-input narrow-input" v-model.number="m.length" min="1" /></td>
-                <td v-if="hasSeasons">
-                  <input type="number" class="tbl-input narrow-input" v-model.number="m.season" min="0" :max="seasons.length - 1" />
-                </td>
-                <td><button class="btn-icon" @click="removeMonth(i)">×</button></td>
-              </tr>
-            </tbody>
-          </table>
-          <button class="btn btn-secondary btn-sm mt-8" @click="addMonth">+ Add Month</button>
-        </div>
-
         <!-- Week Structure -->
         <div class="section">
           <div class="section-header-row">
-            <h3 class="section-title">Week Structure</h3>
+            <div class="section-title-group" @click="toggleCollapse('weeks')">
+              <span class="collapse-chevron" :class="{ expanded: !collapsed['weeks'] }">›</span>
+              <h3 class="section-title">Week Structure</h3>
+            </div>
             <div class="header-right">
-              <label class="toggle-label">
+              <label class="toggle-label" @click.stop>
                 <input type="checkbox" v-model="hasWeekDef" />
                 {{ hasWeekDef ? 'Enabled' : 'Disabled' }}
               </label>
-              <button class="info-btn" :class="{ active: openHelp === 'weeks' }" @click="toggleHelp('weeks')" title="Help">i</button>
+              <button class="info-btn" :class="{ active: openHelp === 'weeks' }" @click.stop="toggleHelp('weeks')" title="Help">i</button>
             </div>
           </div>
-          <div v-if="openHelp === 'weeks'" class="help-bubble">{{ helpTexts.weeks }}</div>
-          <template v-if="hasWeekDef">
-            <div class="inline-row mt-8">
-              <div class="field">
-                <label>Days per Week</label>
-                <input type="number" v-model.number="weekLength" min="1" max="30" style="width:70px" />
+          <div v-show="!collapsed['weeks']">
+            <div v-if="openHelp === 'weeks'" class="help-bubble">{{ helpTexts.weeks }}</div>
+            <template v-if="hasWeekDef">
+              <div class="inline-row mt-8">
+                <div class="field">
+                  <label>Days per Week</label>
+                  <input type="number" v-model.number="weekLength" min="1" max="30" style="width:70px" />
+                </div>
+                <label class="toggle-label">
+                  <input type="checkbox" v-model="daysHaveNames" />
+                  Day names
+                </label>
+                <label class="toggle-label" v-if="daysHaveNames">
+                  <input type="checkbox" v-model="daysHaveShortNames" />
+                  Short names
+                </label>
               </div>
-              <label class="toggle-label">
-                <input type="checkbox" v-model="daysHaveNames" />
-                Day names
-              </label>
-              <label class="toggle-label" v-if="daysHaveNames">
-                <input type="checkbox" v-model="daysHaveShortNames" />
-                Short names
-              </label>
-            </div>
-            <table class="data-table mt-8" v-if="daysHaveNames">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Name</th>
-                  <th v-if="daysHaveShortNames">Short</th>
-                  <th>Weekend</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="i in weekLength" :key="i">
-                  <td class="num-cell">{{ i }}</td>
-                  <td><input type="text" class="tbl-input" v-model="dayNames[i - 1]" /></td>
-                  <td v-if="daysHaveShortNames"><input type="text" class="tbl-input short-input" v-model="dayShortNames[i - 1]" /></td>
-                  <td class="center-cell"><input type="checkbox" :checked="isWeekend(i - 1)" @change="toggleWeekend(i - 1)" /></td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="weekend-row mt-8">
-              <span class="field-label">Weekend days:</span>
-              <label v-for="d in weekLength" :key="d" class="toggle-label">
-                <input type="checkbox" :checked="isWeekend(d - 1)" @change="toggleWeekend(d - 1)" />
-                {{ d }}
-              </label>
-            </div>
-          </template>
+              <table class="data-table mt-8" v-if="daysHaveNames">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th v-if="daysHaveShortNames">Short</th>
+                    <th>Weekend</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="i in weekLength" :key="i">
+                    <td class="num-cell">{{ i }}</td>
+                    <td><input type="text" class="tbl-input" v-model="dayNames[i - 1]" /></td>
+                    <td v-if="daysHaveShortNames"><input type="text" class="tbl-input short-input" v-model="dayShortNames[i - 1]" /></td>
+                    <td class="center-cell"><input type="checkbox" :checked="isWeekend(i - 1)" @change="toggleWeekend(i - 1)" /></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-else class="weekend-row mt-8">
+                <span class="field-label">Weekend days:</span>
+                <label v-for="d in weekLength" :key="d" class="toggle-label">
+                  <input type="checkbox" :checked="isWeekend(d - 1)" @change="toggleWeekend(d - 1)" />
+                  {{ d }}
+                </label>
+              </div>
+            </template>
+            <p v-else class="empty-note mt-8">Enable to define a week structure.</p>
+          </div>
         </div>
 
         <!-- Seasons -->
         <div class="section">
           <div class="section-header-row">
-            <h3 class="section-title">Seasons</h3>
+            <div class="section-title-group" @click="toggleCollapse('seasons')">
+              <span class="collapse-chevron" :class="{ expanded: !collapsed['seasons'] }">›</span>
+              <h3 class="section-title">Seasons</h3>
+            </div>
             <div class="header-right">
-              <label class="toggle-label">
+              <label class="toggle-label" @click.stop>
                 <input type="checkbox" v-model="hasSeasons" />
                 {{ hasSeasons ? 'Enabled' : 'Disabled' }}
               </label>
-              <button class="info-btn" :class="{ active: openHelp === 'seasons' }" @click="toggleHelp('seasons')" title="Help">i</button>
+              <button class="info-btn" :class="{ active: openHelp === 'seasons' }" @click.stop="toggleHelp('seasons')" title="Help">i</button>
             </div>
           </div>
-          <div v-if="openHelp === 'seasons'" class="help-bubble">{{ helpTexts.seasons }}</div>
-          <template v-if="hasSeasons">
-            <!-- Season track -->
-            <div v-if="seasonSegments.length > 0" class="season-track">
-              <div
-                v-for="(seg, i) in seasonSegments"
-                :key="i"
-                class="season-seg"
-                :style="{ flex: seg.length, background: seg.color }"
-                :title="seg.name + ' · ' + seg.length + ' days'"
-              >
-                <span class="season-seg-label">{{ seg.name }}</span>
+          <div v-show="!collapsed['seasons']">
+            <div v-if="openHelp === 'seasons'" class="help-bubble">{{ helpTexts.seasons }}</div>
+            <template v-if="hasSeasons">
+              <!-- Season track -->
+              <div v-if="seasonSegments.length > 0" class="season-track">
+                <div
+                  v-for="(seg, i) in seasonSegments"
+                  :key="i"
+                  class="season-seg"
+                  :style="{ flex: seg.length, background: seg.color }"
+                  :title="seg.name + ' · ' + seg.length + ' days'"
+                >
+                  <span class="season-seg-label">{{ seg.name }}</span>
+                </div>
               </div>
-            </div>
-            <div class="header-right mt-8" style="justify-content:flex-start;gap:8px">
-              <label class="toggle-label">
-                <input type="checkbox" v-model="seasonsHaveShortName" />
-                Short names
-              </label>
-              <button class="btn btn-secondary btn-sm" @click="openSeasonDoyModal" :disabled="seasons.length === 0" title="Auto-calculate season start/end days">Auto DOY</button>
-            </div>
-            <table class="data-table mt-8">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Name</th>
-                  <th v-if="seasonsHaveShortName">Short</th>
-                  <th>Start</th>
-                  <th>End</th>
-                  <th>Significance</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(s, i) in seasons" :key="i">
-                  <td class="num-cell">{{ i }}</td>
-                  <td><input type="text" class="tbl-input" v-model="s.name" /></td>
-                  <td v-if="seasonsHaveShortName"><input type="text" class="tbl-input short-input" v-model="s.shortName" /></td>
-                  <td><input type="number" class="tbl-input narrow-input" v-model.number="s.start" /></td>
-                  <td><input type="number" class="tbl-input narrow-input" v-model.number="s.end" /></td>
-                  <td><input type="text" class="tbl-input" v-model="s.significance" placeholder="hottest…" /></td>
-                  <td><button class="btn-icon" @click="removeSeason(i)">×</button></td>
-                </tr>
-              </tbody>
-            </table>
-            <button class="btn btn-secondary btn-sm mt-8" @click="addSeason">+ Add Season</button>
-          </template>
+              <div class="header-right mt-8" style="justify-content:flex-start;gap:8px">
+                <label class="toggle-label">
+                  <input type="checkbox" v-model="seasonsHaveShortName" />
+                  Short names
+                </label>
+                <button class="btn btn-secondary btn-sm" @click="openSeasonDoyModal" :disabled="seasons.length === 0" title="Auto-calculate season start/end days">Auto DOY</button>
+              </div>
+              <table class="data-table mt-8">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th v-if="seasonsHaveShortName">Short</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Significance</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(s, i) in seasons" :key="i">
+                    <td class="num-cell">{{ i }}</td>
+                    <td><input type="text" class="tbl-input" v-model="s.name" /></td>
+                    <td v-if="seasonsHaveShortName"><input type="text" class="tbl-input short-input" v-model="s.shortName" /></td>
+                    <td><input type="number" class="tbl-input narrow-input" v-model.number="s.start" /></td>
+                    <td><input type="number" class="tbl-input narrow-input" v-model.number="s.end" /></td>
+                    <td><input type="text" class="tbl-input" v-model="s.significance" placeholder="hottest…" /></td>
+                    <td><button class="btn-icon" @click="removeSeason(i)">×</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <button class="btn-add mt-8" @click="addSeason">+ Add Season</button>
+            </template>
+            <p v-else class="empty-note mt-8">Enable to define seasons.</p>
+          </div>
         </div>
 
         <!-- Memorable Days -->
         <div class="section">
           <div class="section-header-row">
-            <h3 class="section-title">Memorable Days</h3>
+            <div class="section-title-group" @click="toggleCollapse('memdays')">
+              <span class="collapse-chevron" :class="{ expanded: !collapsed['memdays'] }">›</span>
+              <h3 class="section-title">Memorable Days</h3>
+            </div>
             <div class="header-right">
-              <label class="toggle-label">
+              <label class="toggle-label" @click.stop>
                 <input type="checkbox" v-model="hasMemorableDays" />
                 {{ hasMemorableDays ? 'Enabled' : 'Disabled' }}
               </label>
             </div>
           </div>
-          <template v-if="hasMemorableDays">
-            <div v-for="(md, i) in memorableDays" :key="md.id" class="mem-day-card">
-              <div class="mem-day-top">
-                <input type="color" class="mem-color" v-model="md.color" title="Color" />
-                <input type="text" class="tbl-input mem-name" v-model="md.name" placeholder="Holiday…" />
-                <select class="tbl-input mem-type" v-model="md.type">
-                  <option value="fixed">Fixed Date</option>
-                  <option value="weekly" :disabled="!hasWeekDef">Weekly</option>
-                  <option value="relative">Relative</option>
-                </select>
-                <button class="btn-icon" @click="removeMemorableDay(i)">×</button>
-              </div>
-              <div class="mem-day-bottom">
-                <template v-if="md.type === 'fixed'">
-                  <div class="mem-day-picker-wrap">
-                    <label class="toggle-label mb-0">
-                      <input type="checkbox" v-model="md.isRange" /> Range
-                    </label>
-                    <CalendarDayPicker
-                      :startMonth="md.startMonth"
-                      :startDay="md.startDay"
-                      :endMonth="md.endMonth"
-                      :endDay="md.endDay"
-                      :isRange="md.isRange"
+          <div v-show="!collapsed['memdays']">
+            <template v-if="hasMemorableDays">
+              <div v-for="(md, i) in memorableDays" :key="md.id" class="mem-day-card">
+                <div class="mem-day-top">
+                  <input type="color" class="mem-color" v-model="md.color" title="Color" />
+                  <input type="text" class="tbl-input mem-name" v-model="md.name" placeholder="Holiday…" />
+                  <select class="tbl-input mem-type" v-model="md.type">
+                    <option value="fixed">Fixed Date</option>
+                    <option value="weekly" :disabled="!hasWeekDef">Weekly</option>
+                    <option value="relative">Relative</option>
+                  </select>
+                  <button class="btn-icon" @click="removeMemorableDay(i)">×</button>
+                </div>
+                <div class="mem-day-bottom">
+                  <template v-if="md.type === 'fixed'">
+                    <div class="mem-day-picker-wrap">
+                      <label class="toggle-label mb-0">
+                        <input type="checkbox" v-model="md.isRange" /> Range
+                      </label>
+                      <CalendarDayPicker
+                        :startMonth="md.startMonth"
+                        :startDay="md.startDay"
+                        :endMonth="md.endMonth"
+                        :endDay="md.endDay"
+                        :isRange="md.isRange"
+                        :months="months"
+                        :weekLength="hasWeekDef ? weekLength : 7"
+                        :dayLabels="dayLabelsForPicker"
+                        :weekendDays="hasWeekDef ? weekendDays : [5, 6]"
+                        @select="v => { md.startMonth = v.startMonth; md.startDay = v.startDay; md.endMonth = v.endMonth; md.endDay = v.endDay }"
+                      />
+                      <div class="date-summary">
+                        <span class="date-label">From:</span>
+                        <span class="date-val">{{ months[md.startMonth]?.name ?? `M${md.startMonth + 1}` }} {{ md.startDay }}</span>
+                        <template v-if="md.isRange">
+                          <span class="date-sep">→</span>
+                          <span class="date-val">{{ months[md.endMonth]?.name ?? `M${md.endMonth + 1}` }} {{ md.endDay }}</span>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                  <template v-else-if="md.type === 'weekly'">
+                    <WeekDayPicker
+                      v-model="md.weekDays"
+                      :weekLength="weekLength"
+                      :dayLabels="dayLabelsForPicker"
+                    />
+                  </template>
+                  <template v-else>
+                    <RelativeRuleEditor
+                      v-model="md.rule"
+                      :seasons="seasons"
+                      :hasSeasons="hasSeasons"
                       :months="months"
+                      :hasWeekDef="hasWeekDef"
                       :weekLength="hasWeekDef ? weekLength : 7"
                       :dayLabels="dayLabelsForPicker"
                       :weekendDays="hasWeekDef ? weekendDays : [5, 6]"
-                      @select="v => { md.startMonth = v.startMonth; md.startDay = v.startDay; md.endMonth = v.endMonth; md.endDay = v.endDay }"
+                      :otherMemDays="memorableDays.filter(d => d.id !== md.id).map(d => ({ id: d.id, name: d.name }))"
                     />
-                    <div class="date-summary">
-                      <span class="date-label">From:</span>
-                      <span class="date-val">{{ months[md.startMonth]?.name ?? `M${md.startMonth + 1}` }} {{ md.startDay }}</span>
-                      <template v-if="md.isRange">
-                        <span class="date-sep">→</span>
-                        <span class="date-val">{{ months[md.endMonth]?.name ?? `M${md.endMonth + 1}` }} {{ md.endDay }}</span>
-                      </template>
-                    </div>
-                  </div>
-                </template>
-                <template v-else-if="md.type === 'weekly'">
-                  <WeekDayPicker
-                    v-model="md.weekDays"
-                    :weekLength="weekLength"
-                    :dayLabels="dayLabelsForPicker"
-                  />
-                </template>
-                <template v-else>
-                  <RelativeRuleEditor
-                    v-model="md.rule"
-                    :seasons="seasons"
-                    :hasSeasons="hasSeasons"
-                    :months="months"
-                    :hasWeekDef="hasWeekDef"
-                    :weekLength="hasWeekDef ? weekLength : 7"
-                    :dayLabels="dayLabelsForPicker"
-                    :weekendDays="hasWeekDef ? weekendDays : [5, 6]"
-                    :otherMemDays="memorableDays.filter(d => d.id !== md.id).map(d => ({ id: d.id, name: d.name }))"
-                  />
-                </template>
+                  </template>
+                </div>
               </div>
-            </div>
-            <p v-if="memorableDays.length === 0" class="empty-note mt-8">No memorable days yet.</p>
-            <button class="btn btn-secondary btn-sm mt-8" @click="addMemorableDay">+ Add Day</button>
-          </template>
+              <p v-if="memorableDays.length === 0" class="empty-note mt-8">No memorable days yet.</p>
+              <button class="btn-add mt-8" @click="addMemorableDay">+ Add Day</button>
+            </template>
+            <p v-else class="empty-note mt-8">Enable to define memorable days.</p>
+          </div>
         </div>
 
       </div>
@@ -876,17 +994,18 @@ function toggleWeekend(d: number) {
 .section {
   background: #141e33;
   border: 1px solid #2d3a56;
+  border-left: 3px solid #253a5e;
   border-radius: 6px;
-  padding: 14px 16px;
+  padding: 16px 18px;
 }
 
 .section-title {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.87rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #94a3b8;
+  letter-spacing: 0.07em;
+  color: #7aa8e8;
   user-select: none;
 }
 
@@ -894,7 +1013,9 @@ function toggleWeekend(d: number) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #1a2744;
 }
 
 .header-right {
@@ -995,8 +1116,8 @@ function toggleWeekend(d: number) {
 .cal-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  padding: 12px;
+  gap: 16px;
+  padding: 16px;
   flex: 1;
   overflow-y: auto;
   align-content: start;
@@ -1005,7 +1126,7 @@ function toggleWeekend(d: number) {
 .cal-col {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 // ---- Fields ----
@@ -1074,12 +1195,30 @@ function toggleWeekend(d: number) {
     font-size: 0.72rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.04em;
     color: #4a6080;
-    padding: 4px 6px;
+    padding: 6px 8px;
     border-bottom: 1px solid #2d3a56;
     user-select: none;
   }
 
-  td { padding: 3px 4px; vertical-align: middle; }
+  td { padding: 4px 6px; vertical-align: middle; }
+
+  tbody tr:hover td { background: rgba(44, 95, 138, 0.12); }
+  tbody tr.lod-dragging td { opacity: 0.35; background: transparent !important; }
+  tbody tr.lod-drag-over td { background: rgba(59, 110, 196, 0.22) !important; box-shadow: inset 0 2px 0 #3b6ec4; }
+}
+
+.drag-th { width: 20px; padding: 0 !important; }
+
+.drag-handle {
+  cursor: grab;
+  color: #2d3a56;
+  font-size: 1rem;
+  user-select: none;
+  text-align: center;
+  width: 20px;
+
+  &:hover { color: #7aa8e8; }
+  &:active { cursor: grabbing; }
 }
 
 .num-cell { color: #4a6080; font-size: 0.78rem; width: 24px; text-align: right; user-select: none; }
@@ -1264,4 +1403,66 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
 }
 
 .mt-8 { margin-top: 8px; }
+
+// ---- Collapsible section headers ----
+.section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.collapse-chevron {
+  display: inline-block;
+  font-size: 1rem;
+  color: #4a6080;
+  line-height: 1;
+  transition: transform 0.18s ease, color 0.15s;
+  flex-shrink: 0;
+
+  &.expanded { transform: rotate(90deg); }
+}
+
+.section-title-group:hover .collapse-chevron { color: #7aa8e8; }
+
+// ---- LOD add warning ----
+.add-lod-warn {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: #e05555;
+  font-style: italic;
+}
+
+// ---- Add-row invite buttons ----
+.btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border: 1px dashed #2d3a56;
+  border-radius: 4px;
+  background: transparent;
+  color: #4a6080;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+
+  &:hover {
+    border-color: #3b6ec4;
+    color: #7aa8e8;
+    background: #1a2744;
+  }
+}
+
+// ---- Year length hint ----
+.year-hint {
+  font-size: 0.72rem;
+  color: #4a6080;
+  font-style: italic;
+  margin-top: 3px;
+}
 </style>

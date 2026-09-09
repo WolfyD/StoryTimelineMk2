@@ -3,16 +3,18 @@
 	import SplashTitle from "./components/SplashTitle.vue";
 	import { BackendAPI } from "./bridge/api";
 	import { ref } from "vue";
-	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhGear } from "@phosphor-icons/vue";
+	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
 	import AppSettingsModal from './components/AppSettingsModal.vue';
 	import AuthorReminderModal from './components/AuthorReminderModal.vue';
 	import SelectCalendarModal from './components/SelectCalendarModal.vue';
+	import CalendarManagerModal from './components/CalendarManagerModal.vue';
 
 	const store = useTimelineStore();
 
 	const newProjectOpen = ref<boolean>(false)
 	const showAppSettings = ref(false)
+	const showCalendarManager = ref(false)
 	const newProjectTitle = ref('')
 	const hasCustomCal = ref(false)
 
@@ -116,6 +118,9 @@
 				<div v-on:click="HandleExportDatabase()">
 					<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
 				</div>
+				<div @click="showCalendarManager = true" title="Manage Calendars">
+					<PhCalendarBlank class="button-icon" :size="36" color="#79876b" />
+				</div>
 				<div @click="showAppSettings = true" title="App Settings">
 					<PhGear class="button-icon" :size="36" color="#79876b" />
 				</div>
@@ -155,6 +160,7 @@
 	/>
 	<AuthorReminderModal v-if="showAuthorModal" @set="onAuthorResult" @skip="onAuthorResult('')" />
 	<SelectCalendarModal v-if="showCalendarModal" @selected="onCalendarSelected" @skipped="onCalendarSkipped" />
+	<CalendarManagerModal v-if="showCalendarManager" @close="showCalendarManager = false" />
 	</div>
 </template>
 
