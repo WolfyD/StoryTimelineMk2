@@ -19,8 +19,11 @@ const newEnd        = ref<number | null>(null)
 const newLabel      = ref('')
 const rangeError    = ref('')
 
-function toggle() { open.value = !open.value }
-function close()  { open.value = false }
+function toggle()   { open.value = !open.value }
+function close()    { open.value = false }
+function openMenu() { open.value = true }
+
+defineExpose({ openMenu })
 
 function onDocClick(e: MouseEvent) {
     if (rootEl.value && !rootEl.value.contains(e.target as Node)) close()
@@ -188,27 +191,41 @@ async function shiftItems() {
 }
 
 .actions-trigger {
+	margin-top: 10px !important;
+	position: relative;
+    width: 48px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent;
     border: none;
-    color: #aaa;
+    border-left: 2px solid transparent;
+    color: #3d5166;
     cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    transition: color 0.15s, background 0.15s;
+    padding: 0;
+    transition: color 0.14s, background 0.14s;
 
-    &:hover, &.active {
-        color: #fff;
-        background: #ffffff18;
+    &:hover {
+        color: #8ca5bc;
+        background: radial-gradient(
+            ellipse 80% 70% at 50% 45%,
+            rgba(255, 255, 255, 0.07) 0%,
+            transparent 100%
+        );
+    }
+
+    &.active {
+        color: #c4b5fd;
+        border-left-color: #8b5cf6;
+        background: linear-gradient(90deg, rgba(139, 92, 246, 0.16) 0%, rgba(139, 92, 246, 0.04) 100%);
     }
 }
 
 .actions-popover {
     position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
+    top: 0;
+    left: calc(100% + 4px);
     width: 340px;
     background: #1e293b;
     border: 1px solid #334155;

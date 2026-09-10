@@ -93,3 +93,8 @@ SQLite database lives at `%LOCALAPPDATA%\StoryTimelineMk2_Data\timeline.sqlite`.
 **Calendar** — custom calendar system with configurable months/weeks/days (`YearDefinition` JSON). Year 0 offset is configurable.
 
 **LayoutSettings** — reusable visual templates for timeline rendering (box styles, stem styles, tick colors, animations).
+
+## Icon Convention
+
+- **Remix Icons** (`<i class="ri-*">`) — UI chrome: buttons, close/open controls, form actions, inline panel decorations.
+- **Phosphor** (`@phosphor-icons/vue` components) — Feature/section icons: navigation strip, domain concepts (Characters, Map, Statistics, Timeline), and any icon that represents an app section.

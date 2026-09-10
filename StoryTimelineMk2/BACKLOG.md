@@ -164,7 +164,7 @@ The image picker currently allows selecting only one image at a time despite the
 
 ## [BL-07] Calendar change — item position behavior
 
-**Status:** Design decision required before implementation.
+**Status:** Deferred — probably not important to revisit.
 
 When a timeline's calendar is changed (e.g. from 365-day to 200-day), sub-year items have positions that may no longer align to valid ticks in the new calendar. Decide: snap to nearest valid tick, or allow floating positions?
 

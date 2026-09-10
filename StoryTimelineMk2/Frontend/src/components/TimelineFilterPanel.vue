@@ -76,16 +76,23 @@ onMounted(() => store.loadFilterPresets())
                         'chip--positive': rule.State === 'positive',
                         'chip--negative': rule.State === 'negative',
                     }"
-                    :title="rule.State === 'neutral' ? 'Click to activate (positive)' : rule.State === 'positive' ? 'Click to negate' : 'Click to deactivate'"
-                    @click="cycleState(rule.Id, rule.State)"
                 >
-                    <span class="chip-state-dot"></span>
-                    <span v-if="rule.Dimension === 'color'" class="chip-color-swatch" :style="{ background: colorFromRule(rule) }"></span>
-                    <span class="chip-label">{{ rule.Label }}</span>
+                    <!-- Cycle-state area (click cycles neutral→positive→negative→neutral) -->
+                    <div
+                        class="chip-body"
+                        :title="rule.State === 'neutral' ? 'Click to activate (positive)' : rule.State === 'positive' ? 'Click to negate' : 'Click to deactivate'"
+                        @click="cycleState(rule.Id, rule.State)"
+                    >
+                        <span class="chip-state-dot"></span>
+                        <span v-if="rule.Dimension === 'color'" class="chip-color-swatch" :style="{ background: colorFromRule(rule) }"></span>
+                        <span class="chip-label">{{ rule.Label }}</span>
+                    </div>
+                    <!-- Deactivate button — only on active chips, completely separate from cycle click -->
                     <button
+                        v-if="rule.State !== 'neutral'"
                         class="chip-remove"
-                        title="Remove rule"
-                        @click.stop="removeRule(rule.Id)"
+                        title="Deactivate filter"
+                        @click="store.setFilterRuleState(rule.Id, 'neutral')"
                     >
                         <PhX :size="10" />
                     </button>
@@ -198,19 +205,44 @@ onMounted(() => store.loadFilterPresets())
 .filter-chip {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 2px 6px 2px 5px;
     border: 1px solid #4a5c4a;
     border-radius: 12px;
     background: transparent;
     color: #8fa88f;
     font-size: 0.73rem;
-    cursor: pointer;
     user-select: none;
-    transition: background 0.1s, color 0.1s, border-color 0.1s;
     white-space: nowrap;
+    transition: border-color 0.1s;
 
-    &:hover { background: #2a3a2a66; }
+    &.chip--positive {
+        border-color: #5a9a5a;
+        background: #2a5a2a66;
+        color: #a8e0a8;
+        .chip-state-dot { background: #6aaa6a; }
+    }
+
+    &.chip--negative {
+        border-color: #9a4a4a;
+        background: #5a2a2a66;
+        color: #e0a8a8;
+        .chip-state-dot { background: #cc6666; }
+        .chip-label {
+            text-decoration: line-through;
+            text-decoration-color: #cc666688;
+        }
+    }
+}
+
+.chip-body {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 6px 2px 5px;
+    border-radius: 12px 0 0 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+
+    &:hover { background: rgba(255, 255, 255, 0.06); }
 
     .chip-state-dot {
         width: 6px;
@@ -230,38 +262,27 @@ onMounted(() => store.loadFilterPresets())
     }
 
     .chip-label { line-height: 1.4; }
+}
 
-    .chip-remove {
-        display: inline-flex;
-        align-items: center;
-        background: none;
-        border: none;
-        padding: 0;
-        margin-left: 1px;
-        color: inherit;
-        cursor: pointer;
-        opacity: 0;
-        transition: opacity 0.1s;
-        line-height: 1;
-    }
+.chip-remove {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px 5px 2px 4px;
+    margin: 0;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.5;
+    border-radius: 0 12px 12px 0;
+    transition: opacity 0.1s, background 0.1s, color 0.1s;
+    line-height: 1;
 
-    &:hover .chip-remove { opacity: 0.7; }
-    .chip-remove:hover { opacity: 1 !important; color: #e08080; }
-
-    &.chip--positive {
-        border-color: #5a9a5a;
-        background: #2a5a2a66;
-        color: #a8e0a8;
-        .chip-state-dot { background: #6aaa6a; }
-    }
-
-    &.chip--negative {
-        border-color: #9a4a4a;
-        background: #5a2a2a66;
-        color: #e0a8a8;
-        .chip-state-dot { background: #cc6666; }
-        text-decoration: line-through;
-        text-decoration-color: #cc666688;
+    &:hover {
+        opacity: 1;
+        color: #e08080;
+        background: rgba(224, 128, 128, 0.12);
     }
 }
 

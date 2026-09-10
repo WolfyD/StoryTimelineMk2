@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // imports
 import { useTimelineStore } from '@/stores/timelineStore'
-import { PhArrowArcRight, PhFunnel, PhGear, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhArrowArcRight, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
+import TimelineActivityStrip from '@/components/TimelineActivityStrip.vue'
 import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
 import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
 import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
@@ -175,27 +176,22 @@ onBeforeUnmount(() => {
 			<h2>Critical Error: No Timeline ID provided by the host window.</h2>
 		</div>
 
-		<div v-else id="timeline-workspace">
-    <div id="timeline-header">
-        <div class="timeline-header-left">
-            <button
-                class="header-icon-btn"
-                :class="{ active: store.filterPanelOpen }"
-                title="Toggle filter panel"
-                @click="store.setFilterPanelOpen(!store.filterPanelOpen)"
+		<div v-else id="timeline-layout">
+            <TimelineActivityStrip
+                :filter-active="store.filterPanelOpen"
+                @toggle-filter="store.setFilterPanelOpen(!store.filterPanelOpen)"
+                @open-settings="showSettings = true"
             >
-                <PhFunnel :size="22" />
-            </button>
-        </div>
+                <template #actions>
+                    <TimelineActionsMenu @shift-complete="onShiftComplete" />
+                </template>
+            </TimelineActivityStrip>
+
+            <div id="timeline-workspace">
+    <div id="timeline-header">
         <div id="timeline-header-info-container">
             <h1>{{ store.title }}</h1>
             <h2>{{ store.author }}</h2>
-        </div>
-        <div class="timeline-header-actions">
-            <TimelineActionsMenu @shift-complete="onShiftComplete" />
-            <button class="header-icon-btn" title="Settings" @click="showSettings = true">
-                <PhGear :size="22" />
-            </button>
         </div>
         <div
             v-if="store.currentProject?.Color"
@@ -312,7 +308,8 @@ onBeforeUnmount(() => {
 			<p>FPS: {{ store.fps }}</p>
 		</div>
 	</div>
-</div>
+</div><!-- end #timeline-workspace -->
+        </div><!-- end #timeline-layout -->
 	</div>
 </template>
 
@@ -352,10 +349,19 @@ onBeforeUnmount(() => {
 	}
 }
 
+// Row wrapper: strip + workspace side by side
+#timeline-layout {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+}
+
 #timeline-workspace {
 	display: flex;
 	flex-direction: column;
-	width: 100%;
+    flex: 1;
+    min-width: 0;
 	height: 100%;
 }
 
@@ -368,25 +374,6 @@ onBeforeUnmount(() => {
 	border-bottom: 1px solid #333;
 	color: #fff;
 	align-items: center;
-
-	.timeline-header-left,
-	.timeline-header-actions {
-		flex: 0 0 80px;
-	}
-
-	.timeline-header-left {
-		display: flex;
-		justify-content: flex-start;
-		align-items: center;
-		padding-left: 8px;
-	}
-
-	.timeline-header-actions {
-		display: flex;
-		justify-content: flex-end;
-		align-items: center;
-		padding-right: 8px;
-	}
 
 	#timeline-header-info-container {
 		flex: 1;
@@ -411,36 +398,10 @@ onBeforeUnmount(() => {
 	h2::before {
 		content: url("data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjZmZmIiB3aWR0aD0iMzAiIGhlaWdodD0iMjAiIHZpZXdCb3g9Ii0xIDIgMjAgMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcvPjxnIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjx0aXRsZT5lbWRhc2g8L3RpdGxlPjxwYXRoIGQ9Ik0xOS42NTYgMTIuOTA2djIuMjgxSC0uNDM4di0yLjI4MXoiLz48L3N2Zz4=");
 	}
-
-	.header-icon-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: transparent;
-		border: none;
-		color: #aaa;
-		cursor: pointer;
-		padding: 4px;
-		border-radius: 4px;
-		transition: color 0.15s, background 0.15s;
-
-		&:hover {
-			color: #fff;
-			background: #ffffff18;
-		}
-
-		&.active {
-			color: #a0d8a0;
-			background: #4a7a4a44;
-		}
-	}
 }
 
 /* 1. Constrain the parent and establish a flex column */
 #timeline-workspace {
-    display: flex;
-    flex-direction: column;
-    height: 100vh; /* Adjust to 100% if this sits inside another constrained wrapper */
     overflow: hidden;
 }
 
