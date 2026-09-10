@@ -178,17 +178,17 @@ namespace StoryTimelineMk2.Database
                     charMap[(string)ch.id] = newCharId;
                     db.Execute(@"
                         INSERT INTO characters (id, name, nicknames, aliases, race, description, notes,
-                            birth_year, birth_subtick, birth_date, birth_alternative_year,
-                            death_year, death_subtick, death_date, death_alternative_year,
+                            birth_year, birth_date, birth_alternative_year,
+                            death_year, death_date, death_alternative_year,
                             importance, color, timeline_id)
                         VALUES (@NewId, @name, @nicknames, @aliases, @race, @description, @notes,
-                            @birth_year, @birth_subtick, @birth_date, @birth_alternative_year,
-                            @death_year, @death_subtick, @death_date, @death_alternative_year,
+                            @birth_year, @birth_date, @birth_alternative_year,
+                            @death_year, @death_date, @death_alternative_year,
                             @importance, @color, @NewTimelineId)",
                         new {
                             NewId = newCharId, ch.name, ch.nicknames, ch.aliases, ch.race,
-                            ch.description, ch.notes, ch.birth_year, ch.birth_subtick, ch.birth_date,
-                            ch.birth_alternative_year, ch.death_year, ch.death_subtick, ch.death_date,
+                            ch.description, ch.notes, ch.birth_year, ch.birth_date,
+                            ch.birth_alternative_year, ch.death_year, ch.death_date,
                             ch.death_alternative_year, ch.importance, ch.color, NewTimelineId = newId
                         }, tx);
                 }
@@ -202,17 +202,16 @@ namespace StoryTimelineMk2.Database
                     itemMap[(string)item.id] = newItemId;
                     db.Execute(@"
                         INSERT INTO items (id, title, description, content, story_id, type_id,
-                            year, subtick, original_subtick, end_year, end_subtick, original_end_subtick,
-                            absolute_start, absolute_end, book_title, chapter, page, color,
+                            year, end_year, absolute_start, absolute_end,
+                            book_title, chapter, page, color,
                             creation_granularity, timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask)
                         VALUES (@NewId, @title, @description, @content, @story_id, @type_id,
-                            @year, @subtick, @original_subtick, @end_year, @end_subtick, @original_end_subtick,
-                            @absolute_start, @absolute_end, @book_title, @chapter, @page, @color,
+                            @year, @end_year, @absolute_start, @absolute_end,
+                            @book_title, @chapter, @page, @color,
                             @creation_granularity, @NewTimelineId, @item_index, @show_in_notes, @importance, @min_lod_level, @lod_visibility_mask)",
                         new {
                             NewId = newItemId, item.title, item.description, item.content, item.story_id,
-                            item.type_id, item.year, item.subtick, item.original_subtick, item.end_year,
-                            item.end_subtick, item.original_end_subtick, item.absolute_start, item.absolute_end,
+                            item.type_id, item.year, item.end_year, item.absolute_start, item.absolute_end,
                             item.book_title, item.chapter, item.page, item.color, item.creation_granularity,
                             NewTimelineId = newId, item.item_index, item.show_in_notes, item.importance, item.min_lod_level, item.lod_visibility_mask
                         }, tx);

@@ -263,9 +263,9 @@ public class DatabaseImporterTests
     }
 
     [Fact]
-    public void Import_V1Backup_BackfillsAbsoluteStart_ViaLegacyMigration()
+    public void Import_V1Backup_ComputesAbsoluteStart_FromSubtick()
     {
-        // ApplyLegacyMigrations backfills absolute_start for items where it's NULL
+        // V1 import loop computes absolute_start = year + subtick/10 before inserting
         using var ctx = new DbTestContext();
         string backupPath = CreateV1Backup(ctx.TempDir);
 

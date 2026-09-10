@@ -85,9 +85,24 @@ namespace StoryTimelineMk2.Database
                 string timelineCols = "id, title, author, description, start_year, created_at, updated_at" + (hasCalendarId ? ", calendar_id" : "");
                 string timelineAssigns = "title = excluded.title, author = excluded.author, description = excluded.description, start_year = excluded.start_year, updated_at = excluded.updated_at" + (hasCalendarId ? ", calendar_id = excluded.calendar_id" : "");
 
-                bool hasNewItemCols = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('items', 'BackupDb') WHERE name='absolute_start'", transaction: tx) > 0;
-                string itemCols = "id, title, description, content, story_id, type_id, year, subtick, original_subtick, end_year, end_subtick, original_end_subtick, book_title, chapter, page, color, creation_granularity, timeline_id, item_index, show_in_notes, importance, created_at, updated_at" + (hasNewItemCols ? ", min_lod_level, absolute_start, absolute_end" : "");
-                string itemAssigns = "title = excluded.title, description = excluded.description, content = excluded.content, story_id = excluded.story_id, type_id = excluded.type_id, year = excluded.year, subtick = excluded.subtick, original_subtick = excluded.original_subtick, end_year = excluded.end_year, end_subtick = excluded.end_subtick, original_end_subtick = excluded.original_end_subtick, book_title = excluded.book_title, chapter = excluded.chapter, page = excluded.page, color = excluded.color, creation_granularity = excluded.creation_granularity, item_index = excluded.item_index, show_in_notes = excluded.show_in_notes, importance = excluded.importance, updated_at = excluded.updated_at" + (hasNewItemCols ? ", min_lod_level = excluded.min_lod_level, absolute_start = excluded.absolute_start, absolute_end = excluded.absolute_end" : "");
+                bool hasAbsoluteStart = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('items', 'BackupDb') WHERE name='absolute_start'", transaction: tx) > 0;
+                bool hasSrcSubtick    = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('items', 'BackupDb') WHERE name='subtick'",         transaction: tx) > 0;
+                bool hasMinLod        = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('items', 'BackupDb') WHERE name='min_lod_level'",   transaction: tx) > 0;
+
+                // Build destination columns (subtick never written to new schema)
+                // If source has absolute_start, use it directly; otherwise compute from subtick / year.
+                string absStartExpr = hasAbsoluteStart
+                    ? "absolute_start"
+                    : (hasSrcSubtick ? "CAST(year AS REAL) + CAST(IFNULL(subtick, 0) AS REAL) / 10.0" : "CAST(year AS REAL)");
+                string absEndExpr = hasAbsoluteStart
+                    ? "absolute_end"
+                    : (hasSrcSubtick ? "CASE WHEN end_year IS NOT NULL THEN CAST(end_year AS REAL) + CAST(IFNULL(end_subtick, 0) AS REAL) / 10.0 ELSE CAST(year AS REAL) + CAST(IFNULL(subtick, 0) AS REAL) / 10.0 END" : "COALESCE(CAST(end_year AS REAL), CAST(year AS REAL))");
+                string minLodExpr  = hasMinLod ? "min_lod_level" : "3";
+
+                string itemDestCols   = "id, title, description, content, story_id, type_id, year, end_year, absolute_start, absolute_end, book_title, chapter, page, color, creation_granularity, timeline_id, item_index, show_in_notes, importance, min_lod_level, created_at, updated_at";
+                string itemSrcSelect  = $"id, title, description, content, story_id, type_id, year, end_year, {absStartExpr}, {absEndExpr}, book_title, chapter, page, color, creation_granularity, timeline_id, item_index, show_in_notes, importance, {minLodExpr}, created_at, updated_at";
+                string itemCols       = itemDestCols; // kept for INSERT clause
+                string itemAssigns    = "title = excluded.title, description = excluded.description, content = excluded.content, story_id = excluded.story_id, type_id = excluded.type_id, year = excluded.year, end_year = excluded.end_year, absolute_start = excluded.absolute_start, absolute_end = excluded.absolute_end, book_title = excluded.book_title, chapter = excluded.chapter, page = excluded.page, color = excluded.color, creation_granularity = excluded.creation_granularity, item_index = excluded.item_index, show_in_notes = excluded.show_in_notes, importance = excluded.importance, min_lod_level = excluded.min_lod_level, updated_at = excluded.updated_at";
 
 
                 // 1. Timelines
@@ -123,19 +138,19 @@ namespace StoryTimelineMk2.Database
                 // 5. Items
                 dbTarget.Execute($@"
                     INSERT INTO main.items ({itemCols})
-                    SELECT {itemCols} FROM BackupDb.items
+                    SELECT {itemSrcSelect} FROM BackupDb.items
                     ON CONFLICT(id) DO UPDATE SET {itemAssigns};", transaction: tx);
 
                 // 6. Characters
                 dbTarget.Execute(@"
-                    INSERT INTO main.characters (id, name, nicknames, aliases, race, description, notes, birth_year, birth_subtick, birth_date, birth_alternative_year, death_year, death_subtick, death_date, death_alternative_year, importance, color, timeline_id, created_at, updated_at)
-                    SELECT id, name, nicknames, aliases, race, description, notes, birth_year, birth_subtick, birth_date, birth_alternative_year, death_year, death_subtick, death_date, death_alternative_year, importance, color, timeline_id, created_at, updated_at FROM BackupDb.characters
-                    ON CONFLICT(id) DO UPDATE SET 
-                        name = excluded.name, nicknames = excluded.nicknames, aliases = excluded.aliases, race = excluded.race, 
-                        description = excluded.description, notes = excluded.notes, birth_year = excluded.birth_year, 
-                        birth_subtick = excluded.birth_subtick, birth_date = excluded.birth_date, birth_alternative_year = excluded.birth_alternative_year, 
-                        death_year = excluded.death_year, death_subtick = excluded.death_subtick, death_date = excluded.death_date, 
-                        death_alternative_year = excluded.death_alternative_year, importance = excluded.importance, color = excluded.color, 
+                    INSERT INTO main.characters (id, name, nicknames, aliases, race, description, notes, birth_year, birth_date, birth_alternative_year, death_year, death_date, death_alternative_year, importance, color, timeline_id, created_at, updated_at)
+                    SELECT id, name, nicknames, aliases, race, description, notes, birth_year, birth_date, birth_alternative_year, death_year, death_date, death_alternative_year, importance, color, timeline_id, created_at, updated_at FROM BackupDb.characters
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name, nicknames = excluded.nicknames, aliases = excluded.aliases, race = excluded.race,
+                        description = excluded.description, notes = excluded.notes, birth_year = excluded.birth_year,
+                        birth_date = excluded.birth_date, birth_alternative_year = excluded.birth_alternative_year,
+                        death_year = excluded.death_year, death_date = excluded.death_date,
+                        death_alternative_year = excluded.death_alternative_year, importance = excluded.importance, color = excluded.color,
                         updated_at = excluded.updated_at;", transaction: tx);
 
                 // 7. Pictures
@@ -248,24 +263,33 @@ namespace StoryTimelineMk2.Database
                     dbV2.Execute("INSERT OR IGNORE INTO tags (id, name) VALUES (@id, @name)", (object)tag, transaction);
                 }
 
-                // Items
+                // Items — compute absolute_start/end from legacy subtick (0–9 scale)
                 var items = dbV1.Query("SELECT * FROM items");
                 foreach (var item in items)
                 {
                     try
                     {
+                        double absStart = (double)(item.year ?? 0) + ((double)(item.subtick ?? 0)) / 10.0;
+                        double absEnd   = item.end_year != null
+                            ? (double)item.end_year + ((double)(item.end_subtick ?? 0)) / 10.0
+                            : absStart;
                         dbV2.Execute(@"
                         INSERT OR IGNORE INTO items (
                             id, title, description, content, story_id, type_id,
-                            year, subtick, original_subtick, end_year, end_subtick, original_end_subtick,
+                            year, end_year, absolute_start, absolute_end,
                             book_title, chapter, page, color, creation_granularity, timeline_id,
                             item_index, show_in_notes, importance
                         ) VALUES (
                             @id, @title, @description, @content, @story_id, @type_id,
-                            @year, @subtick, @original_subtick, @end_year, @end_subtick, @original_end_subtick,
+                            @year, @end_year, @absolute_start, @absolute_end,
                             @book_title, @chapter, @page, @color, @creation_granularity, @timeline_id,
                             @item_index, @show_in_notes, @importance
-                        )", (object)item, transaction);
+                        )", new {
+                            item.id, item.title, item.description, item.content, item.story_id, item.type_id,
+                            item.year, item.end_year, absolute_start = absStart, absolute_end = absEnd,
+                            item.book_title, item.chapter, item.page, item.color, item.creation_granularity,
+                            item.timeline_id, item.item_index, item.show_in_notes, item.importance
+                        }, transaction);
                     }
                     catch { }
                 }
@@ -292,13 +316,13 @@ namespace StoryTimelineMk2.Database
                             dbV2.Execute(@"
                         INSERT OR IGNORE INTO characters (
                             id, name, nicknames, aliases, race, description, notes,
-                            birth_year, birth_subtick, birth_date, birth_alternative_year,
-                            death_year, death_subtick, death_date, death_alternative_year,
+                            birth_year, birth_date, birth_alternative_year,
+                            death_year, death_date, death_alternative_year,
                             importance, color, timeline_id
                         ) VALUES (
                             @id, @name, @nicknames, @aliases, @race, @description, @notes,
-                            @birth_year, @birth_subtick, @birth_date, @birth_alternative_year,
-                            @death_year, @death_subtick, @death_date, @death_alternative_year,
+                            @birth_year, @birth_date, @birth_alternative_year,
+                            @death_year, @death_date, @death_alternative_year,
                             @importance, @color, @timeline_id
                         )", (object)c, transaction);
                         }
@@ -435,17 +459,14 @@ namespace StoryTimelineMk2.Database
                 // Update any existing timelines that have a NULL calendar_id to the default
                 db.Execute("UPDATE timelines SET calendar_id = 'cal_default_gregorian' WHERE calendar_id IS NULL;", transaction: tx);
 
-                // Backfill legacy items with default LOD visibility and calculated absolute time.
-                // Assumes standard decimal subticks (e.g. subtick 5 = 0.5) for legacy data.
+                // Backfill any items that somehow lack absolute_start (safety net — should not occur in practice
+                // since all import paths now compute absolute_start before inserting).
                 db.Execute(@"
                     UPDATE items
                     SET
                         min_lod_level = COALESCE(min_lod_level, 3),
-                        absolute_start = CAST(year AS REAL) + (CAST(IFNULL(subtick, 0) AS REAL) / 10.0),
-                        absolute_end = CASE
-                            WHEN end_year IS NOT NULL THEN CAST(end_year AS REAL) + (CAST(IFNULL(end_subtick, 0) AS REAL) / 10.0)
-                            ELSE CAST(year AS REAL) + (CAST(IFNULL(subtick, 0) AS REAL) / 10.0)
-                        END
+                        absolute_start = CAST(year AS REAL),
+                        absolute_end   = COALESCE(CAST(end_year AS REAL), CAST(year AS REAL))
                     WHERE absolute_start IS NULL;", transaction: tx);
 
                 tx.Commit();

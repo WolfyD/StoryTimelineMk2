@@ -18,7 +18,7 @@ public class DbInitializerTests
 
     private static readonly string[] ExpectedIndexes =
     [
-        "idx_items_timeline_id", "idx_items_year_subtick", "idx_item_pictures_combined",
+        "idx_items_timeline_id", "idx_items_year", "idx_item_pictures_combined",
         "idx_tags_name", "idx_char_rel_char1", "idx_char_rel_char2", "idx_char_rel_timeline",
         "idx_item_story_refs_item", "idx_item_story_refs_story", "idx_chapters_book",
         "idx_item_chapters_item", "idx_item_chapters_chapter", "idx_item_char_app_item",

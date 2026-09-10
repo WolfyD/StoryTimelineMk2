@@ -54,7 +54,7 @@ A step-snapping block was added to `TimelineCanvas.vue` (around line 389) that c
 
 ## [BL-02] Subtick system redesign
 
-**Status:** Design discussion, no implementation started.
+**Status:** Done. Subtick columns removed from DB schema (`DbInitializer.cs`), clone SQLs (`TimelineRepo.cs`), and all import paths (`DatabaseImporter.cs`). V1 legacy import computes `absolute_start = year + subtick/10.0` inline before inserting (no subtick written to destination). V2 ATTACH import detects and computes absolute_start from subtick when source has it. `ApplyLegacyMigrations` simplified — no subtick references remain. All tests updated and passing.
 
 ### Background
 
@@ -134,7 +134,7 @@ Filter items visible on the timeline canvas by type, tag, character relation, or
 
 ## [BL-04] Hidden timeline sections — UX overhaul
 
-**Status:** Pending.
+**Status:** Done. Collapsed strip renders as dark translucent rect with solid 2px side borders (no diagonal stripes). Expanded zone renders as faint diagonal-stripe overlay across the full height with dark solid borders and a dark pill collapse button with white text. Scroll wheel and shift-scroll skip over hidden ranges using `skipHiddenRange()` (snaps to first tick strictly outside the range). Tick grid misalignment after hidden ranges fixed by snapping each visual tick's `visualToAbsolute()` result to the nearest absolute grid position (`seenAbsTicks` Set deduplicates).
 
 The current system for collapsing/hiding spans of timeline is clumsy and visually ugly. Needs redesign of both the interaction model and the visual representation of the break.
 

@@ -84,15 +84,8 @@ namespace StoryTimelineMk2.Database
                     story_id TEXT,
                     type_id INTEGER DEFAULT 1,
     
-                    -- Original User Inputs
                     year INTEGER,
-                    subtick INTEGER,
-                    original_subtick INTEGER,
                     end_year INTEGER,
-                    end_subtick INTEGER,
-                    original_end_subtick INTEGER,
-    
-                    -- New: Precomputed Fractional Time for Canvas Math
                     absolute_start REAL,
                     absolute_end REAL,
     
@@ -197,11 +190,9 @@ namespace StoryTimelineMk2.Database
                     description TEXT,
                     notes TEXT,
                     birth_year INTEGER,
-                    birth_subtick INTEGER,
                     birth_date TEXT,
                     birth_alternative_year TEXT,
                     death_year INTEGER,
-                    death_subtick INTEGER,
                     death_date TEXT,
                     death_alternative_year TEXT,
                     importance INTEGER DEFAULT 5,
@@ -430,7 +421,7 @@ namespace StoryTimelineMk2.Database
         {
             db.Execute(@"
                 CREATE INDEX IF NOT EXISTS idx_items_timeline_id ON items(timeline_id);
-                CREATE INDEX IF NOT EXISTS idx_items_year_subtick ON items(year, subtick);
+                CREATE INDEX IF NOT EXISTS idx_items_year ON items(year);
                 CREATE INDEX IF NOT EXISTS idx_item_pictures_combined ON item_pictures(item_id, picture_id);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 

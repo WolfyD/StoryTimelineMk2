@@ -176,10 +176,9 @@ public class TimelineRepoTests
         using var db = ctx.OpenConnection();
         db.Execute(@"
             INSERT INTO items (id, title, type_id, year, end_year, timeline_id,
-                               absolute_start, absolute_end, subtick, end_subtick,
-                               original_subtick, original_end_subtick,
+                               absolute_start, absolute_end,
                                item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask)
-            VALUES (@Id, 'Event', 1, 0, 0, @TlId, 0, 0, 0, 0, 0, 0, 0, 1, 5, 3, 255)",
+            VALUES (@Id, 'Event', 1, 0, 0, @TlId, 0, 0, 0, 1, 5, 3, 255)",
             new { Id = itemId, TlId = tlId });
 
         var repo = new TimelineRepo();
