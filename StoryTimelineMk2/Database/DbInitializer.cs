@@ -106,8 +106,9 @@ namespace StoryTimelineMk2.Database
                     show_in_notes INTEGER DEFAULT 1,
                     importance INTEGER DEFAULT 5,
     
-                    -- New: Visibility Culling
-                    min_lod_level INTEGER DEFAULT 3, -- 3 = 'YEARS' tier in the default profile
+                    -- Visibility Culling
+                    min_lod_level INTEGER DEFAULT 3, -- legacy threshold; superseded by lod_visibility_mask
+                    lod_visibility_mask INTEGER DEFAULT 255, -- bitmask: bit i set = visible at LOD index i
     
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -577,6 +578,7 @@ namespace StoryTimelineMk2.Database
             // Schema migrations: ALTER TABLE statements that may already exist on older DBs
             try { db.Execute("ALTER TABLE timelines ADD COLUMN color TEXT DEFAULT NULL;"); } catch { }
             try { db.Execute("ALTER TABLE notes ADD COLUMN absolute_time REAL NOT NULL DEFAULT 0;"); } catch { }
+            try { db.Execute("ALTER TABLE items ADD COLUMN lod_visibility_mask INTEGER DEFAULT 255;"); } catch { }
         }
     }
 }

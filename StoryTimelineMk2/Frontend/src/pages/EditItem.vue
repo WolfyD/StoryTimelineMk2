@@ -62,6 +62,7 @@ const item = ref<TimelineItem>({
   ShowInNotes: true,
   Importance: 5,
   MinLodLevel: 3,
+  LodVisibilityMask: 255,
 })
 
 // Separate start/end year+subYear refs (written back to item on save)
@@ -361,6 +362,10 @@ function removeChapterRef(index: number) {
   chapterRefs.value.splice(index, 1)
 }
 
+function toggleLodVisibility(lodIndex: number) {
+  item.value.LodVisibilityMask = (item.value.LodVisibilityMask ?? 255) ^ (1 << lodIndex)
+}
+
 // ---------------------------------------------------------------------------
 // Save
 // ---------------------------------------------------------------------------
@@ -492,17 +497,18 @@ async function removeImage(pictureId: string) {
           </div>
 
           <div class="field flex-1">
-            <label>Visible from LOD</label>
-            <select v-model="item.MinLodLevel" class="lod-select">
-              <option
+            <label>Visible at LOD levels</label>
+            <div class="lod-toggle-row">
+              <button
                 v-for="lod in lodProfile"
                 :key="lod.index"
-                :value="lod.index"
-                :class="lod.index > item.MinLodLevel ? 'lod-implied' : (lod.index < item.MinLodLevel ? 'lod-hidden' : 'lod-selected')"
-              >
-                {{ lod.index < item.MinLodLevel ? '✕ ' : lod.index > item.MinLodLevel ? '✓ ' : '▶ ' }}{{ lod.formatKey }}
-              </option>
-            </select>
+                type="button"
+                class="lod-toggle-btn"
+                :class="{ active: (item.LodVisibilityMask ?? 255) & (1 << lod.index) }"
+                @click="toggleLodVisibility(lod.index)"
+                :title="lod.formatKey"
+              >{{ lod.formatKey.slice(0, 3) }}</button>
+            </div>
           </div>
         </div>
 
@@ -1357,19 +1363,30 @@ async function removeImage(pictureId: string) {
 
 .mt-6 { margin-top: 6px; }
 
-// ---- LOD dropdown ----
-.lod-select {
-  option.lod-hidden {
-    color: #64748b;
+// ---- LOD visibility toggles ----
+.lod-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.lod-toggle-btn {
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #64748b;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+
+  &.active {
+    background: #1e3a5f;
+    color: #93c5fd;
+    border-color: #3b82f6;
   }
-  option.lod-selected {
-    font-weight: 700;
-    color: #e2e8f0;
-  }
-  option.lod-implied {
-    color: #94a3b8;
-    font-style: italic;
-  }
+
+  &:hover { border-color: #4a90d9; }
 }
 
 // ---- Lightbox ----

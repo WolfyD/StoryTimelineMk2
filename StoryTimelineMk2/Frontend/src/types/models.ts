@@ -138,6 +138,7 @@ export interface TimelineItem {
 	ShowInNotes: boolean;
 	Importance: number;
 	MinLodLevel: number;
+	LodVisibilityMask: number;
 }
 
 export interface KonvaGroupObject {

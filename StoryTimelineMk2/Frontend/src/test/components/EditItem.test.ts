@@ -66,6 +66,7 @@ function makeItemForEdit(overrides: Partial<ItemForEdit> = {}): ItemForEdit {
       ShowInNotes: true,
       Importance: 7,
       MinLodLevel: 3,
+      LodVisibilityMask: 255,
     },
     Tags: [{ Id: 1, Name: 'war' }],
     Characters: [],

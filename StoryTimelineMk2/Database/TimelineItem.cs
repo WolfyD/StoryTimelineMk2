@@ -25,6 +25,7 @@ namespace StoryTimelineMk2.Database
         public int ItemIndex { get; set; }
         public bool ShowInNotes { get; set; } = true;
         public int MinLodLevel { get; set; }
+        public int LodVisibilityMask { get; set; } = 255;
         public int Importance { get; set; } = 5;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

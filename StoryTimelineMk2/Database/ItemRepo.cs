@@ -177,14 +177,14 @@ namespace StoryTimelineMk2.Database
                         year, end_year,
                         absolute_start, absolute_end,
                         book_title, chapter, page, color, creation_granularity,
-                        timeline_id, item_index, show_in_notes, importance, min_lod_level
+                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask
                     )
                     VALUES (
                         @Id, @Title, @Description, @Content, @StoryId, @TypeId,
                         @Year, @EndYear,
                         @AbsoluteStart, @AbsoluteEnd,
                         @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
-                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel
+                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title, description = excluded.description, content = excluded.content,
@@ -195,6 +195,7 @@ namespace StoryTimelineMk2.Database
                         color = excluded.color, creation_granularity = excluded.creation_granularity,
                         item_index = excluded.item_index, show_in_notes = excluded.show_in_notes,
                         importance = excluded.importance, min_lod_level = excluded.min_lod_level,
+                        lod_visibility_mask = excluded.lod_visibility_mask,
                         updated_at = CURRENT_TIMESTAMP;";
 
                 db.Execute(sql, item, tx);

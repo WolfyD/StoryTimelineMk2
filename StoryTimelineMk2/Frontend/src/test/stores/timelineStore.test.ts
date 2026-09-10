@@ -34,6 +34,7 @@ function makeItem(overrides: Record<string, unknown> = {}): TimelineItem {
     ShowInNotes: true,
     Importance: 5,
     MinLodLevel: 3,
+    LodVisibilityMask: 255,
   }
   // When caller passes Year override, mirror it to year as well
   const merged = { ...base, ...overrides }

@@ -101,8 +101,7 @@ const toggleRange = (id: number) => {
 const getId = (item: any) => (item.Id ?? item.id)?.toString() || '';
 const getAbsoluteStart = (item: any) => item.AbsoluteStart ?? item.absolute_start ?? item.Year;
 const getAbsoluteEnd = (item: any) => item.AbsoluteEnd ?? item.absolute_end ?? getAbsoluteStart(item);
-// Fixed Casing Trap for MinLod!
-const getMinLod = (item: any) => item.MinLodLevel ?? item.min_lod_level ?? 3;
+const getLodMask = (item: any) => item.LodVisibilityMask ?? item.lod_visibility_mask ?? 255;
 const getItemIndex = (item: any) => item.ItemIndex ?? item.item_index ?? 0;
 const getTitle = (item: any) => item.Title ?? item.title ?? 'Untitled';
 const getColor = (item: any) => item.Color ?? item.color ?? '#ffffff';
@@ -560,8 +559,7 @@ const renderItems = (items: any[], ls: LayoutSettings) => {
         const itemIdStr = getId(item);
         const typeName = getTypeName(item);
 
-        const minLod = parseInt(getMinLod(item), 10);
-        if (!isNaN(minLod) && minLod > currentLodIndex) continue;
+        if (!(getLodMask(item) & (1 << currentLodIndex))) continue;
 
         const absoluteStart = getAbsoluteStart(item);
         if (absoluteStart === undefined) continue;

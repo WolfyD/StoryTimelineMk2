@@ -30,6 +30,7 @@ public class ItemRepoTests
         ShowInNotes     = true,
         Importance      = 5,
         MinLodLevel     = 3,
+        LodVisibilityMask = 255,
     };
 
     // Create a minimal timeline row so the FK constraint on items.timeline_id is satisfied.
