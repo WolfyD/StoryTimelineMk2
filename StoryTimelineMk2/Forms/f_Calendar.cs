@@ -22,11 +22,7 @@ namespace StoryTimelineMk2.Forms
 
         private async void F_Calendar_Load(object? sender, EventArgs e)
         {
-            string cacheFolder = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "StoryTimelineMk2_Cache", "calendar");
-
-            var webEnvironment = await CoreWebView2Environment.CreateAsync(null, cacheFolder);
+            var webEnvironment = await WebView2EnvironmentFactory.GetAsync("calendar");
             await wv_Calendar.EnsureCoreWebView2Async(webEnvironment);
 
             wv_Calendar.CoreWebView2.WindowCloseRequested += (_, _) => Close();

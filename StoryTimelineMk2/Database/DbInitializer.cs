@@ -413,8 +413,68 @@ namespace StoryTimelineMk2.Database
             ";
 
             db.Execute(createTablesSql);
+            ApplyColumnMigrations(db);
             CreateIndexes(db);
             SeedDefaultData(db);
+        }
+
+        /// <summary>
+        /// Adds columns that may be missing from databases created by older app versions.
+        /// Called before CreateIndexes so that indexes on new columns don't crash.
+        /// </summary>
+        private static void ApplyColumnMigrations(SqliteConnection db)
+        {
+            var timelines = GetColumnSet(db, "timelines");
+            var items    = GetColumnSet(db, "items");
+            var chars    = GetColumnSet(db, "characters");
+            var settings = GetColumnSet(db, "settings");
+            var notes    = GetColumnSet(db, "notes");
+
+            // timelines — seed DB schema predates calendar/layout_settings columns
+            if (!timelines.Contains("calendar_id"))
+                db.Execute("ALTER TABLE timelines ADD COLUMN calendar_id TEXT NOT NULL DEFAULT 'cal_default_gregorian'");
+            if (!timelines.Contains("layout_settings_id"))
+                db.Execute("ALTER TABLE timelines ADD COLUMN layout_settings_id TEXT NOT NULL DEFAULT 'ls_default'");
+
+            // items — columns added progressively after initial release
+            if (!items.Contains("timeline_id"))       db.Execute("ALTER TABLE items ADD COLUMN timeline_id INTEGER");
+            if (!items.Contains("item_index"))         db.Execute("ALTER TABLE items ADD COLUMN item_index INTEGER DEFAULT 0");
+            if (!items.Contains("show_in_notes"))      db.Execute("ALTER TABLE items ADD COLUMN show_in_notes INTEGER DEFAULT 1");
+            if (!items.Contains("importance"))         db.Execute("ALTER TABLE items ADD COLUMN importance INTEGER DEFAULT 5");
+            if (!items.Contains("absolute_start"))     db.Execute("ALTER TABLE items ADD COLUMN absolute_start REAL");
+            if (!items.Contains("absolute_end"))       db.Execute("ALTER TABLE items ADD COLUMN absolute_end REAL");
+            if (!items.Contains("min_lod_level"))      db.Execute("ALTER TABLE items ADD COLUMN min_lod_level INTEGER DEFAULT 3");
+            if (!items.Contains("lod_visibility_mask"))db.Execute("ALTER TABLE items ADD COLUMN lod_visibility_mask INTEGER DEFAULT 255");
+            if (!items.Contains("color"))              db.Execute("ALTER TABLE items ADD COLUMN color TEXT");
+            if (!items.Contains("creation_granularity"))db.Execute("ALTER TABLE items ADD COLUMN creation_granularity INTEGER");
+            if (!items.Contains("created_at"))         db.Execute("ALTER TABLE items ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+            if (!items.Contains("updated_at"))         db.Execute("ALTER TABLE items ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+            // characters
+            if (!chars.Contains("timeline_id"))        db.Execute("ALTER TABLE characters ADD COLUMN timeline_id INTEGER");
+            if (!chars.Contains("importance"))         db.Execute("ALTER TABLE characters ADD COLUMN importance INTEGER DEFAULT 5");
+            if (!chars.Contains("color"))              db.Execute("ALTER TABLE characters ADD COLUMN color TEXT");
+            if (!chars.Contains("created_at"))         db.Execute("ALTER TABLE characters ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+            if (!chars.Contains("updated_at"))         db.Execute("ALTER TABLE characters ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+            // settings
+            if (!settings.Contains("timeline_id"))     db.Execute("ALTER TABLE settings ADD COLUMN timeline_id INTEGER");
+
+            // notes — seed DB has old schema (year/subtick/content) without timeline_id
+            if (!notes.Contains("timeline_id"))        db.Execute("ALTER TABLE notes ADD COLUMN timeline_id INTEGER");
+        }
+
+        private static HashSet<string> GetColumnSet(SqliteConnection db, string table)
+        {
+            try
+            {
+                return db.Query<string>($"SELECT name FROM pragma_table_info('{table}')")
+                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
         }
 
         private static void CreateIndexes(SqliteConnection db)

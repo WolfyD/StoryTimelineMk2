@@ -37,11 +37,7 @@ namespace StoryTimelineMk2.Forms
 
         async private void AddEditItem_Load(object? sender, EventArgs e)
         {
-            string cacheFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "StoryTimelineMk2_Cache", "edit");
-
-            var webEnvironment = await CoreWebView2Environment.CreateAsync(null, cacheFolder);
+            var webEnvironment = await WebView2EnvironmentFactory.GetAsync("edit");
             await wv_AddEditItem.EnsureCoreWebView2Async(webEnvironment);
 
             wv_AddEditItem.CoreWebView2.WindowCloseRequested += (_, _) => Close();

@@ -33,8 +33,7 @@ namespace StoryTimelineMk2.Forms
         {
             RestoreWindowState();
 
-            string cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StoryTimelineMk2_Cache", "timeline");
-            var webEnvironment = await CoreWebView2Environment.CreateAsync(null, cacheFolder);
+            var webEnvironment = await WebView2EnvironmentFactory.GetAsync("timeline");
 
             await wv_Timeline.EnsureCoreWebView2Async(webEnvironment);
 
