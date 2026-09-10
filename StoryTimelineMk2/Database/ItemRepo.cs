@@ -252,5 +252,19 @@ namespace StoryTimelineMk2.Database
             using var db = new SqliteConnection(_connString);
             db.Execute("DELETE FROM items WHERE id = @Id", new { Id = id });
         }
+
+        public int ShiftItems(int timelineId, int deltaYears)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Execute(@"
+                UPDATE items
+                SET year             = year             + @Delta,
+                    end_year         = end_year         + @Delta,
+                    absolute_start   = absolute_start   + @Delta,
+                    absolute_end     = absolute_end     + @Delta,
+                    updated_at       = CURRENT_TIMESTAMP
+                WHERE timeline_id = @TimelineId",
+                new { Delta = deltaYears, TimelineId = timelineId });
+        }
     }
 }

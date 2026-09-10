@@ -235,6 +235,10 @@ export const BackendAPI = {
 		return await this.request<{ status: string }>('DeleteHiddenRange', { id });
 	},
 
+	async ShiftTimelineItems(timelineId: number, delta: number) {
+		return await this.request<{ status: string; affected?: number }>('ShiftTimelineItems', { timelineId, delta });
+	},
+
 	async GetLayoutSettingsById(id: string) {
 		return await this.request<LayoutSettings>('GetLayoutSettingsById', { id });
 	},

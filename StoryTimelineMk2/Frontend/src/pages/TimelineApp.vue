@@ -123,6 +123,12 @@ function onMinimapJump(year: number) {
     }
 }
 
+async function onShiftComplete(delta: number) {
+    const targetYear = store.currentNowYear + delta;
+    await store.loadTimelineData(store.currentProject!.Id);
+    timelineCanvasRef.value?.animateJumpToYear(targetYear);
+}
+
 function onHotkey(e: KeyboardEvent) {
     if (e.key === 'F11') {
         e.preventDefault()
@@ -166,7 +172,7 @@ onBeforeUnmount(() => {
             <h2>{{ store.author }}</h2>
         </div>
         <div class="timeline-header-actions">
-            <TimelineActionsMenu />
+            <TimelineActionsMenu @shift-complete="onShiftComplete" />
             <button class="header-icon-btn" title="Settings" @click="showSettings = true">
                 <PhGear :size="22" />
             </button>

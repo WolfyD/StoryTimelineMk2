@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { PhDotsThreeOutlineVertical, PhX, PhPlus, PhTrash } from '@phosphor-icons/vue'
+import { PhDotsThreeOutlineVertical, PhX, PhPlus, PhTrash, PhArrowsHorizontal } from '@phosphor-icons/vue'
 import type { HiddenRange } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 
 const store = useTimelineStore()
+
+const emit = defineEmits<{ shiftComplete: [delta: number] }>()
 
 const open        = ref(false)
 const rootEl      = ref<HTMLElement | null>(null)
@@ -61,6 +63,29 @@ async function deleteRange(id: number) {
     if (result?.status === 'ok') {
         hiddenRanges.value = hiddenRanges.value.filter(r => r.Id !== id)
         store.setHiddenRanges(hiddenRanges.value)
+    }
+}
+
+// --- shift date ---
+const shiftDelta    = ref<number | null>(null)
+const shiftBusy     = ref(false)
+const shiftError    = ref('')
+const shiftSuccess  = ref('')
+
+async function shiftItems() {
+    shiftError.value   = ''
+    shiftSuccess.value = ''
+    const delta = shiftDelta.value
+    if (delta === null || isNaN(delta) || delta === 0) { shiftError.value = 'Enter a non-zero year offset.'; return }
+    shiftBusy.value = true
+    const result = await BackendAPI.ShiftTimelineItems(store.currentProject!.Id, delta)
+    shiftBusy.value = false
+    if (result?.status === 'ok') {
+        shiftSuccess.value = `Shifted ${result.affected ?? store.items.length} items by ${delta > 0 ? '+' : ''}${delta} years.`
+        shiftDelta.value = null
+        emit('shiftComplete', delta)
+    } else {
+        shiftError.value = 'Shift failed.'
     }
 }
 </script>
@@ -125,7 +150,32 @@ async function deleteRange(id: number) {
                 <p v-if="rangeError" class="range-error">{{ rangeError }}</p>
             </div>
 
-            <!-- future action sections go here -->
+            <!-- ── Shift Date ── -->
+            <div class="action-section">
+                <div class="action-section-title">
+                    <PhArrowsHorizontal :size="12" style="vertical-align:middle;margin-right:4px" />
+                    Shift All Items
+                </div>
+                <p class="action-desc">Move every item in this timeline by N years. Use a negative number to shift backwards.</p>
+                <div class="shift-form">
+                    <input
+                        class="range-input shift-input"
+                        type="number"
+                        v-model.number="shiftDelta"
+                        placeholder="Years (e.g. −500)"
+                        @keydown.enter="shiftItems"
+                    />
+                    <button
+                        class="icon-btn icon-btn--ok"
+                        :disabled="shiftBusy || !shiftDelta"
+                        @click="shiftItems"
+                    >
+                        {{ shiftBusy ? '…' : 'Shift' }}
+                    </button>
+                </div>
+                <p v-if="shiftError"   class="range-error">{{ shiftError }}</p>
+                <p v-if="shiftSuccess" class="shift-ok">{{ shiftSuccess }}</p>
+            </div>
         </div>
     </div>
 </template>
@@ -286,6 +336,31 @@ async function deleteRange(id: number) {
     margin: 4px 0 0;
     font-size: 11px;
     color: #f87171;
+}
+
+// ── Shift form ──
+.action-desc {
+    font-size: 11px;
+    color: #64748b;
+    margin: 0 0 8px;
+    line-height: 1.4;
+}
+
+.shift-form {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.shift-input {
+    flex: 1;
+    width: auto;
+}
+
+.shift-ok {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: #86efac;
 }
 
 // ── Icon buttons ──

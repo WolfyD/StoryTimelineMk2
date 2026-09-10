@@ -95,6 +95,9 @@ namespace StoryTimelineMk2.Bridge
                 case "SaveHiddenRange":     HandleSaveHiddenRange(message); break;
                 case "DeleteHiddenRange":   HandleDeleteHiddenRange(message); break;
 
+                // Timeline actions
+                case "ShiftTimelineItems":  HandleShiftTimelineItems(message); break;
+
                 // App-level settings
                 case "GetAppConfig":    HandleGetAppConfig(message); break;
                 case "BrowseDataFolder": HandleBrowseDataFolder(message); break;
@@ -862,6 +865,26 @@ namespace StoryTimelineMk2.Bridge
                 int id = message.Payload.GetProperty("id").GetInt32();
                 new HiddenRangeRepo().Delete(id);
                 ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Timeline action handlers
+        // -----------------------------------------------------------------------
+
+        private void HandleShiftTimelineItems(BridgeMessage message)
+        {
+            try
+            {
+                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+                int delta      = message.Payload.GetProperty("delta").GetInt32();
+                if (delta == 0) { ReplyToVue(message.MessageId, new { status = "ok", affected = 0 }); return; }
+                int affected = new ItemRepo().ShiftItems(timelineId, delta);
+                ReplyToVue(message.MessageId, new { status = "ok", affected });
             }
             catch (Exception ex)
             {

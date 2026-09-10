@@ -96,6 +96,37 @@ const saveError = ref('')
 const showNewPreset = ref(false)
 const newPresetName = ref('')
 
+// --- search ---
+const searchQuery  = ref('')
+const modalBodyRef = ref<HTMLElement | null>(null)
+
+watch(searchQuery, (q) => {
+    const body = modalBodyRef.value
+    if (!body) return
+
+    body.querySelectorAll('.search-hl').forEach(el => el.classList.remove('search-hl'))
+    if (!q.trim()) return
+
+    const lower = q.trim().toLowerCase()
+    let firstMatch: Element | null = null
+
+    body.querySelectorAll<HTMLElement>('.section-title').forEach(el => {
+        if (el.textContent?.toLowerCase().includes(lower)) {
+            el.classList.add('search-hl')
+            if (!firstMatch) firstMatch = el
+        }
+    })
+
+    body.querySelectorAll<HTMLElement>('.s-label').forEach(el => {
+        if (el.textContent?.toLowerCase().includes(lower)) {
+            el.classList.add('search-hl')
+            if (!firstMatch) firstMatch = el
+        }
+    })
+
+    firstMatch?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+})
+
 // --- data range color with alpha support ---
 function parseHexAlpha(hex: string): { rgb: string; alpha: number } {
     if (!hex) return { rgb: '#3b6ec4', alpha: 30 };
@@ -217,7 +248,18 @@ async function save() {
                 <button class="close-btn" @click="emit('close')"><PhX :size="18" /></button>
             </div>
 
-            <div class="modal-body">
+            <div class="search-bar">
+                <input
+                    class="search-input"
+                    type="text"
+                    v-model="searchQuery"
+                    placeholder="Search settings…"
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+            </div>
+
+            <div class="modal-body" ref="modalBodyRef">
 
                 <!-- GENERAL -->
                 <div class="section-title">General</div>
@@ -591,6 +633,29 @@ async function save() {
     }
 }
 
+.search-bar {
+    padding: 8px 20px;
+    background: #1a2438;
+    border-bottom: 1px solid #2d3a56;
+    flex-shrink: 0;
+}
+
+.search-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #0c1524;
+    border: 1px solid #2d3a56;
+    border-radius: 4px;
+    color: #e2e8f0;
+    font-size: 13px;
+    padding: 5px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+
+    &:focus { border-color: #3b6ec4; }
+    &::placeholder { color: #4a5568; }
+}
+
 .modal-body {
     overflow-y: auto;
     padding: 12px 20px 20px;
@@ -622,6 +687,18 @@ async function save() {
     &:first-child {
         margin-top: 6px;
     }
+
+    &.search-hl {
+        color: #60a5fa;
+        &::after { background: #2563eb; }
+    }
+}
+
+.s-label.search-hl {
+    color: #bfdbfe;
+    background: #172554;
+    border-radius: 3px;
+    padding-left: 8px;
 }
 
 .settings-grid {
