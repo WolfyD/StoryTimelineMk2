@@ -462,6 +462,40 @@ namespace StoryTimelineMk2.Database
 
             // notes — seed DB has old schema (year/subtick/content) without timeline_id
             if (!notes.Contains("timeline_id"))        db.Execute("ALTER TABLE notes ADD COLUMN timeline_id INTEGER");
+
+            // Backfill absolute positions for items that pre-date on-save computation.
+            // Only touches rows where absolute_start IS NULL (the ALTER TABLE default);
+            // rows with absolute_start = 0.0 are left alone (valid year-0 items).
+            var hasSubtick    = items.Contains("subtick");
+            var hasEndSubtick = items.Contains("end_subtick");
+
+            if (hasSubtick)
+            {
+                // Old schema: use legacy formula year + subtick/10 (matches DatabaseImporter)
+                db.Execute(@"
+                    UPDATE items
+                    SET absolute_start = CAST(year AS REAL)
+                                       + CAST(COALESCE(subtick, 0) AS REAL) / 10.0,
+                        absolute_end   = COALESCE(
+                                           CAST(end_year AS REAL)
+                                           + CAST(COALESCE(end_subtick, 0) AS REAL) / 10.0,
+                                           CAST(year AS REAL)
+                                           + CAST(COALESCE(subtick, 0) AS REAL) / 10.0)
+                    WHERE absolute_start IS NULL
+                      AND year IS NOT NULL;
+                ");
+            }
+            else
+            {
+                // Post-BL02 schema: no subtick column; use plain year
+                db.Execute(@"
+                    UPDATE items
+                    SET absolute_start = CAST(year AS REAL),
+                        absolute_end   = COALESCE(CAST(end_year AS REAL), CAST(year AS REAL))
+                    WHERE absolute_start IS NULL
+                      AND year IS NOT NULL;
+                ");
+            }
         }
 
         private static HashSet<string> GetColumnSet(SqliteConnection db, string table)

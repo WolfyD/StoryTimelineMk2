@@ -56,6 +56,12 @@ $seedDest   = Join-Path $DataRoot   "timeline.sqlite"
 if (Test-Path $seedSource) {
     Write-Host "Seeding database from $seedSource"
     Copy-Item -Path $seedSource -Destination $seedDest -Force
+
+    # Normalize window state so every timeline opens windowed at a consistent size,
+    # regardless of how the snapshot was taken (fullscreen, maximised, huge monitor, etc.)
+    $normSql = "UPDATE settings SET is_fullscreen = 0, window_size_x = 1280, window_size_y = 800, window_position_x = 100, window_position_y = 100;"
+    python3 -c "import sqlite3; c=sqlite3.connect(r'$seedDest'); c.execute('$normSql'); c.commit()" 2>$null
+    if (-not $?) { Write-Warning "Could not normalize window state (python3 not found) - windows may open fullscreen." }
 } else {
     Write-Warning "Seed DB not found at $seedSource - app will start with an empty database."
 }
