@@ -2,6 +2,7 @@
 // imports
 import { useTimelineStore } from '@/stores/timelineStore'
 import { PhArrowArcRight, PhGear, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
+import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
@@ -165,6 +166,7 @@ onBeforeUnmount(() => {
             <h2>{{ store.author }}</h2>
         </div>
         <div class="timeline-header-actions">
+            <TimelineActionsMenu />
             <button class="header-icon-btn" title="Settings" @click="showSettings = true">
                 <PhGear :size="22" />
             </button>
@@ -321,7 +323,7 @@ onBeforeUnmount(() => {
 
 	.timeline-header-spacer,
 	.timeline-header-actions {
-		flex: 0 0 48px;
+		flex: 0 0 80px;
 	}
 
 	.timeline-header-actions {

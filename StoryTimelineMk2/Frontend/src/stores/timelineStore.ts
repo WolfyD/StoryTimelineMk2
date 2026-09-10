@@ -95,6 +95,11 @@ export const useTimelineStore = defineStore('timeline', () => {
 			const _lp = lProf.Profile;
 			if(_lp){
 				lodProfile.value = JSON.parse(_lp.toString());
+				const yearLevel = lodProfile.value.find(l => l.formatKey.toLowerCase().includes('year'))
+				if (yearLevel) {
+					currentLodIndex.value = yearLevel.index
+					currentLodTitle.value = yearLevel.formatKey
+				}
 			}
 		} catch (error) {
 			console.error("Bridge Error loading timeline:", error);
@@ -192,25 +197,24 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 
 	function lodZoomIn(){
-		if(!lodProfile.value) return;
-		if (currentLodIndex.value < lodProfile.value.length - 1) {
-			currentLodIndex.value++;
-			const _myProf = lodProfile.value.find(x=>x.index == currentLodIndex.value);
-			if(_myProf){
-				currentLodTitle.value = _myProf.formatKey;
-			}
+		if(!lodProfile.value?.length) return;
+		const sorted = [...lodProfile.value].sort((a, b) => a.index - b.index);
+		const pos = sorted.findIndex(l => l.index === currentLodIndex.value);
+		if (pos < sorted.length - 1) {
+			const next = sorted[pos + 1];
+			currentLodIndex.value = next.index;
+			currentLodTitle.value = next.formatKey;
 		}
 	};
 
 	function lodZoomOut(){
-
-		if(!lodProfile.value) return;
-		if (currentLodIndex.value > 0) {
-			currentLodIndex.value--;
-			const _myProf = lodProfile.value.find(x=>x.index == currentLodIndex.value);
-			if(_myProf){
-				currentLodTitle.value = _myProf.formatKey;
-			}
+		if(!lodProfile.value?.length) return;
+		const sorted = [...lodProfile.value].sort((a, b) => a.index - b.index);
+		const pos = sorted.findIndex(l => l.index === currentLodIndex.value);
+		if (pos > 0) {
+			const prev = sorted[pos - 1];
+			currentLodIndex.value = prev.index;
+			currentLodTitle.value = prev.formatKey;
 		}
 	};
 
