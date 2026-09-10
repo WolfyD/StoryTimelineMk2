@@ -25,7 +25,7 @@ namespace StoryTimelineMk2.Forms
             var webEnvironment = await WebView2EnvironmentFactory.GetAsync("calendar");
             await wv_Calendar.EnsureCoreWebView2Async(webEnvironment);
 
-            wv_Calendar.CoreWebView2.WindowCloseRequested += (_, _) => Close();
+            wv_Calendar.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
 
             _messageRouter = new MessageRouter(wv_Calendar.CoreWebView2);
 

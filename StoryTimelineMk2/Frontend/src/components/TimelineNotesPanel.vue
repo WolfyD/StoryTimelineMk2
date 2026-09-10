@@ -18,7 +18,7 @@ const editingText = ref('');
 const viewingNote = ref<TimelineNote | null>(null);
 
 const inRangeNotes = computed(() => {
-    if (!props.layoutSettings) return [];
+    if (!props.layoutSettings) return store.notes;
     const tickDist = props.layoutSettings.TimelineTickDistance || 100;
     const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
     const halfAbsolute = (props.layoutSettings.TimelineDataRangeWidth / 2 / tickDist) * lodStep;

@@ -46,6 +46,9 @@ namespace StoryTimelineMk2.Forms
 
             _messageRouter = new MessageRouter(wv_Timeline.CoreWebView2, this);
 
+            // Let JavaScript window.close() close the WinForms host (needed for E2E test cleanup)
+            wv_Timeline.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
+
             // Apply CSS zoom once the page finishes loading
             wv_Timeline.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
 

@@ -54,7 +54,7 @@ function initLayout(ls: LayoutSettings | null | undefined): LayoutSettings {
         TimelineAgeCornerRounding: d.TimelineAgeCornerRounding ?? 5,
         TimelinePeriodHeight: d.TimelinePeriodHeight ?? 15,
         TimelinePeriodCornerRounding: d.TimelinePeriodCornerRounding ?? 3,
-        TimelinePeriodYMargin: d.TimelinePeriodYMargin ?? 5,
+        TimelinePeriodYMargin: d.TimelinePeriodYMargin ?? 20,
         TimelinePeriodYOffset: d.TimelinePeriodYOffset ?? 0,
         TimelineBoxTypesShowAsBox: d.TimelineBoxTypesShowAsBox ?? false,
         TimelineBoxTypesBoxWidth: d.TimelineBoxTypesBoxWidth ?? 80,
@@ -275,7 +275,7 @@ async function save() {
 </script>
 
 <template>
-    <div class="modal-backdrop">
+    <div class="modal-backdrop" @click.self="emit('close')">
         <div class="modal-panel">
 
             <div class="modal-header">

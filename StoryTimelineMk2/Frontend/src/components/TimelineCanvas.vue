@@ -1103,6 +1103,7 @@ onMounted(() => {
     initCursorShapes();
 
     renderWithDimming(props.layoutSettings!);
+    updateCurrentYearInStore();
 
     const positionMenu = (clientX: number, clientY: number, menuW = 230, menuH = 320) => {
         contextMenu.x = Math.min(clientX, window.innerWidth  - menuW - 4);
