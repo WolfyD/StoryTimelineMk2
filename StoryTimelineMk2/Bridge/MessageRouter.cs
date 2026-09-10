@@ -96,7 +96,8 @@ namespace StoryTimelineMk2.Bridge
                 case "DeleteHiddenRange":   HandleDeleteHiddenRange(message); break;
 
                 // Timeline actions
-                case "ShiftTimelineItems":  HandleShiftTimelineItems(message); break;
+                case "ShiftTimelineItems":      HandleShiftTimelineItems(message); break;
+                case "ResetLayoutPreset":       HandleResetLayoutPreset(message); break;
 
                 // App-level settings
                 case "GetAppConfig":    HandleGetAppConfig(message); break;
@@ -889,6 +890,22 @@ namespace StoryTimelineMk2.Bridge
             catch (Exception ex)
             {
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleResetLayoutPreset(BridgeMessage message)
+        {
+            try
+            {
+                var id = message.Payload.GetProperty("id").GetString();
+                DbInitializer.ResetBuiltinPreset(id);
+                var fresh = new LayoutSettingsRepo().GetById(id);
+                ReplyToVue(message.MessageId, new { status = "ok", layoutSettings = fresh });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ResetLayoutPreset] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message, detail = ex.ToString() });
             }
         }
 

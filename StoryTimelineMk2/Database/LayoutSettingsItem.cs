@@ -70,5 +70,27 @@
 
         public bool TimelineAnimateLodChange { get; set; }
         public int TimelineLodChangeAnimationLength { get; set; }
+
+        // Tick & axis line colors
+        public string TimelineTickColor { get; set; } = string.Empty;
+        public string TimelineAxisColor { get; set; } = string.Empty;
+
+        // Notes panel
+        public string NotesPanelBackgroundColor { get; set; } = string.Empty;
+        public string NotesPanelCardBackgroundColor { get; set; } = string.Empty;
+        public string NotesPanelTextColor { get; set; } = string.Empty;
+        public string NotesPanelHeadingColor { get; set; } = string.Empty;
+        public string NotesPanelAccentColor { get; set; } = string.Empty;
+        public int NotesPanelFontSize { get; set; }
+
+        // Data panel (upper-right item display)
+        public string DataPanelBackgroundColor { get; set; } = string.Empty;
+        public string DataPanelCardBackgroundColor { get; set; } = string.Empty;
+        public string DataPanelH1Color { get; set; } = string.Empty;
+        public string DataPanelH2Color { get; set; } = string.Empty;
+        public string DataPanelH3Color { get; set; } = string.Empty;
+        public string DataPanelH4Color { get; set; } = string.Empty;
+        public string DataPanelFontFamily { get; set; } = string.Empty;
+        public int DataPanelFontSize { get; set; }
     }
 }

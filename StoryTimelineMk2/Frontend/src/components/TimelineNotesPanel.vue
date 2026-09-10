@@ -139,7 +139,14 @@ function formatApproximate(dist: number): string {
 </script>
 
 <template>
-    <div class="notes-panel">
+    <div class="notes-panel" :style="{
+        '--np-bg':      props.layoutSettings?.NotesPanelBackgroundColor     || '#0f172a',
+        '--np-card':    props.layoutSettings?.NotesPanelCardBackgroundColor  || '#1e293b',
+        '--np-text':    props.layoutSettings?.NotesPanelTextColor            || '#e2e8f0',
+        '--np-heading': props.layoutSettings?.NotesPanelHeadingColor         || '#94a3b8',
+        '--np-accent':  props.layoutSettings?.NotesPanelAccentColor          || '#6366f1',
+        '--np-fs':      (props.layoutSettings?.NotesPanelFontSize ?? 13) + 'px',
+    }">
         <!-- Tab bar -->
         <div class="tab-bar">
             <button
@@ -289,17 +296,18 @@ function formatApproximate(dist: number): string {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--np-bg);
+    color: var(--np-text);
     overflow: hidden;
     font-family: sans-serif;
+    font-size: var(--np-fs);
 }
 
 // ── Tab bar ──────────────────────────────────────────────────────────────────
 .tab-bar {
     display: flex;
     flex-shrink: 0;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--np-card);
 }
 
 .tab-btn {
@@ -311,7 +319,7 @@ function formatApproximate(dist: number): string {
     padding: 8px 4px;
     background: none;
     border: none;
-    color: #64748b;
+    color: var(--np-heading);
     font-size: 0.8em;
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -321,11 +329,11 @@ function formatApproximate(dist: number): string {
 
     i { font-size: 1.1em; }
 
-    &:hover { color: #94a3b8; }
+    &:hover { color: var(--np-text); }
 
     &.active {
-        color: #e2e8f0;
-        border-bottom-color: #6366f1;
+        color: var(--np-text);
+        border-bottom-color: var(--np-accent);
     }
 }
 
@@ -340,16 +348,16 @@ function formatApproximate(dist: number): string {
 .notes-textarea {
     flex: 1;
     min-height: 80px;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--np-card);
+    border: 1px solid color-mix(in srgb, var(--np-heading) 40%, transparent);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--np-text);
     padding: 8px;
     font-size: 0.85em;
     resize: none;
     font-family: inherit;
 
-    &:focus { outline: none; border-color: #6366f1; }
+    &:focus { outline: none; border-color: var(--np-accent); }
 }
 
 .notes-input-meta {
@@ -363,19 +371,19 @@ function formatApproximate(dist: number): string {
 
 .notes-current-year-label {
     font-size: 0.7em;
-    color: #94a3b8;
+    color: var(--np-heading);
     text-align: center;
 }
 
 .notes-current-year-value {
     font-size: 1.3em;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--np-text);
     text-align: center;
 }
 
 .notes-add-btn {
-    background: #4f46e5;
+    background: var(--np-accent);
     color: #fff;
     border: none;
     border-radius: 4px;
@@ -384,12 +392,12 @@ function formatApproximate(dist: number): string {
     cursor: pointer;
     white-space: nowrap;
     width: 100%;
-    &:hover { background: #4338ca; }
+    &:hover { filter: brightness(1.15); }
 }
 
 .notes-divider {
     height: 1px;
-    background: #1e293b;
+    background: var(--np-card);
     margin: 0 10px;
     flex-shrink: 0;
 }
@@ -416,8 +424,8 @@ function formatApproximate(dist: number): string {
 .note-entry {
     display: flex;
     gap: 8px;
-    background: #1e293b;
-    border: 1px solid #2d3f55;
+    background: var(--np-card);
+    border: 1px solid color-mix(in srgb, var(--np-heading) 30%, transparent);
     border-radius: 4px;
     padding: 8px;
 }
@@ -426,14 +434,14 @@ function formatApproximate(dist: number): string {
 
 .note-year {
     font-size: 0.78em;
-    color: #94a3b8;
+    color: var(--np-heading);
     margin-bottom: 4px;
     font-weight: 600;
 }
 
 .note-content {
     font-size: 0.85em;
-    color: #cbd5e1;
+    color: var(--np-text);
     word-break: break-word;
     white-space: pre-wrap;
     text-align: center;
@@ -444,10 +452,10 @@ function formatApproximate(dist: number): string {
 .note-edit-textarea {
     width: 100%;
     min-height: 60px;
-    background: #0f172a;
-    border: 1px solid #6366f1;
+    background: var(--np-bg);
+    border: 1px solid var(--np-accent);
     border-radius: 3px;
-    color: #e2e8f0;
+    color: var(--np-text);
     padding: 6px;
     font-size: 0.85em;
     resize: vertical;
@@ -459,15 +467,15 @@ function formatApproximate(dist: number): string {
 .note-edit-actions { display: flex; gap: 4px; }
 
 .note-save-btn {
-    background: #4f46e5; color: #fff; border: none; border-radius: 3px;
+    background: var(--np-accent); color: #fff; border: none; border-radius: 3px;
     padding: 3px 8px; font-size: 0.78em; cursor: pointer;
-    &:hover { background: #4338ca; }
+    &:hover { filter: brightness(1.15); }
 }
 
 .note-cancel-btn {
-    background: #334155; color: #94a3b8; border: none; border-radius: 3px;
+    background: var(--np-card); color: var(--np-heading); border: none; border-radius: 3px;
     padding: 3px 8px; font-size: 0.78em; cursor: pointer;
-    &:hover { color: #e2e8f0; }
+    &:hover { color: var(--np-text); }
 }
 
 .note-actions {
@@ -483,13 +491,13 @@ function formatApproximate(dist: number): string {
     gap: 4px;
     background: transparent;
     border: none;
-    color: #94a3b8;
+    color: var(--np-heading);
     cursor: pointer;
     font-size: 0.8em;
     padding: 2px 4px;
     border-radius: 3px;
     white-space: nowrap;
-    &:hover { color: #e2e8f0; background: #334155; }
+    &:hover { color: var(--np-text); background: var(--np-card); }
     &.danger:hover { color: #f87171; }
     i { font-size: 1em; }
 }
@@ -508,8 +516,8 @@ function formatApproximate(dist: number): string {
     display: flex;
     align-items: center;
     gap: 8px;
-    background: #1e293b;
-    border: 1px solid #2d3f55;
+    background: var(--np-card);
+    border: 1px solid color-mix(in srgb, var(--np-heading) 30%, transparent);
     border-radius: 6px;
     padding: 8px 10px;
 }
@@ -534,11 +542,11 @@ function formatApproximate(dist: number): string {
 .dist-row-value {
     flex: 1;
     font-size: 0.92em;
-    color: #f1f5f9;
+    color: var(--np-text);
     font-weight: 500;
 
     &.unset {
-        color: #475569;
+        color: var(--np-heading);
         font-style: italic;
         font-weight: 400;
     }
@@ -559,7 +567,7 @@ function formatApproximate(dist: number): string {
 
 .dist-divider {
     height: 1px;
-    background: #1e293b;
+    background: var(--np-card);
     flex-shrink: 0;
 }
 
@@ -586,13 +594,13 @@ function formatApproximate(dist: number): string {
     display: flex;
     align-items: center;
     gap: 10px;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--np-card);
+    border: 1px solid color-mix(in srgb, var(--np-heading) 30%, transparent);
     border-radius: 6px;
     padding: 10px 14px;
 
     i {
-        color: #a78bfa;
+        color: var(--np-accent);
         font-size: 1.3em;
         flex-shrink: 0;
     }
@@ -601,7 +609,7 @@ function formatApproximate(dist: number): string {
 .dist-result-value {
     font-size: 1em;
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--np-text);
 }
 
 .dist-specificity {
@@ -609,18 +617,18 @@ function formatApproximate(dist: number): string {
     align-items: center;
     gap: 8px;
     font-size: 0.78em;
-    color: #64748b;
+    color: var(--np-heading);
     cursor: pointer;
     user-select: none;
 
     input[type="checkbox"] {
-        accent-color: #6366f1;
+        accent-color: var(--np-accent);
         width: 14px;
         height: 14px;
         cursor: pointer;
     }
 
-    &:hover { color: #94a3b8; }
+    &:hover { color: var(--np-text); }
 }
 
 .dist-hint {
@@ -647,8 +655,8 @@ function formatApproximate(dist: number): string {
 }
 
 .note-view-modal {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--np-card);
+    border: 1px solid color-mix(in srgb, var(--np-heading) 30%, transparent);
     border-radius: 8px;
     padding: 24px;
     max-width: 500px;
@@ -660,13 +668,13 @@ function formatApproximate(dist: number): string {
 
 .note-view-year {
     font-size: 0.85em;
-    color: #94a3b8;
+    color: var(--np-heading);
     font-weight: 600;
 }
 
 .note-view-content {
     font-size: 1em;
-    color: #e2e8f0;
+    color: var(--np-text);
     white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.6;
@@ -674,13 +682,13 @@ function formatApproximate(dist: number): string {
 
 .note-view-close {
     align-self: flex-end;
-    background: #334155;
-    color: #94a3b8;
+    background: var(--np-bg);
+    color: var(--np-heading);
     border: none;
     border-radius: 4px;
     padding: 6px 14px;
     cursor: pointer;
     font-size: 0.85em;
-    &:hover { color: #e2e8f0; }
+    &:hover { color: var(--np-text); }
 }
 </style>

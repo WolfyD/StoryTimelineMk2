@@ -86,7 +86,16 @@ function picUrl(itemId: string): string | null {
 </script>
 
 <template>
-    <div class="data-panel">
+    <div class="data-panel" :style="{
+        '--dp-bg':   props.layoutSettings?.DataPanelBackgroundColor     || '#f5f0e8',
+        '--dp-card': props.layoutSettings?.DataPanelCardBackgroundColor  || '#ffffffaa',
+        '--dp-h1':   props.layoutSettings?.DataPanelH1Color              || '#2c1f0f',
+        '--dp-h2':   props.layoutSettings?.DataPanelH2Color              || '#3a2b1a',
+        '--dp-h3':   props.layoutSettings?.DataPanelH3Color              || '#2c1f0f',
+        '--dp-h4':   props.layoutSettings?.DataPanelH4Color              || '#5c4a38',
+        '--dp-ff':   props.layoutSettings?.DataPanelFontFamily           || 'Georgia, serif',
+        '--dp-fs':   (props.layoutSettings?.DataPanelFontSize ?? 14) + 'px',
+    }">
         <div v-if="inRangeItems.length === 0" class="data-empty">
             Nothing in range
         </div>
@@ -141,25 +150,31 @@ function picUrl(itemId: string): string | null {
     height: 100%;
     overflow-y: auto;
     padding: 12px 14px;
-    background: #f5f0e8;
-    color: #2c1f0f;
-    font-family: Georgia, serif;
+    background: var(--dp-bg);
+    color: var(--dp-h4);
+    font-family: var(--dp-ff);
+    font-size: var(--dp-fs);
     display: flex;
     flex-direction: column;
     gap: 8px;
+
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dp-h4) 30%, transparent); border-radius: 3px; }
 }
 
 .data-empty {
-    color: #9ca3af;
+    color: var(--dp-h4);
+    opacity: 0.5;
     font-style: italic;
     font-size: 0.85em;
     text-align: center;
     margin-top: 20px;
 }
 
-// Ages
+// Ages — H1
 .data-age {
-    border-bottom: 2px solid #4a3728;
+    border-bottom: 2px solid color-mix(in srgb, var(--dp-h1) 40%, transparent);
     padding-bottom: 6px;
     margin-bottom: 4px;
 }
@@ -168,17 +183,17 @@ function picUrl(itemId: string): string | null {
     font-size: 1.25em;
     font-weight: 700;
     text-decoration: underline;
-    color: #2c1f0f;
+    color: var(--dp-h1);
 }
 
 .data-age-desc {
     font-size: 0.85em;
-    color: #5c4a38;
+    color: var(--dp-h4);
     margin-top: 3px;
     font-style: italic;
 }
 
-// Periods
+// Periods — H2
 .data-period {
     margin-bottom: 2px;
 }
@@ -186,22 +201,22 @@ function picUrl(itemId: string): string | null {
 .data-period-title {
     font-size: 1.05em;
     font-weight: 600;
-    color: #3a2b1a;
+    color: var(--dp-h2);
 }
 
 .data-period-desc {
     font-size: 0.85em;
-    color: #5c4a38;
+    color: var(--dp-h4);
     margin-top: 3px;
     line-height: 1.55;
 }
 
-// Other items
+// Other items — H3 title + H4 body
 .data-item {
     display: flex;
     gap: 10px;
-    background: #ffffffaa;
-    border: 1px solid #d4c9b8;
+    background: var(--dp-card);
+    border: 1px solid color-mix(in srgb, var(--dp-h4) 30%, transparent);
     border-radius: 4px;
     padding: 10px;
     align-items: flex-start;
@@ -215,19 +230,20 @@ function picUrl(itemId: string): string | null {
 .data-item-title {
     font-size: 1em;
     font-weight: 700;
-    color: #2c1f0f;
+    color: var(--dp-h3);
     margin-bottom: 4px;
 }
 
 .data-item-desc {
     font-size: 0.82em;
-    color: #5c4a38;
+    color: var(--dp-h4);
     line-height: 1.45;
 }
 
 .data-item-content {
     font-size: 0.78em;
-    color: #7a6a58;
+    color: var(--dp-h4);
+    opacity: 0.75;
     margin-top: 4px;
     line-height: 1.4;
 }
@@ -239,7 +255,7 @@ function picUrl(itemId: string): string | null {
     border-radius: 50%;
     overflow: hidden;
     cursor: pointer;
-    border: 2px solid #d4c9b8;
+    border: 2px solid color-mix(in srgb, var(--dp-h4) 30%, transparent);
 
     img {
         width: 100%;
@@ -248,7 +264,7 @@ function picUrl(itemId: string): string | null {
     }
 
     &:hover {
-        border-color: #7a6a58;
+        border-color: var(--dp-h4);
     }
 }
 

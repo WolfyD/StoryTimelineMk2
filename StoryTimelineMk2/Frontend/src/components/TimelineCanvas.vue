@@ -395,7 +395,7 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         const x = getXFromTime(cleanTime, viewport.centerTime, step, viewport.width, store.layoutSettings!, ranges);
         const formatter = store.activeFormatRegistry[currentLod.formatKey] || store.activeFormatRegistry['YEARS'];
 
-        const tick = new Konva.Line({ points: [x, viewport.height / 2 - 10, x, viewport.height / 2 + 10], stroke: '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth });
+        const tick = new Konva.Line({ points: [x, viewport.height / 2 - 10, x, viewport.height / 2 + 10], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth });
         const text = new Konva.Text({ x: x - 50, y: viewport.height / 2 + 15,
             text: formatter(year, fraction), fill: layoutSettings.TimelineTickMarkerTextColor, align: 'center',
             width: 100, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily });
@@ -712,7 +712,7 @@ function RenderUiLayer(ui_layer: Konva.Layer, ls: LayoutSettings) {
     const nowLine = new Konva.Line({ points: [viewport.width / 2, 0, viewport.width / 2, viewport.height], stroke: '#ff0000', strokeWidth: 2});
     const nowText = new Konva.Text({ text: "Now", stroke: '#0000', fill: '#ff0000', x: viewport.width / 2 + 10, y: 0, fontFamily: "Times", fontSize: 32 });
     const nowTextBottom = new Konva.Text({ align: 'right', text: "Now", stroke: '#0000', fill: '#ff0000', x: -10, y: viewport.height - 32, fontFamily: "Times", fontSize: 32, width: viewport.width / 2 });
-    const centerLine = new Konva.Line({ points: [0, viewport.height / 2, viewport.width, viewport.height / 2], stroke: '#ffffff88', strokeWidth: 2 });
+    const centerLine = new Konva.Line({ points: [0, viewport.height / 2, viewport.width, viewport.height / 2], stroke: ls.TimelineAxisColor || '#ffffff88', strokeWidth: 2 });
     const dataRange = new Konva.Rect({ x: viewport.width / 2 - (ls.TimelineDataRangeWidth / 2), width: ls.TimelineDataRangeWidth, y: 0, height: viewport.height, fill: ls.TimelineDataRangeColor });
 
 	switch (ls.TimelineNowLineStyle) {

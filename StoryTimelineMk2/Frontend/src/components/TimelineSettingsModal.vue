@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { reactive, ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { PhX, PhPlus } from '@phosphor-icons/vue'
 import type { TimelineSettings, LayoutSettings } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
@@ -84,6 +84,22 @@ function initLayout(ls: LayoutSettings | null | undefined): LayoutSettings {
         TimelineJumpToYearAnimationLength: d.TimelineJumpToYearAnimationLength ?? 600,
         TimelineAnimateLodChange: d.TimelineAnimateLodChange ?? true,
         TimelineLodChangeAnimationLength: d.TimelineLodChangeAnimationLength ?? 300,
+        TimelineTickColor: d.TimelineTickColor ?? '#c8b9a4',
+        TimelineAxisColor: d.TimelineAxisColor ?? '#b5a692',
+        NotesPanelBackgroundColor: d.NotesPanelBackgroundColor ?? '#0f172a',
+        NotesPanelCardBackgroundColor: d.NotesPanelCardBackgroundColor ?? '#1e293b',
+        NotesPanelTextColor: d.NotesPanelTextColor ?? '#e2e8f0',
+        NotesPanelHeadingColor: d.NotesPanelHeadingColor ?? '#94a3b8',
+        NotesPanelAccentColor: d.NotesPanelAccentColor ?? '#6366f1',
+        NotesPanelFontSize: d.NotesPanelFontSize ?? 13,
+        DataPanelBackgroundColor: d.DataPanelBackgroundColor ?? '#f5f0e8',
+        DataPanelCardBackgroundColor: d.DataPanelCardBackgroundColor ?? '#ffffffaa',
+        DataPanelH1Color: d.DataPanelH1Color ?? '#2c1f0f',
+        DataPanelH2Color: d.DataPanelH2Color ?? '#3a2b1a',
+        DataPanelH3Color: d.DataPanelH3Color ?? '#2c1f0f',
+        DataPanelH4Color: d.DataPanelH4Color ?? '#5c4a38',
+        DataPanelFontFamily: d.DataPanelFontFamily ?? 'Georgia, serif',
+        DataPanelFontSize: d.DataPanelFontSize ?? 14,
     }
 }
 
@@ -95,6 +111,25 @@ const isSaving = ref(false)
 const saveError = ref('')
 const showNewPreset = ref(false)
 const newPresetName = ref('')
+const isResetting = ref(false)
+
+const isBuiltinPreset = computed(() =>
+    local.selectedLayoutId === 'ls_default' || local.selectedLayoutId === 'ls_dark'
+)
+
+async function resetPreset() {
+    if (!isBuiltinPreset.value) return
+    isResetting.value = true
+    const result = await BackendAPI.ResetLayoutPreset(local.selectedLayoutId)
+    isResetting.value = false
+    if (result?.status === 'ok' && result.layoutSettings) {
+        Object.assign(localLayout, result.layoutSettings)
+    } else if (result?.status === 'error') {
+        console.error('[resetPreset] Backend error:', result.message)
+        console.error('[resetPreset] Detail:', result.detail)
+        alert(`Reset failed:\n${result.message}`)
+    }
+}
 
 // --- search ---
 const searchQuery  = ref('')
@@ -298,6 +333,19 @@ async function save() {
                         </button>
                     </div>
 
+                    <template v-if="isBuiltinPreset">
+                        <span class="s-label">Reset Preset</span>
+                        <button
+                            class="icon-btn icon-btn--reset"
+                            type="button"
+                            :disabled="isResetting"
+                            @click="resetPreset"
+                            title="Reset this built-in preset to its default values"
+                        >
+                            {{ isResetting ? 'Resetting…' : 'Reset to defaults' }}
+                        </button>
+                    </template>
+
                     <template v-if="showNewPreset">
                         <span class="s-label">New Preset Name</span>
                         <div class="preset-row">
@@ -421,6 +469,18 @@ async function save() {
                         <span class="toggle-thumb" />
                     </button>
 
+                    <span class="s-label">Tick Color</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.TimelineTickColor" />
+                        <span class="color-hex">{{ localLayout.TimelineTickColor }}</span>
+                    </div>
+
+                    <span class="s-label">Axis Line Color</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.TimelineAxisColor" />
+                        <span class="color-hex">{{ localLayout.TimelineAxisColor }}</span>
+                    </div>
+
                     <span class="s-label">Edge Margin Width</span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEdgeMarginWidth" :step="5" min="0" />
                 </div>
@@ -519,6 +579,89 @@ async function save() {
                         <input type="range" class="s-range" min="0" max="100" step="1" v-model.number="dataRangeAlpha" />
                         <span class="color-hex">{{ dataRangeAlpha }}%</span>
                     </div>
+                </div>
+
+                <!-- NOTES PANEL -->
+                <div class="section-title">Notes Panel</div>
+                <div class="settings-grid">
+                    <span class="s-label">Background</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.NotesPanelBackgroundColor" />
+                        <span class="color-hex">{{ localLayout.NotesPanelBackgroundColor }}</span>
+                    </div>
+
+                    <span class="s-label">Card Background</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.NotesPanelCardBackgroundColor" />
+                        <span class="color-hex">{{ localLayout.NotesPanelCardBackgroundColor }}</span>
+                    </div>
+
+                    <span class="s-label">Text Color</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.NotesPanelTextColor" />
+                        <span class="color-hex">{{ localLayout.NotesPanelTextColor }}</span>
+                    </div>
+
+                    <span class="s-label">Heading / Label Color</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.NotesPanelHeadingColor" />
+                        <span class="color-hex">{{ localLayout.NotesPanelHeadingColor }}</span>
+                    </div>
+
+                    <span class="s-label">Accent Color</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.NotesPanelAccentColor" />
+                        <span class="color-hex">{{ localLayout.NotesPanelAccentColor }}</span>
+                    </div>
+
+                    <span class="s-label">Font Size</span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.NotesPanelFontSize" :step="1" min="9" max="24" />
+                </div>
+
+                <!-- DATA PANEL -->
+                <div class="section-title">Data Panel</div>
+                <div class="settings-grid">
+                    <span class="s-label">Background</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.DataPanelBackgroundColor" />
+                        <span class="color-hex">{{ localLayout.DataPanelBackgroundColor }}</span>
+                    </div>
+
+                    <span class="s-label">Card Background</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.DataPanelCardBackgroundColor" />
+                        <span class="color-hex">{{ localLayout.DataPanelCardBackgroundColor }}</span>
+                    </div>
+
+                    <span class="s-label">H1 — Age Title</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.DataPanelH1Color" />
+                        <span class="color-hex">{{ localLayout.DataPanelH1Color }}</span>
+                    </div>
+
+                    <span class="s-label">H2 — Period Title</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.DataPanelH2Color" />
+                        <span class="color-hex">{{ localLayout.DataPanelH2Color }}</span>
+                    </div>
+
+                    <span class="s-label">H3 — Item Title</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.DataPanelH3Color" />
+                        <span class="color-hex">{{ localLayout.DataPanelH3Color }}</span>
+                    </div>
+
+                    <span class="s-label">H4 — Description</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.DataPanelH4Color" />
+                        <span class="color-hex">{{ localLayout.DataPanelH4Color }}</span>
+                    </div>
+
+                    <span class="s-label">Font Family</span>
+                    <FontPicker v-model="localLayout.DataPanelFontFamily" :fonts="systemFonts" />
+
+                    <span class="s-label">Font Size</span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.DataPanelFontSize" :step="1" min="9" max="24" />
                 </div>
 
                 <!-- ANIMATIONS -->
@@ -839,6 +982,24 @@ select.s-input {
         &:hover {
             background: #446b40;
             color: #e8f5e5;
+        }
+    }
+
+    &.icon-btn--reset {
+        width: auto;
+        padding: 0 10px;
+        font-size: 12px;
+        color: #fbbf24;
+        border-color: #78450a;
+
+        &:hover:not(:disabled) {
+            background: #78450a;
+            color: #fef3c7;
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
     }
 }

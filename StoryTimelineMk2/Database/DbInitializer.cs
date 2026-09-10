@@ -575,10 +575,292 @@ namespace StoryTimelineMk2.Database
                     WHERE id = 'ls_default' AND timeline_tick_marker_text_color = '#fff';
             ");
 
-            // Schema migrations: ALTER TABLE statements that may already exist on older DBs
-            try { db.Execute("ALTER TABLE timelines ADD COLUMN color TEXT DEFAULT NULL;"); } catch { }
-            try { db.Execute("ALTER TABLE notes ADD COLUMN absolute_time REAL NOT NULL DEFAULT 0;"); } catch { }
-            try { db.Execute("ALTER TABLE items ADD COLUMN lod_visibility_mask INTEGER DEFAULT 255;"); } catch { }
+            // Schema migrations: add columns that didn't exist in earlier schema versions
+            AddCol(db, "timelines",       "color",                         "TEXT DEFAULT NULL");
+            AddCol(db, "notes",           "absolute_time",                 "REAL NOT NULL DEFAULT 0");
+            AddCol(db, "items",           "lod_visibility_mask",           "INTEGER DEFAULT 255");
+            AddCol(db, "layout_settings", "timeline_tick_color",           "TEXT NOT NULL DEFAULT '#c8b9a4'");
+            AddCol(db, "layout_settings", "timeline_axis_color",           "TEXT NOT NULL DEFAULT '#b5a692'");
+            AddCol(db, "layout_settings", "notes_panel_background_color",  "TEXT NOT NULL DEFAULT '#0f172a'");
+            AddCol(db, "layout_settings", "notes_panel_card_background_color", "TEXT NOT NULL DEFAULT '#1e293b'");
+            AddCol(db, "layout_settings", "notes_panel_text_color",        "TEXT NOT NULL DEFAULT '#e2e8f0'");
+            AddCol(db, "layout_settings", "notes_panel_heading_color",     "TEXT NOT NULL DEFAULT '#94a3b8'");
+            AddCol(db, "layout_settings", "notes_panel_accent_color",      "TEXT NOT NULL DEFAULT '#6366f1'");
+            AddCol(db, "layout_settings", "notes_panel_font_size",         "INTEGER NOT NULL DEFAULT 13");
+            AddCol(db, "layout_settings", "data_panel_background_color",   "TEXT NOT NULL DEFAULT '#f5f0e8'");
+            AddCol(db, "layout_settings", "data_panel_card_background_color", "TEXT NOT NULL DEFAULT '#ffffffaa'");
+            AddCol(db, "layout_settings", "data_panel_h1_color",           "TEXT NOT NULL DEFAULT '#2c1f0f'");
+            AddCol(db, "layout_settings", "data_panel_h2_color",           "TEXT NOT NULL DEFAULT '#3a2b1a'");
+            AddCol(db, "layout_settings", "data_panel_h3_color",           "TEXT NOT NULL DEFAULT '#2c1f0f'");
+            AddCol(db, "layout_settings", "data_panel_h4_color",           "TEXT NOT NULL DEFAULT '#5c4a38'");
+            AddCol(db, "layout_settings", "data_panel_font_family",        "TEXT NOT NULL DEFAULT 'Georgia, serif'");
+            AddCol(db, "layout_settings", "data_panel_font_size",          "INTEGER NOT NULL DEFAULT 14");
+
+            // Fix dark preset data panel colors if they were created with light defaults
+            db.Execute(@"
+                UPDATE layout_settings SET
+                    data_panel_background_color     = '#0f172a',
+                    data_panel_card_background_color = '#1e293b44',
+                    data_panel_h1_color             = '#e2e8f0',
+                    data_panel_h2_color             = '#cbd5e1',
+                    data_panel_h3_color             = '#94a3b8',
+                    data_panel_h4_color             = '#64748b',
+                    data_panel_font_family          = 'Arial, sans-serif',
+                    data_panel_font_size            = 13
+                WHERE id = 'ls_dark' AND data_panel_background_color = '#f5f0e8';
+            ");
+
+            // Seed dark preset
+            InsertDarkPreset(db);
+        }
+
+        private static bool HasColumn(SqliteConnection db, string table, string column)
+        {
+            return db.ExecuteScalar<int>(
+                $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'") > 0;
+        }
+
+        private static void AddCol(SqliteConnection db, string table, string column, string definition)
+        {
+            if (!HasColumn(db, table, column))
+                db.Execute($"ALTER TABLE {table} ADD COLUMN {column} {definition}");
+        }
+
+        public static void ResetBuiltinPreset(string id)
+        {
+            if (id != "ls_default" && id != "ls_dark") return;
+            using var db = new SqliteConnection(GetConnectionString());
+            db.Open();
+            // UPDATE instead of DELETE+INSERT to avoid FK constraint failures
+            // (timelines may reference these preset ids)
+            if (id == "ls_default") UpdateDefaultValues(db);
+            else UpdateDarkValues(db);
+        }
+
+        private static void InsertDefaultPreset(SqliteConnection db)
+        {
+            db.Execute(@"INSERT OR IGNORE INTO layout_settings (
+                    id, name,
+                    timeline_event_box_width, timeline_event_box_height, timeline_event_box_stem_offset,
+                    timeline_event_border_color, timeline_event_border_width, timeline_event_border_radius,
+                    timeline_event_padding, timeline_event_y_margin,
+                    timeline_event_text_color, timeline_event_background_color,
+                    timeline_event_font_family, timeline_event_font_size,
+                    timeline_event_text_use_ellipsis, timeline_event_box_show_color,
+                    timeline_event_box_show_color_on_bottom, timeline_event_has_hover_highlight,
+                    timeline_event_hover_color,
+                    timeline_age_height, timeline_age_corner_rounding,
+                    timeline_period_height, timeline_period_corner_rounding,
+                    timeline_period_y_margin, timeline_period_y_offset,
+                    timeline_box_types_show_as_box, timeline_box_types_box_width, timeline_box_types_show_image,
+                    timeline_canvas_background_color,
+                    timeline_show_now_line, timeline_show_now_line_text,
+                    timeline_now_line_color, timeline_now_line_style,
+                    timeline_tick_distance, timeline_tick_width, timeline_non_year_ticks_smaller,
+                    timeline_tick_marker_font_family, timeline_tick_marker_font_style,
+                    timeline_tick_marker_text_color, timeline_tick_marker_font_size,
+                    timeline_tick_marker_text_always_on_top,
+                    timeline_show_hover_line,
+                    timeline_hover_line_color, timeline_hover_line_style, timeline_hover_line_width,
+                    timeline_edge_margin_width,
+                    timeline_data_range_width, timeline_is_data_range_visible, timeline_data_range_color,
+                    timeline_animate_on_jump_to_year, timeline_jump_to_year_animation_length,
+                    timeline_animate_lod_change, timeline_lod_change_animation_length,
+                    timeline_tick_color, timeline_axis_color,
+                    notes_panel_background_color, notes_panel_card_background_color,
+                    notes_panel_text_color, notes_panel_heading_color,
+                    notes_panel_accent_color, notes_panel_font_size,
+                    data_panel_background_color, data_panel_card_background_color,
+                    data_panel_h1_color, data_panel_h2_color, data_panel_h3_color, data_panel_h4_color,
+                    data_panel_font_family, data_panel_font_size
+                ) VALUES (
+                    'ls_default', 'Default layout settings',
+                    130, 30, 10,
+                    '#44A8', 1, 3,
+                    '10', 5,
+                    '#000', '#fff',
+                    'Arial', 16,
+                    1, 1,
+                    0, 1,
+                    '#33f',
+                    30, 0,
+                    15, 10,
+                    5, 30,
+                    1, 100, 1,
+                    '#f1e7d5',
+                    1, 1,
+                    '#f00', 'dashed',
+                    100, 1, 1,
+                    'Arial', 'normal',
+                    '#2a1a0e', 14,
+                    0,
+                    1,
+                    '#f00', 'solid', 1,
+                    10,
+                    100, 1, '#ff72',
+                    1, 600,
+                    1, 200,
+                    '#c8b9a4', '#b5a692',
+                    '#0f172a', '#1e293b',
+                    '#e2e8f0', '#94a3b8',
+                    '#6366f1', 13,
+                    '#f5f0e8', '#ffffffaa',
+                    '#2c1f0f', '#3a2b1a', '#2c1f0f', '#5c4a38',
+                    'Georgia, serif', 14
+                );");
+        }
+
+        private static void InsertDarkPreset(SqliteConnection db)
+        {
+            db.Execute(@"INSERT OR IGNORE INTO layout_settings (
+                    id, name,
+                    timeline_event_box_width, timeline_event_box_height, timeline_event_box_stem_offset,
+                    timeline_event_border_color, timeline_event_border_width, timeline_event_border_radius,
+                    timeline_event_padding, timeline_event_y_margin,
+                    timeline_event_text_color, timeline_event_background_color,
+                    timeline_event_font_family, timeline_event_font_size,
+                    timeline_event_text_use_ellipsis, timeline_event_box_show_color,
+                    timeline_event_box_show_color_on_bottom, timeline_event_has_hover_highlight,
+                    timeline_event_hover_color,
+                    timeline_age_height, timeline_age_corner_rounding,
+                    timeline_period_height, timeline_period_corner_rounding,
+                    timeline_period_y_margin, timeline_period_y_offset,
+                    timeline_box_types_show_as_box, timeline_box_types_box_width, timeline_box_types_show_image,
+                    timeline_canvas_background_color,
+                    timeline_show_now_line, timeline_show_now_line_text,
+                    timeline_now_line_color, timeline_now_line_style,
+                    timeline_tick_distance, timeline_tick_width, timeline_non_year_ticks_smaller,
+                    timeline_tick_marker_font_family, timeline_tick_marker_font_style,
+                    timeline_tick_marker_text_color, timeline_tick_marker_font_size,
+                    timeline_tick_marker_text_always_on_top,
+                    timeline_show_hover_line,
+                    timeline_hover_line_color, timeline_hover_line_style, timeline_hover_line_width,
+                    timeline_edge_margin_width,
+                    timeline_data_range_width, timeline_is_data_range_visible, timeline_data_range_color,
+                    timeline_animate_on_jump_to_year, timeline_jump_to_year_animation_length,
+                    timeline_animate_lod_change, timeline_lod_change_animation_length,
+                    timeline_tick_color, timeline_axis_color,
+                    notes_panel_background_color, notes_panel_card_background_color,
+                    notes_panel_text_color, notes_panel_heading_color,
+                    notes_panel_accent_color, notes_panel_font_size,
+                    data_panel_background_color, data_panel_card_background_color,
+                    data_panel_h1_color, data_panel_h2_color, data_panel_h3_color, data_panel_h4_color,
+                    data_panel_font_family, data_panel_font_size
+                ) VALUES (
+                    'ls_dark', 'Dark Mode',
+                    130, 30, 10,
+                    '#2d3a56', 1, 3,
+                    '10', 5,
+                    '#e2e8f0', '#141e33',
+                    'Arial', 14,
+                    1, 1,
+                    0, 1,
+                    '#3b6ec4',
+                    30, 5,
+                    15, 3,
+                    5, 0,
+                    1, 100, 1,
+                    '#0f172a',
+                    1, 1,
+                    '#ef4444', 'dashed',
+                    50, 1, 1,
+                    'Arial', 'normal',
+                    '#94a3b8', 12,
+                    0,
+                    1,
+                    '#3b6ec4', 'dashed', 1,
+                    30,
+                    100, 1, '#3b6ec44d',
+                    1, 600,
+                    1, 300,
+                    '#334155', '#1e2b44',
+                    '#0f172a', '#1e293b',
+                    '#e2e8f0', '#94a3b8',
+                    '#6366f1', 13,
+                    '#0f172a', '#1e293b44',
+                    '#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b',
+                    'Arial, sans-serif', 13
+                );");
+        }
+
+        private static void UpdateDefaultValues(SqliteConnection db)
+        {
+            db.Execute(@"UPDATE layout_settings SET
+                    name = 'Default layout settings',
+                    timeline_event_box_width = 130, timeline_event_box_height = 30, timeline_event_box_stem_offset = 10,
+                    timeline_event_border_color = '#44A8', timeline_event_border_width = 1, timeline_event_border_radius = 3,
+                    timeline_event_padding = '10', timeline_event_y_margin = 5,
+                    timeline_event_text_color = '#000', timeline_event_background_color = '#fff',
+                    timeline_event_font_family = 'Arial', timeline_event_font_size = 16,
+                    timeline_event_text_use_ellipsis = 1, timeline_event_box_show_color = 1,
+                    timeline_event_box_show_color_on_bottom = 0, timeline_event_has_hover_highlight = 1,
+                    timeline_event_hover_color = '#33f',
+                    timeline_age_height = 30, timeline_age_corner_rounding = 0,
+                    timeline_period_height = 15, timeline_period_corner_rounding = 10,
+                    timeline_period_y_margin = 5, timeline_period_y_offset = 30,
+                    timeline_box_types_show_as_box = 1, timeline_box_types_box_width = 100, timeline_box_types_show_image = 1,
+                    timeline_canvas_background_color = '#f1e7d5',
+                    timeline_show_now_line = 1, timeline_show_now_line_text = 1,
+                    timeline_now_line_color = '#f00', timeline_now_line_style = 'dashed',
+                    timeline_tick_distance = 100, timeline_tick_width = 1, timeline_non_year_ticks_smaller = 1,
+                    timeline_tick_marker_font_family = 'Arial', timeline_tick_marker_font_style = 'normal',
+                    timeline_tick_marker_text_color = '#2a1a0e', timeline_tick_marker_font_size = 14,
+                    timeline_tick_marker_text_always_on_top = 0,
+                    timeline_show_hover_line = 1,
+                    timeline_hover_line_color = '#f00', timeline_hover_line_style = 'solid', timeline_hover_line_width = 1,
+                    timeline_edge_margin_width = 10,
+                    timeline_data_range_width = 100, timeline_is_data_range_visible = 1, timeline_data_range_color = '#ff72',
+                    timeline_animate_on_jump_to_year = 1, timeline_jump_to_year_animation_length = 600,
+                    timeline_animate_lod_change = 1, timeline_lod_change_animation_length = 200,
+                    timeline_tick_color = '#c8b9a4', timeline_axis_color = '#b5a692',
+                    notes_panel_background_color = '#0f172a', notes_panel_card_background_color = '#1e293b',
+                    notes_panel_text_color = '#e2e8f0', notes_panel_heading_color = '#94a3b8',
+                    notes_panel_accent_color = '#6366f1', notes_panel_font_size = 13,
+                    data_panel_background_color = '#f5f0e8', data_panel_card_background_color = '#ffffffaa',
+                    data_panel_h1_color = '#2c1f0f', data_panel_h2_color = '#3a2b1a',
+                    data_panel_h3_color = '#2c1f0f', data_panel_h4_color = '#5c4a38',
+                    data_panel_font_family = 'Georgia, serif', data_panel_font_size = 14
+                WHERE id = 'ls_default';");
+        }
+
+        private static void UpdateDarkValues(SqliteConnection db)
+        {
+            db.Execute(@"UPDATE layout_settings SET
+                    name = 'Dark Mode',
+                    timeline_event_box_width = 130, timeline_event_box_height = 30, timeline_event_box_stem_offset = 10,
+                    timeline_event_border_color = '#2d3a56', timeline_event_border_width = 1, timeline_event_border_radius = 3,
+                    timeline_event_padding = '10', timeline_event_y_margin = 5,
+                    timeline_event_text_color = '#e2e8f0', timeline_event_background_color = '#141e33',
+                    timeline_event_font_family = 'Arial', timeline_event_font_size = 14,
+                    timeline_event_text_use_ellipsis = 1, timeline_event_box_show_color = 1,
+                    timeline_event_box_show_color_on_bottom = 0, timeline_event_has_hover_highlight = 1,
+                    timeline_event_hover_color = '#3b6ec4',
+                    timeline_age_height = 30, timeline_age_corner_rounding = 5,
+                    timeline_period_height = 15, timeline_period_corner_rounding = 3,
+                    timeline_period_y_margin = 5, timeline_period_y_offset = 0,
+                    timeline_box_types_show_as_box = 1, timeline_box_types_box_width = 100, timeline_box_types_show_image = 1,
+                    timeline_canvas_background_color = '#0f172a',
+                    timeline_show_now_line = 1, timeline_show_now_line_text = 1,
+                    timeline_now_line_color = '#ef4444', timeline_now_line_style = 'dashed',
+                    timeline_tick_distance = 50, timeline_tick_width = 1, timeline_non_year_ticks_smaller = 1,
+                    timeline_tick_marker_font_family = 'Arial', timeline_tick_marker_font_style = 'normal',
+                    timeline_tick_marker_text_color = '#94a3b8', timeline_tick_marker_font_size = 12,
+                    timeline_tick_marker_text_always_on_top = 0,
+                    timeline_show_hover_line = 1,
+                    timeline_hover_line_color = '#3b6ec4', timeline_hover_line_style = 'dashed', timeline_hover_line_width = 1,
+                    timeline_edge_margin_width = 30,
+                    timeline_data_range_width = 100, timeline_is_data_range_visible = 1, timeline_data_range_color = '#3b6ec44d',
+                    timeline_animate_on_jump_to_year = 1, timeline_jump_to_year_animation_length = 600,
+                    timeline_animate_lod_change = 1, timeline_lod_change_animation_length = 300,
+                    timeline_tick_color = '#334155', timeline_axis_color = '#1e2b44',
+                    notes_panel_background_color = '#0f172a', notes_panel_card_background_color = '#1e293b',
+                    notes_panel_text_color = '#e2e8f0', notes_panel_heading_color = '#94a3b8',
+                    notes_panel_accent_color = '#6366f1', notes_panel_font_size = 13,
+                    data_panel_background_color = '#0f172a', data_panel_card_background_color = '#1e293b44',
+                    data_panel_h1_color = '#e2e8f0', data_panel_h2_color = '#cbd5e1',
+                    data_panel_h3_color = '#94a3b8', data_panel_h4_color = '#64748b',
+                    data_panel_font_family = 'Arial, sans-serif', data_panel_font_size = 13
+                WHERE id = 'ls_dark';");
         }
     }
 }

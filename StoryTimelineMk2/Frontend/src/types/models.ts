@@ -303,4 +303,26 @@ export interface LayoutSettings {
 
 	TimelineAnimateLodChange: boolean;
 	TimelineLodChangeAnimationLength: number;
+
+	// Tick & axis line colors
+	TimelineTickColor: string;
+	TimelineAxisColor: string;
+
+	// Notes panel
+	NotesPanelBackgroundColor: string;
+	NotesPanelCardBackgroundColor: string;
+	NotesPanelTextColor: string;
+	NotesPanelHeadingColor: string;
+	NotesPanelAccentColor: string;
+	NotesPanelFontSize: number;
+
+	// Data panel (upper-right item display)
+	DataPanelBackgroundColor: string;
+	DataPanelCardBackgroundColor: string;
+	DataPanelH1Color: string;
+	DataPanelH2Color: string;
+	DataPanelH3Color: string;
+	DataPanelH4Color: string;
+	DataPanelFontFamily: string;
+	DataPanelFontSize: number;
 }

@@ -239,6 +239,10 @@ export const BackendAPI = {
 		return await this.request<{ status: string; affected?: number }>('ShiftTimelineItems', { timelineId, delta });
 	},
 
+	async ResetLayoutPreset(id: string) {
+		return await this.request<{ status: string; layoutSettings?: import('@/types/models').LayoutSettings }>('ResetLayoutPreset', { id });
+	},
+
 	async GetLayoutSettingsById(id: string) {
 		return await this.request<LayoutSettings>('GetLayoutSettingsById', { id });
 	},

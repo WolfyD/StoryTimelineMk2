@@ -107,7 +107,26 @@ namespace StoryTimelineMk2.Database
                     timeline_jump_to_year_animation_length,
 
                     timeline_animate_lod_change,
-                    timeline_lod_change_animation_length
+                    timeline_lod_change_animation_length,
+
+                    timeline_tick_color,
+                    timeline_axis_color,
+
+                    notes_panel_background_color,
+                    notes_panel_card_background_color,
+                    notes_panel_text_color,
+                    notes_panel_heading_color,
+                    notes_panel_accent_color,
+                    notes_panel_font_size,
+
+                    data_panel_background_color,
+                    data_panel_card_background_color,
+                    data_panel_h1_color,
+                    data_panel_h2_color,
+                    data_panel_h3_color,
+                    data_panel_h4_color,
+                    data_panel_font_family,
+                    data_panel_font_size
                 )
                 VALUES (
                     @Id,
@@ -173,7 +192,26 @@ namespace StoryTimelineMk2.Database
                     @TimelineJumpToYearAnimationLength,
 
                     @TimelineAnimateLodChange,
-                    @TimelineLodChangeAnimationLength
+                    @TimelineLodChangeAnimationLength,
+
+                    @TimelineTickColor,
+                    @TimelineAxisColor,
+
+                    @NotesPanelBackgroundColor,
+                    @NotesPanelCardBackgroundColor,
+                    @NotesPanelTextColor,
+                    @NotesPanelHeadingColor,
+                    @NotesPanelAccentColor,
+                    @NotesPanelFontSize,
+
+                    @DataPanelBackgroundColor,
+                    @DataPanelCardBackgroundColor,
+                    @DataPanelH1Color,
+                    @DataPanelH2Color,
+                    @DataPanelH3Color,
+                    @DataPanelH4Color,
+                    @DataPanelFontFamily,
+                    @DataPanelFontSize
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
@@ -238,7 +276,26 @@ namespace StoryTimelineMk2.Database
                     timeline_jump_to_year_animation_length = excluded.timeline_jump_to_year_animation_length,
 
                     timeline_animate_lod_change = excluded.timeline_animate_lod_change,
-                    timeline_lod_change_animation_length = excluded.timeline_lod_change_animation_length;";
+                    timeline_lod_change_animation_length = excluded.timeline_lod_change_animation_length,
+
+                    timeline_tick_color = excluded.timeline_tick_color,
+                    timeline_axis_color = excluded.timeline_axis_color,
+
+                    notes_panel_background_color = excluded.notes_panel_background_color,
+                    notes_panel_card_background_color = excluded.notes_panel_card_background_color,
+                    notes_panel_text_color = excluded.notes_panel_text_color,
+                    notes_panel_heading_color = excluded.notes_panel_heading_color,
+                    notes_panel_accent_color = excluded.notes_panel_accent_color,
+                    notes_panel_font_size = excluded.notes_panel_font_size,
+
+                    data_panel_background_color = excluded.data_panel_background_color,
+                    data_panel_card_background_color = excluded.data_panel_card_background_color,
+                    data_panel_h1_color = excluded.data_panel_h1_color,
+                    data_panel_h2_color = excluded.data_panel_h2_color,
+                    data_panel_h3_color = excluded.data_panel_h3_color,
+                    data_panel_h4_color = excluded.data_panel_h4_color,
+                    data_panel_font_family = excluded.data_panel_font_family,
+                    data_panel_font_size = excluded.data_panel_font_size;";
 
             db.Execute(sql, settings);
         }
