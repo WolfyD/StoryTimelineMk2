@@ -111,6 +111,16 @@ export const useTimelineStore = defineStore('timeline', () => {
 		items.value.push(item);
 	}
 
+	function upsertItem(item: TimelineItem) {
+		const idx = items.value.findIndex(i => i.Id === item.Id)
+		if (idx >= 0) {
+			items.value[idx] = item
+		} else {
+			items.value.push(item)
+			items.value.sort((a, b) => a.AbsoluteStart - b.AbsoluteStart)
+		}
+	}
+
 	function removeItem(id: string) {
 		items.value = items.value.filter(i => i.Id !== id);
 	}
@@ -252,7 +262,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab, activeFormatRegistry, calendarConfig,
 
 		// functions
-		loadItems, addItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
+		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
 		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setHiddenRanges, setLayoutSettings,
 		addNote, updateNote, removeNote,
 		setLastDeleted, clearLastDeleted,

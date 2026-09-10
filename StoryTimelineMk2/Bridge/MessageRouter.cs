@@ -223,6 +223,10 @@ namespace StoryTimelineMk2.Bridge
                 DefaultGranularity = granularity,
             };
 
+            // Wire a callback so the edit window can push the saved item directly into
+            // this (the caller's) WebView2 without a full timeline reload.
+            addEditItemWindow.NotifyCallback = (action, payload) => SendToVue(action, payload);
+
             // Use Show() instead of ShowDialog(): calling ShowDialog from inside a
             // WebView2 WebMessageReceived handler creates a nested COM message loop
             // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
@@ -304,6 +308,14 @@ namespace StoryTimelineMk2.Bridge
                     payload.StoryRefs, payload.ChapterRefs);
 
                 ReplyToVue(message.MessageId, new { status = "ok", itemId = savedId });
+
+                // Push the saved item directly to the caller (timeline) WebView2 so the
+                // canvas updates without a full reload.
+                if (_parentForm is f_AddEditItem addEdit && addEdit.NotifyCallback != null)
+                {
+                    var savedItem = itemRepo.GetItemById(savedId);
+                    addEdit.NotifyCallback("ItemSaved", new { Item = savedItem });
+                }
             }
             catch (Exception ex)
             {

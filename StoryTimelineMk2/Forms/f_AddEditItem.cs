@@ -26,6 +26,9 @@ namespace StoryTimelineMk2.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int? DefaultGranularity { get; set; }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public Action<string, object> NotifyCallback { get; set; }
+
         public f_AddEditItem()
         {
             InitializeComponent();
@@ -52,7 +55,7 @@ namespace StoryTimelineMk2.Forms
                 mediaFolder,
                 CoreWebView2HostResourceAccessKind.Allow);
 
-            _messageRouter = new MessageRouter(wv_AddEditItem.CoreWebView2);
+            _messageRouter = new MessageRouter(wv_AddEditItem.CoreWebView2, this);
 
             var query = $"?timelineId={TimelineId}";
             if (!string.IsNullOrEmpty(ItemId))

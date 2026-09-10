@@ -261,6 +261,9 @@ if (window.chrome?.webview) {
 			if (data.action == 'InitReload') {
 				const store = useTimelineStore();
 				store.loadTimelines();
+			} else if (data.action === 'ItemSaved') {
+				const store = useTimelineStore();
+				store.upsertItem(data.payload.Item);
 			}
 			console.log('Unprompted C# Push:', data.action, data.payload);
 		}
