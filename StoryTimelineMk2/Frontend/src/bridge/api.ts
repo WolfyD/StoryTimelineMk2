@@ -294,6 +294,12 @@ export const BackendAPI = {
 	async SetMiscSetting(key: string, value: string, timelineId = 0) {
 		return await this.request<{ status: string }>('SetMiscSetting', { key, value, timelineId });
 	},
+
+	// Window chrome (borderless) — fire-and-forget, no response needed
+	WindowMinimize()        { this.send('WindowMinimize', {}) },
+	WindowMaximizeRestore() { this.send('WindowMaximizeRestore', {}) },
+	WindowClose()           { this.send('WindowClose', {}) },
+	WindowStartDrag()       { this.send('WindowStartDrag', {}) },
 };
 
 // Listen for replies and unprompted pushes from C#

@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace StoryTimelineMk2.Forms
 {
-    public partial class f_Calendar : Form
+    public partial class f_Calendar : BorderlessFormBase
     {
         private MessageRouter _messageRouter;
 
@@ -17,6 +17,7 @@ namespace StoryTimelineMk2.Forms
         public f_Calendar()
         {
             InitializeComponent();
+            FormBorderStyle = FormBorderStyle.None;
             Load += F_Calendar_Load;
         }
 
@@ -27,7 +28,7 @@ namespace StoryTimelineMk2.Forms
 
             wv_Calendar.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
 
-            _messageRouter = new MessageRouter(wv_Calendar.CoreWebView2);
+            _messageRouter = new MessageRouter(wv_Calendar.CoreWebView2, this);
 
             var query = string.IsNullOrEmpty(CalendarId) ? "" : $"?calendarId={Uri.EscapeDataString(CalendarId)}";
 

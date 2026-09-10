@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
+import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import LodDateInput from '@/components/LodDateInput.vue'
 import ImagePickerModal from '@/components/ImagePickerModal.vue'
 import type {
@@ -406,7 +407,7 @@ async function save(closeOnSuccess = true) {
 }
 
 function cancel() {
-  window.close()
+  BackendAPI.WindowClose()
 }
 
 // ---------------------------------------------------------------------------
@@ -437,6 +438,13 @@ async function removeImage(pictureId: string) {
 
 <template>
   <div class="edit-item-root" v-if="!isLoading">
+
+    <WindowTitleBar
+        :title="item.Title || (ITEM_TYPES.find(t => t.id === item.TypeId)?.name ?? 'Edit Item')"
+        :show-maximize="false"
+    />
+
+    <div class="edit-item-content">
 
     <!-- ===== HEADER ===== -->
     <div class="section header-section">
@@ -789,6 +797,8 @@ async function removeImage(pictureId: string) {
 
     </div>
 
+    </div> <!-- /edit-item-content -->
+
     <Teleport to="body">
       <div v-if="lightboxSrc" class="lightbox-overlay" @click="closeLightbox">
         <img :src="lightboxSrc" class="lightbox-img" @click.stop />
@@ -805,13 +815,24 @@ async function removeImage(pictureId: string) {
 .edit-item-root {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
   font-family: Arial, sans-serif;
   font-size: 14px;
   color: #e2e8f0;
   background: #0f172a;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+// Padding lives here (not on the root) so the title bar stays flush with the
+// window edges. This wrapper is also the scroll container.
+.edit-item-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
 }
 
 .loading-screen {

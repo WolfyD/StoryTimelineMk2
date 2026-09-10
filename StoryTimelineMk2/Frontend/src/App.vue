@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import ProjectContainer from "./components/ProjectContainer.vue";
 	import SplashTitle from "./components/SplashTitle.vue";
+	import WindowTitleBar from "./components/WindowTitleBar.vue";
 	import { BackendAPI } from "./bridge/api";
 	import { ref } from "vue";
 	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear } from "@phosphor-icons/vue";
@@ -108,6 +109,7 @@
 
 <template>
 	<div id="center">
+		<WindowTitleBar title="Story Timeline" />
 		<SplashTitle />
 		<ProjectContainer :timelines="store.projects" @refresh="HandleGetTimelines" />
 		<div id="bottom-menu-container">
@@ -170,7 +172,6 @@
 		display: flex;
 		position: relative;
 		flex-direction: column;
-		justify-content: stretch;
 		justify-self: stretch;
 		align-items: center;
 		width: 100%;

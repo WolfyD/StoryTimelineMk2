@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace StoryTimelineMk2.Forms
 {
-    public partial class f_Main : Form
+    public partial class f_Main : BorderlessFormBase
     {
         public MessageRouter _messageRouter;
         private const string ViteDevServerUrl = "http://localhost:5173";
@@ -18,6 +18,7 @@ namespace StoryTimelineMk2.Forms
         public f_Main()
         {
             InitializeComponent();
+            FormBorderStyle = FormBorderStyle.None;
 
             Load += F_Main_Load;
             ResizeEnd += F_Main_ResizeEnd;
@@ -35,7 +36,7 @@ namespace StoryTimelineMk2.Forms
 
                 await webView21.EnsureCoreWebView2Async(webEnvironment);
 
-                _messageRouter = new MessageRouter(webView21.CoreWebView2);
+                _messageRouter = new MessageRouter(webView21.CoreWebView2, this);
 
                 LoadFrontend();
             }

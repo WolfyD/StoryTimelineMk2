@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace StoryTimelineMk2.Forms
 {
-    public partial class f_AddEditItem : Form
+    public partial class f_AddEditItem : BorderlessFormBase
     {
         private MessageRouter _messageRouter;
 
@@ -32,6 +32,7 @@ namespace StoryTimelineMk2.Forms
         public f_AddEditItem()
         {
             InitializeComponent();
+            FormBorderStyle = FormBorderStyle.None;
             Load += AddEditItem_Load;
         }
 

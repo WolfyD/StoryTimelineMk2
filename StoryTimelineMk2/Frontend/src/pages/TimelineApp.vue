@@ -3,6 +3,7 @@
 import { useTimelineStore } from '@/stores/timelineStore'
 import { PhArrowArcRight, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
 import TimelineActivityStrip from '@/components/TimelineActivityStrip.vue'
+import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
 import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
 import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
@@ -166,6 +167,7 @@ onBeforeUnmount(() => {
 
 <template>
 	<div id="timeline-center">
+		<WindowTitleBar :title="store.title || 'Story Timeline'" />
 		<div v-if="store.isLoading && !loadError" id="status-container">
 			<PhSpinner class="spinner-icon" :size="48" color="#79876b" />
 			<h2>Loading Timeline Data...</h2>
@@ -318,11 +320,15 @@ onBeforeUnmount(() => {
 	display: flex;
 	position: relative;
 	flex-direction: column;
-	justify-content: stretch;
-	align-items: center;
+	align-items: stretch;
 	width: 100%;
 	height: 100vh;
-	background-color: #0f172a; /* Adjust to match your App.vue theme */
+	background-color: #0f172a;
+}
+
+#timeline-layout {
+	flex: 1;
+	min-height: 0;
 }
 
 #status-container {
@@ -355,6 +361,8 @@ onBeforeUnmount(() => {
     flex-direction: row;
     width: 100%;
     height: 100%;
+    flex: 1;
+    min-height: 0;
 }
 
 #timeline-workspace {

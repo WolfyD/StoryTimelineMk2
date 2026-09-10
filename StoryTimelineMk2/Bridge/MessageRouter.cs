@@ -76,6 +76,12 @@ namespace StoryTimelineMk2.Bridge
                 case "ToggleFullscreen":        HandleToggleFullscreen(message); break;
                 case "ToggleCustomScaling":     HandleToggleCustomScaling(message); break;
 
+                // Window chrome (borderless)
+                case "WindowMinimize":          HandleWindowMinimize(message); break;
+                case "WindowMaximizeRestore":   HandleWindowMaximizeRestore(message); break;
+                case "WindowClose":             HandleWindowClose(message); break;
+                case "WindowStartDrag":         HandleWindowStartDrag(message); break;
+
                 // Calendar actions
                 case "GetCalendarById":             HandleGetCalendarById(message); break;
                 case "SaveCalendar":                HandleSaveCalendar(message); break;
@@ -487,14 +493,17 @@ namespace StoryTimelineMk2.Bridge
             {
                 _parentForm.BeginInvoke((MethodInvoker)(() =>
                 {
+                    if (_parentForm is Forms.BorderlessFormBase bf)
+                        bf.IsFullscreenMode = settings.IsFullscreen;
+
                     if (settings.IsFullscreen)
                     {
-                        _parentForm.FormBorderStyle = FormBorderStyle.None;
+                        if (_parentForm.WindowState == FormWindowState.Maximized)
+                            _parentForm.WindowState = FormWindowState.Normal;
                         _parentForm.WindowState = FormWindowState.Maximized;
                     }
                     else
                     {
-                        _parentForm.FormBorderStyle = FormBorderStyle.Sizable;
                         if (_parentForm.WindowState == FormWindowState.Maximized)
                             _parentForm.WindowState = FormWindowState.Normal;
                     }
@@ -555,14 +564,17 @@ namespace StoryTimelineMk2.Bridge
             bool goFullscreen = settings.IsFullscreen;
             _parentForm.BeginInvoke((MethodInvoker)(() =>
             {
+                if (_parentForm is Forms.BorderlessFormBase bf)
+                    bf.IsFullscreenMode = goFullscreen;
+
                 if (goFullscreen)
                 {
-                    _parentForm.FormBorderStyle = FormBorderStyle.None;
+                    if (_parentForm.WindowState == FormWindowState.Maximized)
+                        _parentForm.WindowState = FormWindowState.Normal;
                     _parentForm.WindowState = FormWindowState.Maximized;
                 }
                 else
                 {
-                    _parentForm.FormBorderStyle = FormBorderStyle.Sizable;
                     _parentForm.WindowState = FormWindowState.Normal;
                 }
             }));
@@ -580,6 +592,42 @@ namespace StoryTimelineMk2.Bridge
 
             double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
             _ = _webView.ExecuteScriptAsync($"document.documentElement.style.zoom = '{zoom:F2}'");
+        }
+
+        // ── Borderless window chrome ───────────────────────────────────────────
+
+        private void HandleWindowMinimize(BridgeMessage message)
+        {
+            if (_parentForm == null) return;
+            _parentForm.BeginInvoke((MethodInvoker)(() =>
+                _parentForm.WindowState = FormWindowState.Minimized));
+        }
+
+        private void HandleWindowMaximizeRestore(BridgeMessage message)
+        {
+            if (_parentForm == null) return;
+            _parentForm.BeginInvoke((MethodInvoker)(() =>
+            {
+                _parentForm.WindowState = _parentForm.WindowState == FormWindowState.Maximized
+                    ? FormWindowState.Normal
+                    : FormWindowState.Maximized;
+            }));
+        }
+
+        private void HandleWindowClose(BridgeMessage message)
+        {
+            if (_parentForm == null) return;
+            _parentForm.BeginInvoke((MethodInvoker)(() => _parentForm.Close()));
+        }
+
+        private void HandleWindowStartDrag(BridgeMessage message)
+        {
+            if (_parentForm == null) return;
+            _parentForm.BeginInvoke((MethodInvoker)(() =>
+            {
+                if (_parentForm is Forms.BorderlessFormBase bf)
+                    bf.StartWindowDrag();
+            }));
         }
 
         private void HandleSaveLayoutSettings(BridgeMessage message)

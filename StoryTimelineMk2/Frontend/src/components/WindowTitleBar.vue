@@ -1,0 +1,217 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { BackendAPI } from '@/bridge/api'
+
+withDefaults(defineProps<{
+    title?: string
+    subtitle?: string
+    showMaximize?: boolean
+}>(), {
+    showMaximize: true,
+})
+
+const isMaximized = ref(false)
+
+function minimize()       { BackendAPI.WindowMinimize() }
+function toggleMaximize() { isMaximized.value = !isMaximized.value; BackendAPI.WindowMaximizeRestore() }
+function close()          { BackendAPI.WindowClose() }
+
+// WebView2 intercepts WM_NCHITTEST — mousedown triggers a bridge call that
+// invokes ReleaseCapture + SendMessage(WM_NCLBUTTONDOWN, HTCAPTION) so the
+// native Windows move-loop takes over with zero lag.
+function onDragStart(e: MouseEvent) {
+    e.preventDefault()
+    BackendAPI.WindowStartDrag()
+}
+</script>
+
+<template>
+    <div class="title-bar">
+        <!-- ── Drag region ──────────────────────────────────────────────── -->
+        <div
+            class="title-bar__drag"
+            @mousedown.left.prevent="onDragStart"
+            @dblclick="toggleMaximize"
+        >
+            <span class="title-bar__orb" aria-hidden="true"></span>
+            <div class="title-bar__label">
+                <span class="title-bar__name">{{ title || 'Story Timeline' }}</span>
+                <span v-if="subtitle" class="title-bar__sub">{{ subtitle }}</span>
+            </div>
+        </div>
+
+        <!-- ── Window controls ─────────────────────────────────────────── -->
+        <div class="title-bar__controls">
+            <button class="tb-btn tb-btn--min"   title="Minimize"                              @click="minimize">
+                <i class="ri-subtract-line"></i>
+            </button>
+            <button
+                v-if="showMaximize"
+                class="tb-btn tb-btn--max"
+                :title="isMaximized ? 'Restore' : 'Maximize'"
+                @click="toggleMaximize"
+            >
+                <i :class="isMaximized ? 'ri-contract-up-down-line' : 'ri-expand-up-down-line'"></i>
+            </button>
+            <button class="tb-btn tb-btn--close" title="Close"                                 @click="close">
+                <i class="ri-close-line"></i>
+            </button>
+        </div>
+    </div>
+</template>
+
+<style scoped lang="scss">
+// ── Title bar shell ────────────────────────────────────────────────────────────
+//
+// Design intent: the title bar is the darkest layer — it "caps" the window
+// like a roof, framing the activity strip (#182236) and content (#0f172a) below.
+// The indigo bottom glow ties it to the same accent system the activity strip uses.
+
+.title-bar {
+    width: 100%;
+    height: 36px;           // must match BorderlessFormBase.TitleBarHeight
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;             // shadow renders above the content below
+
+    // Darkest layer: top #060c19, blends toward content (#0a1424 ≈ halfway to #0f172a)
+    background: linear-gradient(180deg, #060c19 0%, #0a1424 100%);
+
+    // Indigo-tinted separator — same accent hue as the strip's active state
+    border-bottom: 1px solid rgba(79, 70, 229, 0.18);
+
+    // Depth: shadow below pushes content down visually; micro-highlight on top edge
+    box-shadow:
+        0 2px 12px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    user-select: none;
+}
+
+// ── Drag region ────────────────────────────────────────────────────────────────
+
+.title-bar__drag {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 12px;
+    cursor: default;
+}
+
+// ── Brand orb ──────────────────────────────────────────────────────────────────
+//
+// Matches the indigo accent system from the activity strip (active icon #818cf8,
+// active border #6366f1). A slow breath animation makes the window feel alive
+// without being distracting.
+
+.title-bar__orb {
+    display: block;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4338ca 0%, #818cf8 100%);
+    box-shadow:
+        0 0 5px  rgba(99, 102, 241, 0.45),
+        0 0 12px rgba(99, 102, 241, 0.16);
+    animation: orb-breathe 4s ease-in-out infinite;
+}
+
+@keyframes orb-breathe {
+    0%, 100% {
+        box-shadow:
+            0 0 4px  rgba(99, 102, 241, 0.38),
+            0 0 10px rgba(99, 102, 241, 0.12);
+    }
+    50% {
+        box-shadow:
+            0 0 8px  rgba(99, 102, 241, 0.65),
+            0 0 18px rgba(99, 102, 241, 0.24);
+    }
+}
+
+// ── Text ───────────────────────────────────────────────────────────────────────
+
+.title-bar__label {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.title-bar__name {
+    font-size: 12px;
+    font-weight: 500;
+    // Cooler-tinted slate — slightly more blue than the neutral #94a3b8 so it
+    // harmonises with the indigo accent and the dark navy background.
+    color: #8ea5c0;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.title-bar__sub {
+    font-size: 11px;
+    font-weight: 400;
+    color: #3d5166;          // same as strip inactive icons — very muted context
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+// ── Window controls ────────────────────────────────────────────────────────────
+//
+// Default colour matches the strip's inactive icon (#3d5166).
+// Hover colour matches the strip's hover (#8ca5bc).
+// This makes the entire left edge of the window feel visually unified.
+
+.title-bar__controls {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    flex-shrink: 0;
+    // Thin separator that visually divides drag area from buttons
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tb-btn {
+    width: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #3d5166;         // inactive — same as strip icons
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.13s ease, color 0.13s ease;
+
+    &:hover {
+        color: #8ca5bc;     // hover — same as strip icon hover
+        background: rgba(255, 255, 255, 0.07);
+    }
+
+    &:active {
+        background: rgba(255, 255, 255, 0.03);
+        color: #6b8099;
+    }
+
+    &--close:hover {
+        color: #f8fafc;
+        background: #991b1b;
+    }
+
+    &--close:active {
+        background: #7f1d1d;
+    }
+}
+</style>

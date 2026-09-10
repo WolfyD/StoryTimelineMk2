@@ -8,7 +8,7 @@ using System.ComponentModel;
 
 namespace StoryTimelineMk2.Forms
 {
-    public partial class f_Timeline : Form
+    public partial class f_Timeline : BorderlessFormBase
     {
         private MessageRouter _messageRouter;
         private Database.SettingsItem _savedSettings;
@@ -21,6 +21,7 @@ namespace StoryTimelineMk2.Forms
         public f_Timeline()
         {
             InitializeComponent();
+            FormBorderStyle = FormBorderStyle.None;
 
             Load += F_Timeline_Load;
             FormClosing += F_Timeline_FormClosing;
@@ -92,7 +93,7 @@ namespace StoryTimelineMk2.Forms
 
             if (_savedSettings.IsFullscreen)
             {
-                this.FormBorderStyle = FormBorderStyle.None;
+                IsFullscreenMode = true;
                 this.WindowState = FormWindowState.Maximized;
             }
         }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { BackendAPI } from '@/bridge/api'
+import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import type { LodLevel } from '@/types/models'
 import WeekDayPicker from '@/components/WeekDayPicker.vue'
 import CalendarDayPicker from '@/components/CalendarDayPicker.vue'
@@ -526,13 +527,15 @@ function toggleWeekend(d: number) {
 <template>
   <div class="cal-root" v-if="!isLoading">
 
+    <WindowTitleBar :title="calName || 'Calendar Editor'" :show-maximize="false" />
+
     <!-- Header -->
     <div class="cal-header section">
       <div class="header-row">
         <span class="id-label">{{ isNew ? 'New Calendar' : calId.slice(0, 8) }}</span>
         <input class="name-input" type="text" v-model="calName" placeholder="Calendar name…" />
         <div class="header-actions">
-          <button class="btn btn-secondary" @click="window.close()">Cancel</button>
+          <button class="btn btn-secondary" @click="BackendAPI.WindowClose()">Cancel</button>
           <button class="btn btn-primary" :disabled="isSaving" @click="save">
             {{ isSaving ? 'Saving…' : 'Save' }}
           </button>
