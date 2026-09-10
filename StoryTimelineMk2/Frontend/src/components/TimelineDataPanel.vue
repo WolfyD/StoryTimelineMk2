@@ -39,7 +39,7 @@ function inRange(item: TimelineItem): boolean {
     return item.AbsoluteStart >= rangeStart && item.AbsoluteStart <= rangeEnd;
 }
 
-const inRangeItems = computed(() => store.items.filter(inRange));
+const inRangeItems = computed(() => store.filteredItems.filter(inRange));
 
 const ages = computed(() =>
     inRangeItems.value

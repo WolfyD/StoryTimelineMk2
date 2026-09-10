@@ -390,6 +390,35 @@ namespace StoryTimelineMk2.Database
                     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
                     FOREIGN KEY (character_id) REFERENCES characters(id) ON DELETE CASCADE
                 );
+
+                -- Global named filter presets (retrievable from any timeline)
+                CREATE TABLE IF NOT EXISTS filter_presets (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    rules_json TEXT NOT NULL DEFAULT '[]',
+                    and_mode INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- Per-timeline active filter rule definitions
+                CREATE TABLE IF NOT EXISTS timeline_filter_rules (
+                    id TEXT PRIMARY KEY,
+                    timeline_id INTEGER NOT NULL,
+                    dimension TEXT NOT NULL,
+                    params_json TEXT NOT NULL DEFAULT '{}',
+                    label TEXT NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'neutral',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE
+                );
+
+                -- Misc key-value store (not exported/imported); timeline_id=0 means global
+                CREATE TABLE IF NOT EXISTS misc_settings (
+                    key TEXT NOT NULL,
+                    timeline_id INTEGER NOT NULL DEFAULT 0,
+                    value TEXT,
+                    PRIMARY KEY (key, timeline_id)
+                );
             ";
 
             db.Execute(createTablesSql);
@@ -423,6 +452,9 @@ namespace StoryTimelineMk2.Database
                 CREATE INDEX IF NOT EXISTS idx_settings_timeline_id ON settings(timeline_id);
                 CREATE INDEX IF NOT EXISTS idx_characters_timeline_id ON characters(timeline_id);
                 CREATE INDEX IF NOT EXISTS idx_notes_timeline_id ON notes(timeline_id);
+
+                CREATE INDEX IF NOT EXISTS idx_filter_rules_timeline ON timeline_filter_rules(timeline_id);
+                CREATE INDEX IF NOT EXISTS idx_misc_settings_key ON misc_settings(key);
             ");
         }
 

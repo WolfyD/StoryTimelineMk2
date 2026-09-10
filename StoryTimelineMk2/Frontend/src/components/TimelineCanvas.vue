@@ -53,6 +53,7 @@ let fpsSum = 0;
 
 const props = defineProps<{
     timelineItems: TimelineItem[] | null,
+    dimmableItems?: TimelineItem[],
     timelineSettings: TimelineSettings | null,
 	layoutSettings: LayoutSettings | null,
     timelineInfo: TimelineProject
@@ -93,7 +94,7 @@ const toggleRange = (id: number) => {
     lockedLanes.clear();
     if (props.layoutSettings) {
         renderGrid(gridLayer, props.layoutSettings);
-        renderItems(store.items || props.timelineItems || [], props.layoutSettings);
+        renderWithDimming(props.layoutSettings);
     }
 };
 
@@ -195,7 +196,7 @@ const addBoundaryItem = async (typeId: 8 | 9, absoluteTime: number) => {
         store.addItem({ ...item, Id: result.itemId });
         if (props.layoutSettings) {
             renderGrid(gridLayer, props.layoutSettings);
-            renderItems(store.items, props.layoutSettings);
+            renderWithDimming(props.layoutSettings);
         }
     }
 };
@@ -221,7 +222,7 @@ const addBookmark = async (absoluteTime: number) => {
         store.addItem({ ...bm, Id: result.itemId });
         if (props.layoutSettings) {
             renderGrid(gridLayer, props.layoutSettings);
-            renderItems(store.items, props.layoutSettings);
+            renderWithDimming(props.layoutSettings);
         }
     }
 };
@@ -235,7 +236,7 @@ const removeBoundaryItem = async (itemId: string) => {
         if (props.layoutSettings) {
             lockedLanes.clear();
             renderGrid(gridLayer, props.layoutSettings);
-            renderItems(store.items, props.layoutSettings);
+            renderWithDimming(props.layoutSettings);
         }
     }
 };
@@ -266,7 +267,7 @@ const deleteItem = async (itemId: string) => {
         if (props.layoutSettings) {
             lockedLanes.clear();
             renderGrid(gridLayer, props.layoutSettings);
-            renderItems(store.items, props.layoutSettings);
+            renderWithDimming(props.layoutSettings);
         }
     }
 };
@@ -284,7 +285,7 @@ watch(() => props.layoutSettings, (newLs) => {
     boxesMaster.destroyChildren();
     renderGrid(gridLayer, newLs);
     RenderUiLayer(uiLayer, newLs);
-    renderItems(store.items || props.timelineItems || [], newLs);
+    renderWithDimming(newLs);
 });
 
 // Clamp viewport when items first load (boundary markers may already exist)
@@ -295,8 +296,15 @@ watch(() => store.items, (items) => {
         viewport.centerTime = clamped;
         store.setNowYear(Math.floor(clamped));
         renderGrid(gridLayer, props.layoutSettings);
-        renderItems(items, props.layoutSettings);
+        renderWithDimming(props.layoutSettings);
     }
+}, { deep: false });
+
+// Re-render when the active filter or display mode changes
+watch([() => props.timelineItems, () => store.filterDisplayMode, () => store.dimmableItems], () => {
+    if (!stage || !props.layoutSettings) return;
+    lockedLanes.clear();
+    renderWithDimming(props.layoutSettings);
 }, { deep: false });
 
 // Re-render when hidden ranges change (added/deleted from settings)
@@ -304,7 +312,7 @@ watch(() => store.hiddenRanges, () => {
     if (!stage || !props.layoutSettings) return;
     lockedLanes.clear();
     renderGrid(gridLayer, props.layoutSettings);
-    renderItems(store.items || props.timelineItems || [], props.layoutSettings);
+    renderWithDimming(props.layoutSettings);
 }, { deep: true });
 
 // --- LOD ANIMATION WATCHER ---
@@ -332,7 +340,7 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
             lockedLanes.clear();
 
             renderGrid(gridLayer, props.layoutSettings);
-            renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+            renderWithDimming(props.layoutSettings!);
 
             if (progress < 1) {
                 lodAnim = requestAnimationFrame(step);
@@ -345,7 +353,7 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
         viewport.lodStepFraction = targetStep;
         renderGrid(gridLayer, props.layoutSettings);
         setTimeout(()=>{
-			renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+			renderWithDimming(props.layoutSettings!);
 		}, 100)
     }
 });
@@ -542,7 +550,7 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
     boundaryOverlayLayer.batchDraw();
 };
 
-const renderItems = (items: any[], ls: LayoutSettings) => {
+const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>) => {
     panDrift = 0;
     itemLayer.x(0);
     const screenBuffer = 400;
@@ -653,6 +661,9 @@ const renderItems = (items: any[], ls: LayoutSettings) => {
             bm.group.x(itemX);
             bm.line.points([0, 0, 0, viewport.height]);
             bm.dot.y(stageCenterY);
+            const bmDimmed = dimmableIds?.has(itemIdStr) ?? false;
+            bm.group.opacity(bmDimmed ? 0.25 : 1);
+            bm.group.listening(!bmDimmed);
             continue;
         }
 
@@ -674,6 +685,10 @@ const renderItems = (items: any[], ls: LayoutSettings) => {
         }
 
         setNodeVisibility(elements, true);
+        const isDimmed = dimmableIds?.has(itemIdStr) ?? false;
+        if (elements.box)   { elements.box.opacity(isDimmed ? 0.25 : 1);   elements.box.listening(!isDimmed); }
+        if (elements.label) { elements.label.opacity(isDimmed ? 0.25 : 1); elements.label.listening(!isDimmed); }
+        if (elements.stem)  { elements.stem.opacity(isDimmed ? 0.25 : 1);  elements.stem.listening(!isDimmed); }
 
         let targetY = 0;
         const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX)
@@ -704,6 +719,34 @@ const renderItems = (items: any[], ls: LayoutSettings) => {
 
     store.setVisibleItems(activeItemIds.size);
     itemLayer.batchDraw();
+};
+
+const applyDimming = (dimmableIds: Set<string>) => {
+    for (const [id, elements] of nodeCache.entries()) {
+        const isDimmed = dimmableIds.has(id);
+        const opacity = isDimmed ? 0.25 : 1;
+        const listen = !isDimmed;
+        if (elements.box)   { elements.box.opacity(opacity);   elements.box.listening(listen); }
+        if (elements.label) { elements.label.opacity(opacity); elements.label.listening(listen); }
+        if (elements.stem)  { elements.stem.opacity(opacity);  elements.stem.listening(listen); }
+    }
+    for (const [id, bm] of bookmarkNodeCache.entries()) {
+        const isDimmed = dimmableIds.has(id);
+        bm.group.opacity(isDimmed ? 0.25 : 1);
+        bm.group.listening(!isDimmed);
+    }
+};
+
+const renderWithDimming = (ls: LayoutSettings) => {
+    const visible: TimelineItem[] = props.timelineItems ?? store.items ?? [];
+    // Read directly from store (not props) to avoid Vue update-flush race where
+    // the watcher fires before the parent re-renders and propagates the new prop value.
+    const dimmed: TimelineItem[] = store.dimmableItems;
+    if (dimmed.length > 0) {
+        renderItems([...visible, ...dimmed], ls, new Set(dimmed.map(i => i.Id)));
+    } else {
+        renderItems(visible, ls);
+    }
 };
 
 function RenderUiLayer(ui_layer: Konva.Layer, ls: LayoutSettings) {
@@ -750,7 +793,7 @@ watch(() => [viewport.centerTime, viewport.lodStepFraction], () => {
 // Re-render when items are added externally (e.g. undo delete)
 watch(() => store.items.length, (newLen, oldLen) => {
     if (newLen > oldLen && props.layoutSettings) {
-        renderItems(store.items, props.layoutSettings);
+        renderWithDimming(props.layoutSettings);
     }
 });
 
@@ -901,7 +944,7 @@ function jumpToYear(targetYear: number) {
 
     if (stage) {
 		renderGrid(gridLayer, props.layoutSettings);
-		renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+		renderWithDimming(props.layoutSettings!);
 		updateCurrentYearInStore();
 	}
 }
@@ -917,7 +960,7 @@ function updateStageSize() {
     renderGrid(gridLayer, props.layoutSettings);
     RenderUiLayer(uiLayer, props.layoutSettings!);
     lockedLanes.clear();
-    renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+    renderWithDimming(props.layoutSettings!);
 }
 
 const updateCurrentYearInStore = () => {
@@ -958,7 +1001,7 @@ function animateJumpToYear(targetYear: number, durationMs: number = 600) {
         viewport.centerTime = startYear + (yearDifference * easeProgress);
 
         renderGrid(gridLayer, props.layoutSettings);
-        renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+        renderWithDimming(props.layoutSettings!);
 
         if (progress < 1) {
             requestAnimationFrame(step);
@@ -1040,7 +1083,7 @@ onMounted(() => {
 
     initCursorShapes();
 
-    renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+    renderWithDimming(props.layoutSettings!);
 
     const positionMenu = (clientX: number, clientY: number, menuW = 230, menuH = 320) => {
         contextMenu.x = Math.min(clientX, window.innerWidth  - menuW - 4);
@@ -1184,7 +1227,7 @@ onMounted(() => {
             panDrift += deltaX;
             if (Math.abs(panDrift) > DRIFT_THRESHOLD) {
                 renderGrid(gridLayer, props.layoutSettings!);
-                renderItems(store.items || props.timelineItems || [], props.layoutSettings!);
+                renderWithDimming(props.layoutSettings!);
             } else {
                 gridLayer.x(panDrift);
                 itemLayer.x(panDrift);
@@ -1245,7 +1288,7 @@ onMounted(() => {
         if (initClamped !== viewport.centerTime) {
             viewport.centerTime = initClamped;
             renderGrid(gridLayer, props.layoutSettings);
-            renderItems(store.items || props.timelineItems || [], props.layoutSettings);
+            renderWithDimming(props.layoutSettings);
         }
     }
 
@@ -1270,7 +1313,7 @@ function refreshItems() {
     if (!props.layoutSettings) return;
     lockedLanes.clear();
     renderGrid(gridLayer, props.layoutSettings);
-    renderItems(store.items, props.layoutSettings);
+    renderWithDimming(props.layoutSettings);
 }
 
 defineExpose({

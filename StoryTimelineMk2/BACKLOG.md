@@ -124,7 +124,7 @@ When the creation LOD step was `1/yearLength` (i.e., one step per day), `Subtick
 
 ## [BL-03] Filter system for timeline items
 
-**Status:** Pending.
+**Status:** Done. Full rule-based filter system: 3-state chips (neutral/positive/negative), 10 filter dimensions (type, tag, character, story, keyword, importance, time range, boolean flags, LOD level, color), AND/OR mode toggle, named presets, dimmed-vs-hidden display mode (in Settings → General). Rules, AND mode, panel state, and display mode all persist to SQLite. Canvas renders dimmed items at opacity 0.25 with events disabled.
 
 Filter items visible on the timeline canvas by type, tag, character relation, or any combination. Fully user-configurable, combinable (AND/OR logic).
 
@@ -144,7 +144,7 @@ The current system for collapsing/hiding spans of timeline is clumsy and visuall
 
 ## [BL-05] LOD visibility — per-level toggle instead of "visible from"
 
-**Status:** Pending.
+**Status:** Done. Bitmask DB column, canvas check, and EditItem per-level toggles were already implemented. Fixed `lod_visibility_mask` being dropped during timeline duplication (`TimelineRepo.cs`).
 
 Replace the current "visible from LOD X and below" cutoff with a fully independent per-level on/off toggle, so any subset of LOD levels can be active simultaneously.
 
@@ -154,7 +154,7 @@ Replace the current "visible from LOD X and below" cutoff with a fully independe
 
 ## [BL-06] Image selection — multi-select support
 
-**Status:** Pending.
+**Status:** Done. `ImagePickerModal.vue` already uses `selectedIds: string[]`, links all selected in parallel, and emits an array. `EditItem.vue` already handles the array in `onImageLinked`. No changes needed.
 
 The image picker currently allows selecting only one image at a time despite the item model supporting multiple. The "1 image selected" label is a leftover from a partially-implemented multi-select intent.
 
@@ -174,7 +174,7 @@ When a timeline's calendar is changed (e.g. from 365-day to 200-day), sub-year i
 
 ## [BL-08] New "actions" menu in timeline toolbar
 
-**Status:** Pending.
+**Status:** Done. `TimelineActionsMenu.vue` — popover with hidden ranges and shift date — is implemented and wired into the timeline header.
 
 A new menu button in the timeline screen (next to the gear icon) for non-settings actions: hiding sections, and future operations like Shift Date.
 
@@ -184,7 +184,7 @@ A new menu button in the timeline screen (next to the gear icon) for non-setting
 
 ## [BL-09] Shift Date function
 
-**Status:** Pending. Depends on BL-08 (actions menu).
+**Status:** Done. Implemented inside `TimelineActionsMenu.vue` — shift input with backend call to `ShiftTimelineItems`, reloads data and animates to new position on success.
 
 A modal triggered from the actions menu that shifts every item in the current timeline by N years (positive or negative), moving the entire content along the time axis.
 
@@ -194,7 +194,7 @@ A modal triggered from the actions menu that shifts every item in the current ti
 
 ## [BL-10] New items appear on canvas without full reload
 
-**Status:** Pending.
+**Status:** Done. Backend already sends `ItemSaved` push with full item after save; frontend listener calls `store.upsertItem()`; canvas watcher re-renders reactively. `NotifyCallback` wired at window open time.
 
 After saving a new item in the EditItem window, it should appear on the timeline canvas immediately rather than requiring a full data reload.
 
@@ -204,7 +204,7 @@ After saving a new item in the EditItem window, it should appear on the timeline
 
 ## [BL-11] Settings search
 
-**Status:** Pending.
+**Status:** Done. `TimelineSettingsModal.vue` already has `searchQuery` ref, `watch` that highlights `.section-title` and `.s-label` elements with `.search-hl`, scrolls to first match, and the search input is in the modal header with `v-model="searchQuery"`.
 
 A sticky search/filter input at the top of the settings page that helps the user locate a specific setting by name.
 

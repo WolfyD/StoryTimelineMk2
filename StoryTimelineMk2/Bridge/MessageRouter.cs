@@ -107,6 +107,20 @@ namespace StoryTimelineMk2.Bridge
                 case "OpenDataFolder":  HandleOpenDataFolder(message); break;
                 case "CreateBackup":    HandleCreateBackup(message); break;
 
+                // Filter rules
+                case "GetFilterRules":      HandleGetFilterRules(message); break;
+                case "SaveFilterRule":      HandleSaveFilterRule(message); break;
+                case "DeleteFilterRule":    HandleDeleteFilterRule(message); break;
+
+                // Filter presets
+                case "GetFilterPresets":    HandleGetFilterPresets(message); break;
+                case "SaveFilterPreset":    HandleSaveFilterPreset(message); break;
+                case "DeleteFilterPreset":  HandleDeleteFilterPreset(message); break;
+
+                // Misc settings
+                case "GetMiscSetting":  HandleGetMiscSetting(message); break;
+                case "SetMiscSetting":  HandleSetMiscSetting(message); break;
+
                 default:
                     Console.WriteLine($"Unknown Action: {message.Action}");
                     break;
@@ -131,6 +145,11 @@ namespace StoryTimelineMk2.Bridge
                     Items = item_repo.GetItemsByTimeline(gtd_timeline_id).ToArray(),
                     Notes = notes_repo.GetTimelineNotes(gtd_timeline_id).ToArray(),
                     HiddenRanges = new HiddenRangeRepo().GetByTimeline(gtd_timeline_id).ToArray(),
+                    ItemTags = item_repo.GetAllItemTagsForTimeline(gtd_timeline_id).ToArray(),
+                    ItemCharacters = item_repo.GetAllItemCharactersForTimeline(gtd_timeline_id).ToArray(),
+                    Characters = new CharacterRepo().GetCharactersByTimeline(gtd_timeline_id).ToArray(),
+                    ItemStoryRefs = item_repo.GetAllItemStoryRefsForTimeline(gtd_timeline_id).ToArray(),
+                    ItemsWithPictures = item_repo.GetItemsWithPicturesForTimeline(gtd_timeline_id).ToArray(),
                 };
                 ReplyToVue(message.MessageId, timelineObject);
                 return;
@@ -323,7 +342,8 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+                System.Diagnostics.Debug.WriteLine($"[HandleSaveItem] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message, detail = ex.ToString() });
             }
         }
 
@@ -1047,6 +1067,140 @@ namespace StoryTimelineMk2.Bridge
                 File.Copy(file, Path.Combine(dst, Path.GetFileName(file)), overwrite: true);
             foreach (var dir in Directory.GetDirectories(src))
                 CopyDirectory(dir, Path.Combine(dst, Path.GetFileName(dir)));
+        }
+
+        // -----------------------------------------------------------------------
+        // Filter rules
+        // -----------------------------------------------------------------------
+
+        private void HandleGetFilterRules(BridgeMessage message)
+        {
+            try
+            {
+                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+                var rules = new FilterRuleRepo().GetByTimeline(timelineId);
+                ReplyToVue(message.MessageId, new { status = "ok", rules });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleGetFilterRules] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        private void HandleSaveFilterRule(BridgeMessage message)
+        {
+            try
+            {
+                var rule = JsonSerializer.Deserialize<FilterRuleItem>(message.Payload.GetRawText(), _jsonOpts);
+                new FilterRuleRepo().Save(rule);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleSaveFilterRule] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        private void HandleDeleteFilterRule(BridgeMessage message)
+        {
+            try
+            {
+                string id = message.Payload.GetProperty("id").GetString();
+                new FilterRuleRepo().Delete(id);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleDeleteFilterRule] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Filter presets
+        // -----------------------------------------------------------------------
+
+        private void HandleGetFilterPresets(BridgeMessage message)
+        {
+            try
+            {
+                var presets = new FilterPresetRepo().GetAll();
+                ReplyToVue(message.MessageId, new { status = "ok", presets });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleGetFilterPresets] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        private void HandleSaveFilterPreset(BridgeMessage message)
+        {
+            try
+            {
+                var preset = JsonSerializer.Deserialize<FilterPresetItem>(message.Payload.GetRawText(), _jsonOpts);
+                new FilterPresetRepo().Save(preset);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleSaveFilterPreset] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        private void HandleDeleteFilterPreset(BridgeMessage message)
+        {
+            try
+            {
+                string id = message.Payload.GetProperty("id").GetString();
+                new FilterPresetRepo().Delete(id);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleDeleteFilterPreset] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Misc settings
+        // -----------------------------------------------------------------------
+
+        private void HandleGetMiscSetting(BridgeMessage message)
+        {
+            try
+            {
+                string key = message.Payload.GetProperty("key").GetString();
+                int timelineId = message.Payload.TryGetProperty("timelineId", out var tl) ? tl.GetInt32() : 0;
+                string value = new MiscSettingsRepo().Get(key, timelineId);
+                ReplyToVue(message.MessageId, new { status = "ok", value });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleGetMiscSetting] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        private void HandleSetMiscSetting(BridgeMessage message)
+        {
+            try
+            {
+                string key = message.Payload.GetProperty("key").GetString();
+                string value = message.Payload.GetProperty("value").GetString();
+                int timelineId = message.Payload.TryGetProperty("timelineId", out var tl) ? tl.GetInt32() : 0;
+                new MiscSettingsRepo().Set(key, value, timelineId);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HandleSetMiscSetting] {ex}");
+                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
         }
     }
 }

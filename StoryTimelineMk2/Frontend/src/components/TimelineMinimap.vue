@@ -52,6 +52,11 @@ function render() {
     const endMarker   = allItems.find(i => i.TypeId === 9);
     const visible     = allItems.filter(i => i.TypeId !== 8 && i.TypeId !== 9);
 
+    // Build filter set: items that pass the active filter get full opacity in minimap
+    const hasActiveFilter = store.filterRules.some(r => r.State !== 'neutral');
+    const filteredIds     = hasActiveFilter ? new Set(store.filteredItems.map(i => i.Id)) : null;
+    const fo = (id: string) => (filteredIds && !filteredIds.has(id)) ? 0.22 : 1;
+
     if (visible.length === 0) { layer.batchDraw(); return; }
 
     const absEnds   = visible.map(i => i.AbsoluteEnd > i.AbsoluteStart ? i.AbsoluteEnd : i.AbsoluteStart);
@@ -110,7 +115,7 @@ function render() {
             width: Math.max(Math.abs(x2 - x1), 3),
             height: AGE_H,
             fill: color,
-            opacity: 0.65,
+            opacity: 0.65 * fo(item.Id),
             cornerRadius: 2,
             listening: false,
         }));
@@ -134,11 +139,12 @@ function render() {
 
         const barY = lineY + AGE_H / 2 + 2 + lane * (PERIOD_H + PERIOD_GAP);
 
+        const periodFo = fo(item.Id);
         // Period bar
         layer.add(new Konva.Rect({
             x: left, y: barY,
             width: Math.max(right - left, 2), height: PERIOD_H,
-            fill: color, opacity: 0.72,
+            fill: color, opacity: 0.72 * periodFo,
             listening: false,
         }));
 
@@ -146,7 +152,7 @@ function render() {
         const TS   = 4;
         layer.add(new Konva.Line({
             points: [left - TS, lineY - AGE_H / 2 - TS * 2, left + TS, lineY - AGE_H / 2 - TS * 2, left, lineY - AGE_H / 2],
-            closed: true, fill: color, opacity: 0.85, listening: false,
+            closed: true, fill: color, opacity: 0.85 * periodFo, listening: false,
         }));
     }
 
@@ -156,13 +162,14 @@ function render() {
         const x = toX(item.AbsoluteStart);
         if (x < MARGIN - 4 || x > W - MARGIN + 4) continue;
         const color = item.Color || '#334155';
+        const eventFo = fo(item.Id);
         layer.add(new Konva.Line({
             points: [x, lineY - ITEM_STEM_H, x, lineY],
-            stroke: color, strokeWidth: 1, opacity: 0.65, listening: false,
+            stroke: color, strokeWidth: 1, opacity: 0.65 * eventFo, listening: false,
         }));
         layer.add(new Konva.Circle({
             x, y: lineY - ITEM_STEM_H,
-            radius: DOT_R, fill: color, opacity: 0.75, listening: false,
+            radius: DOT_R, fill: color, opacity: 0.75 * eventFo, listening: false,
         }));
     }
 
@@ -184,7 +191,7 @@ function render() {
         if (x < MARGIN - 4 || x > W - MARGIN + 4) continue;
         const color = item.Color || '#4b5563';
 
-        const group = new Konva.Group();
+        const group = new Konva.Group({ opacity: fo(item.Id) });
 
         // Stem
         group.add(new Konva.Line({
@@ -302,7 +309,7 @@ onUnmounted(() => {
 
 // Re-render whenever relevant store state changes
 watch(
-    [() => store.items, () => store.centerAbsoluteTime, () => store.viewportWidthPx, () => store.currentLodIndex],
+    [() => store.items, () => store.filteredItems, () => store.centerAbsoluteTime, () => store.viewportWidthPx, () => store.currentLodIndex],
     render,
     { deep: false },
 );

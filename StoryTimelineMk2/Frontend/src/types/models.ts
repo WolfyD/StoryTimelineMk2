@@ -65,11 +65,55 @@ export interface HiddenRange {
     Label: string | null;
 }
 
+export interface ItemTagLink {
+    ItemId: string;
+    TagId: number;
+    TagName: string;
+}
+
+export interface ItemCharacterLink {
+    ItemId: string;
+    CharacterId: string;
+    CharacterName: string;
+    CharacterColor: string | null;
+}
+
+export interface ItemStoryRefLink {
+    ItemId: string;
+    StoryId: string;
+    StoryTitle: string;
+}
+
+export type FilterState = 'positive' | 'negative' | 'neutral';
+
+export interface FilterRule {
+    Id: string;
+    TimelineId: number;
+    Dimension: string;
+    ParamsJson: string;
+    Label: string;
+    State: FilterState;
+    SortOrder: number;
+}
+
+export interface FilterPreset {
+    Id: string;
+    Name: string;
+    RulesJson: string;
+    AndMode: number;
+    CreatedAt?: string;
+}
+
 export interface FullTimelineProject {
     Project: TimelineProject;
     Items: TimelineItem[];
 	Notes: TimelineNote[];
     HiddenRanges: HiddenRange[];
+    ItemTags: ItemTagLink[];
+    ItemCharacters: ItemCharacterLink[];
+    Characters: CharacterItem[];
+    ItemStoryRefs: ItemStoryRefLink[];
+    ItemsWithPictures: string[];
 }
 
 export interface Calendar {

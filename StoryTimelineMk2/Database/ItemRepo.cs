@@ -91,6 +91,30 @@ namespace StoryTimelineMk2.Database
             return db.QueryFirstOrDefault<TimelineItem>("SELECT * FROM items WHERE id = @Id", new { Id = id });
         }
 
+        public IEnumerable<ItemTagLink> GetAllItemTagsForTimeline(int timelineId)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<ItemTagLink>(@"
+                SELECT it.item_id AS ItemId, t.id AS TagId, t.name AS TagName
+                FROM item_tags it
+                INNER JOIN tags t ON t.id = it.tag_id
+                INNER JOIN items i ON i.id = it.item_id
+                WHERE i.timeline_id = @TimelineId
+                ORDER BY t.name", new { TimelineId = timelineId });
+        }
+
+        public IEnumerable<ItemCharacterLink> GetAllItemCharactersForTimeline(int timelineId)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<ItemCharacterLink>(@"
+                SELECT ica.item_id AS ItemId, ica.character_id AS CharacterId,
+                       c.name AS CharacterName, c.color AS CharacterColor
+                FROM item_character_appearances ica
+                INNER JOIN characters c ON c.id = ica.character_id
+                INNER JOIN items i ON i.id = ica.item_id
+                WHERE i.timeline_id = @TimelineId", new { TimelineId = timelineId });
+        }
+
         public IEnumerable<TagItem> GetItemTags(string itemId)
         {
             using var db = new SqliteConnection(_connString);
@@ -245,6 +269,27 @@ namespace StoryTimelineMk2.Database
                 tx.Rollback();
                 throw;
             }
+        }
+
+        public IEnumerable<ItemStoryRefLink> GetAllItemStoryRefsForTimeline(int timelineId)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<ItemStoryRefLink>(@"
+                SELECT isr.item_id AS ItemId, isr.story_id AS StoryId, s.title AS StoryTitle
+                FROM item_story_refs isr
+                INNER JOIN stories s ON s.id = isr.story_id
+                INNER JOIN items i ON i.id = isr.item_id
+                WHERE i.timeline_id = @TimelineId", new { TimelineId = timelineId });
+        }
+
+        public IEnumerable<string> GetItemsWithPicturesForTimeline(int timelineId)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<string>(@"
+                SELECT DISTINCT ip.item_id
+                FROM item_pictures ip
+                INNER JOIN items i ON i.id = ip.item_id
+                WHERE i.timeline_id = @TimelineId", new { TimelineId = timelineId });
         }
 
         public void DeleteItem(string id)

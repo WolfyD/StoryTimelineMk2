@@ -10,6 +10,8 @@ import type {
 	ItemCharacterAppearance,
 	TimelineItem,
 	LayoutSettings,
+	FilterRule,
+	FilterPreset,
 } from '@/types/models';
 import { useTimelineStore } from '@/stores/timelineStore';
 
@@ -253,6 +255,44 @@ export const BackendAPI = {
 
 	async SaveLayoutSettings(ls: LayoutSettings) {
 		return await this.request<{ status: string; layoutSettings?: LayoutSettings }>('SaveLayoutSettings', ls);
+	},
+
+	// --- Filter rules ---
+
+	async GetFilterRules(timelineId: number) {
+		return await this.request<{ status: string; rules: FilterRule[] }>('GetFilterRules', { timelineId });
+	},
+
+	async SaveFilterRule(rule: FilterRule) {
+		return await this.request<{ status: string }>('SaveFilterRule', rule);
+	},
+
+	async DeleteFilterRule(id: string) {
+		return await this.request<{ status: string }>('DeleteFilterRule', { id });
+	},
+
+	// --- Filter presets ---
+
+	async GetFilterPresets() {
+		return await this.request<{ status: string; presets: FilterPreset[] }>('GetFilterPresets', {});
+	},
+
+	async SaveFilterPreset(preset: FilterPreset) {
+		return await this.request<{ status: string }>('SaveFilterPreset', preset);
+	},
+
+	async DeleteFilterPreset(id: string) {
+		return await this.request<{ status: string }>('DeleteFilterPreset', { id });
+	},
+
+	// --- Misc settings ---
+
+	async GetMiscSetting(key: string, timelineId = 0) {
+		return await this.request<{ status: string; value: string | null }>('GetMiscSetting', { key, timelineId });
+	},
+
+	async SetMiscSetting(key: string, value: string, timelineId = 0) {
+		return await this.request<{ status: string }>('SetMiscSetting', { key, value, timelineId });
 	},
 };
 

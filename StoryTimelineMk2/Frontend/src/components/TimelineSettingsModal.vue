@@ -315,6 +315,18 @@ async function save() {
                     <button class="toggle" :class="{ 'is-on': local.ShowGuides }" type="button" @click="local.ShowGuides = !local.ShowGuides">
                         <span class="toggle-thumb" />
                     </button>
+
+                    <span class="s-label">Filtered items</span>
+                    <div class="radio-group">
+                        <label class="radio-opt">
+                            <input type="radio" :checked="store.filterDisplayMode === 'hidden'" @change="store.setFilterDisplayMode('hidden')" />
+                            Hidden
+                        </label>
+                        <label class="radio-opt">
+                            <input type="radio" :checked="store.filterDisplayMode === 'dimmed'" @change="store.setFilterDisplayMode('dimmed')" />
+                            Dimmed
+                        </label>
+                    </div>
                 </div>
 
                 <!-- LAYOUT PRESET -->
@@ -1064,6 +1076,27 @@ select.s-input {
     &:hover {
         background: rgba(239, 68, 68, 0.15);
         color: #fca5a5;
+    }
+}
+
+.radio-group {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 2px 0;
+}
+
+.radio-opt {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: #94a3b8;
+    cursor: pointer;
+
+    input[type="radio"] {
+        accent-color: #6aaa6a;
+        cursor: pointer;
     }
 }
 </style>

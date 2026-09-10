@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote } from '@/types/models';
+import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote, type CharacterItem, type ItemTagLink, type ItemCharacterLink, type ItemStoryRefLink, type FilterRule, type FilterPreset, type FilterState } from '@/types/models';
 import { BackendAPI } from '@/bridge/api';
 import { buildFormatRegistry, DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
+import { applyFilters, buildItemDataMap } from '@/utils/filterMatcher';
 
 interface LastDeletedState {
     item: TimelineItem;
@@ -36,6 +37,21 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const hiddenRanges = ref<HiddenRange[]>([]);
 	const notes = ref<TimelineNote[]>([]);
 	const lastDeleted = ref<LastDeletedState | null>(null);
+
+	// Filter state
+	const allTimelineTags = ref<{ TagId: number; TagName: string }[]>([]);
+	const allTimelineCharacters = ref<CharacterItem[]>([]);
+	const allTimelineStories = ref<{ StoryId: string; StoryTitle: string }[]>([]);
+	const allTimelineColors = ref<string[]>([]);
+	const itemTagMap = ref<Map<string, ItemTagLink[]>>(new Map());
+	const itemCharacterMap = ref<Map<string, ItemCharacterLink[]>>(new Map());
+	const itemStoryMap = ref<Map<string, ItemStoryRefLink[]>>(new Map());
+	const itemPictureSet = ref<Set<string>>(new Set());
+	const filterRules = ref<FilterRule[]>([]);
+	const filterAndMode = ref<boolean>(false);
+	const filterDisplayMode = ref<'hidden' | 'dimmed'>('hidden');
+	const filterPanelOpen = ref<boolean>(false);
+	const filterPresets = ref<FilterPreset[]>([]);
 	const centerAbsoluteTime = ref<number>(0); // fractional center position (e.g. 1495.8), unlike currentNowYear which is floored
 	const distanceFrom = ref<number | null>(null);
 	const distanceTo = ref<number | null>(null);
@@ -62,6 +78,22 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// Useful for the Konva layout algorithm to split items based on the NOW line
 	const pastItems = computed(() => items.value.filter(i => i.Year < currentNowYear.value));
 	const futureItems = computed(() => items.value.filter(i => i.Year >= currentNowYear.value));
+
+	const _filterResults = computed(() => {
+		const dataMap = buildItemDataMap(
+			items.value,
+			itemTagMap.value,
+			itemCharacterMap.value,
+			itemStoryMap.value,
+			itemPictureSet.value,
+		);
+		return applyFilters(items.value, filterRules.value, filterAndMode.value, dataMap);
+	});
+
+	const filteredItems = computed(() => _filterResults.value.visible);
+	const dimmableItems = computed(() =>
+		filterDisplayMode.value === 'dimmed' ? _filterResults.value.dimmed : []
+	);
 
 	// ==========================================
 	// 3. Actions (Functions to mutate the state)
@@ -91,6 +123,61 @@ export const useTimelineStore = defineStore('timeline', () => {
 			calendar.value = response.Project.Calendar;
 			hiddenRanges.value = (response.HiddenRanges ?? []).sort((a, b) => a.StartYear - b.StartYear);
 			notes.value = (response.Notes ?? []).sort((a, b) => a.AbsoluteTime - b.AbsoluteTime);
+
+			// Build filter data structures
+			const tagLinks = response.ItemTags ?? [];
+			const charLinks = response.ItemCharacters ?? [];
+			const storyLinks = response.ItemStoryRefs ?? [];
+			const tagMapNew = new Map<string, ItemTagLink[]>();
+			const charMapNew = new Map<string, ItemCharacterLink[]>();
+			const storyMapNew = new Map<string, ItemStoryRefLink[]>();
+			for (const t of tagLinks) {
+				const arr = tagMapNew.get(t.ItemId) ?? [];
+				arr.push(t);
+				tagMapNew.set(t.ItemId, arr);
+			}
+			for (const c of charLinks) {
+				const arr = charMapNew.get(c.ItemId) ?? [];
+				arr.push(c);
+				charMapNew.set(c.ItemId, arr);
+			}
+			for (const s of storyLinks) {
+				const arr = storyMapNew.get(s.ItemId) ?? [];
+				arr.push(s);
+				storyMapNew.set(s.ItemId, arr);
+			}
+			itemTagMap.value = tagMapNew;
+			itemCharacterMap.value = charMapNew;
+			itemStoryMap.value = storyMapNew;
+			itemPictureSet.value = new Set(response.ItemsWithPictures ?? []);
+
+			const seenTags = new Map<number, string>();
+			for (const t of tagLinks) seenTags.set(t.TagId, t.TagName);
+			allTimelineTags.value = [...seenTags.entries()].map(([TagId, TagName]) => ({ TagId, TagName })).sort((a, b) => a.TagName.localeCompare(b.TagName));
+			allTimelineCharacters.value = (response.Characters ?? []).sort((a, b) => a.Name.localeCompare(b.Name));
+
+			const seenStories = new Map<string, string>();
+			for (const s of storyLinks) seenStories.set(s.StoryId, s.StoryTitle);
+			allTimelineStories.value = [...seenStories.entries()].map(([StoryId, StoryTitle]) => ({ StoryId, StoryTitle })).sort((a, b) => a.StoryTitle.localeCompare(b.StoryTitle));
+
+			const seenColors = new Set<string>();
+			for (const item of response.Items ?? []) {
+				if (item.Color) seenColors.add(item.Color.toLowerCase().slice(0, 7));
+			}
+			allTimelineColors.value = [...seenColors].sort();
+
+			// Load filter rules and misc settings for this timeline
+			const tlId = response.Project.Id;
+			const [rulesResult, andModeResult, panelOpenResult, displayModeResult] = await Promise.all([
+				BackendAPI.GetFilterRules(tlId),
+				BackendAPI.GetMiscSetting('filter_and_mode', tlId),
+				BackendAPI.GetMiscSetting('filter_panel_open', tlId),
+				BackendAPI.GetMiscSetting('filter_display_mode', 0),
+			]);
+			filterRules.value = rulesResult?.rules ?? [];
+			filterAndMode.value = andModeResult?.value === '1';
+			filterPanelOpen.value = panelOpenResult?.value === '1';
+			filterDisplayMode.value = displayModeResult?.value === 'dimmed' ? 'dimmed' : 'hidden';
 			const lProf = response.Project.Calendar.LodProfile;
 			const _lp = lProf.Profile;
 			if(_lp){
@@ -195,6 +282,91 @@ export const useTimelineStore = defineStore('timeline', () => {
 		lastDeleted.value = null;
 	}
 
+	async function setFilterRuleState(id: string, state: FilterState) {
+		const idx = filterRules.value.findIndex(r => r.Id === id);
+		if (idx < 0) return;
+		const updated: FilterRule = { ...filterRules.value[idx]!, State: state };
+		filterRules.value = filterRules.value.map(r => r.Id === id ? updated : r);
+		await BackendAPI.SaveFilterRule(updated);
+	}
+
+	async function upsertFilterRule(rule: FilterRule) {
+		const idx = filterRules.value.findIndex(r => r.Id === rule.Id);
+		if (idx >= 0) {
+			filterRules.value = filterRules.value.map(r => r.Id === rule.Id ? rule : r);
+		} else {
+			filterRules.value = [...filterRules.value, rule].sort((a, b) => a.SortOrder - b.SortOrder);
+		}
+		await BackendAPI.SaveFilterRule(rule);
+	}
+
+	async function deleteFilterRule(id: string) {
+		filterRules.value = filterRules.value.filter(r => r.Id !== id);
+		await BackendAPI.DeleteFilterRule(id);
+	}
+
+	async function setFilterAndMode(mode: boolean) {
+		filterAndMode.value = mode;
+		await BackendAPI.SetMiscSetting('filter_and_mode', mode ? '1' : '0', currentProject.value?.Id ?? 0);
+	}
+
+	async function setFilterDisplayMode(mode: 'hidden' | 'dimmed') {
+		filterDisplayMode.value = mode;
+		await BackendAPI.SetMiscSetting('filter_display_mode', mode, 0);
+	}
+
+	async function setFilterPanelOpen(open: boolean) {
+		filterPanelOpen.value = open;
+		await BackendAPI.SetMiscSetting('filter_panel_open', open ? '1' : '0', currentProject.value?.Id ?? 0);
+	}
+
+	async function loadFilterPresets() {
+		const result = await BackendAPI.GetFilterPresets();
+		filterPresets.value = result?.presets ?? [];
+	}
+
+	async function saveFilterPreset(name: string) {
+		const preset: FilterPreset = {
+			Id: crypto.randomUUID(),
+			Name: name,
+			RulesJson: JSON.stringify(filterRules.value.map(r => ({ ...r, TimelineId: 0 }))),
+			AndMode: filterAndMode.value ? 1 : 0,
+		};
+		await BackendAPI.SaveFilterPreset(preset);
+		filterPresets.value = [...filterPresets.value, preset];
+	}
+
+	async function loadFilterPreset(presetId: string) {
+		const preset = filterPresets.value.find(p => p.Id === presetId);
+		if (!preset) return;
+		const tlId = currentProject.value?.Id ?? 0;
+		let rules: FilterRule[] = [];
+		try {
+			rules = (JSON.parse(preset.RulesJson) as FilterRule[]).map((r, i) => ({
+				...r,
+				Id: crypto.randomUUID(),
+				TimelineId: tlId,
+				SortOrder: i,
+			}));
+		} catch { return; }
+		filterRules.value = rules;
+		filterAndMode.value = preset.AndMode === 1;
+		await Promise.all([
+			...rules.map(r => BackendAPI.SaveFilterRule(r)),
+			BackendAPI.SetMiscSetting('filter_and_mode', filterAndMode.value ? '1' : '0', tlId),
+		]);
+	}
+
+	async function deleteFilterPreset(id: string) {
+		filterPresets.value = filterPresets.value.filter(p => p.Id !== id);
+		await BackendAPI.DeleteFilterPreset(id);
+	}
+
+	function clearAllFilters() {
+		filterRules.value = filterRules.value.map(r => ({ ...r, State: 'neutral' as FilterState }));
+		filterRules.value.forEach(r => BackendAPI.SaveFilterRule(r));
+	}
+
 
 	function lodZoomIn(){
 		if(!lodProfile.value?.length) return;
@@ -262,14 +434,20 @@ export const useTimelineStore = defineStore('timeline', () => {
 	return {
 		// variables
 		items, currentNowYear, centerAbsoluteTime, viewportWidthPx, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex,
-		pastItems, futureItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle, hiddenRanges,
+		pastItems, futureItems, filteredItems, dimmableItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle, hiddenRanges,
 		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab, activeFormatRegistry, calendarConfig,
+		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,
+		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
+		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
 		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setHiddenRanges, setLayoutSettings,
 		addNote, updateNote, removeNote,
 		setLastDeleted, clearLastDeleted,
+		setFilterRuleState, upsertFilterRule, deleteFilterRule, clearAllFilters,
+		setFilterAndMode, setFilterDisplayMode, setFilterPanelOpen,
+		loadFilterPresets, saveFilterPreset, loadFilterPreset, deleteFilterPreset,
 
 		// constants
 		ItemTypes

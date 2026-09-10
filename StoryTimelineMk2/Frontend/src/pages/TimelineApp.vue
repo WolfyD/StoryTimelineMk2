@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // imports
 import { useTimelineStore } from '@/stores/timelineStore'
-import { PhArrowArcRight, PhGear, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhArrowArcRight, PhFunnel, PhGear, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
 import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
+import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
+import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
 import { Splitpanes, Pane } from 'splitpanes'
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
 import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
@@ -19,8 +21,18 @@ const store = useTimelineStore()
 const loadError = ref<boolean>(false)
 const timelineCanvasRef = ref();
 const showSettings = ref(false);
+const showFilterSetup = ref(false);
 const viewItemId = ref<string | null>(null);
 const lightboxUrl = ref<string | null>(null);
+
+const jumpYear = ref(0)
+const jumpInputRef = ref<HTMLInputElement | null>(null)
+// Follow the timeline position only when the input isn't focused
+watch(() => store.currentNowYear, (yr) => {
+    if (yr != null && document.activeElement !== jumpInputRef.value) {
+        jumpYear.value = Math.round(yr)
+    }
+}, { immediate: true })
 
 function onItemClick(itemId: string) {
     BackendAPI.send('OpenAddEditItemWindow', {
@@ -80,14 +92,13 @@ let throttleTimer:number = -1;
 let debounceTimer:number;
 
 function jump() {
-	const input = document.querySelector("#jump-to-year-input") as HTMLInputElement | null;
-	if(input){
-		if(store.layoutSettings?.TimelineAnimateOnJumpToYear){
-			timelineCanvasRef.value.animateJumpToYear(input.valueAsNumber);
-		} else {
-			timelineCanvasRef.value.jumpToYear(input.valueAsNumber);
-		}
-	}
+    const year = jumpYear.value
+    if (!isFinite(year)) return
+    if (store.layoutSettings?.TimelineAnimateOnJumpToYear) {
+        timelineCanvasRef.value?.animateJumpToYear(year)
+    } else {
+        timelineCanvasRef.value?.jumpToYear(year)
+    }
 }
 
 function handleResizeEvent(){
@@ -166,7 +177,16 @@ onBeforeUnmount(() => {
 
 		<div v-else id="timeline-workspace">
     <div id="timeline-header">
-        <div class="timeline-header-spacer"></div>
+        <div class="timeline-header-left">
+            <button
+                class="header-icon-btn"
+                :class="{ active: store.filterPanelOpen }"
+                title="Toggle filter panel"
+                @click="store.setFilterPanelOpen(!store.filterPanelOpen)"
+            >
+                <PhFunnel :size="22" />
+            </button>
+        </div>
         <div id="timeline-header-info-container">
             <h1>{{ store.title }}</h1>
             <h2>{{ store.author }}</h2>
@@ -191,6 +211,16 @@ onBeforeUnmount(() => {
         @close="showSettings = false"
     />
 
+    <TimelineFilterPanel
+        v-if="store.filterPanelOpen"
+        @open-setup="showFilterSetup = true"
+    />
+
+    <TimelineFilterSetupModal
+        v-if="showFilterSetup"
+        @close="showFilterSetup = false"
+    />
+
     <Splitpanes horizontal class="timeline-splitpanes-wrapper" @resize="handleResizeEvent();">
 
         <Pane id="timeline-data" :size="40" min-size="20" max-size="70">
@@ -211,7 +241,8 @@ onBeforeUnmount(() => {
         <Pane id="timeline-main" size="80" :style="{backgroundColor:store.layoutSettings?.TimelineCanvasBackgroundColor}">
 			<TimelineCanvas
 				ref="timelineCanvasRef"
-				:timeline-items="store.items"
+				:timeline-items="store.filteredItems"
+				:dimmed-items="store.dimmableItems"
 				:timeline-settings="store.settings ?? null"
 				:timeline-info="store.currentProject"
 				:layout-settings="store.layoutSettings ?? null"
@@ -250,7 +281,16 @@ onBeforeUnmount(() => {
 		</div>
 		<div id="timeline-nav-container">
 			<p>Jump to year</p>
-			<input id="jump-to-year-input" type="number" :step="1" :value="store.currentNowYear" />
+			<input
+                ref="jumpInputRef"
+                id="jump-to-year-input"
+                type="number"
+                step="1"
+                min="-2147483648"
+                max="2147483647"
+                v-model.number="jumpYear"
+                @keydown.enter="jump"
+            />
 			<div id="jump-to-year-button" class="button default" @click="jump"><PhArrowArcRight :size="32" /></div>
 		</div>
 
@@ -263,7 +303,9 @@ onBeforeUnmount(() => {
 
     <div id="timeline-info">
 		<div id="timeline-info-left">
-			<p>Current year: {{ store.currentNowYear }}</p> <p>Items loaded: {{ store.items.length }}</p> <p>Items visible: {{ store.visibleItems }}</p>
+			<p>Current year: {{ store.currentNowYear }}</p>
+			<p>Items: {{ store.filteredItems.length }}<span v-if="store.filteredItems.length !== store.items.length"> / {{ store.items.length }}</span></p>
+			<p>Visible: {{ store.visibleItems }}</p>
 		</div>
 
 		<div id="timeline-info-right">
@@ -327,9 +369,16 @@ onBeforeUnmount(() => {
 	color: #fff;
 	align-items: center;
 
-	.timeline-header-spacer,
+	.timeline-header-left,
 	.timeline-header-actions {
 		flex: 0 0 80px;
+	}
+
+	.timeline-header-left {
+		display: flex;
+		justify-content: flex-start;
+		align-items: center;
+		padding-left: 8px;
 	}
 
 	.timeline-header-actions {
@@ -378,6 +427,11 @@ onBeforeUnmount(() => {
 		&:hover {
 			color: #fff;
 			background: #ffffff18;
+		}
+
+		&.active {
+			color: #a0d8a0;
+			background: #4a7a4a44;
 		}
 	}
 }
