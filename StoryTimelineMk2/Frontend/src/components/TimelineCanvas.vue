@@ -389,14 +389,27 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
     const startTickIndex = Math.floor(leftMostVisual / targetStep);
     const endTickIndex   = Math.ceil(rightMostVisual / targetStep);
 
+    const seenAbsTicks = new Set<number>();
     for (let i = startTickIndex; i <= endTickIndex; i++) {
         const visualTickTime = i * targetStep;
 
-        // Skip ticks that land inside a break strip
+        // Skip ticks that land inside a break strip (visual check — fast)
         if (breakExtents.some(b => visualTickTime > b.vs && visualTickTime < b.ve)) continue;
 
-        // Convert visual position back to absolute for year label formatting
-        const cleanTime = parseFloat(visualToAbsolute(visualTickTime, ranges, step).toFixed(8));
+        // Convert visual → absolute, then snap to nearest absolute grid position.
+        // Without snapping, the (hiddenSize - breakSize) offset is typically non-integer,
+        // which causes tick marks to appear offset from the NOW line after hidden ranges.
+        const rawAbsTime    = visualToAbsolute(visualTickTime, ranges, step);
+        const snappedAbs    = Math.round(rawAbsTime / targetStep) * targetStep;
+
+        // Deduplicate (two adjacent visual indices can snap to the same absolute tick)
+        if (seenAbsTicks.has(snappedAbs)) continue;
+        seenAbsTicks.add(snappedAbs);
+
+        // Also skip if the snapped tick landed inside an actual hidden range
+        if (ranges.some(r => snappedAbs > r.StartYear && snappedAbs < r.EndYear)) continue;
+
+        const cleanTime = parseFloat(snappedAbs.toFixed(8));
         const year      = Math.floor(cleanTime);
         const fraction  = cleanTime - year;
 
@@ -418,13 +431,8 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         if (xStart + stripPx < 0 || xStart > viewport.width) continue;
 
         layer.add(new Konva.Rect({ x: xStart, y: 0, width: stripPx, height: viewport.height, fill: '#00000066' }));
-
-        for (let y = -stripPx; y < viewport.height + stripPx; y += 10) {
-            layer.add(new Konva.Line({ points: [xStart, y, xStart + stripPx, y + stripPx], stroke: '#ffffff18', strokeWidth: 1 }));
-        }
-
-        layer.add(new Konva.Line({ points: [xStart, 0, xStart, viewport.height], stroke: '#ffffff55', strokeWidth: 1, dash: [4, 4] }));
-        layer.add(new Konva.Line({ points: [xStart + stripPx, 0, xStart + stripPx, viewport.height], stroke: '#ffffff55', strokeWidth: 1, dash: [4, 4] }));
+        layer.add(new Konva.Rect({ x: xStart, y: 0, width: 2, height: viewport.height, fill: '#ffffff44' }));
+        layer.add(new Konva.Rect({ x: xStart + stripPx - 2, y: 0, width: 2, height: viewport.height, fill: '#ffffff44' }));
 
         const label = r.Label || `${r.StartYear} – ${r.EndYear}`;
         layer.add(new Konva.Text({ x: xStart, y: viewport.height / 2 + 18, text: label, fill: '#ffffffaa', fontSize: 10, width: stripPx, align: 'center', fontStyle: 'italic' }));
@@ -446,36 +454,35 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         if (xRight < 0 || xLeft > viewport.width) continue;
 
         const zoneWidth = Math.max(xRight - xLeft, 0);
-        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: zoneWidth, height: viewport.height, fill: '#ffffff06' }));
-        layer.add(new Konva.Line({ points: [xLeft, 0, xLeft, viewport.height], stroke: '#ffffff33', strokeWidth: 1, dash: [4, 4] }));
-        layer.add(new Konva.Line({ points: [xRight, 0, xRight, viewport.height], stroke: '#ffffff33', strokeWidth: 1, dash: [4, 4] }));
+        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: zoneWidth, height: viewport.height, fill: '#0000000a' }));
 
-        // Diagonal stripe band along the top to mark this as a temporarily revealed zone
-        const stripeH = 10;
+        // Faint diagonal stripe pattern across the whole zone
         const clampedLeft  = Math.max(xLeft, 0);
         const clampedRight = Math.min(xRight, viewport.width);
-        const clampedWidth = clampedRight - clampedLeft;
-        if (clampedWidth > 0) {
+        const clampedW = clampedRight - clampedLeft;
+        if (clampedW > 0) {
             const stripeGroup = new Konva.Group({
                 x: clampedLeft, y: 0,
-                clipX: 0, clipY: 0, clipWidth: clampedWidth, clipHeight: stripeH,
+                clipX: 0, clipY: 0, clipWidth: clampedW, clipHeight: viewport.height,
             });
-            stripeGroup.add(new Konva.Rect({ x: 0, y: 0, width: clampedWidth, height: stripeH, fill: '#00000055' }));
-            for (let sx = -stripeH; sx < clampedWidth + stripeH; sx += 10) {
+            for (let sx = -viewport.height; sx < clampedW + viewport.height; sx += 24) {
                 stripeGroup.add(new Konva.Line({
-                    points: [sx, 0, sx + stripeH, stripeH],
-                    stroke: '#00000088', strokeWidth: 5,
+                    points: [sx, 0, sx + viewport.height, viewport.height],
+                    stroke: '#00000018', strokeWidth: 1, listening: false,
                 }));
             }
             layer.add(stripeGroup);
         }
 
+        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: 2, height: viewport.height, fill: '#00000044' }));
+        layer.add(new Konva.Rect({ x: xRight - 2, y: 0, width: 2, height: viewport.height, fill: '#00000044' }));
+
         // Collapse button — centered within the visible portion of the zone
         const visLeft  = Math.max(xLeft,  0);
         const visRight = Math.min(xRight, viewport.width);
         const collapseBtn = new Konva.Group({ x: (visLeft + visRight) / 2, y: 14 });
-        collapseBtn.add(new Konva.Rect({ x: -32, y: -8, width: 64, height: 16, fill: '#ffffffee', cornerRadius: 8, stroke: '#00000022', strokeWidth: 1 }));
-        collapseBtn.add(new Konva.Text({ x: -28, y: -6, text: '⟨ collapse ⟩', fill: '#222222', fontSize: 10 }));
+        collapseBtn.add(new Konva.Rect({ x: -32, y: -8, width: 64, height: 16, fill: '#00000088', cornerRadius: 8, stroke: '#00000033', strokeWidth: 1 }));
+        collapseBtn.add(new Konva.Text({ x: -28, y: -6, text: '⟨ collapse ⟩', fill: '#ffffff', fontSize: 10 }));
         collapseBtn.on('click', () => toggleRange(r.Id));
         collapseBtn.on('mouseenter', () => { document.body.style.cursor = 'pointer'; });
         collapseBtn.on('mouseleave', () => { document.body.style.cursor = 'default'; });
@@ -1028,6 +1035,18 @@ function findNearestTick(positive: boolean): number {
 	return (currentIndex + (positive ? 1 : -1)) * frac;
 }
 
+function skipHiddenRange(targetYear: number, positive: boolean): number {
+	const hit = getActiveRanges().find(r => targetYear > r.StartYear && targetYear < r.EndYear);
+	if (!hit) return targetYear;
+	const frac = viewport.lodStepFraction;
+	// Land on the first tick STRICTLY outside the range so the NOW line
+	// aligns with a tick mark rather than sitting at the boundary year
+	// (which is BREAK_TICKS ticks away from the nearest real tick in visual space).
+	return positive
+		? (Math.floor(hit.EndYear / frac) + 1) * frac
+		: (Math.ceil(hit.StartYear / frac) - 1) * frac;
+}
+
 // --- INITIALIZATION ---
 onMounted(() => {
     let block_index = 1;
@@ -1268,12 +1287,16 @@ onMounted(() => {
 		if (e.deltaY) {
 			const positive = e.deltaY < 0;
 			if (e.shiftKey) {
-				findNextFullYear(viewport.centerTime, positive);
+				const raw = viewport.lodStepFraction < 1
+					? (positive ? Math.floor(viewport.centerTime) + 1 : Math.ceil(viewport.centerTime) - 1)
+					: findNearestTick(positive);
+				jumpToYear(skipHiddenRange(raw, positive));
 			} else {
-				jumpToYear(findNearestTick(positive));
+				jumpToYear(skipHiddenRange(findNearestTick(positive), positive));
 			}
 		} else if (e.deltaX) {
-			jumpToYear(findNearestTick(e.deltaX > 0));
+			const positive = e.deltaX > 0;
+			jumpToYear(skipHiddenRange(findNearestTick(positive), positive));
 		}
     });
 
