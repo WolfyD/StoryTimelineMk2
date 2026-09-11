@@ -104,30 +104,31 @@ export const buildNode = (
 	const handleHoverEnter = () => {
         document.body.style.cursor = 'pointer';
         if (typeName === "Age" || typeName === "Period") {
-            // Grow vertically by 30%
             elements.box.to({ scaleY: 1.3, duration: 0.15, easing: Konva.Easings.EaseOut });
         } else if (layoutSettings.TimelineEventHasHoverHighlight) {
-            // Glow effect
-            elements.box.to({
-                shadowColor: layoutSettings.TimelineEventHoverColor || '#ffffff',
-                shadowBlur: 15, shadowOpacity: 1, duration: 0.15, easing: Konva.Easings.EaseOut
-            });
-			elements.stem.to({
-				shadowColor: layoutSettings.TimelineEventHoverColor || '#ffffff',
-                shadowBlur: 15, shadowOpacity: 1, duration: 0.15, easing: Konva.Easings.EaseOut
-			});
+            const hoverColor = layoutSettings.TimelineEventHoverColor || '#ffffff';
+            // Box: bake shadow into a cached bitmap — paid once, drawn as a cheap blit on every subsequent redraw
+            elements.box.shadowColor(hoverColor);
+            elements.box.shadowBlur(8);
+            elements.box.shadowOpacity(1);
+            elements.box.cache({ padding: 10 });
+            // Stem: stroke highlight — line points change on pan so it can't be safely cached
+            elements.stem.stroke(hoverColor);
+            elements.stem.strokeWidth(3);
+            elements.box.getLayer()?.batchDraw();
         }
     };
 
     const handleHoverLeave = () => {
         document.body.style.cursor = 'default';
         if (typeName === "Age" || typeName === "Period") {
-            // Reset scale
             elements.box.to({ scaleY: 1, duration: 0.15, easing: Konva.Easings.EaseOut });
-        } else {
-            // Reset glow
-            elements.box.to({ shadowBlur: 0, duration: 0.15, easing: Konva.Easings.EaseOut });
-            elements.stem.to({ shadowBlur: 0, duration: 0.15, easing: Konva.Easings.EaseOut });
+        } else if (layoutSettings.TimelineEventHasHoverHighlight) {
+            elements.box.clearCache();
+            elements.box.shadowBlur(0);
+            elements.stem.stroke(layoutSettings.TimelineEventBorderColor);
+            elements.stem.strokeWidth(2);
+            elements.box.getLayer()?.batchDraw();
         }
     };
 

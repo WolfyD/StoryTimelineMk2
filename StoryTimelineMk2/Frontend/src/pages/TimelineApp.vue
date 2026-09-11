@@ -166,8 +166,10 @@ function onHotkey(e: KeyboardEvent) {
     }
 }
 
-onMounted(() => {
+onMounted(async () => {
 	HandleLoadTimeline();
+	const cfg = await BackendAPI.GetAppConfig();
+	if (cfg) store.setPerformantPanning(cfg.performantPanning ?? true);
 	// addEventListener (not window.onresize =) so nothing else gets clobbered
 	// and the handler can be removed symmetrically on unmount.
 	window.addEventListener('resize', handleResizeEvent)

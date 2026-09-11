@@ -58,6 +58,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const notesDistanceTab = ref<'notes' | 'distance'>('notes');
 	const viewportWidthPx = ref<number>(0); // pixel width of the main timeline canvas, used by minimap
 	const pulseItemId = ref<string | null>(null);
+	const performantPanning = ref<boolean>(true);
 	let _undoTimer: ReturnType<typeof setTimeout> | null = null;
 	let _pulseTimer: ReturnType<typeof setTimeout> | null = null;
 	//const konvaItems = ref<KonvaGroupObject[]>([]);
@@ -284,6 +285,10 @@ export const useTimelineStore = defineStore('timeline', () => {
 		lastDeleted.value = null;
 	}
 
+	function setPerformantPanning(value: boolean) {
+		performantPanning.value = value;
+	}
+
 	async function setFilterRuleState(id: string, state: FilterState) {
 		const idx = filterRules.value.findIndex(r => r.Id === id);
 		if (idx < 0) return;
@@ -448,14 +453,14 @@ export const useTimelineStore = defineStore('timeline', () => {
 		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
-		pulseItemId,
+		pulseItemId, performantPanning,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
 		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setHiddenRanges, setLayoutSettings,
 		pulseItem,
 		addNote, updateNote, removeNote,
-		setLastDeleted, clearLastDeleted,
+		setLastDeleted, clearLastDeleted, setPerformantPanning,
 		setFilterRuleState, upsertFilterRule, deleteFilterRule, clearAllFilters,
 		setFilterAndMode, setFilterDisplayMode, setFilterPanelOpen,
 		loadFilterPresets, saveFilterPreset, loadFilterPreset, deleteFilterPreset,

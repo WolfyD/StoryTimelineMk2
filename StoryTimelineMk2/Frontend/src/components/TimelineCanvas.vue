@@ -24,7 +24,7 @@ const boundaryEndPx   = ref<number | null>(null);
 
 let localYearCache = store.currentNowYear;
 let stage: Stage | null = null;
-let _fpsInterval: ReturnType<typeof setInterval> | null = null;
+let _fpsRafId: number | null = null;
 let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 let _keyupHandler:   ((e: KeyboardEvent) => void) | null = null;
 let _mouseupHandler: (() => void) | null = null;
@@ -32,10 +32,13 @@ let _jumpRafId: number | null = null;
 
 const gridLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
+uiLayer.hitGraphEnabled(false);
 const itemLayer = new Konva.Layer();
 const boundaryOverlayLayer = new Konva.Layer();
 const cursorLayer = new Konva.Layer();
+cursorLayer.hitGraphEnabled(false);
 const tooltipLayer = new Konva.Layer();
+tooltipLayer.hitGraphEnabled(false);
 
 let tooltipLabel: Konva.Label | null = null;
 
@@ -49,9 +52,8 @@ function measureW(text: string, px: number): number {
     return _mc.measureText(text).width;
 }
 
-let lastFrameTime = performance.now();
-let frameCount = 0;
-let fpsSum = 0;
+let _fpsFrameCount = 0;
+let _fpsWindowStart = 0;
 
 const props = defineProps<{
     timelineItems: TimelineItem[] | null,
@@ -84,10 +86,12 @@ const lockedLanes = new Map<string, LaneLock>();
 const expandedRangeIds = new Set<number>();
 const getActiveRanges = () => store.hiddenRanges.filter(r => !expandedRangeIds.has(r.Id));
 
-// Pan transform state: layers are translated by panDrift px on each drag frame;
-// a full re-render happens every DRIFT_THRESHOLD px. GRID_EXTRA_PX is pre-rendered
-// beyond the viewport on each side so the buffer never runs out between re-renders.
-let panDrift = 0;
+// Pan state: gridPanOffset tracks how far we've panned since the last full grid rebuild.
+// When it exceeds DRIFT_THRESHOLD, the grid ticks are stale and we rebuild them.
+// Between rebuilds, only renderWithDimming() is called (fast: position updates + batchDraw).
+// GRID_EXTRA_PX is how many extra pixels of grid ticks are rendered beyond the viewport
+// on each side so panning a bit doesn't immediately hit an empty area.
+let gridPanOffset = 0;
 const DRIFT_THRESHOLD = 300;
 const GRID_EXTRA_PX   = 500;
 const toggleRange = (id: number) => {
@@ -302,10 +306,16 @@ watch(() => store.items, (items) => {
     }
 }, { deep: false });
 
-// Re-render when the active filter or display mode changes
-watch([() => props.timelineItems, () => store.filterDisplayMode, () => store.dimmableItems], () => {
+// Re-render when the visible item set changes (lane positions may change)
+watch(() => props.timelineItems, () => {
     if (!stage || !props.layoutSettings) return;
     lockedLanes.clear();
+    renderWithDimming(props.layoutSettings);
+}, { deep: false });
+
+// Re-render when only dimming/display-mode changes (items stay in the same lanes)
+watch([() => store.filterDisplayMode, () => store.dimmableItems], () => {
+    if (!stage || !props.layoutSettings) return;
     renderWithDimming(props.layoutSettings);
 }, { deep: false });
 
@@ -362,7 +372,7 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
 
 // --- RENDER LOOPS ---
 const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
-    panDrift = 0;
+    gridPanOffset = 0;
     layer.x(0);
     boundaryOverlayLayer.x(0);
     layer.destroyChildren();
@@ -418,10 +428,10 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         const x = getXFromTime(cleanTime, viewport.centerTime, step, viewport.width, store.layoutSettings!, ranges);
         const formatter = store.activeFormatRegistry[currentLod.formatKey] || store.activeFormatRegistry['YEARS'];
 
-        const tick = new Konva.Line({ points: [x, viewport.height / 2 - 10, x, viewport.height / 2 + 10], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth });
+        const tick = new Konva.Line({ points: [x, viewport.height / 2 - 10, x, viewport.height / 2 + 10], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth, listening: false });
         const text = new Konva.Text({ x: x - 50, y: viewport.height / 2 + 15,
             text: formatter(year, fraction), fill: layoutSettings.TimelineTickMarkerTextColor, align: 'center',
-            width: 100, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily });
+            width: 100, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, listening: false });
 
         layer.add(tick, text);
     }
@@ -432,12 +442,12 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         const xStart = getXFromTime(r.StartYear, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
         if (xStart + stripPx < 0 || xStart > viewport.width) continue;
 
-        layer.add(new Konva.Rect({ x: xStart, y: 0, width: stripPx, height: viewport.height, fill: '#00000066' }));
-        layer.add(new Konva.Rect({ x: xStart, y: 0, width: 2, height: viewport.height, fill: '#ffffff44' }));
-        layer.add(new Konva.Rect({ x: xStart + stripPx - 2, y: 0, width: 2, height: viewport.height, fill: '#ffffff44' }));
+        layer.add(new Konva.Rect({ x: xStart, y: 0, width: stripPx, height: viewport.height, fill: '#00000066', listening: false }));
+        layer.add(new Konva.Rect({ x: xStart, y: 0, width: 2, height: viewport.height, fill: '#ffffff44', listening: false }));
+        layer.add(new Konva.Rect({ x: xStart + stripPx - 2, y: 0, width: 2, height: viewport.height, fill: '#ffffff44', listening: false }));
 
         const label = r.Label || `${r.StartYear} – ${r.EndYear}`;
-        layer.add(new Konva.Text({ x: xStart, y: viewport.height / 2 + 18, text: label, fill: '#ffffffaa', fontSize: 10, width: stripPx, align: 'center', fontStyle: 'italic' }));
+        layer.add(new Konva.Text({ x: xStart, y: viewport.height / 2 + 18, text: label, fill: '#ffffffaa', fontSize: 10, width: stripPx, align: 'center', fontStyle: 'italic', listening: false }));
 
         // Expand button — centered on the strip, near the top
         const expandBtn = new Konva.Group({ x: xStart + stripPx / 2, y: 14 });
@@ -456,7 +466,7 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         if (xRight < 0 || xLeft > viewport.width) continue;
 
         const zoneWidth = Math.max(xRight - xLeft, 0);
-        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: zoneWidth, height: viewport.height, fill: '#0000000a' }));
+        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: zoneWidth, height: viewport.height, fill: '#0000000a', listening: false }));
 
         // Faint diagonal stripe pattern across the whole zone
         const clampedLeft  = Math.max(xLeft, 0);
@@ -476,8 +486,8 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
             layer.add(stripeGroup);
         }
 
-        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: 2, height: viewport.height, fill: '#00000044' }));
-        layer.add(new Konva.Rect({ x: xRight - 2, y: 0, width: 2, height: viewport.height, fill: '#00000044' }));
+        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: 2, height: viewport.height, fill: '#00000044', listening: false }));
+        layer.add(new Konva.Rect({ x: xRight - 2, y: 0, width: 2, height: viewport.height, fill: '#00000044', listening: false }));
 
         // Collapse button — centered within the visible portion of the zone
         const visLeft  = Math.max(xLeft,  0);
@@ -560,7 +570,6 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
 };
 
 const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>) => {
-    panDrift = 0;
     itemLayer.x(0);
     const screenBuffer = 400;
     const activeItemIds = new Set();
@@ -1012,20 +1021,14 @@ const updateCurrentYearInStore = () => {
     }
 };
 
-function trackFps() {
-    const now = performance.now();
-    const deltaTime = now - lastFrameTime;
-    lastFrameTime = now;
-
-    if (deltaTime <= 0) return;
-    fpsSum += 1000 / deltaTime;
-    frameCount++;
-
-    if (frameCount >= 100) {
-        store.setFpsDisplay(Math.round(fpsSum / frameCount));
-        frameCount = 0;
-        fpsSum = 0;
+function trackFps(now: number) {
+    if (_fpsFrameCount === 0) _fpsWindowStart = now;
+    _fpsFrameCount++;
+    if (now - _fpsWindowStart >= 1000) {
+        store.setFpsDisplay(Math.round(_fpsFrameCount * 1000 / (now - _fpsWindowStart)));
+        _fpsFrameCount = 0;
     }
+    _fpsRafId = requestAnimationFrame(trackFps);
 }
 
 function animateJumpToYear(targetYear: number, durationMs: number = 600) {
@@ -1130,6 +1133,7 @@ onMounted(() => {
 		stage.add(itemLayer);
 	}
     stage.add(boundaryOverlayLayer); // above items
+
 
     // Tooltip layer sits above everything
     tooltipLabel = new Konva.Label({ opacity: 0.92, listening: false });
@@ -1284,17 +1288,15 @@ onMounted(() => {
             ));
             lastPointerX = pos.x;
 
-            panDrift += deltaX;
-            if (Math.abs(panDrift) > DRIFT_THRESHOLD) {
+            gridPanOffset += deltaX;
+            if (!store.performantPanning || Math.abs(gridPanOffset) > DRIFT_THRESHOLD) {
+                // Full re-render: grid ticks are stale, or performant mode is off
                 renderGrid(gridLayer, props.layoutSettings!);
                 renderWithDimming(props.layoutSettings!);
             } else {
-                gridLayer.x(panDrift);
-                itemLayer.x(panDrift);
-                boundaryOverlayLayer.x(panDrift);
-                gridLayer.batchDraw();
-                itemLayer.batchDraw();
-                boundaryOverlayLayer.batchDraw();
+                // Items update every frame (fast: position math + batchDraw).
+                // Grid stays put — rebuilt only when gridPanOffset exceeds DRIFT_THRESHOLD.
+                renderWithDimming(props.layoutSettings!);
             }
             hideTooltip();
             updateCurrentYearInStore();
@@ -1359,11 +1361,11 @@ onMounted(() => {
     // Always set the initial year and visible count after all startup renders
     store.setNowYear(Math.floor(viewport.centerTime));
 
-    _fpsInterval = window.setInterval(trackFps, 20);
+    _fpsRafId = requestAnimationFrame(trackFps);
 });
 
 onBeforeUnmount(() => {
-    if (_fpsInterval !== null) clearInterval(_fpsInterval);
+    if (_fpsRafId !== null) cancelAnimationFrame(_fpsRafId);
     if (_jumpRafId !== null) { cancelAnimationFrame(_jumpRafId); _jumpRafId = null; }
     if (_keydownHandler) window.removeEventListener('keydown', _keydownHandler);
     if (_keyupHandler)   window.removeEventListener('keyup',   _keyupHandler);

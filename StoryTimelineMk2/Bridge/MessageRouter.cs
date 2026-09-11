@@ -134,8 +134,9 @@ namespace StoryTimelineMk2.Bridge
                 case "ResetLayoutPreset":       HandleResetLayoutPreset(message); break;
 
                 // App-level settings
-                case "GetAppConfig":      HandleGetAppConfig(message); break;
-                case "SaveChromeTheme":   HandleSaveChromeTheme(message); break;
+                case "GetAppConfig":           HandleGetAppConfig(message); break;
+                case "SaveChromeTheme":        HandleSaveChromeTheme(message); break;
+                case "SavePerformantPanning":  HandleSavePerformantPanning(message); break;
                 case "BrowseDataFolder":  HandleBrowseDataFolder(message); break;
                 case "SetDataRoot":     HandleSetDataRoot(message); break;
                 case "MoveDataFolder":  HandleMoveDataFolder(message); break;
@@ -1030,12 +1031,21 @@ namespace StoryTimelineMk2.Bridge
             var cfg = AppConfig.Instance;
             ReplyToVue(message.MessageId, new
             {
-                DataRoot         = cfg.DataRoot,
-                DbPath           = cfg.GetDbPath(),
-                MediaFolder      = cfg.GetMediaFolder(),
-                chromeTheme      = cfg.ChromeTheme,
-                themeInitialized = cfg.ThemeInitialized,
+                DataRoot          = cfg.DataRoot,
+                DbPath            = cfg.GetDbPath(),
+                MediaFolder       = cfg.GetMediaFolder(),
+                chromeTheme       = cfg.ChromeTheme,
+                themeInitialized  = cfg.ThemeInitialized,
+                performantPanning = cfg.PerformantPanning,
             });
+        }
+
+        private void HandleSavePerformantPanning(BridgeMessage message)
+        {
+            var value = message.Payload.GetProperty("value").GetBoolean();
+            AppConfig.Instance.PerformantPanning = value;
+            AppConfig.Instance.Save();
+            ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
         private void HandleSaveChromeTheme(BridgeMessage message)

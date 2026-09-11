@@ -192,11 +192,15 @@ export const BackendAPI = {
 	},
 
 	async GetAppConfig() {
-		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string; chromeTheme: ChromeTheme; themeInitialized: boolean }>('GetAppConfig', {});
+		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string; chromeTheme: ChromeTheme; themeInitialized: boolean; performantPanning: boolean }>('GetAppConfig', {});
 	},
 
 	async SaveChromeTheme(theme: ChromeTheme) {
 		return await this.request<{ status: string }>('SaveChromeTheme', theme);
+	},
+
+	async SavePerformantPanning(value: boolean) {
+		return await this.request<{ status: string }>('SavePerformantPanning', { value });
 	},
 
 	async BrowseDataFolder() {

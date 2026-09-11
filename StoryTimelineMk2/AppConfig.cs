@@ -92,6 +92,9 @@ namespace StoryTimelineMk2
         [JsonPropertyName("themeInitialized")]
         public bool ThemeInitialized { get; set; } = false;
 
+        [JsonPropertyName("performantPanning")]
+        public bool PerformantPanning { get; set; } = true;
+
         public static string DefaultDataRoot => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "StoryTimelineMk2_Data");

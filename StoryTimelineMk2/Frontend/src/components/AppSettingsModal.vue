@@ -3,8 +3,10 @@ import { ref, onMounted } from 'vue'
 import { PhX, PhFolderOpen, PhArrowSquareOut, PhCopy, PhFloppyDisk, PhPaintBrush } from '@phosphor-icons/vue'
 import { BackendAPI } from '@/bridge/api'
 import AppThemeModal from './AppThemeModal.vue'
+import { useTimelineStore } from '@/stores/timelineStore'
 
 const emit = defineEmits<{ close: []; refresh: [] }>()
+const store = useTimelineStore()
 
 const showThemeModal = ref(false)
 const currentRoot = ref('')
@@ -12,11 +14,21 @@ const pendingPath = ref('')
 const includeMedia = ref(true)
 const isBusy = ref(false)
 const feedback = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
+const performantPanning = ref(true)
 
 onMounted(async () => {
     const cfg = await BackendAPI.GetAppConfig()
-    if (cfg) currentRoot.value = cfg.DataRoot
+    if (cfg) {
+        currentRoot.value = cfg.DataRoot
+        performantPanning.value = cfg.performantPanning ?? true
+    }
 })
+
+async function togglePerformantPanning(value: boolean) {
+    performantPanning.value = value
+    store.setPerformantPanning(value)
+    await BackendAPI.SavePerformantPanning(value)
+}
 
 function showFeedback(type: 'success' | 'error', msg: string) {
     feedback.value = { type, msg }
@@ -96,6 +108,20 @@ async function createBackup() {
                         <PhPaintBrush :size="14" />
                         Open theme settings…
                     </button>
+                </section>
+
+                <!-- ── Performance ── -->
+                <section class="settings-section">
+                    <h4 class="section-label">Performance</h4>
+                    <label class="toggle-label">
+                        <input type="checkbox" :checked="performantPanning" @change="togglePerformantPanning(($event.target as HTMLInputElement).checked)" />
+                        Performant panning
+                    </label>
+                    <p class="hint">
+                        When enabled, only items are redrawn on each drag frame — grid tick marks
+                        rebuild only every 300 px of pan. Disable for a full redraw on every frame
+                        (slower, but may help if you notice visual glitches during panning).
+                    </p>
                 </section>
 
                 <!-- ── Data Folder ── -->
