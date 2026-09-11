@@ -118,6 +118,10 @@ namespace StoryTimelineMk2.Database
                     SELECT {timelineCols} FROM BackupDb.timelines
                     ON CONFLICT(id) DO UPDATE SET {timelineAssigns};", transaction: tx);
 
+                // 1.5. LOD Profiles — must come before calendars (calendars.lod_profile_id FK)
+                if (TableExistsInBackup(dbTarget, tx, "lod_profiles"))
+                    dbTarget.Execute("INSERT OR REPLACE INTO main.lod_profiles SELECT * FROM BackupDb.lod_profiles", transaction: tx);
+
                 // 2. Calendars
                 dbTarget.Execute(@"
                     INSERT INTO main.calendars (id, name, short_name, alternate_name, name_before_0, name_after_0, lod_profile_id, year_definition)
@@ -199,6 +203,22 @@ namespace StoryTimelineMk2.Database
                 bool hasAppearances = TableExistsInBackup(dbTarget, tx, "item_character_appearances");
                 if (hasAppearances)
                     dbTarget.Execute("INSERT OR IGNORE INTO main.item_character_appearances SELECT * FROM BackupDb.item_character_appearances", transaction: tx);
+
+                bool hasLayoutSettings = TableExistsInBackup(dbTarget, tx, "layout_settings");
+                if (hasLayoutSettings)
+                    dbTarget.Execute("INSERT OR REPLACE INTO main.layout_settings SELECT * FROM BackupDb.layout_settings", transaction: tx);
+
+                bool hasHiddenRanges = TableExistsInBackup(dbTarget, tx, "timeline_hidden_ranges");
+                if (hasHiddenRanges)
+                    dbTarget.Execute("INSERT OR REPLACE INTO main.timeline_hidden_ranges SELECT * FROM BackupDb.timeline_hidden_ranges", transaction: tx);
+
+                bool hasFilterPresets = TableExistsInBackup(dbTarget, tx, "filter_presets");
+                if (hasFilterPresets)
+                    dbTarget.Execute("INSERT OR REPLACE INTO main.filter_presets SELECT * FROM BackupDb.filter_presets", transaction: tx);
+
+                bool hasFilterRules = TableExistsInBackup(dbTarget, tx, "timeline_filter_rules");
+                if (hasFilterRules)
+                    dbTarget.Execute("INSERT OR REPLACE INTO main.timeline_filter_rules SELECT * FROM BackupDb.timeline_filter_rules", transaction: tx);
 
                 // 9. Settings
                 dbTarget.Execute(@"

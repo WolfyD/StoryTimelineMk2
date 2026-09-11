@@ -795,3 +795,92 @@ data). The exact toggle mechanism for the side panel is out of scope for this it
 - Exact pixel budget per layer (Age bar height, Period bar height, axis height, pin area).
 - Whether the hover tooltip is a Konva label or a DOM overlay (DOM is easier to theme).
 - Whether a "side panel" toggle lives in the activity strip or is a separate affordance.
+
+---
+
+## [BL-33] Session changes export and import collision screen
+
+**Status:** Pending — nice-to-have, defer to post-v2.0.
+
+### Session changes export
+
+A per-session diff export that captures every insert, update, and delete made to a single
+timeline during one open-to-close session. The resulting file (`.stlc` — StoryTimeline
+Changes) can be handed to a co-writer, who applies it to their own copy of the same timeline.
+
+**Mechanism (preferred approach — no triggers):**
+
+At session open, snapshot the timeline's item rows into a temp table. On export, diff current
+state against the snapshot:
+
+```text
+op=insert  → row exists now, did not exist in snapshot
+op=update  → row exists in both, differs
+op=delete  → row existed in snapshot, no longer exists
+```
+
+The resulting change file carries the full row for inserts/updates, and just the ID + `"delete"`
+marker for removals. Applying it on the receiving side: upsert inserts/updates, hard-delete
+deleteds. Scope: items, item_tags, item_story_refs, item_character_appearances. Not timelines
+or settings (those are per-installation, not per-session changes).
+
+**Alternative (trigger-based):** `AFTER INSERT / UPDATE / BEFORE DELETE` triggers write
+`(table, row_id, op, ts)` rows to a `change_log` table. Higher write overhead, richer
+intra-session granularity (every individual edit recorded, not just net result). Prefer the
+snapshot diff approach unless replay fidelity becomes important.
+
+### Import collision screen
+
+When applying a session changes file, detect rows where `op=update` or `op=delete` and the
+local copy was also modified since the session export timestamp. Present a simple side-by-side
+comparison (incoming vs local) with per-item radio buttons: **Keep incoming / Keep local /
+Skip**. Default: keep incoming (last write wins). A "Select all incoming" / "Select all local"
+bulk toggle keeps the flow fast for users who just want to accept everything.
+
+This screen applies equally to any future import path that involves per-item merging (not just
+session changes).
+
+---
+
+## [BL-34] In-app manual / help system
+
+**Status:** Pending — important but not urgent, defer to post-v2.0.
+
+A tabbed, searchable in-app manual covering every module. Accessible via a Help button in the
+main toolbar and a `?` button in each major panel (deep-links to the relevant tab).
+
+### Structure
+
+One top-level tab per module:
+
+| Tab | Covers |
+| --- | --- |
+| Getting started | Installation, first timeline, key concepts |
+| Timelines | Creating, editing, calendar settings, layout settings |
+| Items | Events, periods, ages, notes, bookmarks, pictures |
+| Characters | Character cards, relationships, appearances |
+| Stories & books | Story/book/chapter linking, cross-references |
+| Canvas | Zoom, pan, LOD, filters, minimap, performant panning |
+| Export & backup | All four export types, import behaviour, backup schedule |
+| Keyboard shortcuts | Full reference table |
+| Changelog | Version history, notable changes |
+
+### Content format
+
+Markdown rendered inside a scrollable panel (same WebView2 surface, a new HTML entry point
+`help.html`). Source files live in `Frontend/src/help/` — one `.md` per tab, compiled into
+the Vue bundle at build time. This keeps the help content version-controlled and diffable
+alongside the feature code that it documents.
+
+### Search
+
+A single text input searches across all tab content. Matches highlight inline; the tab
+containing the most matches activates first.
+
+### Deep-linking
+
+Each section header has an anchor. The `?` buttons in individual panels send
+`OpenHelp({ tab: 'canvas', anchor: 'lod' })` through the bridge, which opens the help window
+and scrolls to the right section.
+
+---
