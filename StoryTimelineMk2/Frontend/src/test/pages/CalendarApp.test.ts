@@ -6,6 +6,7 @@ vi.mock('@/bridge/api', () => ({
     BackendAPI: {
         GetCalendarById: vi.fn().mockResolvedValue(null),
         SaveCalendar: vi.fn().mockResolvedValue({ status: 'ok' }),
+        GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
         send: vi.fn(),
         request: vi.fn(),
     },

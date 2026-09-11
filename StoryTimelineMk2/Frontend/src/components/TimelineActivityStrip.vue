@@ -106,7 +106,7 @@ const navItems = [
 }
 
 .strip-btn--filter {
-	margin-top: 27px;
+	margin-top: 21px;
 }
 
 .strip-separator {

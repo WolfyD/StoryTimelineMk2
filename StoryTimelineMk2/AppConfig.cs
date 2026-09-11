@@ -82,6 +82,7 @@ namespace StoryTimelineMk2
 
         private static AppConfig? _instance;
         private static readonly object _lock = new();
+        private static bool _dataRootFromEnv = false;
 
         [JsonPropertyName("dataRoot")]
         public string DataRoot { get; set; } = DefaultDataRoot;
@@ -94,6 +95,12 @@ namespace StoryTimelineMk2
 
         [JsonPropertyName("performantPanning")]
         public bool PerformantPanning { get; set; } = true;
+
+        [JsonPropertyName("backupInterval")]
+        public string BackupInterval { get; set; } = "never"; // "never" | "daily" | "weekly"
+
+        [JsonPropertyName("lastAutoBackupAt")]
+        public DateTime? LastAutoBackupAt { get; set; } = null;
 
         public static string DefaultDataRoot => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -116,7 +123,10 @@ namespace StoryTimelineMk2
             // without touching the user's real config.json.
             string? envRoot = Environment.GetEnvironmentVariable("STORYTIMELINE_DATA_ROOT");
             if (!string.IsNullOrEmpty(envRoot))
+            {
+                _dataRootFromEnv = true;
                 return new AppConfig { DataRoot = envRoot };
+            }
 
             try
             {
@@ -146,13 +156,27 @@ namespace StoryTimelineMk2
 
         public void Save()
         {
-            Directory.CreateDirectory(_configDir);
-            File.WriteAllText(_configPath, JsonSerializer.Serialize(this,
-                new JsonSerializerOptions { WriteIndented = true }));
+            // Never persist a DataRoot that came from the env var — it would corrupt
+            // the user's real config.json and point the app at the test folder after
+            // the E2E session ends.
+            string savedDataRoot = DataRoot;
+            if (_dataRootFromEnv)
+                DataRoot = DefaultDataRoot;
+            try
+            {
+                Directory.CreateDirectory(_configDir);
+                File.WriteAllText(_configPath, JsonSerializer.Serialize(this,
+                    new JsonSerializerOptions { WriteIndented = true }));
+            }
+            finally
+            {
+                DataRoot = savedDataRoot;
+            }
         }
 
         public string GetDbPath() => Path.Combine(DataRoot, "timeline.sqlite");
         public string GetMediaFolder() => Path.Combine(DataRoot, "Media");
+        public string GetBackupsFolder() => Path.Combine(DataRoot, "backups");
         public string GetConnectionString() => $"Data Source={GetDbPath()}";
     }
 }

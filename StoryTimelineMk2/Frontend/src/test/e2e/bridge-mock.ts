@@ -13,8 +13,8 @@ import type { Page } from '@playwright/test'
  * `setTimeout(0)` so the callback fires after the current call stack unwinds,
  * matching the async nature of real bridge I/O.
  */
-export async function injectBridgeMock(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+export async function injectBridgeMock(page: Page, overrides: Record<string, unknown> = {}): Promise<void> {
+  await page.addInitScript((overridesArg: Record<string, unknown>) => {
     // ------------------------------------------------------------------ //
     // Mock data table — keyed by action name
     // ------------------------------------------------------------------ //
@@ -422,6 +422,42 @@ export async function injectBridgeMock(page: Page): Promise<void> {
       GetLayoutSettingsById: { status: 'ok' },
       CreateLayoutPreset: { status: 'ok' },
       SaveLayoutSettings: { status: 'ok' },
+
+      // Import / export / backup actions
+      BrowseAndPreviewImport: {
+        sourcePath: 'C:/test/export.sqlite',
+        isV2: true,
+        timelineCount: 1,
+        itemCount: 42,
+        conflictingTimelines: [],
+      },
+      ExecuteImportDB: { status: 'ok' },
+      ExportFullDB: { status: 'ok', path: 'C:/test/export.sqlite' },
+      GetBackupSettings: {
+        interval: 'weekly',
+        maxBackups: 5,
+        includeMedia: false,
+        recentBackups: [],
+      },
+      SaveBackupSettings: { status: 'ok' },
+      OpenBackupsFolder: { status: 'ok' },
+      BrowseAndPreviewTimelineImport: {
+        sourcePath: 'C:/test/timeline.zip',
+        timelineTitle: 'Test Timeline',
+        includeIds: false,
+        hasMedia: false,
+        itemCount: 15,
+        mediaCount: 0,
+        hasConflict: false,
+        conflictingTimelineTitle: null,
+        timelineId: null,
+      },
+      ImportTimeline: { status: 'ok' },
+    }
+
+    // Apply per-test overrides
+    if (overridesArg) {
+      Object.assign(MOCK_RESPONSES, overridesArg)
     }
 
     // ------------------------------------------------------------------ //

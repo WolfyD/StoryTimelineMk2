@@ -141,7 +141,15 @@ namespace StoryTimelineMk2.Bridge
                 case "SetDataRoot":     HandleSetDataRoot(message); break;
                 case "MoveDataFolder":  HandleMoveDataFolder(message); break;
                 case "OpenDataFolder":  HandleOpenDataFolder(message); break;
-                case "CreateBackup":    HandleCreateBackup(message); break;
+                case "CreateBackup":                HandleCreateBackup(message); break;
+                case "ExportFullDB":                HandleExportFullDB(message); break;
+                case "BrowseAndPreviewImport":      HandleBrowseAndPreviewImport(message); break;
+                case "ExecuteImportDB":             HandleExecuteImportDB(message); break;
+                case "GetBackupSettings":           HandleGetBackupSettings(message); break;
+                case "SaveBackupSettings":          HandleSaveBackupSettings(message); break;
+                case "OpenBackupsFolder":           HandleOpenBackupsFolder(message); break;
+                case "BrowseAndPreviewTimelineImport": HandleBrowseAndPreviewTimelineImport(message); break;
+                case "ImportTimeline":              HandleImportTimeline(message); break;
 
                 // Filter rules
                 case "GetFilterRules":      HandleGetFilterRules(message); break;
@@ -712,49 +720,36 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleExportTimeline(BridgeMessage message)
         {
-            int id          = message.Payload.GetProperty("id").GetInt32();
+            int  id         = message.Payload.GetProperty("id").GetInt32();
             bool includeIds = message.Payload.TryGetProperty("includeIds", out var ip) && ip.GetBoolean();
+            bool inclMedia  = message.Payload.TryGetProperty("includeMedia", out var im) && im.GetBoolean();
 
-            var repo        = new TimelineRepo();
-            var itemRepo    = new ItemRepo();
-            var charRepo    = new CharacterRepo();
-            var noteRepo    = new NoteRepo();
-            var tagRepo     = new TagRepo();
-
-            var timeline    = repo.GetTimelineById(id);
-            var items       = itemRepo.GetItemsByTimeline(id).ToList();
-            var characters  = charRepo.GetCharactersByTimeline(id).ToList();
-            var notes       = noteRepo.GetTimelineNotes(id).ToList();
-
-            var exportData  = new
-            {
-                exportVersion   = 1,
-                exportedAt      = DateTime.UtcNow.ToString("O"),
-                includeIds,
-                timeline        = includeIds ? (object)timeline : new { timeline.Title, timeline.Author, timeline.Description, timeline.StartYear, timeline.Color },
-                items           = includeIds ? (object)items : items.Select(i => new { i.Title, i.Description, i.Content, i.Year, i.EndYear, i.AbsoluteStart, i.AbsoluteEnd, i.Color, i.Importance, TypeId = i.TypeId }),
-                characters      = includeIds ? (object)characters : characters.Select(c => new { c.Name, c.Race, c.Description }),
-                notes           = includeIds ? (object)notes : notes.Select(n => new { n.NoteContents }),
-            };
-
-            string json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
+            var timeline = new TimelineRepo().GetTimelineById(id);
+            string safeName = string.Concat(timeline.Title.Split(Path.GetInvalidFileNameChars()));
 
             using var dlg = new SaveFileDialog
             {
-                Title       = "Export Timeline",
-                Filter      = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-                FileName    = $"{timeline.Title}.json",
-                DefaultExt  = "json"
+                Title      = "Export Timeline",
+                Filter     = "Story Timeline files (*.stlm)|*.stlm|All files (*.*)|*.*",
+                FileName   = $"{safeName}.stlm",
+                DefaultExt = "stlm",
             };
 
-            if (dlg.ShowDialog() == DialogResult.OK)
-            {
-                File.WriteAllText(dlg.FileName, json);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            else
+            if (dlg.ShowDialog() != DialogResult.OK)
             {
                 ReplyToVue(message.MessageId, new { status = "cancelled" });
+                return;
+            }
+
+            try
+            {
+                TimelineExporter.ExportToZip(id, dlg.FileName, includeIds, inclMedia);
+                ReplyToVue(message.MessageId, new { status = "ok", path = dlg.FileName });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("ExportTimeline", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
 
@@ -1140,41 +1135,149 @@ namespace StoryTimelineMk2.Bridge
         private void HandleCreateBackup(BridgeMessage message)
         {
             bool includeMedia = message.Payload.TryGetProperty("includeMedia", out var im) && im.GetBoolean();
-
-            using var dialog = new FolderBrowserDialog
+            try
             {
-                Description        = "Choose backup destination folder",
-                UseDescriptionForTitle = true,
-                ShowNewFolderButton = true,
+                string path = BackupService.CreateBackup(includeMedia);
+                BackupService.PruneOldBackups();
+                ReplyToVue(message.MessageId, new { status = "ok", path });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("CreateBackup", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleExportFullDB(BridgeMessage message)
+        {
+            using var dlg = new SaveFileDialog
+            {
+                Title      = "Export full database",
+                Filter     = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
+                FileName   = $"timeline_export_{DateTime.Now:yyyyMMdd_HHmmss}.sqlite",
+                DefaultExt = "sqlite",
             };
-            if (dialog.ShowDialog() != DialogResult.OK)
+            if (dlg.ShowDialog() != DialogResult.OK)
             {
                 ReplyToVue(message.MessageId, new { status = "cancelled" });
                 return;
             }
-
             try
             {
-                string backupName = $"StoryTimeline_Backup_{DateTime.Now:yyyyMMdd_HHmmss}";
-                string backupPath = Path.Combine(dialog.SelectedPath, backupName);
-                Directory.CreateDirectory(backupPath);
-
-                string dbFile = AppConfig.Instance.GetDbPath();
-                if (File.Exists(dbFile))
-                    File.Copy(dbFile, Path.Combine(backupPath, "timeline.sqlite"), overwrite: true);
-
-                if (includeMedia)
-                {
-                    string mediaFolder = AppConfig.Instance.GetMediaFolder();
-                    if (Directory.Exists(mediaFolder))
-                        CopyDirectory(mediaFolder, Path.Combine(backupPath, "Media"));
-                }
-
-                System.Diagnostics.Process.Start("explorer.exe", backupPath);
-                ReplyToVue(message.MessageId, new { status = "ok", path = backupPath });
+                File.Copy(AppConfig.Instance.GetDbPath(), dlg.FileName, overwrite: true);
+                ReplyToVue(message.MessageId, new { status = "ok", path = dlg.FileName });
             }
             catch (Exception ex)
             {
+                Logger.Error("ExportFullDB", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleBrowseAndPreviewImport(BridgeMessage message)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title  = "Select database to import",
+                Filter = "Database files|*.sqlite;*.db;*.db3;*.sql;*.sqlite3|All files|*.*",
+            };
+            if (dlg.ShowDialog() != DialogResult.OK)
+            {
+                ReplyToVue(message.MessageId, new { status = "cancelled" });
+                return;
+            }
+            try
+            {
+                var preview = DatabaseImporter.GetImportPreview(dlg.FileName);
+                ReplyToVue(message.MessageId, new { status = "ok", preview });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("BrowseAndPreviewImport", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleExecuteImportDB(BridgeMessage message)
+        {
+            string path = message.Payload.GetProperty("path").GetString()
+                ?? throw new Exception("Missing path parameter.");
+            try
+            {
+                DatabaseImporter.Import(path);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("ExecuteImportDB", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleGetBackupSettings(BridgeMessage message)
+        {
+            var cfg    = AppConfig.Instance;
+            var recent = BackupService.GetRecentBackups();
+            ReplyToVue(message.MessageId, new
+            {
+                interval         = cfg.BackupInterval,
+                lastAutoBackupAt = cfg.LastAutoBackupAt?.ToString("O"),
+                backupsFolder    = cfg.GetBackupsFolder(),
+                recentBackups    = recent,
+            });
+        }
+
+        private void HandleSaveBackupSettings(BridgeMessage message)
+        {
+            string interval = message.Payload.GetProperty("interval").GetString() ?? "never";
+            AppConfig.Instance.BackupInterval = interval;
+            AppConfig.Instance.Save();
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleOpenBackupsFolder(BridgeMessage message)
+        {
+            string folder = AppConfig.Instance.GetBackupsFolder();
+            Directory.CreateDirectory(folder);
+            System.Diagnostics.Process.Start("explorer.exe", folder);
+        }
+
+        private void HandleBrowseAndPreviewTimelineImport(BridgeMessage message)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title  = "Select timeline file to import",
+                Filter = "Story Timeline files (*.stlm)|*.stlm|All files (*.*)|*.*",
+            };
+            if (dlg.ShowDialog() != DialogResult.OK)
+            {
+                ReplyToVue(message.MessageId, new { status = "cancelled" });
+                return;
+            }
+            try
+            {
+                var preview = TimelineExporter.GetZipPreview(dlg.FileName);
+                ReplyToVue(message.MessageId, new { status = "ok", preview });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("BrowseAndPreviewTimelineImport", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleImportTimeline(BridgeMessage message)
+        {
+            string path = message.Payload.GetProperty("path").GetString()
+                ?? throw new Exception("Missing path parameter.");
+            try
+            {
+                TimelineExporter.ImportFromZip(path);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("ImportTimeline", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }

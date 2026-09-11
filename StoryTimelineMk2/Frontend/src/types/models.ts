@@ -402,3 +402,38 @@ export interface LayoutSettings {
 	GalleryPanelBorderColor: string;
 	GalleryPanelTextColor: string;
 }
+
+export interface ImportPreview {
+	sourcePath: string;
+	isV2: boolean;
+	timelineCount: number;
+	itemCount: number;
+	conflictingTimelines: string[];
+}
+
+export interface BackupInfo {
+	FileName: string;
+	FullPath: string;
+	CreatedAt: string;
+	SizeBytes: number;
+	HasMedia: boolean;
+}
+
+export interface BackupSettings {
+	interval: string;
+	lastAutoBackupAt: string | null;
+	backupsFolder: string;
+	recentBackups: BackupInfo[];
+}
+
+export interface TimelineImportPreview {
+	sourcePath: string;
+	timelineTitle: string;
+	includeIds: boolean;
+	hasMedia: boolean;
+	itemCount: number;
+	mediaCount: number;
+	hasConflict: boolean;
+	conflictingTimelineTitle: string | null;
+	timelineId: number | null;
+}

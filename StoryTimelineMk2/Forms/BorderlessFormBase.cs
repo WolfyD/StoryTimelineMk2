@@ -53,6 +53,12 @@ namespace StoryTimelineMk2.Forms
             // Matches the Vue title-bar gradient start colour so the side/bottom rim
             // is invisible against the dark content.
             BackColor = Color.FromArgb(6, 12, 25);   // #060c19 — matches title bar top
+
+            // Apply the embedded application icon to every window (taskbar, Alt-Tab, etc).
+            // ExtractAssociatedIcon reads the Win32 icon resource set by <ApplicationIcon>
+            // in the csproj, so swapping the .ico file is all that's needed for an update.
+            try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+            catch { /* non-fatal — fall back to the default WinForms icon */ }
         }
 
         protected override void OnHandleCreated(EventArgs e)

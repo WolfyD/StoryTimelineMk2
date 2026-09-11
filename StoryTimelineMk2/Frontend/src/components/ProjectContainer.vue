@@ -105,9 +105,9 @@ async function confirmDuplicate(newTitle: string) {
 	emit('refresh')
 }
 
-async function confirmExport(includeIds: boolean) {
+async function confirmExport(includeIds: boolean, includeMedia: boolean) {
 	if (!exportTarget.value) return
-	await BackendAPI.ExportTimeline(exportTarget.value.Id, includeIds)
+	await BackendAPI.ExportTimeline(exportTarget.value.Id, includeIds, includeMedia)
 	exportTarget.value = null
 }
 

@@ -13,6 +13,9 @@ import type {
 	FilterRule,
 	FilterPreset,
 	ChromeTheme,
+	ImportPreview,
+	BackupSettings,
+	TimelineImportPreview,
 } from '@/types/models';
 import { useTimelineStore } from '@/stores/timelineStore';
 
@@ -72,6 +75,38 @@ export const BackendAPI = {
 			console.error(`[ImportDB] ${x.message ?? 'Import failed'}`);
 		}
 		return null;
+	},
+
+	async BrowseAndPreviewImport() {
+		return await this.request<{ status: string; preview?: ImportPreview }>('BrowseAndPreviewImport', {});
+	},
+
+	async ExecuteImportDB(path: string) {
+		return await this.request<{ status: string; message?: string }>('ExecuteImportDB', { path });
+	},
+
+	async ExportFullDB() {
+		return await this.request<{ status: string; message?: string; path?: string }>('ExportFullDB', {});
+	},
+
+	async GetBackupSettings() {
+		return await this.request<BackupSettings>('GetBackupSettings', {});
+	},
+
+	async SaveBackupSettings(interval: string) {
+		return await this.request<{ status: string }>('SaveBackupSettings', { interval });
+	},
+
+	OpenBackupsFolder() {
+		this.send('OpenBackupsFolder', {});
+	},
+
+	async BrowseAndPreviewTimelineImport() {
+		return await this.request<{ status: string; preview?: TimelineImportPreview }>('BrowseAndPreviewTimelineImport', {});
+	},
+
+	async ImportTimeline(path: string) {
+		return await this.request<{ status: string; message?: string }>('ImportTimeline', { path });
 	},
 
 	async GetAllTimelines() {
@@ -148,8 +183,8 @@ export const BackendAPI = {
 		return await this.request<{ status: string }>('SaveTimelineInfo', { id, title, author, description, startYear, color, calendarId });
 	},
 
-	async ExportTimeline(id: number, includeIds: boolean) {
-		return await this.request<{ status: string }>('ExportTimeline', { id, includeIds });
+	async ExportTimeline(id: number, includeIds: boolean, includeMedia = false) {
+		return await this.request<{ status: string; path?: string }>('ExportTimeline', { id, includeIds, includeMedia });
 	},
 
 	async SaveSettings(payload: {

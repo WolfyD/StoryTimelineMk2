@@ -12,6 +12,7 @@ vi.mock('@/bridge/api', () => ({
     SaveItem: vi.fn().mockResolvedValue({ status: 'ok', itemId: 'item-id' }),
     GetItemForEdit: vi.fn().mockResolvedValue(null),
     LoadTimelineData: vi.fn().mockResolvedValue(null),
+    GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
   },
 }))
 

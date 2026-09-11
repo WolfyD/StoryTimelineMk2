@@ -3,14 +3,15 @@ import { ref } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
 
 defineProps<{ title: string }>()
-const emit = defineEmits<{ close: []; confirm: [includeIds: boolean] }>()
+const emit = defineEmits<{ close: []; confirm: [includeIds: boolean, includeMedia: boolean] }>()
 
-const includeIds = ref(false)
-const isWorking = ref(false)
+const includeIds  = ref(false)
+const includeMedia = ref(false)
+const isWorking   = ref(false)
 
 function confirm() {
     isWorking.value = true
-    emit('confirm', includeIds.value)
+    emit('confirm', includeIds.value, includeMedia.value)
 }
 </script>
 
@@ -22,16 +23,21 @@ function confirm() {
                 <button class="close-btn" @click="emit('close')"><PhX :size="18" /></button>
             </div>
             <div class="modal-body">
-                <p class="desc">Exporting <strong>{{ title }}</strong> as JSON.</p>
+                <p class="desc">Exporting <strong>{{ title }}</strong> as a <code>.stlm</code> archive.</p>
                 <label class="checkbox-row">
                     <input type="checkbox" v-model="includeIds" />
-                    <span>Include internal IDs <span class="hint">(useful for re-import)</span></span>
+                    <span>Include internal IDs <span class="hint">(allows exact restore — replaces matching timeline on import)</span></span>
                 </label>
+                <label class="checkbox-row">
+                    <input type="checkbox" v-model="includeMedia" />
+                    <span>Include media files <span class="hint">(embeds images in the archive; larger file)</span></span>
+                </label>
+                <p class="info-hint">Without IDs the timeline is always imported as a new entry, even if one with the same name exists.</p>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-cancel" @click="emit('close')">Cancel</button>
                 <button class="btn btn-primary" :disabled="isWorking" @click="confirm">
-                    {{ isWorking ? 'Exporting…' : 'Choose File & Export' }}
+                    {{ isWorking ? 'Exporting…' : 'Choose destination & export' }}
                 </button>
             </div>
         </div>
@@ -64,6 +70,7 @@ function confirm() {
     padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; color: #e2e8f0;
 }
 .desc { margin: 0; font-size: 13px; color: #94a3b8; }
+.info-hint { margin: 4px 0 0; font-size: 11px; color: #4a6080; line-height: 1.5; }
 .checkbox-row {
     display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px;
     input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: #3b6ec4; }

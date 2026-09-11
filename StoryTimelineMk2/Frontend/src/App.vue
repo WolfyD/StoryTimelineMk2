@@ -4,18 +4,22 @@
 	import WindowTitleBar from "./components/WindowTitleBar.vue";
 	import { BackendAPI } from "./bridge/api";
 	import { ref, onMounted } from "vue";
-	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear } from "@phosphor-icons/vue";
+	import { PhTrayArrowUp, PhTrayArrowDown, PhFileArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear, PhDatabase } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
 	import AppSettingsModal from './components/AppSettingsModal.vue';
 	import AuthorReminderModal from './components/AuthorReminderModal.vue';
 	import SelectCalendarModal from './components/SelectCalendarModal.vue';
 	import CalendarManagerModal from './components/CalendarManagerModal.vue';
+	import DbImportModal from './components/DbImportModal.vue';
+	import ImportTimelineModal from './components/ImportTimelineModal.vue';
+	import type { ImportPreview, TimelineImportPreview } from '@/types/models';
 	import { useAppTheme } from '@/utils/useAppTheme';
 
 	const store = useTimelineStore();
 	useAppTheme();
 
 	const newProjectOpen = ref<boolean>(false)
+	const dbMenuOpen = ref<boolean>(false)
 	const showAppSettings = ref(false)
 	const showCalendarManager = ref(false)
 	const newProjectTitle = ref('')
@@ -27,18 +31,53 @@
 	const pendingAuthor = ref('')
 	const pendingCalendarId = ref<string | null>(null)
 
+	const dbImportPreview = ref<ImportPreview | null>(null)
+	const timelineImportPreview = ref<TimelineImportPreview | null>(null)
+
 	async function HandleImportDatabase() {
-		const container = await BackendAPI.ImportDatabase();
-		if(container){
-			store.projects = container.data
+		const result = await BackendAPI.BrowseAndPreviewImport()
+		if (result?.status === 'ok' && result.preview) {
+			dbImportPreview.value = result.preview
 		}
 	}
 
-	function HandleExportDatabase() {
-		// DANGER previously lurked here: this was a copy of HandleImportDatabase,
-		// so clicking "export" ran the IMPORT flow (which can overwrite the DB).
-		// There is no ExportDB backend action yet — neutralized until one exists.
-		alert('Database export is not implemented yet.\nUse Settings → Create Backup instead.')
+	async function executeImport(path: string) {
+		const result = await BackendAPI.ExecuteImportDB(path)
+		dbImportPreview.value = null
+		if (result?.status === 'ok') {
+			await HandleGetTimelines()
+		} else {
+			const msg = result?.message ?? 'No response from the backend — check the application log.'
+			console.error('[ImportDB]', msg)
+			alert(`Database import failed:\n\n${msg}`)
+		}
+	}
+
+	async function HandleExportDatabase() {
+		await BackendAPI.ExportFullDB()
+	}
+
+	async function HandleImportTimeline() {
+		const result = await BackendAPI.BrowseAndPreviewTimelineImport()
+		if (result?.status === 'ok' && result.preview) {
+			timelineImportPreview.value = result.preview
+		}
+	}
+
+	async function executeTimelineImport(path: string) {
+		const result = await BackendAPI.ImportTimeline(path)
+		timelineImportPreview.value = null
+		if (result?.status === 'ok') {
+			await HandleGetTimelines()
+		} else {
+			const msg = result?.message ?? 'No response from the backend — check the application log.'
+			console.error('[ImportTimeline]', msg)
+			alert(`Timeline import failed:\n\n${msg}`)
+		}
+	}
+
+	function toggleDbMenu() {
+		dbMenuOpen.value = !dbMenuOpen.value
 	}
 
 	async function HandleToggleNewProject() {
@@ -116,11 +155,26 @@
 		<ProjectContainer :timelines="store.projects" @refresh="HandleGetTimelines" />
 		<div id="bottom-menu-container">
 			<div id="import-export-container">
-				<div v-on:click="HandleImportDatabase()" title="Import database">
-					<PhTrayArrowDown class="button-icon" :size="36" color="#79876b" />
-				</div>
-				<div v-on:click="HandleExportDatabase()" title="Export database (not yet implemented)">
-					<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
+				<div id="db-menu-container">
+					<div @click="toggleDbMenu" :title="dbMenuOpen ? 'Close DB menu' : 'Database'">
+						<PhDatabase
+							class="button-icon"
+							:class="{ 'db-active': dbMenuOpen }"
+							:size="36"
+							color="#79876b"
+						/>
+					</div>
+					<div id="db-expand" :class="{ open: dbMenuOpen }">
+						<div v-on:click="HandleImportDatabase()" title="Import / restore database">
+							<PhTrayArrowDown class="button-icon" :size="36" color="#79876b" />
+						</div>
+						<div v-on:click="HandleExportDatabase()" title="Export full database">
+							<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
+						</div>
+						<div v-on:click="HandleImportTimeline()" title="Import timeline (.stlm)">
+							<PhFileArrowDown class="button-icon" :size="36" color="#79876b" />
+						</div>
+					</div>
 				</div>
 				<div @click="showCalendarManager = true" title="Manage Calendars">
 					<PhCalendarBlank class="button-icon" :size="36" color="#79876b" />
@@ -165,6 +219,18 @@
 	<AuthorReminderModal v-if="showAuthorModal" @set="onAuthorResult" @skip="onAuthorResult('')" />
 	<SelectCalendarModal v-if="showCalendarModal" @selected="onCalendarSelected" @skipped="onCalendarSkipped" />
 	<CalendarManagerModal v-if="showCalendarManager" @close="showCalendarManager = false" />
+	<DbImportModal
+		v-if="dbImportPreview"
+		:preview="dbImportPreview"
+		@close="dbImportPreview = null"
+		@confirm="executeImport"
+	/>
+	<ImportTimelineModal
+		v-if="timelineImportPreview"
+		:preview="timelineImportPreview"
+		@close="timelineImportPreview = null"
+		@confirm="executeTimelineImport"
+	/>
 	</div>
 </template>
 
@@ -194,6 +260,44 @@
 		display: flex;
 		gap: 12px;
 		margin-left: 20px;
+		align-items: center;
+	}
+
+	#db-menu-container {
+		display: flex;
+		align-items: center;
+	}
+
+	#db-expand {
+		display: flex;
+		gap: 12px;
+		width: 0;
+		overflow: hidden;
+		transition: width 0.35s cubic-bezier(0.25, 1, 0.5, 1), margin-left 0.35s ease;
+		margin-left: 0;
+
+		> div {
+			opacity: 0;
+			transform: translateX(-6px);
+			transition: opacity 0.2s ease, transform 0.2s ease;
+			pointer-events: none;
+		}
+	}
+
+	#db-expand.open {
+		width: 132px;
+		margin-left: 12px;
+
+		> div {
+			opacity: 1;
+			transform: translateX(0);
+			pointer-events: auto;
+			transition-delay: 0.15s;
+		}
+	}
+
+	.db-active {
+		filter: brightness(1.4);
 	}
 
 	/* Base interactive button styling for all of them */

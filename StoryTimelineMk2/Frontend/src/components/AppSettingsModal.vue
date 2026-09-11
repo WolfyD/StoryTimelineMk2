@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { PhX, PhFolderOpen, PhArrowSquareOut, PhCopy, PhFloppyDisk, PhPaintBrush } from '@phosphor-icons/vue'
 import { BackendAPI } from '@/bridge/api'
+import type { BackupInfo } from '@/types/models'
 import AppThemeModal from './AppThemeModal.vue'
 import { useTimelineStore } from '@/stores/timelineStore'
 
@@ -16,12 +17,44 @@ const isBusy = ref(false)
 const feedback = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 const performantPanning = ref(true)
 
+const backupInterval  = ref('never')
+const backupsFolderPath = ref('')
+const recentBackups   = ref<BackupInfo[]>([])
+
+function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatDate(dateStr: string): string {
+    try {
+        const d = new Date(dateStr)
+        return d.toLocaleDateString(undefined, { year: '2-digit', month: 'short', day: 'numeric' })
+            + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    } catch { return dateStr }
+}
+
+async function loadBackupSettings() {
+    const s = await BackendAPI.GetBackupSettings()
+    if (s) {
+        backupInterval.value = s.interval ?? 'never'
+        backupsFolderPath.value = s.backupsFolder ?? ''
+        recentBackups.value = s.recentBackups ?? []
+    }
+}
+
+async function saveInterval() {
+    await BackendAPI.SaveBackupSettings(backupInterval.value)
+}
+
 onMounted(async () => {
     const cfg = await BackendAPI.GetAppConfig()
     if (cfg) {
         currentRoot.value = cfg.DataRoot
         performantPanning.value = cfg.performantPanning ?? true
     }
+    await loadBackupSettings()
 })
 
 async function togglePerformantPanning(value: boolean) {
@@ -82,7 +115,8 @@ async function createBackup() {
     const result = await BackendAPI.CreateBackup(includeMedia.value)
     isBusy.value = false
     if (result?.status === 'ok') {
-        showFeedback('success', `Backup created: ${result.path}`)
+        showFeedback('success', `Backup saved to backups folder.`)
+        await loadBackupSettings()
     } else if (result?.status !== 'cancelled') {
         showFeedback('error', result?.message ?? 'Backup failed.')
     }
@@ -170,21 +204,46 @@ async function createBackup() {
 
                 <!-- ── Backup ── -->
                 <section class="settings-section">
-                    <h4 class="section-label">Manual Backup</h4>
+                    <h4 class="section-label">Backup</h4>
+
+                    <div class="setting-row">
+                        <span class="setting-key">Auto-backup</span>
+                        <select v-model="backupInterval" @change="saveInterval" class="interval-select">
+                            <option value="never">Never</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                        </select>
+                    </div>
 
                     <label class="toggle-label">
                         <input type="checkbox" v-model="includeMedia" />
                         Include images &amp; media files
                     </label>
 
-                    <button class="btn btn-secondary mt-10" :disabled="isBusy" @click="createBackup">
-                        <PhFloppyDisk :size="15" />
-                        Create Backup…
-                    </button>
+                    <div class="backup-actions-row">
+                        <button class="btn btn-secondary" :disabled="isBusy" @click="createBackup">
+                            <PhFloppyDisk :size="15" />
+                            Create Backup Now
+                        </button>
+                        <button class="btn btn-ghost" @click="BackendAPI.OpenBackupsFolder()" title="Open backups folder in Explorer">
+                            <PhArrowSquareOut :size="14" />
+                            Open folder
+                        </button>
+                    </div>
+
+                    <template v-if="recentBackups.length">
+                        <p class="backup-list-label">Recent backups</p>
+                        <div class="recent-backups">
+                            <div v-for="b in recentBackups.slice(0, 8)" :key="b.FileName" class="backup-entry">
+                                <span class="backup-name" :title="b.FileName">{{ b.FileName }}</span>
+                                <span class="backup-meta">{{ formatBytes(b.SizeBytes) }} · {{ formatDate(b.CreatedAt) }}</span>
+                            </div>
+                        </div>
+                    </template>
 
                     <p class="hint">
-                        A timestamped folder is created at a destination you choose.
-                        The backup folder opens in Explorer when done.
+                        Backups are saved to a <code>backups/</code> folder inside your data directory.
+                        The 20 most recent are kept; older ones are pruned automatically.
                     </p>
                 </section>
 
@@ -328,6 +387,46 @@ async function createBackup() {
 }
 
 .mt-10 { margin-top: 2px; }
+
+// ── Backup section ──
+.setting-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; color: var(--app-text-muted, #94a3b8);
+}
+.setting-key { color: var(--app-text-muted, #94a3b8); }
+.interval-select {
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px);
+    color: var(--app-text, #e2e8f0); font-size: 12px;
+    padding: 4px 8px; cursor: pointer; outline: none;
+    &:focus { border-color: var(--app-accent, #3b6ec4); }
+}
+.backup-actions-row {
+    display: flex; gap: 8px; align-items: center;
+}
+.backup-list-label {
+    margin: 4px 0 0; font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--app-text-dim, #4a6080);
+}
+.recent-backups {
+    display: flex; flex-direction: column; gap: 2px;
+    max-height: 160px; overflow-y: auto;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px); padding: 6px 10px;
+}
+.backup-entry {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; padding: 2px 0;
+}
+.backup-name {
+    font-size: 11px; font-family: monospace; color: var(--app-text-muted, #94a3b8);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+}
+.backup-meta {
+    font-size: 10px; color: var(--app-text-dim, #4a6080); white-space: nowrap; flex-shrink: 0;
+}
 
 // ── Buttons ──
 .btn {
