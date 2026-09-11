@@ -3,6 +3,8 @@ import { ref, computed, watch } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
 import type { LayoutSettings, MediaItem } from '@/types/models';
+import { useLightbox } from '@/composables/useLightbox';
+import LightboxOverlay from '@/components/LightboxOverlay.vue';
 
 const props = defineProps<{
     layoutSettings: LayoutSettings | null;
@@ -18,7 +20,7 @@ interface GalleryEntry { url: string; title: string; itemTitle: string; }
 
 const entries = ref<GalleryEntry[]>([]);
 const cascadeIndex = ref(0);
-const lightboxSrc = ref<string | null>(null);
+const { lightboxSrc, lightboxCollection, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext, onLbBeforeEnter, onLbEnter, onLbBeforeLeave, onLbLeave } = useLightbox()
 
 function inRange(absoluteStart: number, absoluteEnd: number): boolean {
     if (!props.layoutSettings) return false;
@@ -69,6 +71,12 @@ function nextCascade() {
     cascadeIndex.value = (cascadeIndex.value + 1) % entries.value.length;
 }
 
+const panelStyle = computed(() => ({
+    '--gp-bg':     props.layoutSettings?.GalleryPanelBackgroundColor || 'var(--app-bg, #0f172a)',
+    '--gp-border': props.layoutSettings?.GalleryPanelBorderColor     || 'var(--app-border, #1e293b)',
+    '--gp-text':   props.layoutSettings?.GalleryPanelTextColor        || 'var(--app-text-muted, #94a3b8)',
+}))
+
 // Ordered so the current front card is last in DOM (rendered on top)
 const cascadeOrder = computed(() => {
     const n = entries.value.length;
@@ -82,7 +90,7 @@ const cascadeOrder = computed(() => {
 </script>
 
 <template>
-    <div class="gallery-panel">
+    <div class="gallery-panel" :style="panelStyle">
         <!-- Mode toggle -->
         <div class="gallery-toolbar">
             <button
@@ -108,7 +116,7 @@ const cascadeOrder = computed(() => {
                 :key="idx"
                 class="gallery-grid-item"
                 :title="entry.itemTitle + (entry.title ? ' – ' + entry.title : '')"
-                @click="lightboxSrc = entry.url"
+                @click="openLightbox($event, entry.url, entries.map(e => e.url))"
             >
                 <img :src="entry.url" :alt="entry.title" />
             </div>
@@ -126,7 +134,7 @@ const cascadeOrder = computed(() => {
                         transform: `translateX(${(cascadeOrder.length - 1 - pos) * 6}px) translateY(${(cascadeOrder.length - 1 - pos) * 4}px)`,
                         opacity: pos === cascadeOrder.length - 1 ? 1 : 0.6 - (cascadeOrder.length - 1 - pos) * 0.1,
                     }"
-                    @click="pos === cascadeOrder.length - 1 ? (lightboxSrc = entries[idx].url) : null"
+                    @click="pos === cascadeOrder.length - 1 ? openLightbox($event, entries[idx].url, entries.map(e => e.url)) : null"
                 >
                     <img :src="entries[idx].url" :alt="entries[idx].title" />
                 </div>
@@ -141,9 +149,20 @@ const cascadeOrder = computed(() => {
 
         <!-- Lightbox -->
         <Teleport to="body">
-            <div v-if="lightboxSrc" class="gallery-lightbox-backdrop" @click="lightboxSrc = null">
-                <img :src="lightboxSrc" class="gallery-lightbox-img" @click.stop />
-            </div>
+            <Transition :css="false"
+                @before-enter="onLbBeforeEnter" @enter="onLbEnter"
+                @before-leave="onLbBeforeLeave" @leave="onLbLeave"
+            >
+                <LightboxOverlay
+                    v-if="lightboxSrc"
+                    :src="lightboxSrc"
+                    :has-prev="lightboxIndex > 0"
+                    :has-next="lightboxIndex < lightboxCollection.length - 1"
+                    @close="closeLightbox()"
+                    @prev="lightboxPrev()"
+                    @next="lightboxNext()"
+                />
+            </Transition>
         </Teleport>
     </div>
 </template>
@@ -153,8 +172,8 @@ const cascadeOrder = computed(() => {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--gp-bg, #0f172a);
+    color: var(--gp-text, #94a3b8);
     overflow: hidden;
 }
 
@@ -163,21 +182,21 @@ const cascadeOrder = computed(() => {
     gap: 4px;
     padding: 6px 8px;
     flex-shrink: 0;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--gp-border, #1e293b);
 }
 
 .gallery-mode-btn {
     background: transparent;
-    border: 1px solid #334155;
-    color: #94a3b8;
+    border: 1px solid color-mix(in srgb, var(--gp-border, #1e293b) 200%, var(--gp-text, #94a3b8));
+    color: var(--gp-text, #94a3b8);
     border-radius: 4px;
     padding: 4px 8px;
     cursor: pointer;
     font-size: 1em;
     transition: all 0.15s;
 
-    &:hover { color: #e2e8f0; border-color: #64748b; }
-    &.active { background: #1e3a5f; color: #93c5fd; border-color: #3b82f6; }
+    &:hover { color: color-mix(in srgb, var(--gp-text, #94a3b8) 50%, white); border-color: var(--gp-text, #94a3b8); }
+    &.active { background: color-mix(in srgb, var(--app-accent, #6366f1) 20%, var(--gp-bg, #0f172a)); color: var(--app-accent-hover, #818cf8); border-color: var(--app-accent, #6366f1); }
 }
 
 .gallery-empty {
@@ -185,7 +204,7 @@ const cascadeOrder = computed(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #475569;
+    color: color-mix(in srgb, var(--gp-text, #94a3b8) 60%, transparent);
     font-size: 0.85em;
     font-style: italic;
 }
@@ -206,7 +225,7 @@ const cascadeOrder = computed(() => {
     overflow: hidden;
     border-radius: 4px;
     cursor: zoom-in;
-    border: 1px solid #1e293b;
+    border: 1px solid var(--gp-border, #1e293b);
 
     img {
         width: 100%;
@@ -241,7 +260,7 @@ const cascadeOrder = computed(() => {
     inset: 0;
     border-radius: 6px;
     overflow: hidden;
-    border: 2px solid #334155;
+    border: 2px solid color-mix(in srgb, var(--gp-border, #1e293b) 200%, var(--gp-text, #94a3b8));
     transition: transform 0.25s ease, opacity 0.25s ease;
     cursor: pointer;
 
@@ -261,7 +280,7 @@ const cascadeOrder = computed(() => {
 
 .gallery-card-label {
     font-size: 0.8em;
-    color: #94a3b8;
+    color: var(--gp-text, #94a3b8);
     text-align: center;
     max-width: 180px;
     overflow: hidden;
@@ -270,36 +289,16 @@ const cascadeOrder = computed(() => {
 }
 
 .gallery-next-btn {
-    background: #1e3a5f;
-    color: #93c5fd;
-    border: 1px solid #3b82f6;
+    background: color-mix(in srgb, var(--app-accent, #6366f1) 20%, var(--gp-bg, #0f172a));
+    color: var(--app-accent-hover, #818cf8);
+    border: 1px solid var(--app-accent, #6366f1);
     border-radius: 4px;
     padding: 4px 14px;
     cursor: pointer;
     font-size: 0.82em;
     transition: background 0.15s;
 
-    &:hover { background: #1e40af; }
+    &:hover { background: color-mix(in srgb, var(--app-accent, #6366f1) 35%, var(--gp-bg, #0f172a)); }
 }
 
-// Lightbox
-.gallery-lightbox-backdrop {
-    position: fixed;
-    inset: 0;
-    background: #000000cc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9500;
-    cursor: zoom-out;
-}
-
-.gallery-lightbox-img {
-    max-width: 90vw;
-    max-height: 90vh;
-    object-fit: contain;
-    border-radius: 4px;
-    box-shadow: 0 8px 40px #00000088;
-    cursor: default;
-}
 </style>

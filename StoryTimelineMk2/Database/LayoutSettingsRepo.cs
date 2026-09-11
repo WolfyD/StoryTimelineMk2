@@ -126,7 +126,11 @@ namespace StoryTimelineMk2.Database
                     data_panel_h3_color,
                     data_panel_h4_color,
                     data_panel_font_family,
-                    data_panel_font_size
+                    data_panel_font_size,
+
+                    gallery_panel_background_color,
+                    gallery_panel_border_color,
+                    gallery_panel_text_color
                 )
                 VALUES (
                     @Id,
@@ -211,7 +215,11 @@ namespace StoryTimelineMk2.Database
                     @DataPanelH3Color,
                     @DataPanelH4Color,
                     @DataPanelFontFamily,
-                    @DataPanelFontSize
+                    @DataPanelFontSize,
+
+                    @GalleryPanelBackgroundColor,
+                    @GalleryPanelBorderColor,
+                    @GalleryPanelTextColor
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
@@ -295,7 +303,11 @@ namespace StoryTimelineMk2.Database
                     data_panel_h3_color = excluded.data_panel_h3_color,
                     data_panel_h4_color = excluded.data_panel_h4_color,
                     data_panel_font_family = excluded.data_panel_font_family,
-                    data_panel_font_size = excluded.data_panel_font_size;";
+                    data_panel_font_size = excluded.data_panel_font_size,
+
+                    gallery_panel_background_color = excluded.gallery_panel_background_color,
+                    gallery_panel_border_color = excluded.gallery_panel_border_color,
+                    gallery_panel_text_color = excluded.gallery_panel_text_color;";
 
             db.Execute(sql, settings);
         }

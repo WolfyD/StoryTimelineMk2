@@ -60,7 +60,7 @@ A step-snapping block was added to `TimelineCanvas.vue` (around line 389) that c
 
 Items currently store their timeline position as:
 
-```
+```text
 AbsoluteStart = Year + Subtick * LOD_StepFraction(CreationGranularity)
 ```
 
@@ -90,6 +90,7 @@ Store position as direct calendar coordinates:
 `AbsoluteStart` becomes a computed value: `Year + DayOfYear / yearLength`.
 
 This has several benefits:
+
 - Position has an unambiguous calendar meaning independent of any LOD profile
 - `DayOfYear / yearLength` involves only small integers (DayOfYear < yearLength), so float precision is excellent at any year value
 - The label for an item's date is trivially `Day (DayOfYear + 1)` without any floating-point lookup
@@ -100,17 +101,21 @@ This has several benefits:
 ### Migration path from old Subtick
 
 **Legacy import (Subtick 0–9):**
-```
+
+```text
 DayOfYear = round(Subtick * yearLength / 10)
 ```
+
 Maps each of the 10 positions to the nearest calendar day.
 
 **Current Subtick (0 to ~maxSubticks):**
-```
+
+```text
 DayOfYear = round(Subtick * yearLength * stepFraction)
            = round(Subtick * 1)          -- when step = 1/yearLength
            = Subtick                      -- exact, no conversion needed
 ```
+
 When the creation LOD step was `1/yearLength` (i.e., one step per day), `Subtick` is already `DayOfYear`. For LODs with coarser steps (WEEKS, MONTHS), round to the nearest day.
 
 ### Open questions for design session
@@ -360,3 +365,353 @@ file:line references, and suggested fixes for every item below.
   with inconsistent Escape/backdrop/z-index behaviour.
 - **Icon convention**: 19 of 20 modal/picker files contradict the CLAUDE.md Remix-vs-Phosphor
   rule — at this scale, decide whether to fix the components or change the convention.
+
+---
+
+## [BL-19] Thinner resize border rim
+
+**Status:** Done. `ResizeBorder` constant in `BorderlessFormBase.cs` reduced from 5 → 2.
+
+The borderless window's resize rim (currently 5px sides + 5px bottom via `Padding`) is visible
+as a dark strip. Reduce to 1–2px so it is a subtle hit-target only, not a visible border.
+
+> The padding value lives in `BorderlessFormBase.cs` (`Padding(5,0,5,5)`). WM_NCHITTEST
+> already returns HTLEFT/HTRIGHT/HTBOTTOM for any pixel within that rim, so reducing the value
+> directly shrinks both the visual size and the hit-target width equally. Test resize usability
+> at 1px vs 2px — 1px can be hard to grab reliably on high-DPI displays.
+
+---
+
+## [BL-20] Review and remove CreationGranularity field
+
+**Status:** Closed — field is actively used, keep it.
+
+Grep confirmed `CreationGranularity` is load-bearing: it records which LOD level the item's
+date was entered at (0=Millennia … 7=Days), drives the sub-year step fraction used to compute
+`AbsoluteStart`/`AbsoluteEnd` on save, feeds the `<select>` in the edit form, and is passed
+as `:lodIndex` to two `LodDateInput` instances. Removing it would break date precision for
+all sub-year items. No action needed.
+
+---
+
+## [BL-21] Title-bar double-click to maximize / restore
+
+**Status:** Already done. `WindowTitleBar.vue` has `@dblclick="toggleMaximize"` on the drag
+region and `toggleMaximize()` calls `BackendAPI.WindowMaximizeRestore()`, which routes to
+`HandleWindowMaximizeRestore` in `MessageRouter.cs`. No work needed.
+
+---
+
+## [BL-22] Theme / colour scheme settings for the window chrome
+
+**Status:** Pending.
+
+Now that the title bar and resize rim are rendered by Vue, the window chrome participates
+in the same theming system as the rest of the UI. A settings panel section (or a dedicated
+"Window theme" picker) should expose at minimum: title bar background colour, title bar
+text/icon colour, border rim colour. Bonus: pre-built dark/light/accent presets that cascade
+into the existing timeline colour tokens.
+
+> This is the natural companion to the design-token consolidation work in BL-18 (ST-H1–H4).
+> Doing that token sweep first will make the chrome theme settings much cheaper to implement.
+
+---
+
+## [BL-23] App icon
+
+**Status:** Pending.
+
+The application currently uses the default .NET/Windows icon. A proper icon (`.ico` with
+16/32/48/256px variants, plus a matching `favicon` for the WebView2 shell) should be
+provided.
+
+> In the `.csproj`, set `<ApplicationIcon>` to the `.ico` path. The icon will appear in the
+> taskbar, Alt-Tab switcher, and the title bar of any non-borderless window. For the
+> borderless windows a small SVG/PNG version can be shown in the Vue title bar next to the
+> window title.
+
+---
+
+## [BL-24] Save and restore window maximized state
+
+**Status:** Done. `window_maximized` column added to settings table (`DbInitializer.cs`), `WindowMaximized` property added to `SettingsItem.cs`, `SaveAppWindowState` updated in `SettingsRepo.cs`, `PersistWindowState` uses `RestoreBounds` when maximized, `RestoreWindowState` applies `FormWindowState.Maximized` on load (`f_Main.cs`).
+
+Window size and position are already persisted via `AppConfig`, but the maximized state is
+not. On relaunch after quitting while maximized, the window opens in normal size at the last
+normal-size position.
+
+> In `f_Main.cs` (and `f_Timeline.cs` if it has its own persistence), save
+> `WindowState == FormWindowState.Maximized` to `AppConfig` on `FormClosing`, and on load
+> call `WindowState = FormWindowState.Maximized` before `Show()` if the flag is set.
+> Restore position/size from normal-bounds only — don't save maximized pixel dimensions.
+
+---
+
+## [BL-25] Bottom padding on the data/notes panel
+
+**Status:** Done. `TimelineNotesPanel.vue` notes-list and dist-panel got 24px bottom padding. `TimelineDataPanel.vue` uses a `data-panel-spacer` div (80px, workaround for the Chromium flexbox overflow+padding-bottom bug).
+
+The bottom of the data/notes panel content is flush against the panel edge with no breathing
+room. Add a few pixels of bottom padding so the last item in the list doesn't feel clipped.
+
+> The fix is a single CSS rule on the panel's scroll container. Likely `.notes-list` or
+> `.data-panel-content` — inspect the rendered DOM to confirm the right selector.
+
+---
+
+## [BL-26] Data-panel item quick-view (pulsing highlight + read-only open)
+
+**Status:** Pending.
+
+Each item row in the data panel should show a small "focus" affordance — two concentric
+circles (SVG, ~16×16px) — on hover. Clicking it should: (1) give the corresponding timeline
+node a 1-second CSS pulse highlight to locate it visually, then (2) open the item in a
+read-only view (not the full edit form).
+
+> Implementation sketch:
+>
+> - Add an SVG icon in the row's hover-reveal slot (opacity: 0 → 1 on `.data-row:hover`).
+> - On click, emit an event (or call a store action) with the item's id; `TimelineCanvas.vue`
+>   adds a temporary CSS class / Konva animation to that node for 1 second.
+> - "Read-only open" needs either a `readonly` prop on `EditItem.vue` that disables all inputs
+>   and hides Save, or a separate lightweight `ViewItem` overlay — the latter is cleaner.
+> - The bridge action `GetItemForEdit` already returns the full item; reuse it.
+
+---
+
+## [BL-27] Image lightbox open/close animation
+
+**Status:** Done. `<Transition :css="false">` with four JS hooks (`onLbBeforeEnter/Enter/BeforeLeave/Leave`) in `TimelineDataPanel.vue`. Enter scales from `scale(0.05)` at the thumbnail's `getBoundingClientRect` center; leave reverses. Backdrop fades independently. `transform-origin` computed from thumbnail rect vs. image layout dimensions.
+
+When an image in the gallery or data panel is clicked to open the lightbox, it should animate
+smoothly (scale from the thumbnail's position/size up to the full view) rather than appearing
+instantly. The close action should reverse the animation.
+
+> Konva's `Tween` or a CSS `transform: scale()` transition on the lightbox overlay can handle
+> this. If the lightbox is a DOM overlay (not a Konva layer), a CSS approach is simpler:
+> set `transform-origin` to the thumbnail's viewport position, start at `scale(0.1)` with
+> `opacity: 0`, transition to `scale(1)` + `opacity: 1`. The challenge is computing the
+> origin point from the thumbnail's `getBoundingClientRect`. A Vue `<Transition>` with
+> custom enter/leave hooks is the idiomatic approach.
+
+---
+
+## [BL-28] Toolstrip calendar overlay
+
+**Status:** Pending.
+
+A new toggle in the left activity strip (calendar icon). When active, a floating panel appears
+anchored to the upper-left corner of the timeline canvas. The panel shows a standard monthly
+calendar grid that is always aware of the custom calendar system (`YearDefinition` — month
+names, month lengths, any week structure).
+
+### LOD-aware display
+
+| Current LOD | What the calendar shows |
+| --- | --- |
+| Year / Millennium / Era | Month grid only — current month highlighted, no day/week selection |
+| Season | **Season view** — four (or N) season tiles arranged horizontally or in a 2×2 grid, styled similarly to the calendar setup view. The active season tile gets a soft red highlight. Season boundaries are derived from `YearDefinition.seasons` (or evenly divided from `yearLength` if no explicit seasons are defined). |
+| Month | Month grid, current month cell highlighted |
+| Week | Month grid with the current week's row highlighted in soft red |
+| Day or finer | Month grid with the exact current day cell highlighted in soft red |
+
+"Current" means the calendar position corresponding to `store.centerAbsoluteTime`. The panel
+must convert the absolute fraction to `(year, dayOfYear)` using the active calendar's
+`yearLength`, then map `dayOfYear` to `(monthIndex, dayOfMonth)` using the calendar's
+`monthLengths` array. For the season view, map `dayOfYear` to the season whose day-range
+contains it.
+
+### Animation / scroll behaviour
+
+The highlight position should update with a soft CSS transition (`transition: background 0.35s ease`)
+so that during rapid timeline scrolling the highlight fades between positions rather than
+snapping. The panel itself should appear/disappear with a quick `opacity` + `translateY` fade
+(`200ms ease`). Updates to the highlighted cell should be **debounced** (~150 ms) so the
+calendar isn't recomputing every wheel event during fast scroll.
+
+### Implementation sketch
+
+- New toggle entry in the activity strip alongside the existing icons (use a calendar Phosphor
+  icon for section/feature, Remix icon if it's purely a control).
+- `CalendarOverlay.vue` — standalone floating component, `position: fixed`, top-left of the
+  timeline canvas area. Receives `centerAbsoluteTime`, `lodIndex`, and the `YearDefinition`
+  as props (or reads from the Pinia store directly).
+- Month grid built from `monthLengths` — no hardcoded Gregorian assumptions.
+- Highlighted cell / row determined by converting `centerAbsoluteTime` fraction to calendar
+  coordinates; recomputed in a `computed` (or `watchEffect` with debounce).
+- The panel's toggle state lives in the timeline's `LayoutSettings` or as a local UI ref —
+  doesn't need to persist to DB unless it should survive page reload (probably not necessary).
+- Season view is a separate layout mode — not a month grid with something highlighted, but
+  a dedicated N-tile display reusing the visual language of the calendar setup screen (tile
+  name, colour swatch if seasons are coloured, day-range label). The active tile animates
+  with the same debounced soft-fade as the calendar highlight.
+- If the calendar has no month structure (flat day-of-year only), fall back to showing a
+  linear strip of day numbers for the current "month-sized" window instead of a grid.
+
+---
+
+## [BL-29] Toolstrip year-calendar window
+
+**Status:** Pending.
+
+A new toggle in the left activity strip (multi-calendar / year-grid icon — Phosphor, as it
+represents a section/feature). Clicking it opens a dedicated side window (`f_YearCalendar.cs`,
+a new borderless WinForms window) showing the full year calendar grid — identical in layout
+to the year view already present in the calendar setup screen — but read-only for now.
+
+### Content
+
+- Full 12-month (or N-month for custom calendars) grid for the displayed year.
+- Days that correspond to timeline items are **highlighted** (background tint using the item's
+  colour or a default accent). Multiple items on the same day stack — show a count badge or
+  dot cluster rather than overlapping.
+- **Hover tooltips** on highlighted days: list item titles (and optionally types) for that day.
+- The year shown in the calendar header tracks `store.centerAbsoluteTime`: when the user
+  scrolls the timeline past a year boundary the calendar window year updates automatically.
+  Use a debounce (~300 ms) so it doesn't flip mid-scroll.
+
+### Window / integration
+
+- The window is non-modal, stays open alongside the timeline window. Opened/closed via the
+  toolstrip toggle; remembers its last position.
+- Communication: the timeline sends a `SetCalendarYear` push message (fire-and-forget) whenever
+  the debounced year changes; `MessageRouter.cs` forwards it to the calendar window's
+  WebView2. The calendar window listens on the Vue side via `window.chrome.webview`.
+- Item data: on open (and on year change) the calendar window calls `GetItemsForYear` (new
+  bridge action) which returns items whose `Year` equals the requested year. Only year-level
+  matching is needed for the day highlight; no sub-year precision required initially.
+- The calendar grid itself is the existing Vue calendar component reused with a `readonly`
+  prop; no new grid code should be written.
+
+### Future work (not in scope now)
+
+- Clicking a highlighted day could open a mini list of items.
+- Navigation arrows in the header to manually step years without moving the timeline.
+- Printing / export of the year view as an image.
+
+---
+
+## [BL-30] Day-of-week origin calculation for calendar grids
+
+**Status:** Pending. Prerequisite for correct calendar grid rendering in BL-28 and BL-29.
+
+Currently the calendar grid renders all months starting on column 0 (Monday/first day of
+week), which is only correct for year 0. In a custom calendar with `yearLength` days, each
+year starts `yearLength mod 7` columns further along than the previous year, so M1 D1 of
+year N lands on a different day of the week than M1 D1 of year 0. Without accounting for
+this, every grid row is shifted by the wrong offset and days appear under the wrong weekday
+column.
+
+### Required function
+
+```ts
+getYearStartDow(year: number, yearLength: number, baseStartDow: number): number
+  // → (baseStartDow + year * yearLength) % 7
+```
+
+`baseStartDow` is the day-of-week (0 = first configured weekday) on which M1 D1 of year 0
+falls. This should be a configurable value stored in `YearDefinition` (new field
+`YearStartDayOfWeek: number`, defaulting to 0).
+
+### Cascade through the grid
+
+Once the year-start DOW is known:
+
+1. M1 D1 is placed in column `yearStartDow`.
+2. Each subsequent month's start column is `(yearStartDow + cumulative days before that month) % 7`.
+3. Weeks wrap normally — no calendar-specific logic beyond the start offset.
+
+This is a pure utility function; it belongs in `utils/calendarMath.ts` (new file, or
+alongside existing calendar helpers). Both `CalendarOverlay.vue` (BL-28) and the year
+calendar window (BL-29) consume it.
+
+### Schema change
+
+Add `year_start_day_of_week INTEGER DEFAULT 0` to the `timelines` table via the standard
+`ALTER TABLE … ADD COLUMN IF NOT EXISTS` migration in `DbInitializer.cs`. Expose it through
+`TimelineItem` / `YearDefinition` and the `GetTimelineData` bridge response.
+
+---
+
+## [BL-31] Celestial data — lunar cycles, stars, and astrophysical calculations
+
+**Status:** Pending. Long-term / speculative — nice to have, not critical.
+
+Allow a world's calendar to define one or more moons and notable celestial bodies. The app
+computes and displays phase information on the calendar views (BL-28, BL-29) so a writer can
+track which moon is full on any given story day without manual arithmetic.
+
+### Data model (proposed)
+
+Stored as JSON in a new `celestial_config` column on the `timelines` table (or a sibling
+`timeline_celestial` table if multiple bodies per timeline is cleaner).
+
+**Moon definition:**
+
+```json
+{
+  "name": "Aethon",
+  "synodicPeriodDays": 28.5,
+  "phaseOffsetDays": 0,
+  "color": "#e8d5a3"
+}
+```
+
+- `synodicPeriodDays` — full cycle length in calendar days (fractional allowed).
+- `phaseOffsetDays` — the day-of-absolute-time at which this moon was at new moon (phase = 0).
+  Lets the writer "anchor" the cycle to a specific story date.
+- `color` — optional tint for the phase icon.
+
+**Star / celestial event definition:**
+
+```json
+{
+  "name": "The Wandering Eye",
+  "type": "recurring",
+  "periodDays": 365,
+  "firstOccurrenceDayOfYear": 180,
+  "durationDays": 3,
+  "description": "Visible at dusk for 3 days each year"
+}
+```
+
+Recurring events repeat every `periodDays` days starting from `firstOccurrenceDayOfYear`.
+One-off events have `type: "fixed"` with an absolute day.
+
+### Phase calculation
+
+For a moon at absolute day `D`:
+
+```ts
+phaseAngle = ((D - phaseOffsetDays) % synodicPeriodDays) / synodicPeriodDays  // 0..1
+```
+
+Map to 8 standard phases: new (0), waxing crescent, first quarter, waxing gibbous, full (0.5),
+waning gibbous, last quarter, waning crescent. Phase icons are SVG — a circle with a
+light/dark hemisphere split at the computed angle, rendered purely in CSS/SVG (no image
+assets needed).
+
+### Calendar integration (BL-28 / BL-29)
+
+- In the calendar overlay (BL-28) and year calendar (BL-29), each day cell can show a row
+  of small phase icons (one per moon) beneath the day number.
+- Hovering a phase icon shows a tooltip: moon name + phase name + days to next full/new moon.
+- Recurring celestial events appear as a small coloured dot on their active days, with a
+  hover tooltip giving the event name and description.
+- A settings toggle (per calendar, not global) controls whether celestial data is shown —
+  off by default so it doesn't clutter the default calendar view.
+
+### Configuration UI
+
+A new "Celestial" section in the timeline's calendar settings (alongside months, seasons,
+weeks). Add / remove moons and recurring events. Each moon has: name, synodic period, phase
+anchor date picker, colour. The anchor date picker reuses `LodDateInput` at DAY granularity.
+
+### Scope notes
+
+- No orbital mechanics beyond the synodic phase formula — no elliptical orbits, no
+  gravitational interactions, no eclipse prediction. Pure periodic phase arithmetic.
+- Tidal effects, planetary visibility windows, and constellation tracking are explicitly
+  out of scope (interesting but too open-ended for now).
+- The formula works for any `synodicPeriodDays` value, including non-integer periods, so a
+  world with a 13.7-day moon and a 41-day moon works correctly.

@@ -201,20 +201,17 @@ async function shiftItems() {
     background: transparent;
     border: none;
     border-left: 2px solid transparent;
-    color: #3d5166;
+    color: var(--tb-btn-color, #3d5166);
     cursor: pointer;
     padding: 0;
     transition: color 0.14s, background 0.14s;
 
     &:hover {
-        color: #8ca5bc;
-        background: radial-gradient(
-            ellipse 80% 70% at 50% 45%,
-            rgba(255, 255, 255, 0.07) 0%,
-            transparent 100%
-        );
+        color: var(--tb-btn-hover-color, #8ca5bc);
+        background: var(--tb-btn-hover-bg, radial-gradient(ellipse 80% 70% at 50% 45%, rgba(255,255,255,0.07) 0%, transparent 100%));
     }
 
+    // Violet accent kept for actions trigger — distinct from section nav
     &.active {
         color: #c4b5fd;
         border-left-color: #8b5cf6;
@@ -227,10 +224,10 @@ async function shiftItems() {
     top: 0;
     left: calc(100% + 4px);
     width: 340px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+    background: var(--app-surface-raised, #1e293b);
+    border: 1px solid var(--app-border, #334155);
+    border-radius: var(--app-radius, 8px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
     z-index: 600;
     overflow: hidden;
 }
@@ -240,14 +237,14 @@ async function shiftItems() {
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    background: #162032;
-    border-bottom: 1px solid #334155;
+    background: var(--app-surface, #162032);
+    border-bottom: 1px solid var(--app-border, #334155);
 }
 
 .popover-title {
     font-size: 13px;
     font-weight: 700;
-    color: #e2e8f0;
+    color: var(--app-text, #e2e8f0);
     user-select: none;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -258,11 +255,11 @@ async function shiftItems() {
     align-items: center;
     background: transparent;
     border: none;
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     cursor: pointer;
     padding: 2px;
     border-radius: 3px;
-    &:hover { color: #e2e8f0; background: #334155; }
+    &:hover { color: var(--app-text, #e2e8f0); background: color-mix(in srgb, var(--app-border, #334155) 60%, transparent); }
 }
 
 // ── Action section ──
@@ -270,7 +267,7 @@ async function shiftItems() {
     padding: 12px 14px;
 
     & + .action-section {
-        border-top: 1px solid #2d3a56;
+        border-top: 1px solid var(--app-border, #2d3a56);
     }
 }
 
@@ -279,7 +276,7 @@ async function shiftItems() {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     margin-bottom: 8px;
     user-select: none;
 }
@@ -287,7 +284,7 @@ async function shiftItems() {
 // ── Range list ──
 .ranges-empty {
     font-size: 12px;
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     font-style: italic;
     margin-bottom: 8px;
 }
@@ -297,9 +294,9 @@ async function shiftItems() {
     align-items: center;
     gap: 6px;
     padding: 4px 0;
-    border-bottom: 1px solid #2d3a56;
+    border-bottom: 1px solid var(--app-border, #2d3a56);
     font-size: 12px;
-    color: #e2e8f0;
+    color: var(--app-text, #e2e8f0);
 
     &:last-of-type { border-bottom: none; }
 }
@@ -312,7 +309,7 @@ async function shiftItems() {
 
 .range-label {
     flex: 1;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     font-size: 11px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -330,21 +327,20 @@ async function shiftItems() {
 
 .range-input {
     padding: 4px 6px;
-    border: 1px solid #334155;
+    border: 1px solid var(--app-border, #334155);
     border-radius: 4px;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--app-bg, #0f172a);
+    color: var(--app-text, #e2e8f0);
     font-size: 12px;
     width: 80px;
-    color-scheme: dark;
-    &:focus { outline: 2px solid #4a90d9; border-color: transparent; }
-    &::placeholder { color: #4a5568; }
+    &:focus { outline: 2px solid var(--app-accent, #4a90d9); border-color: transparent; }
+    &::placeholder { color: var(--app-text-dim, #4a5568); }
 
     &--label { flex: 1; width: auto; min-width: 80px; }
 }
 
 .range-sep {
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     font-size: 12px;
     flex-shrink: 0;
 }
@@ -358,7 +354,7 @@ async function shiftItems() {
 // ── Shift form ──
 .action-desc {
     font-size: 11px;
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     margin: 0 0 8px;
     line-height: 1.4;
 }
@@ -394,6 +390,7 @@ async function shiftItems() {
     white-space: nowrap;
     flex-shrink: 0;
 
+    // Semantic blue action — intentionally not themed
     &--ok {
         background: #1e3a5f;
         color: #93c5fd;
@@ -403,7 +400,7 @@ async function shiftItems() {
 
     &--danger {
         background: transparent;
-        color: #64748b;
+        color: var(--app-text-dim, #64748b);
         border-color: transparent;
         margin-left: auto;
         &:hover { color: #f87171; }

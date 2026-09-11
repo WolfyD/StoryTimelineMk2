@@ -1,5 +1,34 @@
 @import 'remixicon/fonts/remixicon.css';
 
+:root {
+    // ── Title bar ───────────────────────────────────────────────────────────
+    --tb-bg-from:        #060c19;
+    --tb-bg-to:          #0a1424;
+    --tb-border-color:   rgba(79, 70, 229, 0.18);
+    --tb-text:           #8ea5c0;
+    --tb-sub:            #3d5166;
+    --tb-btn-color:      #3d5166;
+    --tb-btn-hover-color:#8ca5bc;
+    --tb-btn-hover-bg:   rgba(255, 255, 255, 0.07);
+    --tb-orb-1:          #4338ca;
+    --tb-orb-2:          #818cf8;
+
+    // ── App shell ───────────────────────────────────────────────────────────
+    --app-bg:             #0f172a;
+    --app-surface:        #0c1524;
+    --app-surface-raised: #141e33;
+    --app-surface-high:   #1e2b44;
+    --app-border:         #2d3a56;
+    --app-text:           #e2e8f0;
+    --app-text-muted:     #94a3b8;
+    --app-text-dim:       #4a6080;
+    --app-accent:         #6366f1;
+    --app-accent-hover:   #818cf8;
+    --app-radius:         8px;
+    --app-radius-sm:      4px;
+    --app-radius-lg:      12px;
+}
+
 html, body, #app {
 	margin: 0;
 	padding: 0;
@@ -8,12 +37,10 @@ html, body, #app {
     min-width: 800px;
     min-height: 600px;
 
-	/* For desktop apps, preventing accidental scrollbars on the body is usually a good idea */
 	overflow: auto;
 
-	/* Set your global background and text colors here */
-	background-color: #0f172a;
-	color: #e2e8f0;
+	background-color: var(--app-bg);
+	color: var(--app-text);
 }
 
 .splitpanes__splitter {
@@ -47,8 +74,7 @@ html, body, #app {
 	}
 
 	&:hover {
-		background: #fefefe;
-		color: #333;
+		background: rgba(128, 128, 128, 0.2);
 		transition-duration: .3s;
 	}
 }

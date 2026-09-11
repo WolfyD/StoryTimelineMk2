@@ -32,7 +32,7 @@ namespace StoryTimelineMk2.Forms
 
         // ── Layout / visual constants ──────────────────────────────────────────
         public  const int TitleBarHeight = 36;   // px — must match WindowTitleBar.vue
-        private const int ResizeBorder   = 5;    // px — must equal Padding.Left/Right/Bottom
+        private const int ResizeBorder   = 3;    // px — must equal Padding.Left/Right/Bottom
         private const int CornerRadius   = 8;    // px — top-left and top-right rounding
 
         [System.ComponentModel.Browsable(false)]

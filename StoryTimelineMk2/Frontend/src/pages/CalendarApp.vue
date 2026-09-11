@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { BackendAPI } from '@/bridge/api'
+import { useAppTheme } from '@/utils/useAppTheme'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import type { LodLevel } from '@/types/models'
 import WeekDayPicker from '@/components/WeekDayPicker.vue'
@@ -8,6 +9,8 @@ import CalendarDayPicker from '@/components/CalendarDayPicker.vue'
 import RelativeRuleEditor from '@/components/RelativeRuleEditor.vue'
 import { defaultRelativeRule } from '@/utils/relativeRule'
 import type { RelativeRule } from '@/utils/relativeRule'
+
+useAppTheme()
 
 const params = new URLSearchParams(window.location.search)
 const calendarIdParam = params.get('calendarId')

@@ -11,6 +11,7 @@ import type { LayoutSettings, HiddenRange } from "@/types/models";
 export interface CalendarFormatConfig {
     yearLength: number
     weekLength: number
+    yearStartDow: number
     months: { name: string; shortName: string; startDay: number }[]
     seasons: { name: string; start: number; end: number }[]
 }
@@ -18,6 +19,7 @@ export interface CalendarFormatConfig {
 export const DEFAULT_CALENDAR_CONFIG: CalendarFormatConfig = {
     yearLength: 365,
     weekLength: 7,
+    yearStartDow: 0,
     months: [
         { name: 'January',   shortName: 'Jan', startDay: 0   },
         { name: 'February',  shortName: 'Feb', startDay: 31  },

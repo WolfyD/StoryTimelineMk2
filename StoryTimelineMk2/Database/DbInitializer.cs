@@ -459,6 +459,7 @@ namespace StoryTimelineMk2.Database
 
             // settings
             if (!settings.Contains("timeline_id"))     db.Execute("ALTER TABLE settings ADD COLUMN timeline_id INTEGER");
+            if (!settings.Contains("window_maximized"))db.Execute("ALTER TABLE settings ADD COLUMN window_maximized INTEGER DEFAULT 0");
 
             // notes — seed DB has old schema (year/subtick/content) without timeline_id
             if (!notes.Contains("timeline_id"))        db.Execute("ALTER TABLE notes ADD COLUMN timeline_id INTEGER");
@@ -712,6 +713,9 @@ namespace StoryTimelineMk2.Database
             AddCol(db, "layout_settings", "data_panel_h4_color",           "TEXT NOT NULL DEFAULT '#5c4a38'");
             AddCol(db, "layout_settings", "data_panel_font_family",        "TEXT NOT NULL DEFAULT 'Georgia, serif'");
             AddCol(db, "layout_settings", "data_panel_font_size",          "INTEGER NOT NULL DEFAULT 14");
+            AddCol(db, "layout_settings", "gallery_panel_background_color", "TEXT NOT NULL DEFAULT '#0f172a'");
+            AddCol(db, "layout_settings", "gallery_panel_border_color",     "TEXT NOT NULL DEFAULT '#1e293b'");
+            AddCol(db, "layout_settings", "gallery_panel_text_color",       "TEXT NOT NULL DEFAULT '#94a3b8'");
 
             // Fix dark preset data panel colors if they were created with light defaults
             db.Execute(@"
@@ -725,6 +729,38 @@ namespace StoryTimelineMk2.Database
                     data_panel_font_family          = 'Arial, sans-serif',
                     data_panel_font_size            = 13
                 WHERE id = 'ls_dark' AND data_panel_background_color = '#f5f0e8';
+            ");
+
+            // Fix default preset notes/gallery colors — AddCol defaults are dark; restore light values
+            db.Execute(@"
+                UPDATE layout_settings SET
+                    notes_panel_background_color      = '#f9f7fe',
+                    notes_panel_card_background_color = '#e8e4f5',
+                    notes_panel_text_color            = '#1e1640',
+                    notes_panel_heading_color         = '#5b4d8a',
+                    notes_panel_accent_color          = '#6366f1',
+                    notes_panel_font_size             = 13,
+                    gallery_panel_background_color    = '#f5f0e8',
+                    gallery_panel_border_color        = '#d5cec4',
+                    gallery_panel_text_color          = '#5c4a38'
+                WHERE id = 'ls_default' AND notes_panel_background_color = '#0f172a';
+            ");
+
+            // Align dark preset non-color fields to match light preset
+            db.Execute(@"
+                UPDATE layout_settings SET
+                    timeline_event_font_size            = 16,
+                    timeline_age_corner_rounding        = 0,
+                    timeline_period_corner_rounding     = 10,
+                    timeline_period_y_offset            = 30,
+                    timeline_tick_distance              = 100,
+                    timeline_tick_marker_font_size      = 14,
+                    timeline_hover_line_style           = 'solid',
+                    timeline_edge_margin_width          = 10,
+                    timeline_lod_change_animation_length = 200,
+                    data_panel_font_family              = 'Georgia, serif',
+                    data_panel_font_size                = 14
+                WHERE id = 'ls_dark';
             ");
 
             // Seed dark preset
@@ -789,7 +825,8 @@ namespace StoryTimelineMk2.Database
                     notes_panel_accent_color, notes_panel_font_size,
                     data_panel_background_color, data_panel_card_background_color,
                     data_panel_h1_color, data_panel_h2_color, data_panel_h3_color, data_panel_h4_color,
-                    data_panel_font_family, data_panel_font_size
+                    data_panel_font_family, data_panel_font_size,
+                    gallery_panel_background_color, gallery_panel_border_color, gallery_panel_text_color
                 ) VALUES (
                     'ls_default', 'Default layout settings',
                     130, 30, 10,
@@ -818,12 +855,13 @@ namespace StoryTimelineMk2.Database
                     1, 600,
                     1, 200,
                     '#c8b9a4', '#b5a692',
-                    '#0f172a', '#1e293b',
-                    '#e2e8f0', '#94a3b8',
+                    '#f9f7fe', '#e8e4f5',
+                    '#1e1640', '#5b4d8a',
                     '#6366f1', 13,
                     '#f5f0e8', '#ffffffaa',
                     '#2c1f0f', '#3a2b1a', '#2c1f0f', '#5c4a38',
-                    'Georgia, serif', 14
+                    'Georgia, serif', 14,
+                    '#f5f0e8', '#d5cec4', '#5c4a38'
                 );");
         }
 
@@ -862,41 +900,43 @@ namespace StoryTimelineMk2.Database
                     notes_panel_accent_color, notes_panel_font_size,
                     data_panel_background_color, data_panel_card_background_color,
                     data_panel_h1_color, data_panel_h2_color, data_panel_h3_color, data_panel_h4_color,
-                    data_panel_font_family, data_panel_font_size
+                    data_panel_font_family, data_panel_font_size,
+                    gallery_panel_background_color, gallery_panel_border_color, gallery_panel_text_color
                 ) VALUES (
                     'ls_dark', 'Dark Mode',
                     130, 30, 10,
                     '#2d3a56', 1, 3,
                     '10', 5,
                     '#e2e8f0', '#141e33',
-                    'Arial', 14,
+                    'Arial', 16,
                     1, 1,
                     0, 1,
                     '#3b6ec4',
-                    30, 5,
-                    15, 3,
-                    5, 0,
+                    30, 0,
+                    15, 10,
+                    5, 30,
                     1, 100, 1,
                     '#0f172a',
                     1, 1,
                     '#ef4444', 'dashed',
-                    50, 1, 1,
+                    100, 1, 1,
                     'Arial', 'normal',
-                    '#94a3b8', 12,
+                    '#94a3b8', 14,
                     0,
                     1,
-                    '#3b6ec4', 'dashed', 1,
-                    30,
+                    '#3b6ec4', 'solid', 1,
+                    10,
                     100, 1, '#3b6ec44d',
                     1, 600,
-                    1, 300,
+                    1, 200,
                     '#334155', '#1e2b44',
                     '#0f172a', '#1e293b',
                     '#e2e8f0', '#94a3b8',
                     '#6366f1', 13,
                     '#0f172a', '#1e293b44',
                     '#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b',
-                    'Arial, sans-serif', 13
+                    'Georgia, serif', 14,
+                    '#0f172a', '#1e293b', '#94a3b8'
                 );");
         }
 
@@ -930,13 +970,15 @@ namespace StoryTimelineMk2.Database
                     timeline_animate_on_jump_to_year = 1, timeline_jump_to_year_animation_length = 600,
                     timeline_animate_lod_change = 1, timeline_lod_change_animation_length = 200,
                     timeline_tick_color = '#c8b9a4', timeline_axis_color = '#b5a692',
-                    notes_panel_background_color = '#0f172a', notes_panel_card_background_color = '#1e293b',
-                    notes_panel_text_color = '#e2e8f0', notes_panel_heading_color = '#94a3b8',
+                    notes_panel_background_color = '#f9f7fe', notes_panel_card_background_color = '#e8e4f5',
+                    notes_panel_text_color = '#1e1640', notes_panel_heading_color = '#5b4d8a',
                     notes_panel_accent_color = '#6366f1', notes_panel_font_size = 13,
                     data_panel_background_color = '#f5f0e8', data_panel_card_background_color = '#ffffffaa',
                     data_panel_h1_color = '#2c1f0f', data_panel_h2_color = '#3a2b1a',
                     data_panel_h3_color = '#2c1f0f', data_panel_h4_color = '#5c4a38',
-                    data_panel_font_family = 'Georgia, serif', data_panel_font_size = 14
+                    data_panel_font_family = 'Georgia, serif', data_panel_font_size = 14,
+                    gallery_panel_background_color = '#f5f0e8', gallery_panel_border_color = '#d5cec4',
+                    gallery_panel_text_color = '#5c4a38'
                 WHERE id = 'ls_default';");
         }
 
@@ -948,27 +990,27 @@ namespace StoryTimelineMk2.Database
                     timeline_event_border_color = '#2d3a56', timeline_event_border_width = 1, timeline_event_border_radius = 3,
                     timeline_event_padding = '10', timeline_event_y_margin = 5,
                     timeline_event_text_color = '#e2e8f0', timeline_event_background_color = '#141e33',
-                    timeline_event_font_family = 'Arial', timeline_event_font_size = 14,
+                    timeline_event_font_family = 'Arial', timeline_event_font_size = 16,
                     timeline_event_text_use_ellipsis = 1, timeline_event_box_show_color = 1,
                     timeline_event_box_show_color_on_bottom = 0, timeline_event_has_hover_highlight = 1,
                     timeline_event_hover_color = '#3b6ec4',
-                    timeline_age_height = 30, timeline_age_corner_rounding = 5,
-                    timeline_period_height = 15, timeline_period_corner_rounding = 3,
-                    timeline_period_y_margin = 20, timeline_period_y_offset = 0,
+                    timeline_age_height = 30, timeline_age_corner_rounding = 0,
+                    timeline_period_height = 15, timeline_period_corner_rounding = 10,
+                    timeline_period_y_margin = 20, timeline_period_y_offset = 30,
                     timeline_box_types_show_as_box = 1, timeline_box_types_box_width = 100, timeline_box_types_show_image = 1,
                     timeline_canvas_background_color = '#0f172a',
                     timeline_show_now_line = 1, timeline_show_now_line_text = 1,
                     timeline_now_line_color = '#ef4444', timeline_now_line_style = 'dashed',
-                    timeline_tick_distance = 50, timeline_tick_width = 1, timeline_non_year_ticks_smaller = 1,
+                    timeline_tick_distance = 100, timeline_tick_width = 1, timeline_non_year_ticks_smaller = 1,
                     timeline_tick_marker_font_family = 'Arial', timeline_tick_marker_font_style = 'normal',
-                    timeline_tick_marker_text_color = '#94a3b8', timeline_tick_marker_font_size = 12,
+                    timeline_tick_marker_text_color = '#94a3b8', timeline_tick_marker_font_size = 14,
                     timeline_tick_marker_text_always_on_top = 0,
                     timeline_show_hover_line = 1,
-                    timeline_hover_line_color = '#3b6ec4', timeline_hover_line_style = 'dashed', timeline_hover_line_width = 1,
-                    timeline_edge_margin_width = 30,
+                    timeline_hover_line_color = '#3b6ec4', timeline_hover_line_style = 'solid', timeline_hover_line_width = 1,
+                    timeline_edge_margin_width = 10,
                     timeline_data_range_width = 100, timeline_is_data_range_visible = 1, timeline_data_range_color = '#3b6ec44d',
                     timeline_animate_on_jump_to_year = 1, timeline_jump_to_year_animation_length = 600,
-                    timeline_animate_lod_change = 1, timeline_lod_change_animation_length = 300,
+                    timeline_animate_lod_change = 1, timeline_lod_change_animation_length = 200,
                     timeline_tick_color = '#334155', timeline_axis_color = '#1e2b44',
                     notes_panel_background_color = '#0f172a', notes_panel_card_background_color = '#1e293b',
                     notes_panel_text_color = '#e2e8f0', notes_panel_heading_color = '#94a3b8',
@@ -976,7 +1018,9 @@ namespace StoryTimelineMk2.Database
                     data_panel_background_color = '#0f172a', data_panel_card_background_color = '#1e293b44',
                     data_panel_h1_color = '#e2e8f0', data_panel_h2_color = '#cbd5e1',
                     data_panel_h3_color = '#94a3b8', data_panel_h4_color = '#64748b',
-                    data_panel_font_family = 'Arial, sans-serif', data_panel_font_size = 13
+                    data_panel_font_family = 'Georgia, serif', data_panel_font_size = 14,
+                    gallery_panel_background_color = '#0f172a', gallery_panel_border_color = '#1e293b',
+                    gallery_panel_text_color = '#94a3b8'
                 WHERE id = 'ls_dark';");
         }
     }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { BackendAPI } from '@/bridge/api';
-import type { ItemForEdit } from '@/types/models';
+import type { ItemForEdit, LayoutSettings } from '@/types/models';
 
 const props = defineProps<{
     itemId: string;
     timelineId: number;
+    layoutSettings?: LayoutSettings | null;
 }>();
 
 const emit = defineEmits<{ close: [] }>();
@@ -24,16 +25,39 @@ onMounted(async () => {
     loading.value = false;
 });
 
+function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') { e.preventDefault(); emit('close') }
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+
 function mediaUrl(fp: string) {
     return `https://media.app/${fp}`;
 }
+
+function openEdit() {
+    BackendAPI.OpenAddEditItemWindow(props.timelineId, props.itemId)
+    emit('close')
+}
+
+const panelStyle = computed(() => ({
+    '--dp-bg':      props.layoutSettings?.DataPanelBackgroundColor     || '#f5f0e8',
+    '--dp-card':    props.layoutSettings?.DataPanelCardBackgroundColor || '#ffffffaa',
+    '--dp-h1':      props.layoutSettings?.DataPanelH1Color             || '#2c1f0f',
+    '--dp-h2':      props.layoutSettings?.DataPanelH2Color             || '#3a2b1a',
+    '--dp-h4':      props.layoutSettings?.DataPanelH4Color             || '#5c4a38',
+    '--dp-ff':      props.layoutSettings?.DataPanelFontFamily          || 'Georgia, serif',
+    '--item-color': data.value?.Item?.Color                            || '#8b7355',
+}))
 </script>
 
 <template>
     <Teleport to="body">
         <div class="view-modal-backdrop" @click.self="emit('close')">
-            <div class="view-modal" :style="{ '--item-color': data?.Item?.Color || '#64748b' }">
-                <button class="vm-close" @click="emit('close')">✕</button>
+            <div class="view-modal" :style="panelStyle">
+                <button class="vm-close" title="Close (Esc)" @click="emit('close')">
+                    <i class="ri-close-line"></i>
+                </button>
 
                 <div v-if="loading" class="vm-loading">Loading…</div>
                 <template v-else-if="data">
@@ -87,7 +111,7 @@ function mediaUrl(fp: string) {
                         <div class="vm-section" v-if="data.StoryRefs.length">
                             <span class="vm-label">Stories</span>
                             <div class="vm-list">
-                                <span v-for="s in data.StoryRefs" :key="s.StoryId" class="vm-list-item">{{ s.StoryTitle }}</span>
+                                <span v-for="s in data.StoryRefs" :key="s.StoryId" class="vm-list-item vm-chip vm-chip--story">{{ s.StoryTitle }}</span>
                             </div>
                         </div>
 
@@ -110,6 +134,12 @@ function mediaUrl(fp: string) {
                             </div>
                         </div>
                     </div>
+
+                    <div class="vm-footer">
+                        <button class="vm-edit-btn" @click="openEdit">
+                            Edit item <i class="ri-arrow-right-line"></i>
+                        </button>
+                    </div>
                 </template>
             </div>
         </div>
@@ -120,7 +150,7 @@ function mediaUrl(fp: string) {
 .view-modal-backdrop {
     position: fixed;
     inset: 0;
-    background: #00000066;
+    background: rgba(0, 0, 0, 0.65);
     z-index: 9000;
     display: flex;
     align-items: center;
@@ -129,16 +159,18 @@ function mediaUrl(fp: string) {
 
 .view-modal {
     position: relative;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--dp-bg);
+    border: 1px solid color-mix(in srgb, var(--dp-h4) 30%, transparent);
     border-radius: 10px;
     width: 480px;
     max-width: 92vw;
     max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 8px 40px #00000088;
-    color: #e2e8f0;
-    font-family: sans-serif;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+    font-family: var(--dp-ff, sans-serif);
+    color: var(--dp-h4);
 }
 
 .vm-close {
@@ -147,17 +179,30 @@ function mediaUrl(fp: string) {
     right: 12px;
     background: none;
     border: none;
-    color: #94a3b8;
+    color: color-mix(in srgb, var(--dp-h4) 70%, transparent);
     font-size: 16px;
     cursor: pointer;
     z-index: 2;
-    &:hover { color: #fff; }
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    transition: background 0.12s, color 0.12s;
+
+    &:hover {
+        color: var(--dp-h1);
+        background: color-mix(in srgb, var(--dp-h4) 12%, transparent);
+    }
 }
 
 .vm-loading {
     padding: 32px;
     text-align: center;
-    color: #64748b;
+    color: color-mix(in srgb, var(--dp-h4) 60%, transparent);
+    font-style: italic;
+    font-size: 0.85em;
 }
 
 .vm-header {
@@ -165,8 +210,9 @@ function mediaUrl(fp: string) {
     align-items: stretch;
     border-radius: 10px 10px 0 0;
     overflow: hidden;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid color-mix(in srgb, var(--dp-h4) 25%, transparent);
     min-height: 64px;
+    flex-shrink: 0;
 }
 
 .vm-color-strip {
@@ -187,9 +233,9 @@ function mediaUrl(fp: string) {
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #94a3b8;
-    background: #1e293b;
-    border: 1px solid #475569;
+    color: var(--app-accent-hover, #818cf8);
+    background: color-mix(in srgb, var(--app-accent, #6366f1) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-accent, #6366f1) 35%, transparent);
     border-radius: 4px;
     padding: 1px 6px;
     align-self: flex-start;
@@ -199,15 +245,21 @@ function mediaUrl(fp: string) {
     margin: 0;
     font-size: 1.15em;
     font-weight: 600;
-    color: #f1f5f9;
+    color: var(--dp-h1);
     word-break: break-word;
 }
 
 .vm-body {
-    padding: 12px 20px 20px;
+    padding: 12px 20px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    overflow-y: auto;
+    flex: 1;
+
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dp-h4) 30%, transparent); border-radius: 3px; }
 }
 
 .vm-section {
@@ -221,11 +273,11 @@ function mediaUrl(fp: string) {
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #64748b;
+    color: color-mix(in srgb, var(--dp-h4) 70%, transparent);
 }
 
 .vm-value {
-    color: #cbd5e1;
+    color: var(--dp-h2);
     font-size: 0.9em;
 }
 
@@ -242,12 +294,12 @@ function mediaUrl(fp: string) {
 }
 
 .vm-tag {
-    background: #334155;
-    color: #94a3b8;
+    background: color-mix(in srgb, var(--dp-h4) 14%, transparent);
+    color: var(--dp-h2);
     font-size: 0.78em;
     padding: 2px 8px;
     border-radius: 12px;
-    border: 1px solid #475569;
+    border: 1px solid color-mix(in srgb, var(--dp-h4) 40%, transparent);
 }
 
 .vm-list {
@@ -258,7 +310,17 @@ function mediaUrl(fp: string) {
 
 .vm-list-item {
     font-size: 0.88em;
-    color: #cbd5e1;
+    color: var(--dp-h2);
+}
+
+.vm-chip {
+    display: inline-block;
+    font-size: 0.78em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--dp-h4) 40%, transparent);
+    background: color-mix(in srgb, var(--dp-h4) 14%, transparent);
+    color: var(--dp-h2);
 }
 
 .vm-char {
@@ -266,7 +328,7 @@ function mediaUrl(fp: string) {
     align-items: center;
     gap: 6px;
     font-size: 0.88em;
-    color: #cbd5e1;
+    color: var(--dp-h2);
 }
 
 .vm-char-dot {
@@ -277,7 +339,7 @@ function mediaUrl(fp: string) {
 }
 
 .vm-char-role {
-    color: #64748b;
+    color: color-mix(in srgb, var(--dp-h4) 60%, transparent);
     font-style: italic;
 }
 
@@ -292,6 +354,34 @@ function mediaUrl(fp: string) {
     height: 80px;
     object-fit: cover;
     border-radius: 6px;
-    border: 1px solid #334155;
+    border: 1px solid color-mix(in srgb, var(--dp-h4) 30%, transparent);
+}
+
+.vm-footer {
+    flex-shrink: 0;
+    padding: 10px 16px;
+    border-top: 1px solid color-mix(in srgb, var(--dp-h4) 25%, transparent);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.vm-edit-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: color-mix(in srgb, var(--app-accent, #6366f1) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--app-accent, #6366f1) 35%, transparent);
+    color: var(--app-accent-hover, #818cf8);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+
+    &:hover {
+        background: color-mix(in srgb, var(--app-accent, #6366f1) 22%, transparent);
+        border-color: color-mix(in srgb, var(--app-accent, #6366f1) 55%, transparent);
+        color: var(--app-accent-hover, #a5b4fc);
+    }
 }
 </style>

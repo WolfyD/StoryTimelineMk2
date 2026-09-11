@@ -134,8 +134,9 @@ namespace StoryTimelineMk2.Bridge
                 case "ResetLayoutPreset":       HandleResetLayoutPreset(message); break;
 
                 // App-level settings
-                case "GetAppConfig":    HandleGetAppConfig(message); break;
-                case "BrowseDataFolder": HandleBrowseDataFolder(message); break;
+                case "GetAppConfig":      HandleGetAppConfig(message); break;
+                case "SaveChromeTheme":   HandleSaveChromeTheme(message); break;
+                case "BrowseDataFolder":  HandleBrowseDataFolder(message); break;
                 case "SetDataRoot":     HandleSetDataRoot(message); break;
                 case "MoveDataFolder":  HandleMoveDataFolder(message); break;
                 case "OpenDataFolder":  HandleOpenDataFolder(message); break;
@@ -1029,10 +1030,27 @@ namespace StoryTimelineMk2.Bridge
             var cfg = AppConfig.Instance;
             ReplyToVue(message.MessageId, new
             {
-                DataRoot   = cfg.DataRoot,
-                DbPath     = cfg.GetDbPath(),
-                MediaFolder = cfg.GetMediaFolder(),
+                DataRoot         = cfg.DataRoot,
+                DbPath           = cfg.GetDbPath(),
+                MediaFolder      = cfg.GetMediaFolder(),
+                chromeTheme      = cfg.ChromeTheme,
+                themeInitialized = cfg.ThemeInitialized,
             });
+        }
+
+        private void HandleSaveChromeTheme(BridgeMessage message)
+        {
+            var theme = JsonSerializer.Deserialize<ChromeTheme>(
+                message.Payload.GetRawText(), _jsonOpts);
+            if (theme == null)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = "Invalid theme payload" });
+                return;
+            }
+            AppConfig.Instance.ChromeTheme = theme;
+            AppConfig.Instance.ThemeInitialized = true;
+            AppConfig.Instance.Save();
+            ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
         private void HandleBrowseDataFolder(BridgeMessage message)

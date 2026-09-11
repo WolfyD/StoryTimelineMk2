@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
+import { useAppTheme } from '@/utils/useAppTheme'
 
 // ==========================================
 // 1. Inputs & Outputs (Props & Emits)
@@ -19,6 +20,7 @@ const emit = defineEmits(['close', 'updated'])
 // 2. State & Data
 // ==========================================
 const store = useTimelineStore()
+useAppTheme()
 const localTitle = ref(props.initialTitle)
 const isSaving = ref(false)
 

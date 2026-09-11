@@ -3,6 +3,9 @@ import { ref, computed, watch } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
 import type { LayoutSettings, TimelineItem, MediaItem } from '@/types/models';
+import { useLightbox } from '@/composables/useLightbox';
+import LightboxOverlay from '@/components/LightboxOverlay.vue';
+import TimelineItemViewModal from '@/components/TimelineItemViewModal.vue';
 
 const props = defineProps<{
     layoutSettings: LayoutSettings | null;
@@ -13,8 +16,19 @@ const store = useTimelineStore();
 // Cache: itemId → first picture URL (null = no picture, undefined = not yet fetched)
 const pictureCache = ref<Map<string, string | null>>(new Map());
 
-// Lightbox state
-const lightboxSrc = ref<string | null>(null);
+const { lightboxSrc, lightboxCollection, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext, onLbBeforeEnter, onLbEnter, onLbBeforeLeave, onLbLeave } = useLightbox()
+
+const viewingItem = ref<TimelineItem | null>(null)
+const highlightedItemId = ref<string | null>(null)
+
+function focusItem(item: TimelineItem) {
+    highlightedItemId.value = item.Id
+    store.pulseItem(item.Id)
+    setTimeout(() => {
+        highlightedItemId.value = null
+        viewingItem.value = item
+    }, 1000)
+}
 
 function distanceFromCenter(item: TimelineItem): number {
     const center = store.centerAbsoluteTime;
@@ -103,7 +117,13 @@ function picUrl(itemId: string): string | null {
         <template v-else>
             <!-- Ages -->
             <template v-for="item in ages" :key="item.Id">
-                <div class="data-age">
+                <div class="data-age" :class="{ highlighted: highlightedItemId === item.Id }">
+                    <button class="data-item-focus-btn" title="Locate & preview" @click.stop="focusItem(item)">
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
+                            <circle cx="8" cy="8" r="2.8" stroke="currentColor" stroke-width="1.2"/>
+                        </svg>
+                    </button>
                     <div class="data-age-title">{{ item.Title }}</div>
                     <div v-if="item.Description" class="data-age-desc">{{ item.Description }}</div>
                 </div>
@@ -111,7 +131,13 @@ function picUrl(itemId: string): string | null {
 
             <!-- Periods -->
             <template v-for="item in periods" :key="item.Id">
-                <div class="data-period">
+                <div class="data-period" :class="{ highlighted: highlightedItemId === item.Id }">
+                    <button class="data-item-focus-btn" title="Locate & preview" @click.stop="focusItem(item)">
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
+                            <circle cx="8" cy="8" r="2.8" stroke="currentColor" stroke-width="1.2"/>
+                        </svg>
+                    </button>
                     <div class="data-period-title">{{ item.Title }}</div>
                     <div v-if="item.Description" class="data-period-desc">{{ item.Description }}</div>
                 </div>
@@ -119,7 +145,13 @@ function picUrl(itemId: string): string | null {
 
             <!-- Other items -->
             <template v-for="item in others" :key="item.Id">
-                <div class="data-item">
+                <div class="data-item" :class="{ highlighted: highlightedItemId === item.Id }">
+                    <button class="data-item-focus-btn" title="Locate & preview" @click.stop="focusItem(item)">
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
+                            <circle cx="8" cy="8" r="2.8" stroke="currentColor" stroke-width="1.2"/>
+                        </svg>
+                    </button>
                     <div class="data-item-body">
                         <div class="data-item-title">{{ item.Title }}</div>
                         <div v-if="item.Description" class="data-item-desc">{{ item.Description }}</div>
@@ -128,7 +160,7 @@ function picUrl(itemId: string): string | null {
                     <div
                         v-if="picUrl(item.Id)"
                         class="data-item-image"
-                        @click="lightboxSrc = picUrl(item.Id)"
+                        @click="openLightbox($event, picUrl(item.Id)!)"
                     >
                         <img :src="picUrl(item.Id)!" alt="" />
                     </div>
@@ -136,11 +168,34 @@ function picUrl(itemId: string): string | null {
             </template>
         </template>
 
+        <!-- Bottom spacer — padding-bottom is eaten by Chromium on overflow flex containers -->
+        <div class="data-panel-spacer" aria-hidden="true"></div>
+
+        <!-- Read-only item overlay -->
+        <TimelineItemViewModal
+            v-if="viewingItem"
+            :item-id="viewingItem.Id"
+            :timeline-id="viewingItem.TimelineId"
+            :layout-settings="props.layoutSettings"
+            @close="viewingItem = null"
+        />
+
         <!-- Lightbox -->
         <Teleport to="body">
-            <div v-if="lightboxSrc" class="data-lightbox-backdrop" @click="lightboxSrc = null">
-                <img :src="lightboxSrc" class="data-lightbox-img" @click.stop />
-            </div>
+            <Transition :css="false"
+                @before-enter="onLbBeforeEnter" @enter="onLbEnter"
+                @before-leave="onLbBeforeLeave" @leave="onLbLeave"
+            >
+                <LightboxOverlay
+                    v-if="lightboxSrc"
+                    :src="lightboxSrc"
+                    :has-prev="lightboxIndex > 0"
+                    :has-next="lightboxIndex < lightboxCollection.length - 1"
+                    @close="closeLightbox()"
+                    @prev="lightboxPrev()"
+                    @next="lightboxNext()"
+                />
+            </Transition>
         </Teleport>
     </div>
 </template>
@@ -149,7 +204,7 @@ function picUrl(itemId: string): string | null {
 .data-panel {
     height: 100%;
     overflow-y: auto;
-    padding: 12px 14px;
+    padding: 12px 14px 0;
     background: var(--dp-bg);
     color: var(--dp-h4);
     font-family: var(--dp-ff);
@@ -174,9 +229,15 @@ function picUrl(itemId: string): string | null {
 
 // Ages — H1
 .data-age {
+    position: relative;
+    padding-left: 20px;
     border-bottom: 2px solid color-mix(in srgb, var(--dp-h1) 40%, transparent);
     padding-bottom: 6px;
     margin-bottom: 4px;
+    border-radius: 3px;
+    transition: background 0.15s;
+
+    &.highlighted { background: color-mix(in srgb, var(--dp-h1) 12%, transparent); }
 }
 
 .data-age-title {
@@ -195,7 +256,13 @@ function picUrl(itemId: string): string | null {
 
 // Periods — H2
 .data-period {
+    position: relative;
+    padding-left: 20px;
     margin-bottom: 2px;
+    border-radius: 3px;
+    transition: background 0.15s;
+
+    &.highlighted { background: color-mix(in srgb, var(--dp-h2) 12%, transparent); }
 }
 
 .data-period-title {
@@ -213,13 +280,20 @@ function picUrl(itemId: string): string | null {
 
 // Other items — H3 title + H4 body
 .data-item {
+    position: relative;
     display: flex;
     gap: 10px;
     background: var(--dp-card);
     border: 1px solid color-mix(in srgb, var(--dp-h4) 30%, transparent);
     border-radius: 4px;
-    padding: 10px;
+    padding: 10px 10px 10px 26px;
     align-items: flex-start;
+    transition: background 0.15s, border-color 0.15s;
+
+    &.highlighted {
+        background: color-mix(in srgb, var(--dp-h3) 12%, var(--dp-card));
+        border-color: color-mix(in srgb, var(--dp-h3) 60%, transparent);
+    }
 }
 
 .data-item-body {
@@ -232,6 +306,45 @@ function picUrl(itemId: string): string | null {
     font-weight: 700;
     color: var(--dp-h3);
     margin-bottom: 4px;
+}
+
+// Button: absolute, lives in the left gutter of each container
+.data-item-focus-btn {
+    position: absolute;
+    left: 0;
+    top: 3px;
+    display: flex;
+    visibility: hidden;
+    opacity: 0;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: color-mix(in srgb, var(--dp-h3) 60%, transparent);
+    cursor: pointer;
+    padding: 0;
+    border-radius: 50%;
+    transition: color 0.12s, background 0.12s, opacity 0.15s;
+
+    &:hover {
+        color: var(--dp-h3);
+        background: color-mix(in srgb, var(--dp-h3) 15%, transparent);
+    }
+}
+
+// For card items: button sits in the card's left padding
+.data-item > .data-item-focus-btn {
+    left: 4px;
+    top: 10px;
+}
+
+.data-item:hover > .data-item-focus-btn,
+.data-age:hover > .data-item-focus-btn,
+.data-period:hover > .data-item-focus-btn {
+    visibility: visible;
+    opacity: 1;
 }
 
 .data-item-desc {
@@ -268,24 +381,9 @@ function picUrl(itemId: string): string | null {
     }
 }
 
-// Lightbox
-.data-lightbox-backdrop {
-    position: fixed;
-    inset: 0;
-    background: #000000cc;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9500;
-    cursor: zoom-out;
+.data-panel-spacer {
+    flex-shrink: 0;
+    height: 40px;
 }
 
-.data-lightbox-img {
-    max-width: 90vw;
-    max-height: 90vh;
-    object-fit: contain;
-    border-radius: 4px;
-    box-shadow: 0 8px 40px #00000088;
-    cursor: default;
-}
 </style>

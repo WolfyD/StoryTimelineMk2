@@ -114,15 +114,15 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
 
 <style scoped lang="scss">
 .month-card {
-    background: #0f1926;
-    border: 1px solid #2d3a56;
-    border-radius: 6px;
+    background: var(--app-surface, #0c1524);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 6px);
     overflow: visible; // allow tooltips to escape
 }
 
 .month-name {
-    background: #1e3060;
-    color: #c8ddf8;
+    background: color-mix(in srgb, var(--app-surface-high, #1e2b44) 80%, var(--app-accent, #6366f1));
+    color: var(--app-text, #e2e8f0);
     font-size: 0.8rem;
     font-weight: 600;
     text-align: center;
@@ -139,28 +139,28 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
     th {
         text-align: center;
         padding: 3px 2px;
-        color: #6a88aa;
+        color: var(--app-text-dim, #64748b);
         font-weight: 600;
         font-size: 0.65rem;
         text-transform: uppercase;
-        border-bottom: 1px solid #1e2b44;
+        border-bottom: 1px solid var(--app-surface-high, #1e2b44);
 
-        &.weekend { color: #7aa8e8; }
+        &.weekend { color: var(--app-accent-hover, #818cf8); }
     }
 
     td {
         text-align: center;
         padding: 1px 2px;
-        color: #b8ccec;
+        color: var(--app-text-muted, #94a3b8);
         font-variant-numeric: tabular-nums;
         vertical-align: top;
 
-        &.weekend .day-num { color: #7aa8e8; }
+        &.weekend .day-num { color: var(--app-accent-hover, #818cf8); }
         &.empty { color: transparent; }
     }
 
     tr:hover td:not(.empty) .day-num {
-        background: #162035;
+        background: var(--app-surface-raised, #141e33);
         border-radius: 3px;
     }
 }
@@ -211,9 +211,9 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
     bottom: calc(100% + 4px);
     left: 50%;
     transform: translateX(-50%);
-    background: #0a1220;
-    border: 1px solid #3b6ec4;
-    border-radius: 5px;
+    background: var(--app-bg, #0f172a);
+    border: 1px solid var(--app-accent, #6366f1);
+    border-radius: var(--app-radius-sm, 5px);
     padding: 5px 8px;
     z-index: 9999;
     white-space: nowrap;
@@ -226,7 +226,7 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
     align-items: center;
     gap: 5px;
     font-size: 0.7rem;
-    color: #c8d8f0;
+    color: var(--app-text, #e2e8f0);
     line-height: 1.6;
 }
 
@@ -239,6 +239,6 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
 
 .tooltip-name {
     font-size: 0.7rem;
-    color: #c8d8f0;
+    color: var(--app-text, #e2e8f0);
 }
 </style>

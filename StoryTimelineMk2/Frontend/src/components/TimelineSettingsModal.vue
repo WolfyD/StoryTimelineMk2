@@ -100,6 +100,9 @@ function initLayout(ls: LayoutSettings | null | undefined): LayoutSettings {
         DataPanelH4Color: d.DataPanelH4Color ?? '#5c4a38',
         DataPanelFontFamily: d.DataPanelFontFamily ?? 'Georgia, serif',
         DataPanelFontSize: d.DataPanelFontSize ?? 14,
+        GalleryPanelBackgroundColor: d.GalleryPanelBackgroundColor ?? '#0f172a',
+        GalleryPanelBorderColor: d.GalleryPanelBorderColor ?? '#1e293b',
+        GalleryPanelTextColor: d.GalleryPanelTextColor ?? '#94a3b8',
     }
 }
 
@@ -130,6 +133,10 @@ async function resetPreset() {
         alert(`Reset failed:\n${result.message}`)
     }
 }
+
+// --- tabs ---
+const activeTab = ref<'general' | 'canvas' | 'panels'>('general')
+const showAll   = computed(() => searchQuery.value.trim() !== '')
 
 // --- search ---
 const searchQuery  = ref('')
@@ -294,7 +301,16 @@ async function save() {
                 />
             </div>
 
+            <div class="tab-bar">
+                <button class="tab-btn" :class="{ active: activeTab === 'general' }" @click="activeTab = 'general'">General</button>
+                <button class="tab-btn" :class="{ active: activeTab === 'canvas' }" @click="activeTab = 'canvas'">Canvas</button>
+                <button class="tab-btn" :class="{ active: activeTab === 'panels' }" @click="activeTab = 'panels'">Panels</button>
+            </div>
+
             <div class="modal-body" ref="modalBodyRef">
+
+                <!-- ── GENERAL TAB ──────────────────────────────────────────────── -->
+                <div v-show="showAll || activeTab === 'general'">
 
                 <!-- GENERAL -->
                 <div class="section-title">General</div>
@@ -328,6 +344,30 @@ async function save() {
                         </label>
                     </div>
                 </div>
+
+                <!-- WINDOW -->
+                <div class="section-title">Window</div>
+                <div class="settings-grid">
+                    <span class="s-label">Fullscreen</span>
+                    <button class="toggle" :class="{ 'is-on': local.IsFullscreen }" type="button" @click="local.IsFullscreen = !local.IsFullscreen">
+                        <span class="toggle-thumb" />
+                    </button>
+
+                    <span class="s-label">Custom Scaling</span>
+                    <button class="toggle" :class="{ 'is-on': local.UseCustomScaling }" type="button" @click="local.UseCustomScaling = !local.UseCustomScaling">
+                        <span class="toggle-thumb" />
+                    </button>
+
+                    <template v-if="local.UseCustomScaling">
+                        <span class="s-label">Scale Factor</span>
+                        <input class="s-input s-input--narrow" type="number" v-model.number="local.CustomScale" :step="0.1" min="0.5" max="4" />
+                    </template>
+                </div>
+
+                </div><!-- end general tab -->
+
+                <!-- ── CANVAS TAB ──────────────────────────────────────────────── -->
+                <div v-show="showAll || activeTab === 'canvas'">
 
                 <!-- LAYOUT PRESET -->
                 <div class="section-title">Layout Preset</div>
@@ -593,6 +633,31 @@ async function save() {
                     </div>
                 </div>
 
+                <!-- ANIMATIONS -->
+                <div class="section-title">Animations</div>
+                <div class="settings-grid">
+                    <span class="s-label">Animate Jump to Year</span>
+                    <button class="toggle" :class="{ 'is-on': localLayout.TimelineAnimateOnJumpToYear }" type="button" @click="localLayout.TimelineAnimateOnJumpToYear = !localLayout.TimelineAnimateOnJumpToYear">
+                        <span class="toggle-thumb" />
+                    </button>
+
+                    <span class="s-label">Jump Duration (ms)</span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineJumpToYearAnimationLength" :step="50" min="0" />
+
+                    <span class="s-label">Animate LOD Change</span>
+                    <button class="toggle" :class="{ 'is-on': localLayout.TimelineAnimateLodChange }" type="button" @click="localLayout.TimelineAnimateLodChange = !localLayout.TimelineAnimateLodChange">
+                        <span class="toggle-thumb" />
+                    </button>
+
+                    <span class="s-label">LOD Duration (ms)</span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineLodChangeAnimationLength" :step="50" min="0" />
+                </div>
+
+                </div><!-- end canvas tab -->
+
+                <!-- ── PANELS TAB ──────────────────────────────────────────────── -->
+                <div v-show="showAll || activeTab === 'panels'">
+
                 <!-- NOTES PANEL -->
                 <div class="section-title">Notes Panel</div>
                 <div class="settings-grid">
@@ -628,6 +693,28 @@ async function save() {
 
                     <span class="s-label">Font Size</span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.NotesPanelFontSize" :step="1" min="9" max="24" />
+                </div>
+
+                <!-- GALLERY PANEL -->
+                <div class="section-title">Gallery Panel</div>
+                <div class="settings-grid">
+                    <span class="s-label">Background</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.GalleryPanelBackgroundColor" />
+                        <span class="color-hex">{{ localLayout.GalleryPanelBackgroundColor }}</span>
+                    </div>
+
+                    <span class="s-label">Borders / Dividers</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.GalleryPanelBorderColor" />
+                        <span class="color-hex">{{ localLayout.GalleryPanelBorderColor }}</span>
+                    </div>
+
+                    <span class="s-label">Text / Labels</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.GalleryPanelTextColor" />
+                        <span class="color-hex">{{ localLayout.GalleryPanelTextColor }}</span>
+                    </div>
                 </div>
 
                 <!-- DATA PANEL -->
@@ -676,44 +763,7 @@ async function save() {
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.DataPanelFontSize" :step="1" min="9" max="24" />
                 </div>
 
-                <!-- ANIMATIONS -->
-                <div class="section-title">Animations</div>
-                <div class="settings-grid">
-                    <span class="s-label">Animate Jump to Year</span>
-                    <button class="toggle" :class="{ 'is-on': localLayout.TimelineAnimateOnJumpToYear }" type="button" @click="localLayout.TimelineAnimateOnJumpToYear = !localLayout.TimelineAnimateOnJumpToYear">
-                        <span class="toggle-thumb" />
-                    </button>
-
-                    <span class="s-label">Jump Duration (ms)</span>
-                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineJumpToYearAnimationLength" :step="50" min="0" />
-
-                    <span class="s-label">Animate LOD Change</span>
-                    <button class="toggle" :class="{ 'is-on': localLayout.TimelineAnimateLodChange }" type="button" @click="localLayout.TimelineAnimateLodChange = !localLayout.TimelineAnimateLodChange">
-                        <span class="toggle-thumb" />
-                    </button>
-
-                    <span class="s-label">LOD Duration (ms)</span>
-                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineLodChangeAnimationLength" :step="50" min="0" />
-                </div>
-
-                <!-- WINDOW -->
-                <div class="section-title">Window</div>
-                <div class="settings-grid">
-                    <span class="s-label">Fullscreen</span>
-                    <button class="toggle" :class="{ 'is-on': local.IsFullscreen }" type="button" @click="local.IsFullscreen = !local.IsFullscreen">
-                        <span class="toggle-thumb" />
-                    </button>
-
-                    <span class="s-label">Custom Scaling</span>
-                    <button class="toggle" :class="{ 'is-on': local.UseCustomScaling }" type="button" @click="local.UseCustomScaling = !local.UseCustomScaling">
-                        <span class="toggle-thumb" />
-                    </button>
-
-                    <template v-if="local.UseCustomScaling">
-                        <span class="s-label">Scale Factor</span>
-                        <input class="s-input s-input--narrow" type="number" v-model.number="local.CustomScale" :step="0.1" min="0.5" max="4" />
-                    </template>
-                </div>
+                </div><!-- end panels tab -->
 
                 <p v-if="saveError" class="error-msg">{{ saveError }}</p>
 
@@ -1097,6 +1147,35 @@ select.s-input {
     input[type="radio"] {
         accent-color: #6aaa6a;
         cursor: pointer;
+    }
+}
+
+.tab-bar {
+    display: flex;
+    border-bottom: 1px solid #2d3a56;
+    flex-shrink: 0;
+    background: #0f1827;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 9px 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #4a6080;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+
+    &:hover { color: #94a3b8; }
+
+    &.active {
+        color: #e2e8f0;
+        border-bottom-color: #3b6ec4;
     }
 }
 </style>

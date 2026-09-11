@@ -356,9 +356,9 @@ function memDayDescription(d: MemDay): string {
 .modal-panel {
     width: 50vw;
     max-height: 85vh;
-    background: #141e33;
-    border: 1px solid #2d3a56;
-    border-radius: 8px;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius, 8px);
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
@@ -372,8 +372,8 @@ function memDayDescription(d: MemDay): string {
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid #2d3a56;
-    background: #0f1926;
+    border-bottom: 1px solid var(--app-border, #2d3a56);
+    background: var(--app-surface, #0c1524);
     flex-shrink: 0;
 }
 
@@ -392,7 +392,7 @@ function memDayDescription(d: MemDay): string {
 .modal-title {
     font-size: 0.95rem;
     font-weight: 600;
-    color: #7aa8e8;
+    color: var(--app-text, #e2e8f0);
 }
 
 .icon-btn {
@@ -402,12 +402,12 @@ function memDayDescription(d: MemDay): string {
     width: 28px;
     height: 28px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--app-radius-sm, 4px);
     background: transparent;
-    color: #7a8faa;
+    color: var(--app-text-dim, #64748b);
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
-    &:hover { background: #1e2b44; color: #e2e8f0; }
+    &:hover { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
 }
 
 .action-btn {
@@ -415,14 +415,14 @@ function memDayDescription(d: MemDay): string {
     align-items: center;
     gap: 5px;
     padding: 4px 12px;
-    border: 1px solid #2d3a56;
-    border-radius: 4px;
-    background: #0d1521;
-    color: #94a3b8;
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px);
+    background: var(--app-bg, #0f172a);
+    color: var(--app-text-muted, #94a3b8);
     font-size: 0.78rem;
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
-    &:hover { background: #1e2b44; border-color: #3b6ec4; color: #e2e8f0; }
+    &:hover { background: var(--app-surface-high, #1e2b44); border-color: var(--app-accent, #6366f1); color: var(--app-text, #e2e8f0); }
     &.edit:hover { border-color: #5ba55b; color: #8ecf8e; }
 }
 
@@ -435,20 +435,21 @@ function memDayDescription(d: MemDay): string {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    background: var(--app-surface-raised, #141e33);
 }
 
 .state-msg {
     padding: 24px;
     text-align: center;
     font-size: 0.85rem;
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     &.error { color: #e87a7a; }
 }
 
 // ── Sections ─────────────────────────────────────────────────────────────────
 
 .view-section {
-    border-left: 3px solid #2d3a56;
+    border-left: 3px solid var(--app-border, #2d3a56);
     padding-left: 14px;
 }
 
@@ -457,7 +458,7 @@ function memDayDescription(d: MemDay): string {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #7aa8e8;
+    color: var(--app-accent-hover, #818cf8);
     margin: 0 0 10px;
     display: flex;
     align-items: center;
@@ -469,12 +470,12 @@ function memDayDescription(d: MemDay): string {
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
-    color: #7090b0;
+    color: var(--app-text-dim, #64748b);
 }
 
 .none-note {
     font-size: 0.78rem;
-    color: #7090b0;
+    color: var(--app-text-dim, #64748b);
     font-style: italic;
     margin: 0;
 }
@@ -491,14 +492,14 @@ function memDayDescription(d: MemDay): string {
 .info-label {
     font-size: 0.72rem;
     font-weight: 600;
-    color: #7090b0;
+    color: var(--app-text-dim, #64748b);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
 .info-value {
     font-size: 0.85rem;
-    color: #c8d8f0;
+    color: var(--app-text, #e2e8f0);
 }
 
 // ── Meta tags ────────────────────────────────────────────────────────────────
@@ -514,9 +515,9 @@ function memDayDescription(d: MemDay): string {
     font-size: 0.72rem;
     padding: 2px 8px;
     border-radius: 10px;
-    background: #0d1521;
-    border: 1px solid #2d3a56;
-    color: #7a9cc0;
+    background: var(--app-bg, #0f172a);
+    border: 1px solid var(--app-border, #2d3a56);
+    color: var(--app-text-muted, #94a3b8);
 }
 
 // ── Tables ───────────────────────────────────────────────────────────────────
@@ -532,25 +533,25 @@ function memDayDescription(d: MemDay): string {
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: #7090b0;
+        color: var(--app-text-dim, #64748b);
         padding: 4px 8px;
-        border-bottom: 1px solid #1e2b44;
+        border-bottom: 1px solid var(--app-surface-high, #1e2b44);
     }
 
     td {
         padding: 5px 8px;
-        color: #c8d8f0;
-        border-bottom: 1px solid #111d30;
+        color: var(--app-text, #e2e8f0);
+        border-bottom: 1px solid color-mix(in srgb, var(--app-border, #2d3a56) 50%, transparent);
         vertical-align: middle;
     }
 
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #151f35; }
+    tr:hover td { background: color-mix(in srgb, var(--app-surface-raised, #141e33) 80%, var(--app-accent, #6366f1)); }
 
-    .num { color: #82a8d0; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
-    .muted { color: #7a9ab8; }
+    .num { color: var(--app-text-muted, #94a3b8); font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
+    .muted { color: var(--app-text-dim, #64748b); }
     .small { font-size: 0.76rem; }
-    .step-frac { color: #82a8d0; font-variant-numeric: tabular-nums; font-size: 0.75rem; }
+    .step-frac { color: var(--app-text-muted, #94a3b8); font-variant-numeric: tabular-nums; font-size: 0.75rem; }
 }
 
 // ── Day chips ────────────────────────────────────────────────────────────────
@@ -563,16 +564,16 @@ function memDayDescription(d: MemDay): string {
 
 .day-chip {
     padding: 3px 10px;
-    border-radius: 4px;
+    border-radius: var(--app-radius-sm, 4px);
     font-size: 0.78rem;
-    background: #0d1521;
-    border: 1px solid #2d3a56;
-    color: #94a3b8;
+    background: var(--app-bg, #0f172a);
+    border: 1px solid var(--app-border, #2d3a56);
+    color: var(--app-text-muted, #94a3b8);
 
     &.weekend {
-        border-color: #3b6ec4;
-        background: #1a2e50;
-        color: #7aa8e8;
+        border-color: var(--app-accent, #6366f1);
+        background: color-mix(in srgb, var(--app-bg, #0f172a) 70%, var(--app-accent, #6366f1));
+        color: var(--app-accent-hover, #818cf8);
     }
 }
 
@@ -582,7 +583,7 @@ function memDayDescription(d: MemDay): string {
 
 .season-chip {
     padding: 2px 7px;
-    border-radius: 4px;
+    border-radius: var(--app-radius-sm, 4px);
     font-size: 0.72rem;
     border: 1px solid transparent;
     font-weight: 500;
@@ -604,9 +605,9 @@ function memDayDescription(d: MemDay): string {
     font-family: monospace;
     padding: 2px 6px;
     border-radius: 3px;
-    background: #0a1220;
-    border: 1px solid #253048;
-    color: #7aa8e8;
+    background: var(--app-bg, #0f172a);
+    border: 1px solid var(--app-border, #2d3a56);
+    color: var(--app-accent-hover, #818cf8);
 }
 
 .color-dot {
@@ -625,7 +626,7 @@ function memDayDescription(d: MemDay): string {
     text-transform: capitalize;
     font-weight: 600;
 
-    &.fixed    { background: #1a2e50; color: #7aa8e8; }
+    &.fixed    { background: color-mix(in srgb, var(--app-bg, #0f172a) 70%, var(--app-accent, #6366f1)); color: var(--app-accent-hover, #818cf8); }
     &.weekly   { background: #1a3020; color: #5ba55b; }
     &.relative { background: #2e1a40; color: #b36eb3; }
 }

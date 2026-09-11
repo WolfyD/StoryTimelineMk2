@@ -1,5 +1,31 @@
 import type Konva from "konva";
 
+export interface ChromeTheme {
+    tbBgFrom: string
+    tbBgTo: string
+    tbBorderColor: string
+    tbText: string
+    tbSub: string
+    tbBtnColor: string
+    tbBtnHoverColor: string
+    tbBtnHoverBg: string
+    tbOrb1: string
+    tbOrb2: string
+    appBg: string
+    appSurface: string
+    appSurfaceRaised: string
+    appSurfaceHigh: string
+    appBorder: string
+    appText: string
+    appTextMuted: string
+    appTextDim: string
+    appAccent: string
+    appAccentHover: string
+    appRadius: string
+    appRadiusSm: string
+    appRadiusLg: string
+}
+
 export interface TimelineProjectContainer {
     data: TimelineProject[]
 }
@@ -159,6 +185,7 @@ export interface YearDefinition {
 	seasons?: number;
 	season_definition?: Record<string, any>;
 	week_definition?: WeekDef;
+	year_start_dow?: number;  // day-of-week (0 = first weekday) that M1 D1 of year 0 falls on
 }
 
 export interface TimelineItem {
@@ -369,4 +396,9 @@ export interface LayoutSettings {
 	DataPanelH4Color: string;
 	DataPanelFontFamily: string;
 	DataPanelFontSize: number;
+
+	// Gallery panel
+	GalleryPanelBackgroundColor: string;
+	GalleryPanelBorderColor: string;
+	GalleryPanelTextColor: string;
 }

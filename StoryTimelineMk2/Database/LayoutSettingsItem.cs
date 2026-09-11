@@ -92,5 +92,10 @@
         public string DataPanelH4Color { get; set; } = string.Empty;
         public string DataPanelFontFamily { get; set; } = string.Empty;
         public int DataPanelFontSize { get; set; }
+
+        // Gallery panel
+        public string GalleryPanelBackgroundColor { get; set; } = string.Empty;
+        public string GalleryPanelBorderColor { get; set; } = string.Empty;
+        public string GalleryPanelTextColor { get; set; } = string.Empty;
     }
 }

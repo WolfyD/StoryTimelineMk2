@@ -140,7 +140,7 @@ namespace StoryTimelineMk2.Database
             return settings;
         }
 
-        public void SaveAppWindowState(int x, int y, int width, int height)
+        public void SaveAppWindowState(int x, int y, int width, int height, bool maximized = false)
         {
             using var db = new SqliteConnection(_connString);
             db.Execute(@"
@@ -149,9 +149,10 @@ namespace StoryTimelineMk2.Database
                     window_position_y = @Y,
                     window_size_x     = @Width,
                     window_size_y     = @Height,
+                    window_maximized  = @Maximized,
                     updated_at        = CURRENT_TIMESTAMP
                 WHERE timeline_id IS NULL;",
-                new { X = x, Y = y, Width = width, Height = height });
+                new { X = x, Y = y, Width = width, Height = height, Maximized = maximized });
         }
 
         public void DeleteSettings(string id)

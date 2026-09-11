@@ -12,6 +12,7 @@ import type {
 	LayoutSettings,
 	FilterRule,
 	FilterPreset,
+	ChromeTheme,
 } from '@/types/models';
 import { useTimelineStore } from '@/stores/timelineStore';
 
@@ -191,7 +192,11 @@ export const BackendAPI = {
 	},
 
 	async GetAppConfig() {
-		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string }>('GetAppConfig', {});
+		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string; chromeTheme: ChromeTheme; themeInitialized: boolean }>('GetAppConfig', {});
+	},
+
+	async SaveChromeTheme(theme: ChromeTheme) {
+		return await this.request<{ status: string }>('SaveChromeTheme', theme);
 	},
 
 	async BrowseDataFolder() {
@@ -310,6 +315,10 @@ export const BackendAPI = {
 
 	async SetMiscSetting(key: string, value: string, timelineId = 0) {
 		return await this.request<{ status: string }>('SetMiscSetting', { key, value, timelineId });
+	},
+
+	OpenAddEditItemWindow(timelineId: number, itemId: string | null) {
+		this.send('OpenAddEditItemWindow', { timelineId, itemId })
 	},
 
 	// Window chrome (borderless) — fire-and-forget, no response needed

@@ -18,6 +18,7 @@ namespace StoryTimelineMk2.Database
         public int WindowSizeY { get; set; }
         public int WindowPositionX { get; set; }
         public int WindowPositionY { get; set; }
+        public bool WindowMaximized { get; set; }
         public bool UseCustomScaling { get; set; }
         public float CustomScale { get; set; }
         public int DisplayRadius { get; set; }

@@ -140,11 +140,11 @@ function formatApproximate(dist: number): string {
 
 <template>
     <div class="notes-panel" :style="{
-        '--np-bg':      props.layoutSettings?.NotesPanelBackgroundColor     || '#0f172a',
-        '--np-card':    props.layoutSettings?.NotesPanelCardBackgroundColor  || '#1e293b',
-        '--np-text':    props.layoutSettings?.NotesPanelTextColor            || '#e2e8f0',
-        '--np-heading': props.layoutSettings?.NotesPanelHeadingColor         || '#94a3b8',
-        '--np-accent':  props.layoutSettings?.NotesPanelAccentColor          || '#6366f1',
+        '--np-bg':      props.layoutSettings?.NotesPanelBackgroundColor     || 'var(--app-bg)',
+        '--np-card':    props.layoutSettings?.NotesPanelCardBackgroundColor  || 'var(--app-surface)',
+        '--np-text':    props.layoutSettings?.NotesPanelTextColor            || 'var(--app-text)',
+        '--np-heading': props.layoutSettings?.NotesPanelHeadingColor         || 'var(--app-text-muted)',
+        '--np-accent':  props.layoutSettings?.NotesPanelAccentColor          || 'var(--app-accent)',
         '--np-fs':      (props.layoutSettings?.NotesPanelFontSize ?? 13) + 'px',
     }">
         <!-- Tab bar -->
@@ -408,7 +408,7 @@ function formatApproximate(dist: number): string {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 10px;
+    padding: 10px 10px 24px;
 }
 
 .notes-empty {
@@ -507,7 +507,7 @@ function formatApproximate(dist: number): string {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 12px;
+    padding: 12px 12px 24px;
     gap: 10px;
     overflow-y: auto;
 }

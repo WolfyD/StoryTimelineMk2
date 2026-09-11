@@ -10,8 +10,10 @@
 	import AuthorReminderModal from './components/AuthorReminderModal.vue';
 	import SelectCalendarModal from './components/SelectCalendarModal.vue';
 	import CalendarManagerModal from './components/CalendarManagerModal.vue';
+	import { useAppTheme } from '@/utils/useAppTheme';
 
 	const store = useTimelineStore();
+	useAppTheme();
 
 	const newProjectOpen = ref<boolean>(false)
 	const showAppSettings = ref(false)

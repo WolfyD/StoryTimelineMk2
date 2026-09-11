@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { PhX, PhFolderOpen, PhArrowSquareOut, PhCopy, PhFloppyDisk } from '@phosphor-icons/vue'
+import { PhX, PhFolderOpen, PhArrowSquareOut, PhCopy, PhFloppyDisk, PhPaintBrush } from '@phosphor-icons/vue'
 import { BackendAPI } from '@/bridge/api'
+import AppThemeModal from './AppThemeModal.vue'
 
 const emit = defineEmits<{ close: []; refresh: [] }>()
 
+const showThemeModal = ref(false)
 const currentRoot = ref('')
 const pendingPath = ref('')
 const includeMedia = ref(true)
@@ -86,6 +88,16 @@ async function createBackup() {
 
             <div class="modal-body">
 
+                <!-- ── App Theme ── -->
+                <section class="settings-section">
+                    <h4 class="section-label">Appearance</h4>
+                    <p class="hint">Customise colors, borders, and sizes for the application chrome.</p>
+                    <button class="btn btn-secondary" @click="showThemeModal = true">
+                        <PhPaintBrush :size="14" />
+                        Open theme settings…
+                    </button>
+                </section>
+
                 <!-- ── Data Folder ── -->
                 <section class="settings-section">
                     <h4 class="section-label">Data Folder</h4>
@@ -164,6 +176,10 @@ async function createBackup() {
 
         </div>
     </div>
+
+    <Teleport to="body">
+        <AppThemeModal v-if="showThemeModal" @close="showThemeModal = false" />
+    </Teleport>
 </template>
 
 <style scoped lang="scss">
@@ -174,23 +190,26 @@ async function createBackup() {
 
 .modal-panel {
     display: flex; flex-direction: column;
-    background: #141e33; border: 1px solid #2d3a56; border-radius: 8px;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius, 8px);
     width: min(520px, 92vw); box-shadow: 0 24px 48px #00000066;
 }
 
 .modal-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px; background: #1e2b44;
-    border-bottom: 1px solid #2d3a56; border-radius: 8px 8px 0 0;
+    padding: 14px 20px; background: var(--app-surface-high, #1e2b44);
+    border-bottom: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius, 8px) var(--app-radius, 8px) 0 0;
 }
 
-.modal-title { font-size: 15px; font-weight: 600; color: #e2e8f0; }
+.modal-title { font-size: 15px; font-weight: 600; color: var(--app-text, #e2e8f0); }
 
 .close-btn {
     display: flex; align-items: center; justify-content: center;
-    background: transparent; border: none; color: #64748b; cursor: pointer;
+    background: transparent; border: none; color: var(--app-text-muted, #64748b); cursor: pointer;
     padding: 4px; border-radius: 4px; transition: color 0.15s, background 0.15s;
-    &:hover { color: #e2e8f0; background: #ffffff12; }
+    &:hover { color: var(--app-text, #e2e8f0); background: rgba(255,255,255,0.07); }
 }
 
 .modal-body {
@@ -200,21 +219,24 @@ async function createBackup() {
 
 .modal-footer {
     display: flex; justify-content: flex-end;
-    padding: 12px 20px; background: #1e2b44;
-    border-top: 1px solid #2d3a56; border-radius: 0 0 8px 8px;
+    padding: 12px 20px; background: var(--app-surface-high, #1e2b44);
+    border-top: 1px solid var(--app-border, #2d3a56);
+    border-radius: 0 0 var(--app-radius, 8px) var(--app-radius, 8px);
 }
 
 // ── Sections ──
 .settings-section {
     display: flex; flex-direction: column; gap: 8px;
     padding: 14px 16px;
-    background: #0c1524; border: 1px solid #2d3a56; border-radius: 6px;
+    background: var(--app-surface, #0c1524);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 6px);
 }
 
 .section-label {
     margin: 0 0 4px;
     font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; color: #4a6080;
+    text-transform: uppercase; color: var(--app-text-dim, #4a6080);
 }
 
 // ── Current path ──
@@ -224,15 +246,16 @@ async function createBackup() {
 
 .path-box {
     flex: 1; display: flex; align-items: center; gap: 6px;
-    background: #141e33; border: 1px solid #2d3a56; border-radius: 4px;
-    padding: 6px 10px; overflow: hidden;
-    min-width: 0;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px);
+    padding: 6px 10px; overflow: hidden; min-width: 0;
 }
 
 .path-icon { color: #79876b; flex-shrink: 0; }
 
 .path-text {
-    font-size: 12px; color: #94a3b8; font-family: monospace;
+    font-size: 12px; color: var(--app-text-muted, #94a3b8); font-family: monospace;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -243,10 +266,12 @@ async function createBackup() {
 
 .path-input {
     flex: 1;
-    background: #141e33; border: 1px solid #2d3a56; border-radius: 4px;
-    color: #94a3b8; font-size: 12px; font-family: monospace;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px);
+    color: var(--app-text-muted, #94a3b8); font-size: 12px; font-family: monospace;
     padding: 6px 10px; outline: none; cursor: default;
-    &:focus { border-color: #3b6ec4; }
+    &:focus { border-color: var(--app-accent, #3b6ec4); }
 }
 
 // ── Change actions ──
@@ -257,21 +282,21 @@ async function createBackup() {
 
 // ── Hints ──
 .hint {
-    margin: 0; font-size: 11px; color: #4a6080; line-height: 1.5;
+    margin: 0; font-size: 11px; color: var(--app-text-dim, #4a6080); line-height: 1.5;
     &.warn { color: #c9953a; }
 }
 
 // ── Toggle ──
 .toggle-label {
     display: flex; align-items: center; gap: 7px;
-    font-size: 13px; color: #94a3b8; cursor: pointer; user-select: none;
+    font-size: 13px; color: var(--app-text-muted, #94a3b8); cursor: pointer; user-select: none;
     input { cursor: pointer; }
 }
 
 // ── Feedback ──
 .feedback {
-    padding: 8px 12px; border-radius: 5px; font-size: 12px; line-height: 1.5;
-    &--busy    { background: #1e2b44; color: #94a3b8; }
+    padding: 8px 12px; border-radius: var(--app-radius-sm, 5px); font-size: 12px; line-height: 1.5;
+    &--busy    { background: var(--app-surface-high, #1e2b44); color: var(--app-text-muted, #94a3b8); }
     &--success { background: #1a3326; color: #6fcf97; border: 1px solid #2d6b4a; }
     &--error   { background: #3a1a1a; color: #f87171; border: 1px solid #6b2d2d; }
 }
@@ -281,30 +306,33 @@ async function createBackup() {
 // ── Buttons ──
 .btn {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 6px 14px; border: none; border-radius: 4px;
+    padding: 6px 14px; border: none; border-radius: var(--app-radius-sm, 4px);
     cursor: pointer; font-size: 12px; font-weight: 500;
     transition: background 0.15s, opacity 0.15s;
     &:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 .btn-primary {
-    background: #3b6ec4; color: #e2e8f0;
-    &:hover:not(:disabled) { background: #4d80d6; }
+    background: var(--app-accent, #3b6ec4); color: var(--app-text, #e2e8f0);
+    &:hover:not(:disabled) { background: var(--app-accent-hover, #4d80d6); }
 }
 
 .btn-secondary {
-    background: #1e2b44; color: #94a3b8; border: 1px solid #2d3a56;
-    &:hover:not(:disabled) { background: #253453; color: #e2e8f0; }
+    background: var(--app-surface-high, #1e2b44); color: var(--app-text-muted, #94a3b8);
+    border: 1px solid var(--app-border, #2d3a56);
+    &:hover:not(:disabled) { background: var(--app-surface-raised, #253453); color: var(--app-text, #e2e8f0); }
 }
 
 .btn-ghost {
-    background: transparent; color: #64748b; border: 1px solid #2d3a56;
+    background: transparent; color: var(--app-text-dim, #64748b);
+    border: 1px solid var(--app-border, #2d3a56);
     padding: 5px 10px; white-space: nowrap;
-    &:hover { color: #e2e8f0; background: #ffffff08; }
+    &:hover { color: var(--app-text, #e2e8f0); background: rgba(255,255,255,0.04); }
 }
 
 .btn-cancel {
-    background: transparent; color: #94a3b8; border: 1px solid #2d3a56;
-    &:hover { background: #ffffff0e; color: #e2e8f0; }
+    background: transparent; color: var(--app-text-muted, #94a3b8);
+    border: 1px solid var(--app-border, #2d3a56);
+    &:hover { background: rgba(255,255,255,0.05); color: var(--app-text, #e2e8f0); }
 }
 </style>

@@ -8,7 +8,7 @@ import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
 import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
 import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
 import { Splitpanes, Pane } from 'splitpanes'
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
 import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
@@ -17,8 +17,10 @@ import TimelineGalleryPanel from "@/components/TimelineGalleryPanel.vue";
 import TimelineMinimap from "@/components/TimelineMinimap.vue";
 import TimelineItemViewModal from "@/components/TimelineItemViewModal.vue";
 import { BackendAPI } from '@/bridge/api';
+import { useAppTheme } from '@/utils/useAppTheme';
 
 const store = useTimelineStore()
+useAppTheme()
 
 const loadError = ref<boolean>(false)
 const timelineCanvasRef = ref();
@@ -104,6 +106,16 @@ function jump() {
         timelineCanvasRef.value?.jumpToYear(year)
     }
 }
+
+const navStyle = computed(() => {
+    const ls = store.layoutSettings
+    if (!ls) return {}
+    return {
+        '--nav-bg':     ls.TimelineCanvasBackgroundColor || '#0f172a',
+        '--nav-border': ls.TimelineAxisColor             || '#334155',
+        '--nav-text':   ls.TimelineTickMarkerTextColor    || '#94a3b8',
+    }
+})
 
 function handleResizeEvent(){
 	if(timelineCanvasRef.value){
@@ -266,6 +278,7 @@ onBeforeUnmount(() => {
         v-if="viewItemId && store.currentProject"
         :item-id="viewItemId"
         :timeline-id="store.currentProject.Id"
+        :layout-settings="store.layoutSettings ?? null"
         @close="viewItemId = null"
     />
 
@@ -276,7 +289,7 @@ onBeforeUnmount(() => {
         </div>
     </Teleport>
 
-	<div id="timeline-nav">
+	<div id="timeline-nav" :style="navStyle">
 		<div id="undo-delete-bar" v-if="store.lastDeleted">
 			<span class="undo-text">Undo deletion of <em>"{{ store.lastDeleted.item.Title }}"</em></span>
 			<button class="undo-btn" @click="undoDelete">↩ Undo</button>
@@ -383,9 +396,9 @@ onBeforeUnmount(() => {
 	display: flex;
 	width: 100%;
 	height: auto !important;
-	background-color: #2a2a2a66;
-	border-bottom: 1px solid #333;
-	color: #fff;
+	background: color-mix(in srgb, var(--app-bg, #060c19) 75%, transparent);
+	border-bottom: 1px solid var(--app-border, #2d3a56);
+	color: var(--app-text, #e2e8f0);
 	align-items: center;
 
 	#timeline-header-info-container {
@@ -406,10 +419,14 @@ onBeforeUnmount(() => {
 	h2 {
 		font-size: medium;
 		font-style: italic;
+		color: var(--app-text-muted, #94a3b8);
 	}
 
 	h2::before {
-		content: url("data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjZmZmIiB3aWR0aD0iMzAiIGhlaWdodD0iMjAiIHZpZXdCb3g9Ii0xIDIgMjAgMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcvPjxnIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjx0aXRsZT5lbWRhc2g8L3RpdGxlPjxwYXRoIGQ9Ik0xOS42NTYgMTIuOTA2djIuMjgxSC0uNDM4di0yLjI4MXoiLz48L3N2Zz4=");
+		content: "—";
+		margin-right: 6px;
+		font-style: normal;
+		opacity: 0.6;
 	}
 }
 
@@ -431,23 +448,30 @@ onBeforeUnmount(() => {
 
 #timeline-info {
 	display: flex;
-    background-color: #404d6b88;
+    background: var(--app-surface-raised, #141e33);
+    border-top: 1px solid var(--app-border, #2d3a56);
+    color: var(--app-text, #e2e8f0);
     height: 40px !important;
     flex-shrink: 0;
 	justify-content: space-between;
 	user-select: none;
+    font-size: 0.8em;
 
 	#timeline-info-left{
 		display: flex;
 		flex-direction: row;
-		gap: 5px;
+		align-items: center;
+		gap: 12px;
 		margin-left: 10px;
+		color: var(--app-text-muted, #94a3b8);
 	}
 
 	#timeline-info-right {
 		display: flex;
 		flex-direction: row;
+		align-items: center;
 		margin-right: 10px;
+		color: var(--app-text-muted, #94a3b8);
 	}
 
 }
@@ -455,10 +479,29 @@ onBeforeUnmount(() => {
 #timeline-nav {
 	display: flex;
 	flex-direction: row;
-    background-color: #446b4088;
+    background: color-mix(in srgb, var(--nav-bg, #0f172a) 85%, #000);
+    border-top: 1px solid var(--nav-border, #334155);
+    color: var(--nav-text, #94a3b8);
     height: 40px !important;
     flex-shrink: 0;
 	user-select: none;
+
+    p { color: var(--nav-text, #94a3b8); }
+
+    input {
+        background: color-mix(in srgb, var(--nav-bg, #0f172a) 70%, #000);
+        color: var(--nav-text, #94a3b8);
+        border: 1px solid var(--nav-border, #334155);
+        border-radius: 4px;
+    }
+
+    .button {
+        color: var(--nav-text, #94a3b8);
+        &:hover {
+            background: rgba(128, 128, 128, 0.2);
+            color: var(--nav-text, #94a3b8);
+        }
+    }
 }
 
 #undo-delete-bar {

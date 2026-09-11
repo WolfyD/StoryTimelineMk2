@@ -57,7 +57,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const distanceTo = ref<number | null>(null);
 	const notesDistanceTab = ref<'notes' | 'distance'>('notes');
 	const viewportWidthPx = ref<number>(0); // pixel width of the main timeline canvas, used by minimap
+	const pulseItemId = ref<string | null>(null);
 	let _undoTimer: ReturnType<typeof setTimeout> | null = null;
+	let _pulseTimer: ReturnType<typeof setTimeout> | null = null;
 	//const konvaItems = ref<KonvaGroupObject[]>([]);
 
 	const ItemTypes = [
@@ -368,6 +370,12 @@ export const useTimelineStore = defineStore('timeline', () => {
 	}
 
 
+	function pulseItem(id: string) {
+		if (_pulseTimer) clearTimeout(_pulseTimer)
+		pulseItemId.value = id
+		_pulseTimer = setTimeout(() => { pulseItemId.value = null }, 1400)
+	}
+
 	function lodZoomIn(){
 		if(!lodProfile.value?.length) return;
 		const sorted = [...lodProfile.value].sort((a, b) => a.index - b.index);
@@ -422,7 +430,8 @@ export const useTimelineStore = defineStore('timeline', () => {
 			}
 
 			const weekLength: number = yd.week_definition?.length ?? 7
-			return { yearLength, weekLength, months, seasons }
+			const yearStartDow: number = yd.year_start_dow ?? 0
+			return { yearLength, weekLength, yearStartDow, months, seasons }
 		} catch {
 			return DEFAULT_CALENDAR_CONFIG
 		}
@@ -439,10 +448,12 @@ export const useTimelineStore = defineStore('timeline', () => {
 		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
+		pulseItemId,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
 		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setHiddenRanges, setLayoutSettings,
+		pulseItem,
 		addNote, updateNote, removeNote,
 		setLastDeleted, clearLastDeleted,
 		setFilterRuleState, upsertFilterRule, deleteFilterRule, clearAllFilters,

@@ -63,6 +63,9 @@ namespace StoryTimelineMk2.Forms
                 this.Size = new Size(saved.WindowSizeX, saved.WindowSizeY);
                 this.Location = target;
             }
+
+            if (saved.WindowMaximized)
+                this.WindowState = FormWindowState.Maximized;
         }
 
         private void F_Main_ResizeEnd(object? sender, EventArgs e) => PersistWindowState();
@@ -81,8 +84,10 @@ namespace StoryTimelineMk2.Forms
 
         private void PersistWindowState()
         {
-            if (this.WindowState != FormWindowState.Normal) return;
-            new SettingsRepo().SaveAppWindowState(this.Left, this.Top, this.Width, this.Height);
+            bool maximized = this.WindowState == FormWindowState.Maximized;
+            // When maximized, save the restore-bounds so position/size survive the session.
+            var b = maximized ? this.RestoreBounds : this.Bounds;
+            new SettingsRepo().SaveAppWindowState(b.Left, b.Top, b.Width, b.Height, maximized);
         }
 
         private void LoadFrontend()

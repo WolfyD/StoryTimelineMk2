@@ -105,9 +105,9 @@ onMounted(load)
 .modal-panel {
     width: 80vw;
     max-height: 75vh;
-    background: #141e33;
-    border: 1px solid #2d3a56;
-    border-radius: 8px;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius, 8px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
@@ -121,15 +121,15 @@ onMounted(load)
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    border-bottom: 1px solid #2d3a56;
-    background: #0f1926;
+    border-bottom: 1px solid var(--app-border, #2d3a56);
+    background: var(--app-surface, #0c1524);
     flex-shrink: 0;
 }
 
 .modal-title {
     font-size: 0.88rem;
     font-weight: 600;
-    color: #7aa8e8;
+    color: var(--app-text, #e2e8f0);
     letter-spacing: 0.04em;
 }
 
@@ -147,11 +147,11 @@ onMounted(load)
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: #7a8faa;
+    color: var(--app-text-dim, #64748b);
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
 
-    &:hover:not(:disabled) { background: #1e2b44; color: #e2e8f0; }
+    &:hover:not(:disabled) { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
     &:disabled { opacity: 0.4; cursor: default; }
 }
 
@@ -166,11 +166,11 @@ onMounted(load)
 .state-msg {
     padding: 20px 16px;
     font-size: 0.82rem;
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     text-align: center;
 
     &.error { color: #e87a7a; }
-    &.empty { color: #4a6080; }
+    &.empty { color: var(--app-text-dim, #4a6080); }
 }
 
 .cal-list {
@@ -184,17 +184,17 @@ onMounted(load)
     align-items: center;
     padding: 8px 14px;
     gap: 10px;
-    border-bottom: 1px solid #1e2b44;
+    border-bottom: 1px solid var(--app-surface-high, #1e2b44);
     transition: background 0.1s;
 
     &:last-child { border-bottom: none; }
-    &:hover { background: #1a2540; }
+    &:hover { background: color-mix(in srgb, var(--app-surface-raised, #141e33) 70%, var(--app-accent, #6366f1)); }
 }
 
 .cal-name {
     flex: 1;
     font-size: 0.88rem;
-    color: #c8d8f0;
+    color: var(--app-text, #e2e8f0);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -211,18 +211,18 @@ onMounted(load)
     align-items: center;
     gap: 4px;
     padding: 3px 10px;
-    border: 1px solid #2d3a56;
-    border-radius: 4px;
-    background: #0d1521;
-    color: #94a3b8;
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px);
+    background: var(--app-bg, #0f172a);
+    color: var(--app-text-muted, #94a3b8);
     font-size: 0.75rem;
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 
     &:hover {
-        background: #1e2b44;
-        border-color: #3b6ec4;
-        color: #e2e8f0;
+        background: var(--app-surface-high, #1e2b44);
+        border-color: var(--app-accent, #6366f1);
+        color: var(--app-text, #e2e8f0);
     }
 
     &.edit:hover {
@@ -235,8 +235,8 @@ onMounted(load)
 
 .modal-footer {
     padding: 8px 12px;
-    border-top: 1px solid #2d3a56;
-    background: #0f1926;
+    border-top: 1px solid var(--app-border, #2d3a56);
+    background: var(--app-surface, #0c1524);
     flex-shrink: 0;
 }
 
@@ -246,10 +246,10 @@ onMounted(load)
     gap: 6px;
     width: 100%;
     padding: 6px 12px;
-    border: 1px dashed #3b6ec4;
-    border-radius: 5px;
+    border: 1px dashed var(--app-accent, #6366f1);
+    border-radius: var(--app-radius-sm, 5px);
     background: transparent;
-    color: #7aa8e8;
+    color: var(--app-accent-hover, #818cf8);
     font-size: 0.82rem;
     font-weight: 500;
     cursor: pointer;
@@ -257,8 +257,8 @@ onMounted(load)
     transition: background 0.12s, color 0.12s;
 
     &:hover {
-        background: #1a2e50;
-        color: #a8c8f8;
+        background: color-mix(in srgb, var(--app-bg, #0f172a) 60%, var(--app-accent, #6366f1));
+        color: var(--app-text, #e2e8f0);
     }
 }
 </style>

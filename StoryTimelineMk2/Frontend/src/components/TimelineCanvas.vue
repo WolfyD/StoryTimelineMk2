@@ -806,6 +806,37 @@ watch(() => store.items.length, (newLen, oldLen) => {
     }
 });
 
+// Pulse-highlight a specific item node (triggered from the data panel focus button)
+watch(() => store.pulseItemId, (id) => {
+    if (!id) return;
+    const els = nodeCache.get(id);
+    if (!els) return;
+    const target = els.box ?? els.stem;
+    if (!target) return;
+
+    const glowIn = new Konva.Tween({
+        node: target,
+        duration: 0.3,
+        shadowBlur: 32,
+        shadowColor: '#818cf8',
+        shadowOpacity: 0.95,
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        easing: Konva.Easings.EaseOut,
+        onFinish() {
+            new Konva.Tween({
+                node: target,
+                duration: 0.9,
+                shadowBlur: 0,
+                shadowOpacity: 0,
+                easing: Konva.Easings.EaseOut,
+                onFinish() { glowIn.destroy() },
+            }).play();
+        },
+    });
+    glowIn.play();
+});
+
 function initCursorShapes() {
     cursorLine = new Konva.Line({
         points: [0, 0, 0, viewport.height],

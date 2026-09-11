@@ -88,8 +88,8 @@ const navItems = [
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    background: linear-gradient(180deg, #182236 0%, #0c1422 100%);
-    border-right: 1px solid rgba(255, 255, 255, 0.055);
+    background: linear-gradient(180deg, var(--app-surface-raised, #182236) 0%, var(--app-surface, #0c1422) 100%);
+    border-right: 1px solid color-mix(in srgb, var(--app-border, #2d3a56) 40%, transparent);
     user-select: none;
 }
 
@@ -112,7 +112,7 @@ const navItems = [
 .strip-separator {
     width: 26px;
     height: 1px;
-    background: rgba(255, 255, 255, 0.07);
+    background: color-mix(in srgb, var(--app-border, #2d3a56) 35%, transparent);
     margin: 0 auto 4px;
     flex-shrink: 0;
 }
@@ -128,26 +128,21 @@ const navItems = [
     background: transparent;
     border: none;
     border-left: 2px solid transparent;
-    color: #3d5166;
+    color: var(--tb-btn-color, #3d5166);
     cursor: pointer;
     padding: 0;
     transition: color 0.14s, background 0.14s, border-color 0.14s;
     position: relative;
 
-    // Subtle radial glow on hover
     &:hover:not(.strip-btn--active):not(.strip-btn--disabled):not(.strip-btn--tool-active) {
-        color: #8ca5bc;
-        background: radial-gradient(
-            ellipse 80% 70% at 50% 45%,
-            rgba(255, 255, 255, 0.07) 0%,
-            transparent 100%
-        );
+        color: var(--tb-btn-hover-color, #8ca5bc);
+        background: var(--tb-btn-hover-bg, radial-gradient(ellipse 80% 70% at 50% 45%, rgba(255,255,255,0.07) 0%, transparent 100%));
     }
 
     // Current section (timeline)
     &--active {
-        color: #818cf8;
-        border-left-color: #6366f1;
+        color: var(--app-accent-hover, #818cf8);
+        border-left-color: var(--app-accent, #6366f1);
         background: linear-gradient(
             90deg,
             rgba(99, 102, 241, 0.16) 0%,
@@ -155,7 +150,7 @@ const navItems = [
         );
     }
 
-    // Tool active (filter on)
+    // Tool active (filter on) — semantic green kept intentionally
     &--tool-active {
         color: #86efac;
         border-left-color: #4ade80;
@@ -175,9 +170,9 @@ const navItems = [
         }
     }
 
-    // Future features — ghosted so they're visible but clearly inactive
+    // Future features — ghosted
     &--disabled {
-        color: #3d5166;
+        color: var(--tb-btn-color, #3d5166);
         opacity: 0.28;
         cursor: default;
         pointer-events: none;

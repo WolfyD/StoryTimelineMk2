@@ -71,9 +71,9 @@ const effectiveLabels = computed(() =>
 .year-panel {
     width: 50vw;
     max-height: 90vh;
-    background: #141e33;
-    border: 1px solid #2d3a56;
-    border-radius: 8px;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius, 8px);
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
@@ -87,15 +87,15 @@ const effectiveLabels = computed(() =>
     align-items: center;
     justify-content: space-between;
     padding: 10px 16px;
-    border-bottom: 1px solid #2d3a56;
-    background: #0f1926;
+    border-bottom: 1px solid var(--app-border, #2d3a56);
+    background: var(--app-surface, #0c1524);
     flex-shrink: 0;
 }
 
 .year-title {
     font-size: 0.9rem;
     font-weight: 600;
-    color: #7aa8e8;
+    color: var(--app-text, #e2e8f0);
 }
 
 .close-btn {
@@ -105,12 +105,12 @@ const effectiveLabels = computed(() =>
     width: 28px;
     height: 28px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--app-radius-sm, 4px);
     background: transparent;
-    color: #7a8faa;
+    color: var(--app-text-dim, #64748b);
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
-    &:hover { background: #1e2b44; color: #e2e8f0; }
+    &:hover { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
 }
 
 // ── Body ─────────────────────────────────────────────────────────────────────
@@ -119,11 +119,12 @@ const effectiveLabels = computed(() =>
     flex: 1;
     overflow-y: auto;
     padding: 16px;
+    background: var(--app-surface-raised, #141e33);
 }
 
 .no-months {
     text-align: center;
-    color: #4a6080;
+    color: var(--app-text-dim, #64748b);
     font-style: italic;
     padding: 32px;
 }

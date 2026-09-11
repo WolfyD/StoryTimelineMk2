@@ -13,15 +13,39 @@ withDefaults(defineProps<{
 const isMaximized = ref(false)
 
 function minimize()       { BackendAPI.WindowMinimize() }
-function toggleMaximize() { isMaximized.value = !isMaximized.value; BackendAPI.WindowMaximizeRestore() }
+function toggleMaximize() { cancelDrag(); isMaximized.value = !isMaximized.value; BackendAPI.WindowMaximizeRestore() }
 function close()          { BackendAPI.WindowClose() }
 
-// WebView2 intercepts WM_NCHITTEST — mousedown triggers a bridge call that
-// invokes ReleaseCapture + SendMessage(WM_NCLBUTTONDOWN, HTCAPTION) so the
-// native Windows move-loop takes over with zero lag.
-function onDragStart(e: MouseEvent) {
+// ── Drag: only start the native move-loop after the mouse actually moves.
+// Calling SendMessage(WM_NCLBUTTONDOWN, HTCAPTION) on every mousedown enters a
+// blocking modal loop that eats the second click of a double-click.  By waiting
+// for movement we leave single-click and dblclick events clean.
+let _dragOrigin: { x: number; y: number } | null = null
+let _dragMoveHandler: ((e: MouseEvent) => void) | null = null
+const DRAG_THRESHOLD = 4
+
+function onDragMousedown(e: MouseEvent) {
+    if (e.button !== 0) return
     e.preventDefault()
-    BackendAPI.WindowStartDrag()
+    _dragOrigin = { x: e.screenX, y: e.screenY }
+    _dragMoveHandler = (mv: MouseEvent) => {
+        if (!_dragOrigin) return
+        if (Math.abs(mv.screenX - _dragOrigin.x) > DRAG_THRESHOLD ||
+            Math.abs(mv.screenY - _dragOrigin.y) > DRAG_THRESHOLD) {
+            cancelDrag()
+            BackendAPI.WindowStartDrag()
+        }
+    }
+    window.addEventListener('mousemove', _dragMoveHandler)
+    window.addEventListener('mouseup', cancelDrag, { once: true })
+}
+
+function cancelDrag() {
+    _dragOrigin = null
+    if (_dragMoveHandler) {
+        window.removeEventListener('mousemove', _dragMoveHandler)
+        _dragMoveHandler = null
+    }
 }
 </script>
 
@@ -30,7 +54,7 @@ function onDragStart(e: MouseEvent) {
         <!-- ── Drag region ──────────────────────────────────────────────── -->
         <div
             class="title-bar__drag"
-            @mousedown.left.prevent="onDragStart"
+            @mousedown="onDragMousedown"
             @dblclick="toggleMaximize"
         >
             <span class="title-bar__orb" aria-hidden="true"></span>
@@ -78,10 +102,9 @@ function onDragStart(e: MouseEvent) {
     z-index: 2;             // shadow renders above the content below
 
     // Darkest layer: top #060c19, blends toward content (#0a1424 ≈ halfway to #0f172a)
-    background: linear-gradient(180deg, #060c19 0%, #0a1424 100%);
+    background: linear-gradient(180deg, var(--tb-bg-from, #060c19) 0%, var(--tb-bg-to, #0a1424) 100%);
 
-    // Indigo-tinted separator — same accent hue as the strip's active state
-    border-bottom: 1px solid rgba(79, 70, 229, 0.18);
+    border-bottom: 1px solid var(--tb-border-color, rgba(79, 70, 229, 0.18));
 
     // Depth: shadow below pushes content down visually; micro-highlight on top edge
     box-shadow:
@@ -116,7 +139,7 @@ function onDragStart(e: MouseEvent) {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #4338ca 0%, #818cf8 100%);
+    background: linear-gradient(135deg, var(--tb-orb-1, #4338ca) 0%, var(--tb-orb-2, #818cf8) 100%);
     box-shadow:
         0 0 5px  rgba(99, 102, 241, 0.45),
         0 0 12px rgba(99, 102, 241, 0.16);
@@ -151,7 +174,7 @@ function onDragStart(e: MouseEvent) {
     font-weight: 500;
     // Cooler-tinted slate — slightly more blue than the neutral #94a3b8 so it
     // harmonises with the indigo accent and the dark navy background.
-    color: #8ea5c0;
+    color: var(--tb-text, #8ea5c0);
     letter-spacing: 0.04em;
     white-space: nowrap;
     overflow: hidden;
@@ -161,7 +184,7 @@ function onDragStart(e: MouseEvent) {
 .title-bar__sub {
     font-size: 11px;
     font-weight: 400;
-    color: #3d5166;          // same as strip inactive icons — very muted context
+    color: var(--tb-sub, #3d5166);
     letter-spacing: 0.02em;
     white-space: nowrap;
     overflow: hidden;
@@ -190,14 +213,14 @@ function onDragStart(e: MouseEvent) {
     justify-content: center;
     background: transparent;
     border: none;
-    color: #3d5166;         // inactive — same as strip icons
+    color: var(--tb-btn-color, #3d5166);
     cursor: pointer;
     font-size: 13px;
     transition: background 0.13s ease, color 0.13s ease;
 
     &:hover {
-        color: #8ca5bc;     // hover — same as strip icon hover
-        background: rgba(255, 255, 255, 0.07);
+        color: var(--tb-btn-hover-color, #8ca5bc);
+        background: var(--tb-btn-hover-bg, rgba(255, 255, 255, 0.07));
     }
 
     &:active {
