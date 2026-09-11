@@ -34,6 +34,14 @@ namespace StoryTimelineMk2
         [JsonPropertyName("appRadiusSm")] public string AppRadiusSm { get; set; } = "4px";
         [JsonPropertyName("appRadiusLg")] public string AppRadiusLg { get; set; } = "12px";
 
+        public bool IsDark()
+        {
+            var bg = AppBg.TrimStart('#');
+            if (bg.Length >= 2 && int.TryParse(bg[..2], System.Globalization.NumberStyles.HexNumber, null, out int r))
+                return r < 128;
+            return true;
+        }
+
         public static ChromeTheme DarkDefault() => new ChromeTheme();
 
         public static ChromeTheme LightDefault() => new ChromeTheme

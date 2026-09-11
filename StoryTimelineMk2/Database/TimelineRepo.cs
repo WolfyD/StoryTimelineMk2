@@ -88,7 +88,12 @@ namespace StoryTimelineMk2.Database
             var TL = db.QueryFirst<TimelineInfo>("SELECT * FROM timelines WHERE id = @Id LIMIT 1", new { Id = id });
             var cal = new CalendarRepo().GetCalendarById(TL.CalendarId);
             var set = new SettingsRepo().GetTimelineSettings(id);
-            var ls = new LayoutSettingsRepo().GetById(TL.LayoutSettingsId);
+            // When not manually locked, resolve to the built-in preset that matches the app theme.
+            // When locked (user explicitly chose a preset), use the stored value.
+            string effectivePresetId = TL.LayoutSettingsLocked == 0
+                ? (AppConfig.Instance.ChromeTheme.IsDark() ? "ls_dark" : "ls_default")
+                : TL.LayoutSettingsId;
+            var ls = new LayoutSettingsRepo().GetById(effectivePresetId);
             TL.Calendar = cal;
             TL.Settings = set;
             TL.LayoutSettings = ls;
@@ -137,7 +142,7 @@ namespace StoryTimelineMk2.Database
         public void SetLayoutPreset(int timelineId, string layoutPresetId)
         {
             using var db = new SqliteConnection(_connString);
-            db.Execute("UPDATE timelines SET layout_settings_id = @PresetId WHERE id = @Id",
+            db.Execute("UPDATE timelines SET layout_settings_id = @PresetId, layout_settings_locked = 1 WHERE id = @Id",
                 new { PresetId = layoutPresetId, Id = timelineId });
         }
 

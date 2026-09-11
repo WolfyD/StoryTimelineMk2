@@ -715,3 +715,83 @@ anchor date picker, colour. The anchor date picker reuses `LodDateInput` at DAY 
   out of scope (interesting but too open-ended for now).
 - The formula works for any `synodicPeriodDays` value, including non-integer periods, so a
   world with a 13.7-day moon and a 41-day moon works correctly.
+
+---
+
+## [BL-32] Minimised timeline mode — data-first layout
+
+**Status:** Pending.
+
+A collapse/minimise button on the timeline strip. When activated, the timeline shrinks to a
+fixed 100 px rail at the bottom of the workspace and the data panel expands to fill the freed
+space. The timeline becomes a lightweight visual reference; the data panel becomes the primary
+reading surface.
+
+### Visual spec (minimised state)
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Data panel  ←  ~80 % window width  (or 50 % when side panel)  │
+│                                                                 │
+│                    [item cards / notes / etc.]                  │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  Timeline rail  ←  100 px fixed height                          │
+│  ┌──────────── Age bar ────────────────────────────────────────┐ │
+│  │▓▓▓▓ Period ▓▓▓▓▓▓▓   Era/Period strips (stacked, top)       │ │
+│  ├──────── timeline axis ──────────────────────────────────────┤ │
+│  │  ┃  ┃  ┃  ┃  ┃  ┃  ┃   Items as pin-head lines (bottom)    │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Timeline rail layout (top → bottom):**
+
+1. **Age / era bands** — Age and Period items rendered as flat colour bars stacked above the
+   axis. Heights TBD; exact stacking order is: Age at the top (tallest), Periods below,
+   all fitting within the 100 px budget.
+2. **Axis** — the standard tick/label row, abbreviated to year-level labels only at this size.
+3. **Items** — rendered as pin-head stems: a thin vertical line rising from the axis to a
+   filled circle at the top. No box, no label. On hover, a compact tooltip shows title,
+   type, and date.
+
+**Data panel width in minimised mode:**
+
+| Side panel active? | Data panel width  |
+|--------------------|-------------------|
+| No                 | ~80 % of window   |
+| Yes (map, etc.)    | ~50 % of window   |
+
+The side-panel slot is reserved for future toggleable content (map view, statistics, custom
+data). The exact toggle mechanism for the side panel is out of scope for this item.
+
+### Behaviour
+
+- A single button in the timeline activity strip (or title bar) toggles minimised ↔ normal.
+- Minimised state is persisted per-timeline in settings so it survives reopens.
+- All existing canvas interactions (scroll, zoom, item click/view) still work in minimised
+  mode; hover tooltips replace the click-to-view card.
+- The Splitpanes divider between data panel and timeline rail is hidden (or disabled) while
+  minimised so the 100 px height is fixed.
+
+### Implementation notes
+
+- Add `TimelineMinimised: boolean` to `SettingsItem` / `SettingsRepo`.
+- In `TimelineApp.vue`, a computed `isMinimised` drives:
+  - The Splitpanes split ratio (`timeline-main` pane shrinks to a fixed size).
+  - A CSS class on `#timeline-main` that constrains height and switches `TimelineCanvas` to
+    "mini" render mode.
+- `TimelineCanvas.vue` receives a `miniMode: boolean` prop:
+  - Skips box/label nodes entirely; draws stems + circles via a new `buildMiniNode()` in
+    `timelineNodes.ts`.
+  - Age/Period bars rendered as `Konva.Rect` strips in a dedicated layer above the axis.
+  - Hover on a mini node opens a lightweight `Konva.Label` tooltip (no bridge call needed if
+    `TimelineItem` data is already in the store).
+- Age/Period bar layout needs a simple greedy stack algorithm to avoid overlap (similar to
+  the existing period Y-offset logic but constrained to the 100 px budget).
+
+### Deferred decisions
+
+- Exact pixel budget per layer (Age bar height, Period bar height, axis height, pin area).
+- Whether the hover tooltip is a Konva label or a DOM overlay (DOM is easier to theme).
+- Whether a "side panel" toggle lives in the activity strip or is a separate affordance.

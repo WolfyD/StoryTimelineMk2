@@ -31,9 +31,11 @@ namespace StoryTimelineMk2.Forms
         private const int WM_GETMINMAXINFO = 0x0024;
 
         // ── Layout / visual constants ──────────────────────────────────────────
-        public  const int TitleBarHeight = 36;   // px — must match WindowTitleBar.vue
-        private const int ResizeBorder   = 3;    // px — must equal Padding.Left/Right/Bottom
-        private const int CornerRadius   = 8;    // px — top-left and top-right rounding
+        public  const int TitleBarHeight    = 36;  // px — must match WindowTitleBar.vue
+        private const int ResizeBorder      = 6;   // px — must equal Padding.Left/Right/Bottom
+        private const int CornerGrip        = 16;  // px — wider corner detection zone along each edge
+        private const int CornerRadiusTop   = 8;   // px — top-left and top-right rounding
+        private const int CornerRadiusBot   = 5;   // px — slight bottom-corner rounding
 
         [System.ComponentModel.Browsable(false)]
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -46,7 +48,7 @@ namespace StoryTimelineMk2.Forms
         public BorderlessFormBase()
         {
             // Top = 0: WebView2 sits flush with the top edge — no visible strip.
-            // Left/Right/Bottom = 5: expose a resize-grip rim on three sides.
+            // Left/Right/Bottom = ResizeBorder: expose a resize-grip rim on three sides.
             Padding = new Padding(ResizeBorder, 0, ResizeBorder, ResizeBorder);
             // Matches the Vue title-bar gradient start colour so the side/bottom rim
             // is invisible against the dark content.
@@ -80,13 +82,13 @@ namespace StoryTimelineMk2.Forms
                 return;
             }
 
-            int r = CornerRadius;
+            int rt = CornerRadiusTop;
+            int rb = CornerRadiusBot;
             using var path = new GraphicsPath();
-            path.AddArc(0,             0, r * 2, r * 2, 180, 90); // top-left
-            path.AddArc(Width - r * 2, 0, r * 2, r * 2, 270, 90); // top-right
-            path.AddLine(Width, r,      Width,  Height); // right side — square
-            path.AddLine(Width, Height, 0,      Height); // bottom — square
-            path.AddLine(0,     Height, 0,      r);      // left side — square
+            path.AddArc(0,              0,              rt * 2, rt * 2, 180, 90); // top-left
+            path.AddArc(Width - rt * 2, 0,              rt * 2, rt * 2, 270, 90); // top-right
+            path.AddArc(Width - rb * 2, Height - rb * 2, rb * 2, rb * 2, 0,   90); // bottom-right
+            path.AddArc(0,              Height - rb * 2, rb * 2, rb * 2, 90,  90); // bottom-left
             path.CloseFigure();
             Region = new Region(path);
         }
@@ -141,14 +143,18 @@ namespace StoryTimelineMk2.Forms
                     bool left   = pt.X < ResizeBorder;
                     bool right  = pt.X > ClientSize.Width - ResizeBorder;
 
-                    if (top    && left)  { m.Result = (IntPtr)HTTOPLEFT;     return; }
-                    if (top    && right) { m.Result = (IntPtr)HTTOPRIGHT;    return; }
-                    if (bottom && left)  { m.Result = (IntPtr)HTBOTTOMLEFT;  return; }
-                    if (bottom && right) { m.Result = (IntPtr)HTBOTTOMRIGHT; return; }
-                    if (top)             { m.Result = (IntPtr)HTTOP;         return; }
-                    if (bottom)          { m.Result = (IntPtr)HTBOTTOM;      return; }
-                    if (left)            { m.Result = (IntPtr)HTLEFT;        return; }
-                    if (right)           { m.Result = (IntPtr)HTRIGHT;       return; }
+                    // Wider zone along each edge so corner grabs are easier to hit
+                    bool nearLeft  = pt.X < CornerGrip;
+                    bool nearRight = pt.X > ClientSize.Width - CornerGrip;
+
+                    if (top    && nearLeft)  { m.Result = (IntPtr)HTTOPLEFT;     return; }
+                    if (top    && nearRight) { m.Result = (IntPtr)HTTOPRIGHT;    return; }
+                    if (bottom && nearLeft)  { m.Result = (IntPtr)HTBOTTOMLEFT;  return; }
+                    if (bottom && nearRight) { m.Result = (IntPtr)HTBOTTOMRIGHT; return; }
+                    if (top)                 { m.Result = (IntPtr)HTTOP;         return; }
+                    if (bottom)              { m.Result = (IntPtr)HTBOTTOM;      return; }
+                    if (left)                { m.Result = (IntPtr)HTLEFT;        return; }
+                    if (right)               { m.Result = (IntPtr)HTRIGHT;       return; }
                 }
 
                 m.Result = (IntPtr)HTCLIENT;

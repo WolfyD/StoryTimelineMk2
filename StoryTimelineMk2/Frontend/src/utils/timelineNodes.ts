@@ -76,6 +76,29 @@ export const buildNode = (
         // Route the shapes to their respective Z-index master layers
         stemsMaster.add(elements.stem);
         boxesMaster.add(elements.box, elements.label);
+
+        if (layoutSettings.TimelineEventBoxShowColor) {
+            const stripSize = 5;
+            const r = layoutSettings.TimelineEventBorderRadius ?? 4;
+            if (layoutSettings.TimelineEventBoxShowColorOnBottom) {
+                elements.colorStrip = new Konva.Rect({
+                    id: `color-strip-${id}`,
+                    width: boxWidth,
+                    height: stripSize,
+                    fill: safeColor,
+                    cornerRadius: [0, 0, r, r],
+                });
+            } else {
+                elements.colorStrip = new Konva.Rect({
+                    id: `color-strip-${id}`,
+                    width: stripSize,
+                    height: boxHeight,
+                    fill: safeColor,
+                    cornerRadius: [r, 0, 0, r],
+                });
+            }
+            boxesMaster.add(elements.colorStrip);
+        }
     }
 
 	const handleHoverEnter = () => {
@@ -124,6 +147,7 @@ export const setNodeVisibility = (elements: any, isVisible: boolean) => {
     if (elements.box) elements.box.visible(isVisible);
     if (elements.label) elements.label.visible(isVisible);
     if (elements.stem) elements.stem.visible(isVisible);
+    if (elements.colorStrip) elements.colorStrip.visible(isVisible);
 };
 
 // Calculate absolute coordinates directly
@@ -168,6 +192,18 @@ export const updateAbsolutePositions = (
 
         elements.box.position({ x: boxPosAbsoluteX + (isLeft ? 0 : 0), y: targetY });
         elements.label.position({ x: boxPosAbsoluteX, y: targetY });
+
+        if (elements.colorStrip) {
+            const stripSize = 5;
+            if (layoutSettings.TimelineEventBoxShowColorOnBottom) {
+                elements.colorStrip.position({
+                    x: boxPosAbsoluteX,
+                    y: targetY + layoutSettings.TimelineEventBoxHeight - stripSize,
+                });
+            } else {
+                elements.colorStrip.position({ x: boxPosAbsoluteX, y: targetY });
+            }
+        }
 
         // Calculate absolute stem connection point
         const stemTargetX = isLeft ? boxAbsoluteX + (boxWidth) : boxAbsoluteX ;

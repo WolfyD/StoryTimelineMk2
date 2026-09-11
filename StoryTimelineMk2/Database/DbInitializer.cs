@@ -435,6 +435,8 @@ namespace StoryTimelineMk2.Database
                 db.Execute("ALTER TABLE timelines ADD COLUMN calendar_id TEXT NOT NULL DEFAULT 'cal_default_gregorian'");
             if (!timelines.Contains("layout_settings_id"))
                 db.Execute("ALTER TABLE timelines ADD COLUMN layout_settings_id TEXT NOT NULL DEFAULT 'ls_default'");
+            if (!timelines.Contains("layout_settings_locked"))
+                db.Execute("ALTER TABLE timelines ADD COLUMN layout_settings_locked INTEGER NOT NULL DEFAULT 0");
 
             // items — columns added progressively after initial release
             if (!items.Contains("timeline_id"))       db.Execute("ALTER TABLE items ADD COLUMN timeline_id INTEGER");
