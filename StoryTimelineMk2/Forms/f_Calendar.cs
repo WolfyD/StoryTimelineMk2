@@ -23,20 +23,31 @@ namespace StoryTimelineMk2.Forms
 
         private async void F_Calendar_Load(object? sender, EventArgs e)
         {
-            var webEnvironment = await WebView2EnvironmentFactory.GetAsync("calendar");
-            await wv_Calendar.EnsureCoreWebView2Async(webEnvironment);
+            // async void: unhandled exceptions here crash the app. Catch, log, show, close.
+            try
+            {
+                var webEnvironment = await WebView2EnvironmentFactory.GetAsync("calendar");
+                await wv_Calendar.EnsureCoreWebView2Async(webEnvironment);
 
-            wv_Calendar.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
+                wv_Calendar.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
 
-            _messageRouter = new MessageRouter(wv_Calendar.CoreWebView2, this);
+                _messageRouter = new MessageRouter(wv_Calendar.CoreWebView2, this);
 
-            var query = string.IsNullOrEmpty(CalendarId) ? "" : $"?calendarId={Uri.EscapeDataString(CalendarId)}";
+                var query = string.IsNullOrEmpty(CalendarId) ? "" : $"?calendarId={Uri.EscapeDataString(CalendarId)}";
 
-            string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "calendar.html");
-            if (File.Exists(prodPath))
-                wv_Calendar.CoreWebView2.Navigate(prodPath + query);
-            else
-                wv_Calendar.CoreWebView2.Navigate($"http://localhost:5173/calendar.html{query}");
+                string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "calendar.html");
+                if (File.Exists(prodPath))
+                    wv_Calendar.CoreWebView2.Navigate(prodPath + query);
+                else
+                    wv_Calendar.CoreWebView2.Navigate($"http://localhost:5173/calendar.html{query}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("f_Calendar.Load", ex);
+                MessageBox.Show($"Failed to open the calendar editor:\n\n{ex}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Close();
+            }
         }
     }
 }

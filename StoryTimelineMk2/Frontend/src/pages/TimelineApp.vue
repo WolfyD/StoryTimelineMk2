@@ -95,7 +95,9 @@ let debounceTimer:number;
 
 function jump() {
     const year = jumpYear.value
-    if (!isFinite(year)) return
+    // Number.isFinite: v-model.number yields '' when cleared, and global
+    // isFinite('') coerces to 0 → jumped to year 0 on empty input.
+    if (!Number.isFinite(year)) return
     if (store.layoutSettings?.TimelineAnimateOnJumpToYear) {
         timelineCanvasRef.value?.animateJumpToYear(year)
     } else {
@@ -154,14 +156,17 @@ function onHotkey(e: KeyboardEvent) {
 
 onMounted(() => {
 	HandleLoadTimeline();
-	window.onresize = function(){
-		handleResizeEvent();
-	}
+	// addEventListener (not window.onresize =) so nothing else gets clobbered
+	// and the handler can be removed symmetrically on unmount.
+	window.addEventListener('resize', handleResizeEvent)
     window.addEventListener('keydown', onHotkey)
 })
 
 onBeforeUnmount(() => {
+    window.removeEventListener('resize', handleResizeEvent)
     window.removeEventListener('keydown', onHotkey)
+    clearTimeout(throttleTimer)
+    clearTimeout(debounceTimer)
 })
 </script>
 

@@ -174,7 +174,9 @@ const months = ref<MonthEntry[]>([])
 // Months → Year: keep yearLength in sync with the sum of month lengths
 watch(months, () => {
     if (isScalingMonths) return
-    yearLength.value = months.value.reduce((s, m) => s + m.length, 0)
+    // Number(...) || 0: a month length cleared mid-edit is '' — plain `+` would
+    // switch to string concatenation ("03030…") and corrupt yearLength.
+    yearLength.value = months.value.reduce((s, m) => s + (Number(m.length) || 0), 0)
 }, { deep: true })
 
 // Year → Months: scale all months proportionally when the user edits yearLength directly
@@ -335,6 +337,10 @@ function updateStepFraction(lod: LodLevel, str: string) {
 
 // ---- Sync day arrays when week length changes ----
 watch(weekLength, (newLen) => {
+    // v-model.number yields '' while the user clears the field to retype —
+    // splice('') === splice(0) would wipe every custom day name. Ignore
+    // transient invalid values; the arrays sync once a real number lands.
+    if (!Number.isInteger(newLen) || newLen < 1) return
     while (dayNames.value.length < newLen) {
         const i = dayNames.value.length
         dayNames.value.push(`Day ${i + 1}`)

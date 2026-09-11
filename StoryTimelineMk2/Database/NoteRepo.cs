@@ -26,10 +26,11 @@ namespace StoryTimelineMk2.Database
                 INSERT INTO notes (id, timeline_id, connected_item_id, note_contents, nearest_year, absolute_time, updated_at)
                 VALUES (@Id, @TimelineId, @ConnectedItemId, @NoteContents, @NearestYear, @AbsoluteTime, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
-                    note_contents = excluded.note_contents,
-                    nearest_year  = excluded.nearest_year,
-                    absolute_time = excluded.absolute_time,
-                    updated_at    = CURRENT_TIMESTAMP;";
+                    note_contents     = excluded.note_contents,
+                    nearest_year      = excluded.nearest_year,
+                    absolute_time     = excluded.absolute_time,
+                    connected_item_id = excluded.connected_item_id,
+                    updated_at        = CURRENT_TIMESTAMP;";
             db.Execute(sql, new {
                 note.Id,
                 note.TimelineId,

@@ -45,9 +45,13 @@ export type FormatRegistryType = Record<string, (year: number, fraction: number)
 export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryType {
     const { yearLength, weekLength, months, seasons } = cfg
 
+    // Bucket classification uses Math.floor throughout: a fraction belongs to the
+    // bucket it falls INSIDE. Math.round pushed values past the boundary — f=0.5
+    // in a 365-day year labelled "Day 184" instead of 183, f→1 produced "Day 366",
+    // and day 365 fell outside every season and wrapped back to the first one.
     function monthLabel(f: number): string {
-        if (months.length === 0) return `M${Math.round(f * 12) + 1}`
-        const day = Math.round(f * yearLength)
+        if (months.length === 0) return `M${Math.floor(f * 12) + 1}`
+        const day = Math.floor(f * yearLength)
         for (let i = 0; i < months.length - 1; i++) {
             if (day < months[i + 1].startDay) return months[i].shortName
         }
@@ -55,8 +59,8 @@ export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryTy
     }
 
     function seasonLabel(f: number): string {
-        if (seasons.length === 0) return `Q${Math.round(f * 4) + 1}`
-        const day = Math.round(f * yearLength)
+        if (seasons.length === 0) return `Q${Math.floor(f * 4) + 1}`
+        const day = Math.floor(f * yearLength)
         for (const s of seasons) {
             if (s.start <= s.end ? (day >= s.start && day <= s.end) : (day >= s.start || day <= s.end))
                 return s.name
@@ -69,11 +73,11 @@ export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryTy
         'CENTURIES': (y)    => `${Math.floor(y)}`,
         'DECADES':   (y)    => `${Math.floor(y)}`,
         'YEARS':     (y)    => `${Math.floor(y)}`,
-        'QUARTERS':  (y, f) => f === 0 ? `${Math.floor(y)}` : `Q${Math.round(f / 0.25) + 1}`,
+        'QUARTERS':  (y, f) => f === 0 ? `${Math.floor(y)}` : `Q${Math.floor(f / 0.25) + 1}`,
         'SEASONS':   (y, f) => f === 0 ? `${Math.floor(y)}` : seasonLabel(f),
         'MONTHS':    (y, f) => f === 0 ? `${Math.floor(y)}` : monthLabel(f),
-        'WEEKS':     (y, f) => f === 0 ? `${Math.floor(y)}` : `W${Math.floor(Math.round(f * yearLength) / weekLength) + 1}`,
-        'DAYS':      (y, f) => f === 0 ? `${Math.floor(y)}` : `Day ${Math.round(f * yearLength) + 1}`,
+        'WEEKS':     (y, f) => f === 0 ? `${Math.floor(y)}` : `W${Math.floor(Math.floor(f * yearLength) / weekLength) + 1}`,
+        'DAYS':      (y, f) => f === 0 ? `${Math.floor(y)}` : `Day ${Math.floor(f * yearLength) + 1}`,
     }
 }
 

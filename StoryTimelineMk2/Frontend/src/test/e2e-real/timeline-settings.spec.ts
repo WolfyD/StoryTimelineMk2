@@ -16,7 +16,7 @@ async function openTimeline(mainPage: Page, appContext: BrowserContext, pageErro
 
 /** Open the settings modal on the already-open timeline page. */
 async function openSettingsModal(tl: Page) {
-  await tl.locator('.header-icon-btn[title="Settings"]').click()
+  await tl.locator('.strip-btn--settings').click()
   await expect(tl.locator('.modal-panel')).toBeVisible({ timeout: 5000 })
 }
 
@@ -27,14 +27,14 @@ test.describe('Timeline settings modal — real backend', () => {
 
   // ── Open / close ──────────────────────────────────────────────────────────
 
-  test('settings button is visible in timeline header', async ({ appContext }) => {
+  test('settings button is visible in activity strip', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
-    await expect(tl.locator('.header-icon-btn[title="Settings"]')).toBeVisible()
+    await expect(tl.locator('.strip-btn--settings')).toBeVisible()
   })
 
   test('clicking settings button opens the settings modal', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
-    await tl.locator('.header-icon-btn[title="Settings"]').click()
+    await tl.locator('.strip-btn--settings').click()
     await expect(tl.locator('.modal-panel')).toBeVisible({ timeout: 5000 })
   })
 

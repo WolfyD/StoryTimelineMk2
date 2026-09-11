@@ -26,15 +26,43 @@ namespace StoryTimelineMk2.Bridge
 
         public void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            BridgeMessage message = null;
             try
             {
                 string rawJson = e.WebMessageAsJson;
-                var message = JsonSerializer.Deserialize<BridgeMessage>(rawJson);
-                if (message != null) RouteMessage(message);
+                message = JsonSerializer.Deserialize<BridgeMessage>(rawJson);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to parse message from Vue: {ex.Message}");
+                Logger.Error("Bridge/Parse", ex);
+                MessageBox.Show($"Failed to parse message from Vue:\n\n{ex}", "Bridge error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            if (message == null) return;
+
+            try
+            {
+                RouteMessage(message);
+            }
+            catch (Exception ex)
+            {
+                // Centralized safety net: log full stack, surface to the user, and —
+                // crucially — always reply so the frontend Promise resolves instead of
+                // hanging forever (api.ts request() has no timeout).
+                Logger.Error($"Bridge/{message.Action}", ex);
+                if (message.MessageId != null)
+                {
+                    ReplyToVue(message.MessageId, new
+                    {
+                        status = "error",
+                        message = ex.Message,
+                        detail = ex.ToString(),
+                    });
+                }
+                MessageBox.Show($"Action '{message.Action}' failed:\n\n{ex}", "Backend error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -128,7 +156,11 @@ namespace StoryTimelineMk2.Bridge
                 case "SetMiscSetting":  HandleSetMiscSetting(message); break;
 
                 default:
-                    Console.WriteLine($"Unknown Action: {message.Action}");
+                    // Reply so a request() for a typo'd action fails visibly instead of
+                    // hanging its Promise forever. Console.WriteLine goes nowhere in WinForms.
+                    Logger.Warn("Bridge/Route", $"Unknown action: {message.Action}");
+                    if (message.MessageId != null)
+                        ReplyToVue(message.MessageId, new { status = "error", message = $"Unknown action: {message.Action}" });
                     break;
             }
         }
@@ -218,8 +250,10 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleImportDB(BridgeMessage message)
         {
-            DatabaseImporter.HandleDBImport();
-            ReplyToVue(message.MessageId, new { status = "ok" });
+            bool ok = DatabaseImporter.HandleDBImport();
+            ReplyToVue(message.MessageId, ok
+                ? (object)new { status = "ok" }
+                : new { status = "error", message = "Import failed or was cancelled — see log for details." });
         }
 
         private void HandleOpenAddEditItemWindow(BridgeMessage message)
@@ -285,6 +319,12 @@ namespace StoryTimelineMk2.Bridge
             if (!string.IsNullOrEmpty(itemId))
             {
                 item = itemRepo.GetItemById(itemId);
+                if (item == null)
+                {
+                    Logger.Warn("Bridge/GetItemForEdit", $"Item not found: {itemId}");
+                    ReplyToVue(message.MessageId, new { status = "error", message = $"Item {itemId} no longer exists." });
+                    return;
+                }
             }
             else
             {
@@ -524,8 +564,11 @@ namespace StoryTimelineMk2.Bridge
                 var ls = new LayoutSettingsRepo().GetById(id);
                 ReplyToVue(message.MessageId, ls);
             }
-            catch
+            catch (Exception ex)
             {
+                // Frontend expects LayoutSettings|null here, so keep the null reply —
+                // but never swallow the error silently (project rule).
+                Logger.Error("Bridge/GetLayoutSettingsById", ex);
                 ReplyToVue(message.MessageId, null);
             }
         }

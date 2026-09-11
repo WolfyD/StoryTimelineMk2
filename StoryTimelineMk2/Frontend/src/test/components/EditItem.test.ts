@@ -13,6 +13,7 @@ vi.mock('@/bridge/api', () => ({
     RemoveImageFromItem: vi.fn().mockResolvedValue({ status: 'ok' }),
     SearchBooks: vi.fn().mockResolvedValue([]),
     GetBookChapters: vi.fn().mockResolvedValue([]),
+    WindowClose: vi.fn(),
     request: vi.fn(),
     send: vi.fn(),
   },
@@ -261,10 +262,10 @@ describe('EditItem page', () => {
 
   // ── Cancel button ─────────────────────────────────────────────────────────
 
-  it('calls window.close when Cancel is clicked', async () => {
+  it('calls BackendAPI.WindowClose when Cancel is clicked', async () => {
+    // Cancel goes through the bridge (window.close() is a no-op in WebView2
+    // for windows the script didn't open).
     ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
-
-    const windowClose = vi.spyOn(window, 'close').mockImplementation(() => {})
 
     const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
     await flushPromises()
@@ -273,8 +274,7 @@ describe('EditItem page', () => {
     expect(cancelBtn).toBeDefined()
     await cancelBtn!.trigger('click')
 
-    expect(windowClose).toHaveBeenCalledOnce()
-    windowClose.mockRestore()
+    expect(BackendAPI.WindowClose).toHaveBeenCalledOnce()
     wrapper.unmount()
   })
 

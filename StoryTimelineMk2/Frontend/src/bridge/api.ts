@@ -40,7 +40,21 @@ export const BackendAPI = {
 				return resolve(null as T);
 			}
 			const id = ++messageCounter;
-			pendingRequests.set(id, resolve);
+			// Safety net: if the backend never replies (handler crash before the
+			// centralized catch, dropped message), resolve null after 30s instead of
+			// leaving the caller awaiting forever. Callers already handle null
+			// (bridge-offline path returns it too).
+			const timeout = setTimeout(() => {
+				if (pendingRequests.has(id)) {
+					pendingRequests.delete(id);
+					console.error(`[Bridge Timeout] No reply for '${action}' after 30s`);
+					resolve(null as T);
+				}
+			}, 30_000);
+			pendingRequests.set(id, (data) => {
+				clearTimeout(timeout);
+				resolve(data);
+			});
 			window.chrome.webview.postMessage({ action, payload, messageId: id });
 		});
 	},
@@ -48,10 +62,13 @@ export const BackendAPI = {
 	// --- Timeline list ---
 
 	async ImportDatabase() {
-		const x: { status: string } = await this.request('ImportDB', { args: [] });
-		if (x.status == 'ok') {
+		const x: { status: string; message?: string } | null = await this.request('ImportDB', { args: [] });
+		if (x?.status === 'ok') {
 			const timelines: TimelineProjectContainer = await this.request('GetAllTimelines', { args: [] });
 			return timelines;
+		}
+		if (x?.status === 'error') {
+			console.error(`[ImportDB] ${x.message ?? 'Import failed'}`);
 		}
 		return null;
 	},

@@ -148,9 +148,9 @@ describe('FormatRegistry', () => {
     it('returns year string when fraction is 0', () => {
       expect(FormatRegistry['WEEKS'](2020, 0)).toBe('2020')
     })
-    it('returns a "W N" string for non-zero fraction', () => {
+    it('returns a "WN" string for non-zero fraction', () => {
       const result = FormatRegistry['WEEKS'](2020, 0.5)
-      expect(result).toMatch(/^W \d+$/)
+      expect(result).toMatch(/^W\d+$/)
     })
   })
 

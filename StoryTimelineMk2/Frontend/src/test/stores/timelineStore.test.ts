@@ -354,14 +354,14 @@ describe('timelineStore', () => {
       expect(store.currentLodIndex).toBe(0)
     })
 
-    it('still decrements when lodProfile is empty (guard only blocks null/undefined)', () => {
-      // The store guard is `if(!lodProfile.value) return` — an empty array is truthy,
-      // so the decrement still runs. This test documents actual behaviour.
+    it('is a no-op when lodProfile is empty', () => {
+      // The guard is `if(!lodProfile.value?.length) return` — zooming through a
+      // profile with no levels is meaningless, so the index must not change.
       const store = useTimelineStore()
       store.lodProfile = []
       store.currentLodIndex = 3
       store.lodZoomOut()
-      expect(store.currentLodIndex).toBe(2)
+      expect(store.currentLodIndex).toBe(3)
     })
 
     it('updates currentLodTitle to the new lod formatKey', () => {

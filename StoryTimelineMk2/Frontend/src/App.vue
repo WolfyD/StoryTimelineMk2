@@ -3,7 +3,7 @@
 	import SplashTitle from "./components/SplashTitle.vue";
 	import WindowTitleBar from "./components/WindowTitleBar.vue";
 	import { BackendAPI } from "./bridge/api";
-	import { ref } from "vue";
+	import { ref, onMounted } from "vue";
 	import {  PhTrayArrowUp, PhTrayArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
 	import AppSettingsModal from './components/AppSettingsModal.vue';
@@ -32,11 +32,11 @@
 		}
 	}
 
-	async function HandleExportDatabase() {
-		const container = await BackendAPI.ImportDatabase();
-		if(container){
-			store.projects = container.data
-		}
+	function HandleExportDatabase() {
+		// DANGER previously lurked here: this was a copy of HandleImportDatabase,
+		// so clicking "export" ran the IMPORT flow (which can overwrite the DB).
+		// There is no ExportDB backend action yet — neutralized until one exists.
+		alert('Database export is not implemented yet.\nUse Settings → Create Backup instead.')
 	}
 
 	async function HandleToggleNewProject() {
@@ -101,9 +101,9 @@
 		}
 	}
 
-	onload = function(){
+	onMounted(() => {
 		HandleGetTimelines();
-	}
+	})
 </script>
 
 
@@ -114,10 +114,10 @@
 		<ProjectContainer :timelines="store.projects" @refresh="HandleGetTimelines" />
 		<div id="bottom-menu-container">
 			<div id="import-export-container">
-				<div v-on:click="HandleImportDatabase()">
+				<div v-on:click="HandleImportDatabase()" title="Import database">
 					<PhTrayArrowDown class="button-icon" :size="36" color="#79876b" />
 				</div>
-				<div v-on:click="HandleExportDatabase()">
+				<div v-on:click="HandleExportDatabase()" title="Export database (not yet implemented)">
 					<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
 				</div>
 				<div @click="showCalendarManager = true" title="Manage Calendars">

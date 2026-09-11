@@ -70,10 +70,15 @@ describe('FormatRegistry[MONTHS]', () => {
     expect(result).toBe('Jan')
   })
 
-  it('returns "Feb" for f=0.083 (approx 1 month in)', () => {
-    // Math.round(0.083 * 12) = Math.round(0.996) ≈ 1 → months[1] = 'Feb'
-    const result = FormatRegistry['MONTHS'](2020, 0.083)
-    expect(result).toBe('Feb')
+  it('returns "Jan" for f=0.083 (day 30 — last day of January)', () => {
+    // Month labels are day-of-year based: floor(0.083 * 365) = day 30, and
+    // February starts at day 31 — so this is still January.
+    expect(FormatRegistry['MONTHS'](2020, 0.083)).toBe('Jan')
+  })
+
+  it('returns "Feb" for f=0.09 (day 32 — early February)', () => {
+    // floor(0.09 * 365) = day 32 ≥ Feb.startDay (31)
+    expect(FormatRegistry['MONTHS'](2020, 0.09)).toBe('Feb')
   })
 
   it('returns a valid month name for mid-year fractions', () => {
@@ -152,24 +157,23 @@ describe('FormatRegistry[WEEKS]', () => {
     expect(FormatRegistry['WEEKS'](2020, 0)).toBe('2020')
   })
 
-  it('returns "W 27" for f=0.5 (approximately mid-year)', () => {
-    // Math.floor(0.5 * 52) + 1 = 26 + 1 = 27
-    expect(FormatRegistry['WEEKS'](2020, 0.5)).toBe('W 27')
+  it('returns "W27" for f=0.5 (approximately mid-year)', () => {
+    // floor(floor(0.5 * 365) / 7) + 1 = floor(182 / 7) + 1 = 26 + 1 = 27
+    expect(FormatRegistry['WEEKS'](2020, 0.5)).toBe('W27')
   })
 
-  it('returns "W 1" for a very small fraction (start of year)', () => {
-    // Math.floor(0.001 * 52) + 1 = 0 + 1 = 1
-    expect(FormatRegistry['WEEKS'](2020, 0.001)).toBe('W 1')
+  it('returns "W1" for a very small fraction (start of year)', () => {
+    expect(FormatRegistry['WEEKS'](2020, 0.001)).toBe('W1')
   })
 
-  it('returns "W 52" near end of year', () => {
-    // Math.floor(0.99 * 52) + 1 = 51 + 1 = 52
-    expect(FormatRegistry['WEEKS'](2020, 0.99)).toBe('W 52')
+  it('returns "W52" near end of year', () => {
+    // floor(floor(0.99 * 365) / 7) + 1 = floor(361 / 7) + 1 = 51 + 1 = 52
+    expect(FormatRegistry['WEEKS'](2020, 0.99)).toBe('W52')
   })
 
-  it('matches expected format "W N"', () => {
+  it('matches expected format "WN"', () => {
     const result = FormatRegistry['WEEKS'](2020, 0.25)
-    expect(result).toMatch(/^W \d+$/)
+    expect(result).toMatch(/^W\d+$/)
   })
 })
 

@@ -269,3 +269,94 @@ A multi-layer interactive map screen: a world map containing regions, each regio
 A visual network graph showing characters and their relationships (family, rival, ally, etc.), centered on a selected character, with relationship types as labeled edges.
 
 > **Aside:** This is a graph visualization problem. Konva.js can draw this but a dedicated force-directed graph library (D3.js `d3-force`, or vis.js Network) would produce much better layouts automatically. The data model needs a `character_relationships` table: `(character_a_id, character_b_id, relationship_type, notes, start_year?, end_year?)`. Relationship types should be configurable (not hardcoded), since every story world has its own social structures. The UX pattern of "center on a selected character and show their direct connections" is the right starting point — expanding outward one degree at a time (click a connected character to recenter). A full graph of all characters at once becomes unreadable quickly. Worth also thinking about time: if relationships have start/end years, the graph should respond to the timeline's current time position (or have its own time scrubber) to show the relational state at a given point in the story.
+
+---
+
+## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
+
+**Status:** Pending. Documented during the 2026-09-11 full-codebase audit. Each item was left
+unfixed because it needs a design decision or is a larger refactor — the quick wins were already
+applied (see `CHANGES.md`). Finding IDs reference `AUDIT_FINDINGS.md`, which has full detail,
+file:line references, and suggested fixes for every item below.
+
+### Data integrity (decide semantics before touching)
+
+- **V2 backup import silently drops entire tables** (DB-C2): notes, LOD profiles, layout
+  presets, hidden ranges, and filter rules/presets are never copied on restore. Also a custom
+  calendar referencing a custom LOD profile FK-fails and rolls back the whole import. Needs a
+  decision on copy order + which tables restore.
+- **V1 import writes character↔event links into a dead table** (DB-H1): rows go to
+  `item_characters`, but the app only reads `item_character_appearances` — v1 links are
+  invisible after import.
+- **Startup "migration" clobbers user edits to `ls_default` on every launch** (DB-H4): two
+  UPDATEs in `SeedDefaultData()` revert period height and tick colour each start. Needs a
+  run-once migration marker (e.g. a `misc_settings` version key).
+- **`SetDataRoot` can silently create a fresh empty DB** (L5): pointing at an empty folder makes
+  timelines "vanish" from the user's perspective. Needs an explicit "point at existing" vs
+  "move data" distinction in the UI.
+
+### Bridge / architecture (second half of the error-path fix)
+
+- **`request()` still resolves `null` instead of rejecting** (FC-C1/C2): a 30s timeout was added,
+  but the full fix is status-discriminated response types (`{status:'ok'|'error'}` unions in
+  `models.ts`) so callers must handle failure. Five reply shapes currently contradict their TS
+  generics (CT-M2).
+- **All handlers run synchronously on the UI thread** (H1): a big timeline load or media-folder
+  move freezes the window. Wants `Task.Run` + marshalled replies for the heavy handlers.
+- **`ShowDialog` inside WebMessageReceived** (H2): nested COM message loop — the exact E_ABORT
+  hazard a code comment warns about; four handlers do it.
+- **`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5): torn copies possible; WAL
+  sidecars ignored. Use the SQLite backup API or `VACUUM INTO`.
+- **`GetTimelineStories` ignores its `timelineId` parameter** (CT-M1): edit window offers
+  stories from ALL timelines. Decide: filter in `StoryRepo`, or rename to `GetAllStories`.
+
+### Dead weight (delete or finish)
+
+- **`SettingsApp.vue` is broken boilerplate** (PG-C2): mounted as a live entry point
+  (settings.html) with required props never passed, a backend action that doesn't exist
+  (`UpdateItemTitle`), Tailwind classes this project doesn't have, and close buttons that can't
+  close. Delete it + `settings.ts` + the vite entry, or build the real page.
+- **Dead layout settings render in the Settings UI but are consumed nowhere** (TC-C2): the whole
+  Hover Line group, `TimelineJumpToYearAnimationLength`, `TimelineTickMarkerFontSize`,
+  `TimelineNonYearTicksSmaller`. Wire them into the canvas or remove the controls.
+- **Dead backend/schema**: `GetTimelineItems` action (no caller), `SaveItemWithTags` (unused,
+  has latent bugs), `InsertDefaultPreset`, `relationship_types` + `timeline_calendars` +
+  `item_characters` tables (DB-L1, CT-L1, DB-M2).
+
+### Custom-calendar correctness (core-feature gaps)
+
+- **`LodDateInput` hardcodes Gregorian month lengths** (MD-H3): day↔(month,day) conversion
+  writes wrong subticks for any non-Gregorian calendar — silent date corruption. Needs
+  `monthLengths`/season props derived from the timeline's calendar.
+- **NotesPanel distance math hardcodes Gregorian** (TC-M13/FC-H4): 12 months, 7-day weeks,
+  365 days, and the static `FormatRegistry` — distances and date labels are wrong on custom
+  calendars while the canvas is right.
+
+### Store correctness
+
+- **`loadFilterPreset` resurrects old rules** (FC-H1): saved rules are never deleted before the
+  preset's rules are written (upsert-only), so the next load merges old + new.
+  `FilterRuleRepo.DeleteAllForTimeline` exists but is unreachable — needs a bridge action.
+- **Concurrent `loadTimelineData` calls tear state** (FC-H2): needs a request-sequence token.
+- **Filter data maps go stale after item edits** (FC-H3): `upsertItem` doesn't update
+  tag/character/story maps — edited items filter wrongly until full reload.
+
+### Performance (canvas stack)
+
+- **Minimap rebuilds its entire Konva scene per mouse-move** (TC-H2): wants a static content
+  layer + dynamic overlay for the NOW line/viewport rect.
+- **Deleted items' Konva nodes are hidden, never destroyed** (TC-H1): unbounded scene-graph
+  growth over long sessions.
+- **DataPanel + GalleryPanel double-fetch `GetItemForEdit` per item per pan** (TC-H5): wants a
+  shared picture cache keyed by item id.
+
+### Styling consolidation (staged plan in AUDIT_FINDINGS §8)
+
+- **No design tokens; three competing accent systems; two surface systems** (ST-H1–H4): ~230
+  colour literals, 9 backdrop darknesses, a z-index ladder with real conflicts, no global
+  font-family (some windows fall back to serif). The audit includes a ready `:root` token
+  proposal and a 5-step remediation order.
+- **`BaseModal` extraction** (MD-H1/H2): ~700 lines of duplicated modal chrome across 11 modals
+  with inconsistent Escape/backdrop/z-index behaviour.
+- **Icon convention**: 19 of 20 modal/picker files contradict the CLAUDE.md Remix-vs-Phosphor
+  rule — at this scale, decide whether to fix the components or change the convention.

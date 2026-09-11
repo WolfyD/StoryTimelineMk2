@@ -21,7 +21,7 @@ async function openTimeline(mainPage: Page, appContext: BrowserContext, pageErro
 async function openFilterPanel(tl: Page) {
   const panel = tl.locator('.filter-panel')
   if (await panel.isVisible({ timeout: 500 }).catch(() => false)) return
-  await tl.locator('.header-icon-btn[title="Toggle filter panel"]').click()
+  await tl.locator('.strip-btn--filter').click()
   await expect(panel).toBeVisible({ timeout: 3000 })
 }
 
@@ -29,7 +29,7 @@ async function openFilterPanel(tl: Page) {
 async function closeFilterPanel(tl: Page) {
   const panel = tl.locator('.filter-panel')
   if (!await panel.isVisible({ timeout: 500 }).catch(() => false)) return
-  await tl.locator('.header-icon-btn[title="Toggle filter panel"]').click()
+  await tl.locator('.strip-btn--filter').click()
   await expect(panel).not.toBeVisible({ timeout: 3000 })
 }
 
@@ -57,6 +57,17 @@ async function deleteAllRules(tl: Page) {
   }
 }
 
+/**
+ * Delete every rule via the setup modal, then close it.
+ * The chip X button only DEACTIVATES a rule (sets it neutral) and is only
+ * rendered on active chips — actual rule deletion lives in the setup modal.
+ */
+async function cleanupRules(tl: Page) {
+  await openFilterSetup(tl)
+  await deleteAllRules(tl)
+  await tl.locator('.fsetup-close').click()
+}
+
 test.describe('Timeline filter panel — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
     await openTimeline(mainPage, appContext, pageErrors)
@@ -68,15 +79,15 @@ test.describe('Timeline filter panel — real backend', () => {
 
   // ── Panel visibility ─────────────────────────────────────────────────────
 
-  test('filter panel toggle button is present in header', async ({ appContext }) => {
+  test('filter panel toggle button is present in activity strip', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
-    await expect(tl.locator('.header-icon-btn[title="Toggle filter panel"]')).toBeVisible()
+    await expect(tl.locator('.strip-btn--filter')).toBeVisible()
   })
 
   test('clicking the toggle shows the filter panel', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     // beforeEach guarantees panel starts closed; one click opens it
-    await tl.locator('.header-icon-btn[title="Toggle filter panel"]').click()
+    await tl.locator('.strip-btn--filter').click()
     await expect(tl.locator('.filter-panel')).toBeVisible({ timeout: 3000 })
     await closeFilterPanel(tl)
   })
@@ -84,7 +95,7 @@ test.describe('Timeline filter panel — real backend', () => {
   test('clicking the toggle twice hides the filter panel again', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     // beforeEach guarantees panel starts closed
-    const btn = tl.locator('.header-icon-btn[title="Toggle filter panel"]')
+    const btn = tl.locator('.strip-btn--filter')
     const panel = tl.locator('.filter-panel')
     await btn.click()
     await expect(panel).toBeVisible({ timeout: 3000 })
@@ -168,22 +179,37 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(panel.locator('.filter-chip')).toBeVisible({ timeout: 3000 })
     await expect(panel.locator('.chip-label')).toContainText('chipTestWord')
 
-    // Clean up
-    await panel.locator('.chip-remove').first().click()
+    // Clean up (deletion happens in the setup modal — the chip X only deactivates)
+    await cleanupRules(tl)
     await expect(panel.locator('.filter-chip', { hasText: 'chipTestWord' })).not.toBeVisible({ timeout: 2000 })
   })
 
-  test('chip remove button deletes the rule', async ({ appContext }) => {
+  test('chip X button deactivates an active chip without deleting the rule', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterSetup(tl)
-    await addKeywordRule(tl, 'removeMe')
+    await addKeywordRule(tl, 'deactivateMe')
     await tl.locator('.fsetup-close').click()
 
     const panel = tl.locator('.filter-panel')
-    const chip = panel.locator('.filter-chip', { hasText: 'removeMe' })
+    const chip = panel.locator('.filter-chip', { hasText: 'deactivateMe' })
     await expect(chip).toBeVisible({ timeout: 3000 })
+
+    // Neutral chip: no X button rendered
+    await expect(chip.locator('.chip-remove')).not.toBeVisible()
+
+    // Activate → X appears
+    await chip.locator('.chip-body').click()
+    await expect(chip).toHaveClass(/chip--positive/)
+    await expect(chip.locator('.chip-remove')).toBeVisible()
+
+    // X deactivates back to neutral — the chip itself STAYS (rule not deleted)
     await chip.locator('.chip-remove').click()
-    await expect(chip).not.toBeVisible({ timeout: 2000 })
+    await expect(chip).not.toHaveClass(/chip--positive/)
+    await expect(chip).toBeVisible()
+    await expect(chip.locator('.chip-remove')).not.toBeVisible()
+
+    // Clean up
+    await cleanupRules(tl)
   })
 
   test('clicking a chip cycles its state: neutral → positive → negative → neutral', async ({ appContext }) => {
@@ -196,23 +222,26 @@ test.describe('Timeline filter panel — real backend', () => {
     const chip = panel.locator('.filter-chip', { hasText: 'cycleTest' })
     await expect(chip).toBeVisible({ timeout: 3000 })
 
+    // Cycle clicks land on .chip-body — the X button is a separate element
+    const body = chip.locator('.chip-body')
+
     // Neutral → positive
     await expect(chip).not.toHaveClass(/chip--positive/)
     await expect(chip).not.toHaveClass(/chip--negative/)
-    await chip.click()
+    await body.click()
     await expect(chip).toHaveClass(/chip--positive/)
 
     // Positive → negative
-    await chip.click()
+    await body.click()
     await expect(chip).toHaveClass(/chip--negative/)
 
     // Negative → neutral
-    await chip.click()
+    await body.click()
     await expect(chip).not.toHaveClass(/chip--positive/)
     await expect(chip).not.toHaveClass(/chip--negative/)
 
     // Clean up
-    await chip.locator('.chip-remove').click()
+    await cleanupRules(tl)
   })
 
   test('clear active filters button resets active chip states', async ({ appContext }) => {
@@ -226,7 +255,7 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(chip).toBeVisible({ timeout: 3000 })
 
     // Activate the chip
-    await chip.click()
+    await chip.locator('.chip-body').click()
     await expect(chip).toHaveClass(/chip--positive/)
 
     // Clear all active filters
@@ -239,7 +268,7 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(chip).not.toHaveClass(/chip--negative/)
 
     // Clean up
-    await chip.locator('.chip-remove').click()
+    await cleanupRules(tl)
   })
 
   test('AND/OR toggle appears when two chips are both positive', async ({ appContext }) => {
@@ -256,8 +285,8 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(chipB).toBeVisible({ timeout: 3000 })
 
     // Activate both chips
-    await chipA.click()
-    await chipB.click()
+    await chipA.locator('.chip-body').click()
+    await chipB.locator('.chip-body').click()
 
     // AND/OR toggle should now appear
     const toggle = panel.locator('.and-toggle')
@@ -270,8 +299,7 @@ test.describe('Timeline filter panel — real backend', () => {
     expect(before).not.toEqual(after)
 
     // Clean up
-    await chipA.locator('.chip-remove').click()
-    await chipB.locator('.chip-remove').click()
+    await cleanupRules(tl)
   })
 
   // ── Preset save / load ────────────────────────────────────────────────────
@@ -314,12 +342,9 @@ test.describe('Timeline filter panel — real backend', () => {
     await presetRow.locator('.preset-del-btn').click()
     await expect(presetRow).not.toBeVisible({ timeout: 2000 })
 
-    // Clean up rule
+    // Clean up rule (deletion lives in the setup modal, not the chip X)
     await tl.keyboard.press('Escape')
     await tl.waitForTimeout(300)
-    const chip = panel.locator('.filter-chip', { hasText: 'presetRule' })
-    if (await chip.isVisible()) {
-      await chip.locator('.chip-remove').click()
-    }
+    await cleanupRules(tl)
   })
 })

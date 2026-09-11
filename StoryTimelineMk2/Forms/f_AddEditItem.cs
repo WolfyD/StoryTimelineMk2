@@ -38,41 +38,52 @@ namespace StoryTimelineMk2.Forms
 
         async private void AddEditItem_Load(object? sender, EventArgs e)
         {
-            var webEnvironment = await WebView2EnvironmentFactory.GetAsync("edit");
-            await wv_AddEditItem.EnsureCoreWebView2Async(webEnvironment);
-
-            wv_AddEditItem.CoreWebView2.WindowCloseRequested += (_, _) => Close();
-
-            // Map the media folder so Vue can load images via https://media.app/{filename}
-            // Ensure the folder exists — SetVirtualHostNameToFolderMapping throws if it doesn't
-            string mediaFolder = AppConfig.Instance.GetMediaFolder();
-            Directory.CreateDirectory(mediaFolder);
-            wv_AddEditItem.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                "media.app",
-                mediaFolder,
-                CoreWebView2HostResourceAccessKind.Allow);
-
-            _messageRouter = new MessageRouter(wv_AddEditItem.CoreWebView2, this);
-
-            var query = $"?timelineId={TimelineId}";
-            if (!string.IsNullOrEmpty(ItemId))
+            // async void: unhandled exceptions here crash the app. Catch, log, show, close.
+            try
             {
-                query += $"&itemId={Uri.EscapeDataString(ItemId)}";
-            }
-            else
-            {
-                query += $"&typeId={DefaultTypeId}";
-                if (DefaultYear.HasValue)
-                    query += $"&year={DefaultYear.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}";
-                if (DefaultGranularity.HasValue)
-                    query += $"&granularity={DefaultGranularity.Value}";
-            }
+                var webEnvironment = await WebView2EnvironmentFactory.GetAsync("edit");
+                await wv_AddEditItem.EnsureCoreWebView2Async(webEnvironment);
 
-            string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "editItem.html");
-            if (File.Exists(prodPath))
-                wv_AddEditItem.CoreWebView2.Navigate(prodPath + query);
-            else
-                wv_AddEditItem.CoreWebView2.Navigate($"http://localhost:5173/editItem.html{query}");
+                wv_AddEditItem.CoreWebView2.WindowCloseRequested += (_, _) => Close();
+
+                // Map the media folder so Vue can load images via https://media.app/{filename}
+                // Ensure the folder exists — SetVirtualHostNameToFolderMapping throws if it doesn't
+                string mediaFolder = AppConfig.Instance.GetMediaFolder();
+                Directory.CreateDirectory(mediaFolder);
+                wv_AddEditItem.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "media.app",
+                    mediaFolder,
+                    CoreWebView2HostResourceAccessKind.Allow);
+
+                _messageRouter = new MessageRouter(wv_AddEditItem.CoreWebView2, this);
+
+                var query = $"?timelineId={TimelineId}";
+                if (!string.IsNullOrEmpty(ItemId))
+                {
+                    query += $"&itemId={Uri.EscapeDataString(ItemId)}";
+                }
+                else
+                {
+                    query += $"&typeId={DefaultTypeId}";
+                    if (DefaultYear.HasValue)
+                        query += $"&year={DefaultYear.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}";
+                    if (DefaultGranularity.HasValue)
+                        query += $"&granularity={DefaultGranularity.Value}";
+                }
+
+                string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "editItem.html");
+                if (File.Exists(prodPath))
+                    wv_AddEditItem.CoreWebView2.Navigate(prodPath + query);
+                else
+                    wv_AddEditItem.CoreWebView2.Navigate($"http://localhost:5173/editItem.html{query}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("f_AddEditItem.Load", ex);
+                MessageBox.Show($"Failed to open the item editor:\n\n{ex}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Close();
+            }
         }
     }
 }

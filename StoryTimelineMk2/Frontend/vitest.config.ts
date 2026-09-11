@@ -8,7 +8,9 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    exclude: ['src/test/e2e/**', 'node_modules/**'],
+    // e2e and e2e-real are Playwright suites — vitest must not execute them
+    // (test.describe() throws "did not expect to be called here" under vitest).
+    exclude: ['src/test/e2e/**', 'src/test/e2e-real/**', 'node_modules/**'],
   },
   resolve: {
     alias: {

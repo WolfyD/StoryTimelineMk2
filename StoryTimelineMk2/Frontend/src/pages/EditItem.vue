@@ -225,7 +225,7 @@ function onTagInput(e: Event) {
   clearTimeout(tagDebounce)
   if (tagInputValue.value.length < 1) { tagSuggestions.value = []; return }
   tagDebounce = setTimeout(async () => {
-    tagSuggestions.value = await BackendAPI.SearchTags(tagInputValue.value)
+    tagSuggestions.value = (await BackendAPI.SearchTags(tagInputValue.value)) ?? []
   }, 200)
 }
 
@@ -332,7 +332,7 @@ function onBookSearchInput(e: Event) {
   selectedChapterId.value = ''
   if (bookSearchValue.value.length < 1) { bookSuggestions.value = []; return }
   bookDebounce = setTimeout(async () => {
-    bookSuggestions.value = await BackendAPI.SearchBooks(bookSearchValue.value)
+    bookSuggestions.value = (await BackendAPI.SearchBooks(bookSearchValue.value)) ?? []
   }, 250)
 }
 
@@ -340,7 +340,7 @@ async function selectBook(book: Book) {
   selectedBook.value    = book
   bookSearchValue.value = book.Title
   bookSuggestions.value = []
-  bookChapters.value    = await BackendAPI.GetBookChapters(book.Id)
+  bookChapters.value    = (await BackendAPI.GetBookChapters(book.Id)) ?? []
   selectedChapterId.value = ''
 }
 
@@ -454,7 +454,7 @@ async function removeImage(pictureId: string) {
         </span>
         <div class="header-actions">
           <button class="btn btn-secondary" @click="cancel">Cancel</button>
-          <button class="btn btn-primary" :disabled="isSaving" @click="save">
+          <button class="btn btn-primary" :disabled="isSaving" @click="save()">
             {{ isSaving ? 'Saving…' : 'Save' }}
           </button>
         </div>

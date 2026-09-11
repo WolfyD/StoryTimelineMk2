@@ -32,37 +32,50 @@ namespace StoryTimelineMk2.Forms
 
         private async void F_Timeline_Load(object? sender, EventArgs e)
         {
-            RestoreWindowState();
-
-            var webEnvironment = await WebView2EnvironmentFactory.GetAsync("timeline");
-
-            await wv_Timeline.EnsureCoreWebView2Async(webEnvironment);
-
-            string mediaFolder = AppConfig.Instance.GetMediaFolder();
-            Directory.CreateDirectory(mediaFolder);
-            wv_Timeline.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                "media.app",
-                mediaFolder,
-                CoreWebView2HostResourceAccessKind.Allow);
-
-            _messageRouter = new MessageRouter(wv_Timeline.CoreWebView2, this);
-
-            // Let JavaScript window.close() close the WinForms host (needed for E2E test cleanup)
-            wv_Timeline.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
-
-            // Apply CSS zoom once the page finishes loading
-            wv_Timeline.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-
-            string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "timeline.html");
-            string query = $"?id={TimelineId}";
-
-            if (File.Exists(prodPath))
+            // async void: an unhandled exception here crashes the app — and the main
+            // window is already hidden by HandleOpenTimeline, so the user would be
+            // stranded with no visible window. Catch, log, show, close (which re-shows main).
+            try
             {
-                wv_Timeline.CoreWebView2.Navigate(prodPath + query);
+                RestoreWindowState();
+
+                var webEnvironment = await WebView2EnvironmentFactory.GetAsync("timeline");
+
+                await wv_Timeline.EnsureCoreWebView2Async(webEnvironment);
+
+                string mediaFolder = AppConfig.Instance.GetMediaFolder();
+                Directory.CreateDirectory(mediaFolder);
+                wv_Timeline.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "media.app",
+                    mediaFolder,
+                    CoreWebView2HostResourceAccessKind.Allow);
+
+                _messageRouter = new MessageRouter(wv_Timeline.CoreWebView2, this);
+
+                // Let JavaScript window.close() close the WinForms host (needed for E2E test cleanup)
+                wv_Timeline.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
+
+                // Apply CSS zoom once the page finishes loading
+                wv_Timeline.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+
+                string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "timeline.html");
+                string query = $"?id={TimelineId}";
+
+                if (File.Exists(prodPath))
+                {
+                    wv_Timeline.CoreWebView2.Navigate(prodPath + query);
+                }
+                else
+                {
+                    wv_Timeline.CoreWebView2.Navigate($"http://localhost:5173/timeline.html{query}");
+                }
             }
-            else
+            catch (Exception ex)
             {
-                wv_Timeline.CoreWebView2.Navigate($"http://localhost:5173/timeline.html{query}");
+                Logger.Error("f_Timeline.Load", ex);
+                MessageBox.Show($"Failed to open the timeline window:\n\n{ex}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Close();
             }
         }
 
@@ -132,7 +145,9 @@ namespace StoryTimelineMk2.Forms
 
             if (mainForm != null)
             {
-                mainForm._messageRouter.SendToVue("InitReload");
+                // _messageRouter is null if main's WebView2 init failed — an NRE here
+                // would be an unhandled exception inside FormClosing.
+                mainForm._messageRouter?.SendToVue("InitReload");
                 mainForm.Show();
             }
             else

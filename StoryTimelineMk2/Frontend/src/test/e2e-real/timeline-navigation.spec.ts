@@ -128,17 +128,17 @@ test.describe('Timeline navigation — real backend', () => {
     await expect(tl.locator('#timeline-header h1')).not.toBeEmpty()
   })
 
-  test('header settings button is visible', async ({ appContext }) => {
+  test('activity strip settings button is visible', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
-    await expect(tl.locator('.header-icon-btn[title="Settings"]')).toBeVisible()
+    await expect(tl.locator('.strip-btn--settings')).toBeVisible()
   })
 
-  test('header filter toggle button is visible', async ({ appContext }) => {
+  test('activity strip filter toggle button is visible', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
-    await expect(tl.locator('.header-icon-btn[title="Toggle filter panel"]')).toBeVisible()
+    await expect(tl.locator('.strip-btn--filter')).toBeVisible()
   })
 
-  test('actions trigger button is visible in header', async ({ appContext }) => {
+  test('actions trigger button is visible in activity strip', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await expect(tl.locator('.actions-trigger')).toBeVisible()
   })

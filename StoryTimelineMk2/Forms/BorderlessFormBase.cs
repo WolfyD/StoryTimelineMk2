@@ -35,6 +35,8 @@ namespace StoryTimelineMk2.Forms
         private const int ResizeBorder   = 5;    // px — must equal Padding.Left/Right/Bottom
         private const int CornerRadius   = 8;    // px — top-left and top-right rounding
 
+        [System.ComponentModel.Browsable(false)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsFullscreenMode { get; set; } = false;
 
         // ── P/Invoke ──────────────────────────────────────────────────────────

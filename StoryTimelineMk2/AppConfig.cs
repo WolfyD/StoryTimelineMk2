@@ -49,7 +49,20 @@ namespace StoryTimelineMk2
                         return cfg;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // A corrupt config.json silently falling back to the default data root
+                // makes the user's timelines "disappear" (the app opens a different,
+                // empty database). Surface it loudly instead.
+                Logger.Error("AppConfig.Load", ex);
+                System.Windows.Forms.MessageBox.Show(
+                    $"The settings file could not be read — falling back to the default data folder.\n\n" +
+                    $"If your timelines appear to be missing, your data is still at its previous " +
+                    $"location; fix or delete this file and restart:\n{_configPath}\n\nError: {ex.Message}",
+                    "Configuration error",
+                    System.Windows.Forms.MessageBoxButtons.OK,
+                    System.Windows.Forms.MessageBoxIcon.Warning);
+            }
             return new AppConfig();
         }
 

@@ -28,8 +28,13 @@ namespace StoryTimelineMk2.Database
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                // Project rule: log full stack trace and show to the user — never
+                // swallow. Before this, any import failure was reported as success.
+                Logger.Error("DatabaseImporter", ex);
+                MessageBox.Show($"Database import failed:\n\n{ex}", "Import error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
             return true;
@@ -78,7 +83,9 @@ namespace StoryTimelineMk2.Database
             using var tx = dbTarget.BeginTransaction();
             try
             {
-                dbTarget.Execute($"ATTACH DATABASE '{sourceFilePath}' AS BackupDb", transaction: tx);
+                // Parameterized: a path containing a single quote (e.g. "John's backup.db")
+                // would break — or inject into — an interpolated ATTACH statement.
+                dbTarget.Execute("ATTACH DATABASE @path AS BackupDb", new { path = sourceFilePath }, transaction: tx);
 
                 // Check for dynamic schema additions to prevent crashes on older V2 backups
                 bool hasCalendarId = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('timelines', 'BackupDb') WHERE name='calendar_id'", transaction: tx) > 0;

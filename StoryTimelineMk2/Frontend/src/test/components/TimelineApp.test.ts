@@ -95,15 +95,27 @@ vi.mock('splitpanes', () => ({
   },
 }))
 
-// Mock phosphor icons to avoid SVG issues in happy-dom
-vi.mock('@phosphor-icons/vue', () => ({
-  PhArrowArcRight: { template: '<span class="ph-icon-stub" />', name: 'PhArrowArcRight' },
-  PhGear: { template: '<span class="ph-icon-stub" />', name: 'PhGear' },
-  PhMinusCircle: { template: '<span class="ph-icon-stub" />', name: 'PhMinusCircle' },
-  PhPlusCircle: { template: '<span class="ph-icon-stub" />', name: 'PhPlusCircle' },
-  PhSpinner: { template: '<span class="ph-icon-stub" />', name: 'PhSpinner' },
-  PhWarningCircle: { template: '<span class="ph-icon-stub" />', name: 'PhWarningCircle' },
-}))
+// Mock phosphor icons to avoid SVG issues in happy-dom.
+// A Proxy stubs EVERY icon by name — enumerating them broke silently whenever a
+// component gained a new icon (the activity strip's PhRuler/PhFunnel/etc. rendered
+// as "Invalid vnode type: undefined" and failed 11 tests).
+vi.mock('@phosphor-icons/vue', () => {
+  const cache = new Map<string, object>()
+  const isIconKey = (prop: string | symbol): prop is string =>
+    typeof prop === 'string' && prop !== 'then' && prop !== 'default' && prop !== '__esModule'
+  return new Proxy({}, {
+    get(_target, prop) {
+      // Guard module-interop probes: a truthy 'then' would make the mock thenable.
+      if (!isIconKey(prop)) return undefined
+      if (!cache.has(prop)) cache.set(prop, { template: '<span class="ph-icon-stub" />', name: prop })
+      return cache.get(prop)
+    },
+    // Vitest validates exports with the `in` operator before reading them.
+    has(_target, prop) {
+      return isIconKey(prop)
+    },
+  })
+})
 
 import TimelineApp from '@/pages/TimelineApp.vue'
 import { BackendAPI } from '@/bridge/api'
@@ -274,10 +286,9 @@ describe('TimelineApp', () => {
     const jumpSpy = vi.fn()
     vm.timelineCanvasRef = { animateJumpToYear: animateSpy, jumpToYear: jumpSpy }
 
-    // The input is rendered in the DOM; set its valueAsNumber
-    const jumpInput = document.querySelector('#jump-to-year-input') as HTMLInputElement
-    expect(jumpInput).not.toBeNull()
-    Object.defineProperty(jumpInput, 'valueAsNumber', { value: 1500, writable: true, configurable: true })
+    // jump() reads the jumpYear ref (v-model.number), not the DOM input —
+    // set the ref directly (setup bindings are reachable on vm in tests).
+    vm.jumpYear = 1500
 
     vm.jump()
     await wrapper.vm.$nextTick()
@@ -315,9 +326,7 @@ describe('TimelineApp', () => {
     const jumpSpy = vi.fn()
     vm.timelineCanvasRef = { animateJumpToYear: animateSpy, jumpToYear: jumpSpy }
 
-    const jumpInput = document.querySelector('#jump-to-year-input') as HTMLInputElement
-    expect(jumpInput).not.toBeNull()
-    Object.defineProperty(jumpInput, 'valueAsNumber', { value: 1000, writable: true, configurable: true })
+    vm.jumpYear = 1000
 
     vm.jump()
     await wrapper.vm.$nextTick()

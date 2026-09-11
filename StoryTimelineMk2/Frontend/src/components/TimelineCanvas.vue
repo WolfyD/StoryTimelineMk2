@@ -27,6 +27,8 @@ let stage: Stage | null = null;
 let _fpsInterval: ReturnType<typeof setInterval> | null = null;
 let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 let _keyupHandler:   ((e: KeyboardEvent) => void) | null = null;
+let _mouseupHandler: (() => void) | null = null;
+let _jumpRafId: number | null = null;
 
 const gridLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
@@ -1001,6 +1003,10 @@ function animateJumpToYear(targetYear: number, durationMs: number = 600) {
     const startTime = performance.now();
 
     function step(currentTime: number) {
+        // Guard: the stage is destroyed on unmount; a frame scheduled before
+        // that would render onto dead layers.
+        if (!stage) { _jumpRafId = null; return; }
+
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / durationMs, 1);
         const easeProgress = 1 - Math.pow(1 - progress, 3);
@@ -1011,14 +1017,16 @@ function animateJumpToYear(targetYear: number, durationMs: number = 600) {
         renderWithDimming(props.layoutSettings!);
 
         if (progress < 1) {
-            requestAnimationFrame(step);
+            _jumpRafId = requestAnimationFrame(step);
         } else {
+            _jumpRafId = null;
             localYearCache = Math.floor(targetYear);
             store.setNowYear(localYearCache);
         }
     }
 
-    requestAnimationFrame(step);
+    if (_jumpRafId !== null) cancelAnimationFrame(_jumpRafId);
+    _jumpRafId = requestAnimationFrame(step);
 }
 
 function findNextFullYear(nowY: number, positive: boolean) {
@@ -1215,10 +1223,11 @@ onMounted(() => {
     window.addEventListener('keydown', _keydownHandler);
     window.addEventListener('keyup',   _keyupHandler);
 
-    window.addEventListener('mouseup', () => {
+    _mouseupHandler = () => {
         isDragging = false;
         document.body.style.cursor = 'default';
-    });
+    };
+    window.addEventListener('mouseup', _mouseupHandler);
 
     stage.on('mousemove', () => {
         if (!stage) return;
@@ -1324,9 +1333,12 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     if (_fpsInterval !== null) clearInterval(_fpsInterval);
+    if (_jumpRafId !== null) { cancelAnimationFrame(_jumpRafId); _jumpRafId = null; }
     if (_keydownHandler) window.removeEventListener('keydown', _keydownHandler);
     if (_keyupHandler)   window.removeEventListener('keyup',   _keyupHandler);
+    if (_mouseupHandler) window.removeEventListener('mouseup', _mouseupHandler);
     stage?.destroy();
+    stage = null;
     nodeCache.clear();
     bookmarkNodeCache.clear();
     pictureImageCache.clear();
