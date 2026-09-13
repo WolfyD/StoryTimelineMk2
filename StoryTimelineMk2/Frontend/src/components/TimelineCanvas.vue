@@ -36,7 +36,7 @@ let _jumpRafId: number | null = null;
 
 const gridLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
-uiLayer.hitGraphEnabled(false);
+uiLayer.listening(false);
 const itemLayer = new Konva.Layer();
 const miniLayer = new Konva.Layer();
 const miniNodeCache = new Map<string, MiniNodeElements>();
@@ -46,9 +46,7 @@ const miniPinLanes = new Map<string, { absKey: number; idx: number }>();
 const miniBarLanes = new Map<string, { rowIdx: number; absStart: number; absEnd: number; typeName: string }>();
 const boundaryOverlayLayer = new Konva.Layer();
 const cursorLayer = new Konva.Layer();
-cursorLayer.hitGraphEnabled(false);
-const tooltipLayer = new Konva.Layer();
-tooltipLayer.hitGraphEnabled(false);
+cursorLayer.listening(false);
 
 let tooltipLabel: Konva.Label | null = null;
 
@@ -1091,13 +1089,13 @@ function showTooltip(text: string, x: number, y: number) {
     const tx = Math.min(x + 14, viewport.width - 160);
     tooltipLabel.position({ x: tx, y: Math.max(4, y - 34) });
     tooltipLabel.show();
-    tooltipLayer.batchDraw();
+    cursorLayer.batchDraw();
 }
 
 function hideTooltip() {
     if (!tooltipLabel) return;
     tooltipLabel.hide();
-    tooltipLayer.batchDraw();
+    cursorLayer.batchDraw();
 }
 
 function loadPictureImage(itemId: string) {
@@ -1286,13 +1284,11 @@ onMounted(() => {
     itemLayer.visible(!props.miniMode);
     stage.add(miniLayer); // mini mode overlay, above boundaries
 
-    // Tooltip layer sits above everything
     tooltipLabel = new Konva.Label({ opacity: 0.92, listening: false });
     tooltipLabel.add(new Konva.Tag({ fill: '#1e293b', cornerRadius: 3, shadowColor: '#000', shadowBlur: 6, shadowOpacity: 0.35 }));
     tooltipLabel.add(new Konva.Text({ text: '', fontFamily: 'sans-serif', fontSize: 12, padding: 5, fill: '#f1f5f9' }));
     tooltipLabel.hide();
-    tooltipLayer.add(tooltipLabel);
-    stage.add(tooltipLayer);
+    cursorLayer.add(tooltipLabel);
 
     initCursorShapes();
 

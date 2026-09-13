@@ -108,5 +108,5 @@ cd ..
 ## Notes
 
 - `npm run build` also runs `vue-tsc --build` (type-check) which has pre-existing strictness errors in test files — these do **not** affect the runtime output. Use `npm run build-only` to skip type-check and just produce the dist.
-- The Vite config uses `base: './'` so all asset paths are relative. This is required for WebView2 to resolve them correctly under the `file://` protocol used in Release mode.
-- WebView2 dev tools are only enabled in `#if DEBUG` builds. To inspect a Release build, temporarily set `AreDevToolsEnabled = true` in `f_Main.cs` and rebuild.
+- In Release mode the frontend is served via a virtual hostname (`https://app.local/`) mapped to the `Frontend/dist/` folder using WebView2's `SetVirtualHostNameToFolderMapping`. This gives the page a real HTTPS origin, which is required because Chromium blocks sub-resource loads for pages served under the `file://` protocol.
+- WebView2 dev tools are currently enabled in both Debug and Release builds (`AreDevToolsEnabled = true` in `f_Main.cs`). Remove or guard that flag before a public release.
