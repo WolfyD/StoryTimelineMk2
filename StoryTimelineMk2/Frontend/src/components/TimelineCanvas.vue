@@ -27,6 +27,7 @@ const boundaryStartPx = ref<number | null>(null);
 const boundaryEndPx   = ref<number | null>(null);
 
 let localYearCache = store.currentNowYear;
+let _lastPanelUpdateMs = 0;
 let stage: Stage | null = null;
 let _fpsRafId: number | null = null;
 let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -1079,7 +1080,7 @@ function jumpToYear(targetYear: number) {
     if (stage) {
 		renderGrid(gridLayer, props.layoutSettings);
 		renderWithDimming(props.layoutSettings!);
-		updateCurrentYearInStore();
+		updateCurrentYearInStore(true);
 	}
 }
 
@@ -1097,8 +1098,12 @@ function updateStageSize() {
     renderWithDimming(props.layoutSettings!);
 }
 
-const updateCurrentYearInStore = () => {
-    store.setCenterAbsoluteTime(viewport.centerTime);
+const updateCurrentYearInStore = (force = false) => {
+    const now = performance.now();
+    if (force || now - _lastPanelUpdateMs > 100) {
+        store.setCenterAbsoluteTime(viewport.centerTime);
+        _lastPanelUpdateMs = now;
+    }
     const currentYear = Math.floor(viewport.centerTime);
     if (currentYear !== localYearCache) {
         localYearCache = currentYear;
@@ -1222,7 +1227,7 @@ onMounted(() => {
     stage.add(miniLayer); // mini mode overlay, above boundaries
 
     renderWithDimming(props.layoutSettings!);
-    updateCurrentYearInStore();
+    updateCurrentYearInStore(true);
 
     const positionMenu = (clientX: number, clientY: number, menuW = 230, menuH = 320) => {
         contextMenu.x = Math.min(clientX, window.innerWidth  - menuW - 4);
