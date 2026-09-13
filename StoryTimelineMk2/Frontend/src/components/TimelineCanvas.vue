@@ -45,20 +45,8 @@ const miniNodeCache = new Map<string, MiniNodeElements>();
 const miniPinLanes = new Map<string, { absKey: number; idx: number }>();
 const miniBarLanes = new Map<string, { rowIdx: number; absStart: number; absEnd: number; typeName: string }>();
 const boundaryOverlayLayer = new Konva.Layer();
-const cursorLayer = new Konva.Layer();
-cursorLayer.listening(false);
-
-let tooltipLabel: Konva.Label | null = null;
-
-let cursorLine: Konva.Line | null = null;
-let cursorLabel: Konva.Text | null = null;
-let cursorLabelFraction: Konva.Text | null = null;
-
-const _mc = document.createElement('canvas').getContext('2d')!;
-function measureW(text: string, px: number): number {
-    _mc.font = `${px}px sans-serif`;
-    return _mc.measureText(text).width;
-}
+const tooltip = ref({ visible: false, text: '', x: 0, y: 0 });
+const cursor = ref({ visible: false, x: 0, lineY0: 0, lineY1: 0, labelRight: true, labelY: 0, labelText: '', fracText: '' });
 
 let _fpsFrameCount = 0;
 let _fpsWindowStart = 0;
@@ -992,38 +980,8 @@ watch(() => store.pulseItemId, (id) => {
     glowIn.play();
 });
 
-function initCursorShapes() {
-    cursorLine = new Konva.Line({
-        points: [0, 0, 0, viewport.height],
-        stroke: 'rgba(255, 80, 80, 0.8)',
-        strokeWidth: 1,
-        listening: false,
-        visible: false,
-    });
-    cursorLabel = new Konva.Text({
-        x: 0, y: 8,
-        text: '',
-        fill: '#ff5050',
-        fontSize: 14,
-        fontFamily: 'sans-serif',
-        listening: false,
-        visible: false,
-    });
-    cursorLabelFraction = new Konva.Text({
-        x: 0, y: 8,
-        text: '',
-        fill: '#ff5050',
-        fontSize: 14,
-        fontStyle: 'italic',
-        fontFamily: 'sans-serif',
-        listening: false,
-        visible: false,
-    });
-    cursorLayer.add(cursorLine, cursorLabel, cursorLabelFraction);
-}
-
 function updateCursor(mouseX: number, mouseY: number) {
-    if (!cursorLine || !cursorLabel || !cursorLabelFraction || !store.layoutSettings || !store.lodProfile) return;
+    if (!store.layoutSettings || !store.lodProfile) return;
 
     const step = viewport.lodStepFraction;
     const ranges = getActiveRanges();
@@ -1037,65 +995,39 @@ function updateCursor(mouseX: number, mouseY: number) {
     const formatKey = currentLod?.formatKey ?? 'YEARS';
     const formatter = store.activeFormatRegistry[formatKey] || store.activeFormatRegistry['YEARS'];
 
-    const FONT_SIZE = 14;
     const mid = viewport.height / 2;
     const inTopHalf = mouseY < mid;
     const lineY0 = inTopHalf ? 0 : mid;
     const lineY1 = inTopHalf ? mid : viewport.height;
-    const labelY = inTopHalf ? lineY0 + 8 : lineY1 - FONT_SIZE - 8;
+    const labelY = inTopHalf ? lineY0 + 8 : lineY1 - 22;
 
-    cursorLine.points([snappedX, lineY0, snappedX, lineY1]);
-    cursorLine.visible(true);
+    const labelRight = snappedX + 8 + 180 <= viewport.width;
 
-    const labelW = 180;
-    const rightFits = snappedX + 8 + labelW <= viewport.width;
-    const labelX = rightFits ? snappedX + 8 : snappedX - labelW - 4;
-
-    cursorLabel.x(labelX);
-    cursorLabel.y(labelY);
-
+    let labelText: string;
+    let fracText = '';
     if (shiftHeld && fraction > 0.000001) {
-        cursorLabel.text(String(year));
-        cursorLabel.visible(true);
-
-        const fracStr = fraction.toFixed(6).replace(/0+$/, '');
-        cursorLabelFraction.text(fracStr.substring(1)); // ".002447"
-        cursorLabelFraction.x(labelX + measureW(String(year), FONT_SIZE));
-        cursorLabelFraction.y(labelY);
-        cursorLabelFraction.visible(true);
+        labelText = String(year);
+        fracText = fraction.toFixed(6).replace(/0+$/, '').substring(1); // ".002447"
     } else {
         const baseLabel = formatter ? formatter(year, fraction < 0.000001 ? 0 : fraction) : String(year);
         // At sub-year LODs the formatter returns only the sub-label ("Summer", "March" etc.) without
         // the year — append it so the cursor always shows the full date ("Summer 1995").
-        cursorLabel.text(fraction < 0.000001 ? baseLabel : `${baseLabel} ${year}`);
-        cursorLabel.visible(true);
-        cursorLabelFraction.visible(false);
+        labelText = fraction < 0.000001 ? baseLabel : `${baseLabel} ${year}`;
     }
 
-    cursorLayer.batchDraw();
+    cursor.value = { visible: true, x: snappedX, lineY0, lineY1, labelRight, labelY, labelText, fracText };
 }
 
 function hideCursor() {
-    if (!cursorLine || !cursorLabel || !cursorLabelFraction) return;
-    cursorLine.visible(false);
-    cursorLabel.visible(false);
-    cursorLabelFraction.visible(false);
-    cursorLayer.batchDraw();
+    cursor.value.visible = false;
 }
 
 function showTooltip(text: string, x: number, y: number) {
-    if (!tooltipLabel) return;
-    tooltipLabel.getText().text(text);
-    const tx = Math.min(x + 14, viewport.width - 160);
-    tooltipLabel.position({ x: tx, y: Math.max(4, y - 34) });
-    tooltipLabel.show();
-    cursorLayer.batchDraw();
+    tooltip.value = { visible: true, text, x: Math.min(x + 14, viewport.width - 160), y: Math.max(4, y - 34) };
 }
 
 function hideTooltip() {
-    if (!tooltipLabel) return;
-    tooltipLabel.hide();
-    cursorLayer.batchDraw();
+    tooltip.value.visible = false;
 }
 
 function loadPictureImage(itemId: string) {
@@ -1271,11 +1203,9 @@ onMounted(() => {
 
 	if(store.layoutSettings?.TimelineTickMarkerTextAlwaysOnTop) {
 		stage.add(itemLayer);
-		stage.add(cursorLayer); // behind grid-on-top
 		stage.add(gridLayer);
 	}else {
 		stage.add(gridLayer);
-		stage.add(cursorLayer); // behind items
 		stage.add(itemLayer);
 	}
     stage.add(boundaryOverlayLayer); // above items
@@ -1283,14 +1213,6 @@ onMounted(() => {
     miniLayer.visible(!!props.miniMode);
     itemLayer.visible(!props.miniMode);
     stage.add(miniLayer); // mini mode overlay, above boundaries
-
-    tooltipLabel = new Konva.Label({ opacity: 0.92, listening: false });
-    tooltipLabel.add(new Konva.Tag({ fill: '#1e293b', cornerRadius: 3, shadowColor: '#000', shadowBlur: 6, shadowOpacity: 0.35 }));
-    tooltipLabel.add(new Konva.Text({ text: '', fontFamily: 'sans-serif', fontSize: 12, padding: 5, fill: '#f1f5f9' }));
-    tooltipLabel.hide();
-    cursorLayer.add(tooltipLabel);
-
-    initCursorShapes();
 
     renderWithDimming(props.layoutSettings!);
     updateCurrentYearInStore();
@@ -1560,6 +1482,24 @@ defineExpose({
              class="boundary-blur"
              :style="{ left: boundaryEndPx + 'px', right: '0' }">
         </div>
+
+        <!-- Vue cursor line + label — above all Konva layers -->
+        <template v-if="cursor.visible">
+            <div class="cursor-line"
+                 :style="{ left: cursor.x + 'px', top: cursor.lineY0 + 'px', height: (cursor.lineY1 - cursor.lineY0) + 'px' }">
+            </div>
+            <div class="cursor-label"
+                 :style="{ left: cursor.x + 'px', top: cursor.labelY + 'px', transform: cursor.labelRight ? 'translateX(8px)' : 'translateX(calc(-100% - 8px))' }">
+                {{ cursor.labelText }}<span v-if="cursor.fracText" class="cursor-frac">{{ cursor.fracText }}</span>
+            </div>
+        </template>
+
+        <!-- Vue tooltip — above all Konva layers -->
+        <div v-if="tooltip.visible"
+             class="canvas-tooltip"
+             :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
+            {{ tooltip.text }}
+        </div>
     </div>
 
     <!-- Context menu teleported to body so it escapes canvas overflow/z-index -->
@@ -1667,6 +1607,42 @@ defineExpose({
     background: rgba(255, 255, 255, 0.08);
     pointer-events: none;
     z-index: 5;
+}
+
+.cursor-line {
+    position: absolute;
+    width: 1px;
+    background: rgba(255, 80, 80, 0.8);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.cursor-label {
+    position: absolute;
+    color: #ff5050;
+    font-size: 14px;
+    font-family: sans-serif;
+    pointer-events: none;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+.cursor-frac {
+    font-style: italic;
+}
+
+.canvas-tooltip {
+    position: absolute;
+    background: #1e293b;
+    color: #f1f5f9;
+    font-family: sans-serif;
+    font-size: 12px;
+    padding: 5px;
+    border-radius: 3px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    z-index: 10;
+    white-space: nowrap;
 }
 
 .context-menu-backdrop {
