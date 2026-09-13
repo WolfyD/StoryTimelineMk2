@@ -12,7 +12,11 @@ import {
 	getXFromTime, getTimeFromX,
     isLeftOfNow, getAssignedLane, type LaneLock
 } from '@/utils/timelineLayout';
-import { buildNode, updateAbsolutePositions, setNodeVisibility } from '@/utils/timelineNodes';
+import {
+    buildNode, updateAbsolutePositions, setNodeVisibility,
+    buildMiniNode, setMiniNodePosition, setMiniNodeVisibility,
+    type MiniNodeElements,
+} from '@/utils/timelineNodes';
 
 const stemsMaster = new Konva.Group();
 const boxesMaster = new Konva.Group();
@@ -34,6 +38,12 @@ const gridLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
 uiLayer.hitGraphEnabled(false);
 const itemLayer = new Konva.Layer();
+const miniLayer = new Konva.Layer();
+const miniNodeCache = new Map<string, MiniNodeElements>();
+// Persistent lane assignments for mini mode — keyed by item ID, cleared on mode/layout change.
+// Using absolute time for conflict detection keeps assignments stable across panning.
+const miniPinLanes = new Map<string, { absKey: number; idx: number }>();
+const miniBarLanes = new Map<string, { rowIdx: number; absStart: number; absEnd: number; typeName: string }>();
 const boundaryOverlayLayer = new Konva.Layer();
 const cursorLayer = new Konva.Layer();
 cursorLayer.hitGraphEnabled(false);
@@ -60,20 +70,22 @@ const props = defineProps<{
     dimmableItems?: TimelineItem[],
     timelineSettings: TimelineSettings | null,
 	layoutSettings: LayoutSettings | null,
-    timelineInfo: TimelineProject
+    timelineInfo: TimelineProject,
+    miniMode?: boolean,
 }>();
 
 const emit = defineEmits<{
     itemClick: [itemId: string]
     viewItem: [itemId: string]
     addItem: [typeId: number, absoluteTime: number, lodIndex: number]
+    miniHover: [payload: { item: TimelineItem; x: number; y: number } | null]
 }>();
 
 // --- VIEWPORT & CACHE STATE ---
 const viewport = reactive({
     width: 0,
     height: 0,
-    centerTime: props.timelineInfo?.StartYear || 0,
+    centerTime: store.centerAbsoluteTime || props.timelineInfo?.StartYear || 0,
     lodStepFraction: 1 // Controls the physical math independent of the store
 });
 
@@ -286,12 +298,34 @@ watch(() => props.layoutSettings, (newLs) => {
     pictureLoadingSet.clear();
     for (const bm of bookmarkNodeCache.values()) bm.group.destroy();
     bookmarkNodeCache.clear();
+    for (const el of miniNodeCache.values()) {
+        if (el.kind === 'pin') el.group.destroy(); else el.rect.destroy();
+    }
+    miniNodeCache.clear();
+    miniPinLanes.clear();
+    miniBarLanes.clear();
     lockedLanes.clear();
     stemsMaster.destroyChildren();
     boxesMaster.destroyChildren();
     renderGrid(gridLayer, newLs);
     RenderUiLayer(uiLayer, newLs);
     renderWithDimming(newLs);
+});
+
+// --- MINI MODE WATCHER ---
+watch(() => props.miniMode, (isMini) => {
+    if (!stage || !props.layoutSettings) return;
+    // Destroy mini node shapes on exit (they'll be rebuilt on re-enter)
+    for (const el of miniNodeCache.values()) {
+        if (el.kind === 'pin') el.group.destroy(); else el.rect.destroy();
+    }
+    miniNodeCache.clear();
+    miniPinLanes.clear();
+    miniBarLanes.clear();
+    miniLayer.visible(!!isMini);
+    itemLayer.visible(!isMini);
+    lockedLanes.clear();
+    renderWithDimming(props.layoutSettings);
 });
 
 // Clamp viewport when items first load (boundary markers may already exist)
@@ -573,7 +607,17 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
     itemLayer.x(0);
     const screenBuffer = 400;
     const activeItemIds = new Set();
+    const isMini = props.miniMode ?? false;
     const stageCenterY = viewport.height / 2;
+    // Rebuild pin-column occupancy snapshot from persistent assignments for new-item lookup.
+    const miniPinColUsed = new Map<number, Set<number>>();
+    if (isMini) {
+        for (const [, lane] of miniPinLanes) {
+            let s = miniPinColUsed.get(lane.absKey);
+            if (!s) { s = new Set(); miniPinColUsed.set(lane.absKey, s); }
+            s.add(lane.idx);
+        }
+    }
     const currentLodIndex = store.currentLodIndex;
     const activeStep = viewport.lodStepFraction;
     const ranges = getActiveRanges();
@@ -625,16 +669,84 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
             endX = getXFromTime(absEnd, viewport.centerTime, activeStep, viewport.width, ls, ranges);
             if (Math.max(itemX, endX) < -screenBuffer || Math.min(itemX, endX) > viewport.width + screenBuffer) {
                 lockedLanes.delete(itemIdStr);
+                miniPinLanes.delete(itemIdStr); miniBarLanes.delete(itemIdStr);
                 continue;
             }
         } else {
             if (itemX < -screenBuffer || itemX > viewport.width + screenBuffer) {
                 lockedLanes.delete(itemIdStr);
+                miniPinLanes.delete(itemIdStr); miniBarLanes.delete(itemIdStr);
                 continue;
             }
         }
 
         activeItemIds.add(itemIdStr);
+
+        // ── Mini mode render path ─────────────────────────────────────────────
+        if (isMini) {
+            // Bookmarks are invisible at this scale — hide any cached node
+            if (typeId === 6) {
+                const bm = bookmarkNodeCache.get(itemIdStr);
+                if (bm) bm.group.visible(false);
+                continue;
+            }
+            let el = miniNodeCache.get(itemIdStr);
+            if (!el) {
+                el = buildMiniNode(itemIdStr, typeName, getColor(item), miniLayer, ls);
+                miniNodeCache.set(itemIdStr, el);
+
+                // Hover + click: emit screen-space coords for tooltip, viewItem on click
+                const hitTarget = (el.kind === 'pin' ? el.dot : el.rect) as Konva.Shape;
+                hitTarget.listening(true);
+                hitTarget.on('mouseenter', () => {
+                    document.body.style.cursor = 'pointer';
+                    const container = stage?.container();
+                    if (!container) return;
+                    const rect = container.getBoundingClientRect();
+                    const pos = stage?.getPointerPosition() ?? { x: 0, y: 0 };
+                    emit('miniHover', { item, x: rect.left + pos.x, y: rect.top + pos.y });
+                });
+                hitTarget.on('mouseleave', () => { document.body.style.cursor = 'default'; emit('miniHover', null); });
+                hitTarget.on('click', () => emit('viewItem', itemIdStr));
+            }
+            setMiniNodeVisibility(el, true);
+            if (el.kind === 'pin') {
+                let pinLane = miniPinLanes.get(itemIdStr);
+                if (!pinLane) {
+                    // Bucket by absolute start time (0.0001-unit resolution ≈ stable across panning)
+                    const absKey = Math.round(absoluteStart * 10000);
+                    const used = miniPinColUsed.get(absKey) ?? new Set<number>();
+                    let idx = 0; while (used.has(idx)) idx++;
+                    pinLane = { absKey, idx };
+                    miniPinLanes.set(itemIdStr, pinLane);
+                    if (!miniPinColUsed.has(absKey)) miniPinColUsed.set(absKey, new Set());
+                    miniPinColUsed.get(absKey)!.add(idx);
+                }
+                setMiniNodePosition(el, typeName, itemX, endX, pinLane.idx);
+            } else {
+                let barLane = miniBarLanes.get(itemIdStr);
+                if (!barLane) {
+                    let rowIdx = 0;
+                    // Ages always occupy row 0 (no stacking); only Periods stack
+                    if (typeName === 'Period') {
+                        const occupiedRows = new Set<number>();
+                        for (const [, bl] of miniBarLanes) {
+                            // Strict overlap: touching (end == start) does NOT conflict
+                            if (bl.typeName === 'Period'
+                                && bl.absEnd > absoluteStart
+                                && bl.absStart < absoluteEnd) {
+                                occupiedRows.add(bl.rowIdx);
+                            }
+                        }
+                        while (occupiedRows.has(rowIdx)) rowIdx++;
+                    }
+                    barLane = { rowIdx, absStart: absoluteStart, absEnd: absoluteEnd, typeName };
+                    miniBarLanes.set(itemIdStr, barLane);
+                }
+                setMiniNodePosition(el, typeName, itemX, endX, barLane.rowIdx);
+            }
+            continue;
+        }
 
         // Bookmarks: custom full-height dashed line + center dot
         if (typeId === 6) {
@@ -728,15 +840,22 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeft, stageCenterY, ls);
     }
 
-    for (const [id, elements] of nodeCache.entries()) {
-        if (!activeItemIds.has(id)) setNodeVisibility(elements, false);
-    }
-    for (const [id, bm] of bookmarkNodeCache.entries()) {
-        if (!activeItemIds.has(id)) bm.group.visible(false);
+    if (isMini) {
+        for (const [id, el] of miniNodeCache.entries()) {
+            if (!activeItemIds.has(id)) setMiniNodeVisibility(el, false);
+        }
+        miniLayer.batchDraw();
+    } else {
+        for (const [id, elements] of nodeCache.entries()) {
+            if (!activeItemIds.has(id)) setNodeVisibility(elements, false);
+        }
+        for (const [id, bm] of bookmarkNodeCache.entries()) {
+            if (!activeItemIds.has(id)) bm.group.visible(false);
+        }
+        itemLayer.batchDraw();
     }
 
     store.setVisibleItems(activeItemIds.size);
-    itemLayer.batchDraw();
 };
 
 const applyDimming = (dimmableIds: Set<string>) => {
@@ -818,6 +937,35 @@ watch(() => store.items.length, (newLen, oldLen) => {
 // Pulse-highlight a specific item node (triggered from the data panel focus button)
 watch(() => store.pulseItemId, (id) => {
     if (!id) return;
+
+    // Mini mode: pulse the pin dot or bar rect
+    const miniEl = miniNodeCache.get(id);
+    if (miniEl) {
+        const target = (miniEl.kind === 'pin' ? miniEl.dot : miniEl.rect) as Konva.Shape;
+        const glowIn = new Konva.Tween({
+            node: target,
+            duration: 0.3,
+            shadowBlur: 12,
+            shadowColor: '#818cf8',
+            shadowOpacity: 0.95,
+            shadowOffsetX: 0,
+            shadowOffsetY: 0,
+            easing: Konva.Easings.EaseOut,
+            onFinish() {
+                new Konva.Tween({
+                    node: target,
+                    duration: 0.9,
+                    shadowBlur: 0,
+                    shadowOpacity: 0,
+                    easing: Konva.Easings.EaseOut,
+                    onFinish() { glowIn.destroy(); },
+                }).play();
+            },
+        });
+        glowIn.play();
+        return;
+    }
+
     const els = nodeCache.get(id);
     if (!els) return;
     const target = els.box ?? els.stem;
@@ -1133,7 +1281,10 @@ onMounted(() => {
 		stage.add(itemLayer);
 	}
     stage.add(boundaryOverlayLayer); // above items
-
+    // Set initial layer visibility based on current prop value
+    miniLayer.visible(!!props.miniMode);
+    itemLayer.visible(!props.miniMode);
+    stage.add(miniLayer); // mini mode overlay, above boundaries
 
     // Tooltip layer sits above everything
     tooltipLabel = new Konva.Label({ opacity: 0.92, listening: false });

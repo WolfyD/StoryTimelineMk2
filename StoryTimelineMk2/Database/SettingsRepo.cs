@@ -80,6 +80,7 @@ namespace StoryTimelineMk2.Database
                     custom_scale        = @CustomScale,
                     display_radius      = @DisplayRadius,
                     canvas_settings     = @CanvasSettings,
+                    timeline_minimised  = @TimelineMinimised,
                     updated_at          = CURRENT_TIMESTAMP
                 WHERE timeline_id = @TimelineId;",
                 settings);

@@ -59,6 +59,7 @@ export interface TimelineSettings {
     CustomScale: number;
     DisplayRadius: number;
     CanvasSettings: CanvasSettingsObject;
+    TimelineMinimised: boolean;
 }
 
 export interface CanvasSettingsObject {

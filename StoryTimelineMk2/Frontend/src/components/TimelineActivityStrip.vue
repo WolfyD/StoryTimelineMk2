@@ -7,15 +7,19 @@ import {
     PhChartBar,
     PhFunnel,
     PhGear,
+    PhArrowsIn,
+    PhArrowsOut,
 } from '@phosphor-icons/vue'
 
 defineProps<{
     filterActive: boolean
+    miniMode: boolean
 }>()
 
 const emit = defineEmits<{
     'toggle-filter': []
     'open-settings': []
+    'toggle-mini': []
 }>()
 
 const navItems = [
@@ -44,6 +48,17 @@ const navItems = [
             @click="emit('toggle-filter')"
         >
             <PhFunnel :size="20" :weight="filterActive ? 'fill' : 'regular'" />
+        </button>
+
+        <!-- ── Mini mode ─────────────────────────────────────────── -->
+        <button
+            class="strip-btn strip-btn--mini"
+            :class="{ 'strip-btn--tool-active': miniMode }"
+            :title="miniMode ? 'Expand timeline' : 'Minimise timeline'"
+            @click="emit('toggle-mini')"
+        >
+            <PhArrowsIn v-if="!miniMode" :size="20" />
+            <PhArrowsOut v-else :size="20" />
         </button>
 
         <!-- ── gap + separator ───────────────────────────────────── -->

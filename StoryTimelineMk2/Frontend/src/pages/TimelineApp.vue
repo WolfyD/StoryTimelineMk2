@@ -10,6 +10,7 @@ import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
 import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
+import type { TimelineItem } from '@/types/models';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
 import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
@@ -29,6 +30,20 @@ const showSettings = ref(false);
 const showFilterSetup = ref(false);
 const viewItemId = ref<string | null>(null);
 const lightboxUrl = ref<string | null>(null);
+
+const isMinimised = ref(false)
+const miniHoverState = ref<{ item: TimelineItem; x: number; y: number } | null>(null)
+
+async function toggleMiniMode() {
+    isMinimised.value = !isMinimised.value
+    if (store.currentProject?.Id) {
+        await BackendAPI.SaveTimelineMinimised(store.currentProject.Id, isMinimised.value)
+    }
+}
+
+function onMiniHover(payload: { item: TimelineItem; x: number; y: number } | null) {
+    miniHoverState.value = payload
+}
 
 const jumpYear = ref(0)
 const jumpInputRef = ref<HTMLInputElement | null>(null)
@@ -201,7 +216,9 @@ onBeforeUnmount(() => {
 		<div v-else id="timeline-layout">
             <TimelineActivityStrip
                 :filter-active="store.filterPanelOpen"
+                :mini-mode="isMinimised"
                 @toggle-filter="store.setFilterPanelOpen(!store.filterPanelOpen)"
+                @toggle-mini="toggleMiniMode"
                 @open-settings="showSettings = true"
             >
                 <template #actions>
@@ -239,6 +256,8 @@ onBeforeUnmount(() => {
         @close="showFilterSetup = false"
     />
 
+    <!-- Normal mode: full horizontal splitpanes -->
+    <template v-if="!isMinimised">
     <Splitpanes horizontal class="timeline-splitpanes-wrapper" @resize="handleResizeEvent();">
 
         <Pane id="timeline-data" :size="40" min-size="20" max-size="70">
@@ -264,6 +283,7 @@ onBeforeUnmount(() => {
 				:timeline-settings="store.settings ?? null"
 				:timeline-info="store.currentProject"
 				:layout-settings="store.layoutSettings ?? null"
+				:mini-mode="false"
 				@item-click="onItemClick"
 				@view-item="onViewItem"
 				@add-item="onAddItem"
@@ -271,6 +291,41 @@ onBeforeUnmount(() => {
         </Pane>
 
     </Splitpanes>
+    </template>
+
+    <!-- Mini mode: data panels + 100px canvas rail -->
+    <template v-else>
+    <div class="mini-timeline-layout">
+        <div class="mini-data-area">
+            <Splitpanes>
+                <Pane id="timeline-data-images" class="timeline-data-block" :size="12">
+                    <TimelineGalleryPanel :layout-settings="store.layoutSettings ?? null" />
+                </Pane>
+                <Pane id="timeline-data-notes" class="timeline-data-block" :size="13">
+                    <TimelineNotesPanel :layout-settings="store.layoutSettings ?? null" />
+                </Pane>
+                <Pane id="timeline-data-contents" class="timeline-data-block" :size="75">
+                    <TimelineDataPanel :layout-settings="store.layoutSettings ?? null" />
+                </Pane>
+            </Splitpanes>
+        </div>
+        <div class="mini-rail" :style="{ backgroundColor: store.layoutSettings?.TimelineCanvasBackgroundColor }">
+            <TimelineCanvas
+                ref="timelineCanvasRef"
+                :timeline-items="store.filteredItems"
+                :dimmed-items="store.dimmableItems"
+                :timeline-settings="store.settings ?? null"
+                :timeline-info="store.currentProject"
+                :layout-settings="store.layoutSettings ?? null"
+                :mini-mode="true"
+                @item-click="onItemClick"
+                @view-item="onViewItem"
+                @add-item="onAddItem"
+                @mini-hover="onMiniHover"
+            ></TimelineCanvas>
+        </div>
+    </div>
+    </template>
 
     <div id="timeline-overview">
         <TimelineMinimap @jump-to-year="onMinimapJump" />
@@ -290,6 +345,15 @@ onBeforeUnmount(() => {
         <div v-if="lightboxUrl" class="picture-lightbox-backdrop" @click="lightboxUrl = null">
             <img :src="lightboxUrl" class="picture-lightbox-img" @click.stop />
         </div>
+    </Teleport>
+
+    <!-- Mini mode item tooltip -->
+    <Teleport to="body">
+        <div
+            v-if="miniHoverState"
+            class="mini-hover-tooltip"
+            :style="{ left: miniHoverState.x + 12 + 'px', top: miniHoverState.y - 28 + 'px' }"
+        >{{ miniHoverState.item.Title }}</div>
     </Teleport>
 
 	<div id="timeline-nav" :style="navStyle">
@@ -658,5 +722,47 @@ onBeforeUnmount(() => {
     border-radius: 6px;
     box-shadow: 0 8px 60px #00000099;
     cursor: default;
+}
+
+// ── Mini mode layout ──────────────────────────────────────────────────────────
+.mini-timeline-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.mini-data-area {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+
+    .splitpanes { height: 100%; }
+}
+
+.mini-rail {
+    height: 100px;
+    flex-shrink: 0;
+    position: relative;
+    border-top: 1px solid var(--app-border, #2d3a56);
+}
+</style>
+
+<style lang="scss">
+// Not scoped: mini tooltip is teleported to body
+.mini-hover-tooltip {
+    position: fixed;
+    z-index: 9999;
+    background: #1e293b;
+    color: #f1f5f9;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 </style>

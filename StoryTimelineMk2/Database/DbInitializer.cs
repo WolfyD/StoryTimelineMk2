@@ -460,8 +460,9 @@ namespace StoryTimelineMk2.Database
             if (!chars.Contains("updated_at"))         db.Execute("ALTER TABLE characters ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP");
 
             // settings
-            if (!settings.Contains("timeline_id"))     db.Execute("ALTER TABLE settings ADD COLUMN timeline_id INTEGER");
-            if (!settings.Contains("window_maximized"))db.Execute("ALTER TABLE settings ADD COLUMN window_maximized INTEGER DEFAULT 0");
+            if (!settings.Contains("timeline_id"))       db.Execute("ALTER TABLE settings ADD COLUMN timeline_id INTEGER");
+            if (!settings.Contains("window_maximized"))  db.Execute("ALTER TABLE settings ADD COLUMN window_maximized INTEGER DEFAULT 0");
+            if (!settings.Contains("timeline_minimised"))db.Execute("ALTER TABLE settings ADD COLUMN timeline_minimised INTEGER DEFAULT 0");
 
             // notes — seed DB has old schema (year/subtick/content) without timeline_id
             if (!notes.Contains("timeline_id"))        db.Execute("ALTER TABLE notes ADD COLUMN timeline_id INTEGER");

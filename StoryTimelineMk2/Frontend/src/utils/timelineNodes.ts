@@ -213,3 +213,102 @@ export const updateAbsolutePositions = (
         elements.stem.points([anchorX, stageCenterY, stemTargetX, targetY]);
     }
 };
+
+// ─── Mini mode nodes ─────────────────────────────────────────────────────────
+// Layout (100px rail):
+//   Ages    — bottom 14px  (y = 86)
+//   Periods — 8px just above Ages, 2px gap  (y = 76)
+//   Pins    — stack downward from y=14; stem runs from y=0 to just above head
+const MINI_AGE_H     = 14
+const MINI_PERIOD_H  = 8
+const MINI_RAIL_H    = 100
+const MINI_AGE_Y     = MINI_RAIL_H - MINI_AGE_H               // 86
+const MINI_PERIOD_Y  = MINI_AGE_Y - MINI_PERIOD_H - 2          // 76
+const MINI_PIN_Y0    = 14    // y of first (topmost) pin head
+const MINI_PIN_STEP  = 12    // px between stacked pin heads
+
+export interface MiniPinElements {
+    kind: 'pin'
+    group: Konva.Group
+    stem: Konva.Line
+    dot: Konva.Circle
+}
+
+export interface MiniBarElements {
+    kind: 'bar'
+    rect: Konva.Rect
+}
+
+export type MiniNodeElements = MiniPinElements | MiniBarElements
+
+export const buildMiniNode = (
+    id: string,
+    typeName: string,
+    color: string,
+    miniLayer: Konva.Layer,
+    layoutSettings: LayoutSettings
+): MiniNodeElements => {
+    if (typeName === 'Age' || typeName === 'Period') {
+        const h = typeName === 'Age' ? MINI_AGE_H : MINI_PERIOD_H
+        const rect = new Konva.Rect({
+            id: `mini-box-${id}`,
+            height: h,
+            fill: color || '#888888',
+            listening: false,
+        })
+        miniLayer.add(rect)
+        return { kind: 'bar', rect }
+    }
+
+    const stem = new Konva.Line({
+        id: `mini-stem-${id}`,
+        points: [0, 0, 0, 0],
+        stroke: layoutSettings.TimelineEventBorderColor,
+        strokeWidth: 1.5,
+        listening: false,
+    })
+    const fillColor = layoutSettings.TimelineEventBoxShowColor
+        ? (color || layoutSettings.TimelineEventBackgroundColor)
+        : layoutSettings.TimelineEventBackgroundColor
+    const dot = new Konva.Circle({
+        id: `mini-dot-${id}`,
+        radius: 5,
+        fill: fillColor,
+        stroke: layoutSettings.TimelineEventBorderColor,
+        strokeWidth: 1,
+        listening: false,
+    })
+    const group = new Konva.Group({ id: `mini-group-${id}`, listening: false, x: 0, y: 0 })
+    group.add(stem, dot)
+    miniLayer.add(group)
+    return { kind: 'pin', group, stem, dot }
+}
+
+// stackIndex — how many other pins are already at this x column (0 = topmost)
+export const setMiniNodePosition = (
+    el: MiniNodeElements,
+    typeName: string,
+    itemX: number,
+    endX: number,
+    stackIndex: number = 0
+) => {
+    if (el.kind === 'bar') {
+        const baseY = typeName === 'Age' ? MINI_AGE_Y : MINI_PERIOD_Y
+        const rowH  = typeName === 'Age' ? MINI_AGE_H + 2 : MINI_PERIOD_H + 2
+        const y = baseY - stackIndex * rowH
+        el.rect.setAttrs({ x: itemX, y, width: Math.max(2, endX - itemX) })
+    } else {
+        const headY = MINI_PIN_Y0 + stackIndex * MINI_PIN_STEP
+        el.group.setAttrs({ x: itemX, y: 0 })
+        el.stem.points([0, 0, 0, Math.max(0, headY - 6)])
+        el.dot.y(headY)
+    }
+}
+
+export const setMiniNodeVisibility = (el: MiniNodeElements, visible: boolean) => {
+    if (el.kind === 'bar') {
+        el.rect.visible(visible)
+    } else {
+        el.group.visible(visible)
+    }
+}

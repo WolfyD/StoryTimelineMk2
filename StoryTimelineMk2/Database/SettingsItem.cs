@@ -23,6 +23,7 @@ namespace StoryTimelineMk2.Database
         public float CustomScale { get; set; }
         public int DisplayRadius { get; set; }
         public string CanvasSettings { get; set; }
+        public bool TimelineMinimised { get; set; } = false;
         public DateTime UpdatedAt { get; set; }
         public int TimelineId { get; set; }
     }

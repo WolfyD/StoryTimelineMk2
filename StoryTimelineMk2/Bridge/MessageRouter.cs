@@ -170,6 +170,9 @@ namespace StoryTimelineMk2.Bridge
                 case "GetNotificationSettings":  HandleGetNotificationSettings(message); break;
                 case "SaveNotificationSettings": HandleSaveNotificationSettings(message); break;
 
+                // Timeline mini mode
+                case "SaveTimelineMinimised": HandleSaveTimelineMinimised(message); break;
+
                 // Achievement dev tools
                 case "TriggerTestAchievement": HandleTriggerTestAchievement(message); break;
                 case "TriggerRandomAchievement": HandleTriggerRandom(message, "achievement"); break;
@@ -573,6 +576,20 @@ namespace StoryTimelineMk2.Bridge
 
             double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
             _ = _webView.ExecuteScriptAsync($"document.documentElement.style.zoom = '{zoom:F2}'");
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleSaveTimelineMinimised(BridgeMessage message)
+        {
+            var p = message.Payload;
+            int timelineId   = p.GetProperty("timelineId").GetInt32();
+            bool minimised   = p.GetProperty("minimised").GetBoolean();
+
+            var repo     = new SettingsRepo();
+            var settings = repo.GetOrCreateSettings(timelineId);
+            settings.TimelineMinimised = minimised;
+            repo.SaveSettings(settings);
 
             ReplyToVue(message.MessageId, new { status = "ok" });
         }

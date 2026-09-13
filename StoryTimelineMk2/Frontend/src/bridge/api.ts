@@ -238,6 +238,10 @@ export const BackendAPI = {
 		return await this.request<{ status: string }>('SavePerformantPanning', { value });
 	},
 
+	async SaveTimelineMinimised(timelineId: number, minimised: boolean) {
+		return await this.request<{ status: string }>('SaveTimelineMinimised', { timelineId, minimised });
+	},
+
 	async BrowseDataFolder() {
 		return await this.request<{ path: string | null }>('BrowseDataFolder', {});
 	},
