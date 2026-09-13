@@ -9,7 +9,7 @@ import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
 import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
 import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
 import { Splitpanes, Pane } from 'splitpanes'
-import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import type { TimelineItem } from '@/types/models';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
@@ -45,14 +45,8 @@ function onMiniHover(payload: { item: TimelineItem; x: number; y: number } | nul
     miniHoverState.value = payload
 }
 
-const jumpYear = ref(0)
+const jumpYear = ref(Math.round(store.currentNowYear))
 const jumpInputRef = ref<HTMLInputElement | null>(null)
-// Follow the timeline position only when the input isn't focused
-watch(() => store.currentNowYear, (yr) => {
-    if (yr != null && document.activeElement !== jumpInputRef.value) {
-        jumpYear.value = Math.round(yr)
-    }
-}, { immediate: true })
 
 function onItemClick(itemId: string) {
     BackendAPI.send('OpenAddEditItemWindow', {
