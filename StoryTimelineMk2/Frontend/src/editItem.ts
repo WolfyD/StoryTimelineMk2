@@ -1,11 +1,14 @@
-import "./assets/main.scss" // Or your scss file
+import "./assets/main.scss"
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import EditItem from './pages/EditItem.vue' // We will create this next
+import EditItem from './pages/EditItem.vue'
+import { installDevHelpers } from './utils/devHelpers'
 
 const app = createApp(EditItem)
 app.use(createPinia())
 app.mount('#app')
+
+installDevHelpers()
 
 const splash = document.getElementById('app-loading')
 if (splash) {

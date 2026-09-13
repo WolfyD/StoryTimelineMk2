@@ -387,7 +387,7 @@ export async function injectBridgeMock(page: Page, overrides: Record<string, unk
       GetSystemFonts: ['Arial', 'Verdana'],
       GetLayoutSettingsList: [],
       GetCalendarList: [],
-      GetAppConfig: { DataRoot: 'C:/test', DbPath: 'C:/test/timeline.sqlite', MediaFolder: 'C:/test/media', Version: '2.0' },
+      GetAppConfig: { DataRoot: 'C:/test', DbPath: 'C:/test/timeline.sqlite', MediaFolder: 'C:/test/media', Version: '2.0', showAchievementPopups: true, achievementSound: true },
       SaveItem: { status: 'ok', itemId: 'item-uuid-1' },
       SaveNote: { status: 'ok', noteId: 'note-uuid-1' },
       DeleteNote: { status: 'ok' },
@@ -453,6 +453,19 @@ export async function injectBridgeMock(page: Page, overrides: Record<string, unk
         timelineId: null,
       },
       ImportTimeline: { status: 'ok' },
+
+      // Notification / achievement actions
+      GetNotificationSettings: { showAchievementPopups: true, achievementSound: true },
+      SaveNotificationSettings: { status: 'ok' },
+      TriggerTestAchievement: { status: 'ok' },
+      TriggerRandomAchievement: { status: 'ok' },
+      TriggerRandomMilestone: { status: 'ok' },
+      ListAchievementKeys: {
+        keys: [
+          { key: 'test_achievement', title: 'Test Achievement', tier: 'achievement' },
+          { key: 'test_milestone', title: 'Test Milestone', tier: 'milestone' },
+        ],
+      },
     }
 
     // Apply per-test overrides

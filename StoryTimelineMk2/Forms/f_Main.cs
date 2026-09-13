@@ -21,6 +21,7 @@ namespace StoryTimelineMk2.Forms
             FormBorderStyle = FormBorderStyle.None;
 
             Load += F_Main_Load;
+            FormClosed += (_, _) => StatsService.CloseSession();
             ResizeEnd += F_Main_ResizeEnd;
             LocationChanged += F_Main_LocationChanged;
             _moveTimer.Tick += MoveTimer_Tick;
@@ -38,6 +39,7 @@ namespace StoryTimelineMk2.Forms
 
                 _messageRouter = new MessageRouter(webView21.CoreWebView2, this);
 
+                StatsService.OpenSession();
                 LoadFrontend();
             }
             catch (Exception ex)

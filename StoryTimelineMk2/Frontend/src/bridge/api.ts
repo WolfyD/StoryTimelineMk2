@@ -227,7 +227,7 @@ export const BackendAPI = {
 	},
 
 	async GetAppConfig() {
-		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string; chromeTheme: ChromeTheme; themeInitialized: boolean; performantPanning: boolean }>('GetAppConfig', {});
+		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string; chromeTheme: ChromeTheme; themeInitialized: boolean; performantPanning: boolean; showAchievementPopups: boolean; achievementSound: boolean }>('GetAppConfig', {});
 	},
 
 	async SaveChromeTheme(theme: ChromeTheme) {
@@ -346,6 +346,34 @@ export const BackendAPI = {
 		return await this.request<{ status: string }>('DeleteFilterPreset', { id });
 	},
 
+	// --- Notification settings ---
+
+	async GetNotificationSettings() {
+		return await this.request<{ showAchievementPopups: boolean; achievementSound: boolean }>('GetNotificationSettings', {})
+	},
+
+	async SaveNotificationSettings(showAchievementPopups: boolean, achievementSound: boolean) {
+		return await this.request<{ status: string }>('SaveNotificationSettings', { showAchievementPopups, achievementSound })
+	},
+
+	// --- Achievement dev tools ---
+
+	async TriggerTestAchievement(key: string) {
+		return await this.request<{ status: string }>('TriggerTestAchievement', { key })
+	},
+
+	async TriggerRandomAchievement() {
+		return await this.request<{ status: string }>('TriggerRandomAchievement', {})
+	},
+
+	async TriggerRandomMilestone() {
+		return await this.request<{ status: string }>('TriggerRandomMilestone', {})
+	},
+
+	async ListAchievementKeys() {
+		return await this.request<{ key: string; title: string; tier: string }[]>('ListAchievementKeys', {})
+	},
+
 	// --- Misc settings ---
 
 	async GetMiscSetting(key: string, timelineId = 0) {
@@ -383,6 +411,11 @@ if (window.chrome?.webview) {
 			} else if (data.action === 'ItemSaved') {
 				const store = useTimelineStore();
 				store.upsertItem(data.payload.Item);
+			} else if (data.action === 'AchievementUnlocked') {
+				// Lazy import to avoid circular deps at module load time
+				import('@/stores/notificationsStore').then(({ useNotificationsStore }) => {
+					useNotificationsStore().push(data.payload);
+				});
 			}
 			console.log('Unprompted C# Push:', data.action, data.payload);
 		}

@@ -7,6 +7,7 @@
 	import { PhTrayArrowUp, PhTrayArrowDown, PhFileArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear, PhDatabase } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
 	import AppSettingsModal from './components/AppSettingsModal.vue';
+	import NotificationContainer from './components/NotificationContainer.vue';
 	import AuthorReminderModal from './components/AuthorReminderModal.vue';
 	import SelectCalendarModal from './components/SelectCalendarModal.vue';
 	import CalendarManagerModal from './components/CalendarManagerModal.vue';
@@ -216,6 +217,7 @@
 		@close="showAppSettings = false"
 		@refresh="HandleGetTimelines"
 	/>
+	<NotificationContainer />
 	<AuthorReminderModal v-if="showAuthorModal" @set="onAuthorResult" @skip="onAuthorResult('')" />
 	<SelectCalendarModal v-if="showCalendarModal" @selected="onCalendarSelected" @skipped="onCalendarSkipped" />
 	<CalendarManagerModal v-if="showCalendarManager" @close="showCalendarManager = false" />

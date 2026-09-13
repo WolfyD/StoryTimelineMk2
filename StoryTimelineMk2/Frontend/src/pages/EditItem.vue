@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
+import NotificationContainer from '@/components/NotificationContainer.vue'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { useLightbox } from '@/composables/useLightbox'
 import LightboxOverlay from '@/components/LightboxOverlay.vue'
@@ -821,6 +822,7 @@ async function removeImage(pictureId: string) {
   </div>
 
   <div v-else class="loading-screen">Loading…</div>
+  <NotificationContainer />
 </template>
 
 <style scoped lang="scss">

@@ -22,6 +22,7 @@ namespace StoryTimelineMk2.Bridge
             _webView = webView;
             _parentForm = parentForm;
             _webView.WebMessageReceived += OnWebMessageReceived;
+            StatsService.RegisterWebView(webView);
         }
 
         public void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -164,6 +165,16 @@ namespace StoryTimelineMk2.Bridge
                 // Misc settings
                 case "GetMiscSetting":  HandleGetMiscSetting(message); break;
                 case "SetMiscSetting":  HandleSetMiscSetting(message); break;
+
+                // App-level notification settings
+                case "GetNotificationSettings":  HandleGetNotificationSettings(message); break;
+                case "SaveNotificationSettings": HandleSaveNotificationSettings(message); break;
+
+                // Achievement dev tools
+                case "TriggerTestAchievement": HandleTriggerTestAchievement(message); break;
+                case "TriggerRandomAchievement": HandleTriggerRandom(message, "achievement"); break;
+                case "TriggerRandomMilestone":   HandleTriggerRandom(message, "milestone"); break;
+                case "ListAchievementKeys":      HandleListAchievementKeys(message); break;
 
                 default:
                     // Reply so a request() for a typo'd action fails visibly instead of
@@ -1026,13 +1037,54 @@ namespace StoryTimelineMk2.Bridge
             var cfg = AppConfig.Instance;
             ReplyToVue(message.MessageId, new
             {
-                DataRoot          = cfg.DataRoot,
-                DbPath            = cfg.GetDbPath(),
-                MediaFolder       = cfg.GetMediaFolder(),
-                chromeTheme       = cfg.ChromeTheme,
-                themeInitialized  = cfg.ThemeInitialized,
-                performantPanning = cfg.PerformantPanning,
+                DataRoot               = cfg.DataRoot,
+                DbPath                 = cfg.GetDbPath(),
+                MediaFolder            = cfg.GetMediaFolder(),
+                chromeTheme            = cfg.ChromeTheme,
+                themeInitialized       = cfg.ThemeInitialized,
+                performantPanning      = cfg.PerformantPanning,
+                showAchievementPopups  = cfg.ShowAchievementPopups,
+                achievementSound       = cfg.AchievementSound,
             });
+        }
+
+        private void HandleGetNotificationSettings(BridgeMessage message)
+        {
+            var cfg = AppConfig.Instance;
+            ReplyToVue(message.MessageId, new
+            {
+                showAchievementPopups = cfg.ShowAchievementPopups,
+                achievementSound      = cfg.AchievementSound,
+            });
+        }
+
+        private void HandleSaveNotificationSettings(BridgeMessage message)
+        {
+            if (message.Payload.TryGetProperty("showAchievementPopups", out var sp))
+                AppConfig.Instance.ShowAchievementPopups = sp.GetBoolean();
+            if (message.Payload.TryGetProperty("achievementSound", out var as_))
+                AppConfig.Instance.AchievementSound = as_.GetBoolean();
+            AppConfig.Instance.Save();
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleTriggerTestAchievement(BridgeMessage message)
+        {
+            string key = message.Payload.GetProperty("key").GetString() ?? "";
+            StatsService.TriggerTestAchievement(key);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleTriggerRandom(BridgeMessage message, string tier)
+        {
+            StatsService.TriggerRandom(tier);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleListAchievementKeys(BridgeMessage message)
+        {
+            var keys = StatsService.GetAllKeysSummary().ToList();
+            ReplyToVue(message.MessageId, keys);
         }
 
         private void HandleSavePerformantPanning(BridgeMessage message)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // imports
 import { useTimelineStore } from '@/stores/timelineStore'
+import NotificationContainer from '@/components/NotificationContainer.vue'
 import { PhArrowArcRight, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
 import TimelineActivityStrip from '@/components/TimelineActivityStrip.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
@@ -333,6 +334,7 @@ onBeforeUnmount(() => {
 </div><!-- end #timeline-workspace -->
         </div><!-- end #timeline-layout -->
 	</div>
+	<NotificationContainer />
 </template>
 
 <style scoped lang="scss">

@@ -219,9 +219,11 @@ A sticky search/filter input at the top of the settings page that helps the user
 
 ## [BL-12] Usage statistics and milestones
 
-**Status:** Pending. Long-term feature.
+**Status:** Framework done. Content pending.
 
-Track app usage (session length, focus time, items added, timeline density, etc.) and display in a dedicated statistics screen. Optionally: milestone achievements / character progression as a gamified in-joke.
+Stats DB (`usage.sqlite` next to exe), session tracking, fire-and-forget item/activity event recording, DB-driven achievement definitions, character progression tables, achievement/milestone toast system (Steam-style lower-right + shimmer top-center), Web Audio chimes, DevTools console helpers (`window.__stl`), app settings toggles, and Vitest coverage all in place.
+
+Remaining: fill in real achievement definitions (flavor text, trigger criteria), real DnD character definitions with tier ladders, and character portrait images in `Resources/`.
 
 > **Aside:** The statistics data collection is best done in two layers: (1) session-level events stored in memory (start time, focus/blur timestamps via `window` events, item-add count) flushed to the DB on close; (2) aggregate DB queries for historical stats (items per timeline, density distributions, active days). The statistics screen can use a charting library — Chart.js is the obvious lightweight choice given we're already using Vue; Recharts if we want more control. The achievements system is genuinely fun and worth doing right — a small set of carefully chosen milestones ("first item", "100 items", "first import", "timeline spanning 1000 years", etc.) with cosmetic unlocks. Store earned achievements in a DB table with timestamp. The "character progression" angle is interesting — could tie achievement points to an in-universe character who grows alongside the writer's project. Keep this entirely optional and silent (no pop-ups, just discoverable in the stats screen) to avoid being annoying.
 
@@ -293,9 +295,6 @@ file:line references, and suggested fixes for every item below.
 - **V1 import writes character↔event links into a dead table** (DB-H1): rows go to
   `item_characters`, but the app only reads `item_character_appearances` — v1 links are
   invisible after import.
-- **Startup "migration" clobbers user edits to `ls_default` on every launch** (DB-H4): two
-  UPDATEs in `SeedDefaultData()` revert period height and tick colour each start. Needs a
-  run-once migration marker (e.g. a `misc_settings` version key).
 - **`SetDataRoot` can silently create a fresh empty DB** (L5): pointing at an empty folder makes
   timelines "vanish" from the user's perspective. Needs an explicit "point at existing" vs
   "move data" distinction in the UI.
@@ -404,7 +403,7 @@ region and `toggleMaximize()` calls `BackendAPI.WindowMaximizeRestore()`, which 
 
 ## [BL-22] Theme / colour scheme settings for the window chrome
 
-**Status:** Pending.
+**Status:** Done. Full `AppThemeModal.vue` with colour pickers for 10+ chrome properties (appBg, appSurface, appBorder, appText, etc.), dark/light presets, live preview via `applyAppTheme()`, and persistence through `SaveChromeTheme`.
 
 Now that the title bar and resize rim are rendered by Vue, the window chrome participates
 in the same theming system as the rest of the UI. A settings panel section (or a dedicated
@@ -461,7 +460,7 @@ room. Add a few pixels of bottom padding so the last item in the list doesn't fe
 
 ## [BL-26] Data-panel item quick-view (pulsing highlight + read-only open)
 
-**Status:** Pending.
+**Status:** Done. Concentric-circle SVG focus button on each data-panel row, `store.pulseItem()` highlights the canvas node, `TimelineItemViewModal` opens read-only preview after 1 second. All wired up in `TimelineDataPanel.vue`.
 
 Each item row in the data panel should show a small "focus" affordance — two concentric
 circles (SVG, ~16×16px) — on hover. Clicking it should: (1) give the corresponding timeline
@@ -593,7 +592,7 @@ to the year view already present in the calendar setup screen — but read-only 
 
 ## [BL-30] Day-of-week origin calculation for calendar grids
 
-**Status:** Pending. Prerequisite for correct calendar grid rendering in BL-28 and BL-29.
+**Status:** Partial. `calendarMath.ts` exists with `getYearStartDow(year, yearLength, weekLength, baseStartDow)` implemented and used by `monthStartCol()`. Missing: `YearStartDayOfWeek` field in `YearDefinition` type and DB schema — the formula is wired up but the per-calendar anchor value isn't yet stored or exposed.
 
 Currently the calendar grid renders all months starting on column 0 (Monday/first day of
 week), which is only correct for year 0. In a custom calendar with `yearLength` days, each

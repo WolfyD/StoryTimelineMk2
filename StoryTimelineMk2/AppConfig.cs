@@ -102,6 +102,12 @@ namespace StoryTimelineMk2
         [JsonPropertyName("lastAutoBackupAt")]
         public DateTime? LastAutoBackupAt { get; set; } = null;
 
+        [JsonPropertyName("showAchievementPopups")]
+        public bool ShowAchievementPopups { get; set; } = true;
+
+        [JsonPropertyName("achievementSound")]
+        public bool AchievementSound { get; set; } = true;
+
         public static string DefaultDataRoot => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "StoryTimelineMk2_Data");

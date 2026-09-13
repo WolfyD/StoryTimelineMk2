@@ -43,6 +43,16 @@ namespace StoryTimelineMk2
                 return;
             }
 
+            try
+            {
+                Database.StatsDbInitializer.Initialize();
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal: stats DB failure must never prevent the app from starting.
+                Logger.Error("StatsDbInitializer", ex);
+            }
+
             Application.Run(new Forms.f_Main());
         }
     }

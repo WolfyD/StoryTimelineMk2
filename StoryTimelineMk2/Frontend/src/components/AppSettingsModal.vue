@@ -21,6 +21,9 @@ const backupInterval  = ref('never')
 const backupsFolderPath = ref('')
 const recentBackups   = ref<BackupInfo[]>([])
 
+const showAchievementPopups = ref(true)
+const achievementSound = ref(true)
+
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -53,9 +56,18 @@ onMounted(async () => {
     if (cfg) {
         currentRoot.value = cfg.DataRoot
         performantPanning.value = cfg.performantPanning ?? true
+        showAchievementPopups.value = cfg.showAchievementPopups ?? true
+        achievementSound.value = cfg.achievementSound ?? true
     }
     await loadBackupSettings()
 })
+
+async function saveNotificationSettings() {
+    await BackendAPI.SaveNotificationSettings(showAchievementPopups.value, achievementSound.value)
+    // Sync live into the store so already-mounted pages honour the new settings immediately
+    const { useNotificationsStore } = await import('@/stores/notificationsStore')
+    useNotificationsStore().setSettings(showAchievementPopups.value, achievementSound.value)
+}
 
 async function togglePerformantPanning(value: boolean) {
     performantPanning.value = value
@@ -244,6 +256,32 @@ async function createBackup() {
                     <p class="hint">
                         Backups are saved to a <code>backups/</code> folder inside your data directory.
                         The 20 most recent are kept; older ones are pruned automatically.
+                    </p>
+                </section>
+
+                <!-- ── Notifications ── -->
+                <section class="settings-section">
+                    <h4 class="section-label">Notifications</h4>
+                    <label class="toggle-label">
+                        <input
+                            type="checkbox"
+                            :checked="showAchievementPopups"
+                            @change="showAchievementPopups = ($event.target as HTMLInputElement).checked; saveNotificationSettings()"
+                        />
+                        Achievement notifications
+                    </label>
+                    <label class="toggle-label" :class="{ disabled: !showAchievementPopups }">
+                        <input
+                            type="checkbox"
+                            :checked="achievementSound"
+                            :disabled="!showAchievementPopups"
+                            @change="achievementSound = ($event.target as HTMLInputElement).checked; saveNotificationSettings()"
+                        />
+                        Achievement sounds
+                    </label>
+                    <p class="hint">
+                        When enabled, unlocking achievements and character milestones shows
+                        a toast notification with an optional chime.
                     </p>
                 </section>
 
