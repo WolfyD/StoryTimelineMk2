@@ -10,16 +10,16 @@ namespace StoryTimelineMk2.Database
         public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
-        public string StoryId { get; set; }
+        public string? StoryId { get; set; }
         public int TypeId { get; set; } = 1; // Default to Event
         public int Year { get; set; }
         public int EndYear { get; set; }
         public double AbsoluteStart { get; set; }
         public double AbsoluteEnd { get; set; }
-        public string BookTitle { get; set; }
-        public string Chapter { get; set; }
-        public string Page { get; set; }
-        public string Color { get; set; }
+        public string BookTitle { get; set; } = null!;
+        public string Chapter { get; set; } = null!;
+        public string Page { get; set; } = null!;
+        public string Color { get; set; } = null!;
         public int CreationGranularity { get; set; }
         public int TimelineId { get; set; }
         public int ItemIndex { get; set; }

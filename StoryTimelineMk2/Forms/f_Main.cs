@@ -9,7 +9,7 @@ namespace StoryTimelineMk2.Forms
 {
     public partial class f_Main : BorderlessFormBase
     {
-        public MessageRouter _messageRouter;
+        public MessageRouter _messageRouter = null!;
         private const string ViteDevServerUrl = "http://localhost:5173";
 
 
@@ -97,14 +97,16 @@ namespace StoryTimelineMk2.Forms
             webView21.CoreWebView2.Settings.AreDevToolsEnabled = true;
             webView21.CoreWebView2.Navigate(ViteDevServerUrl);
 #else
-            webView21.CoreWebView2.Settings.AreDevToolsEnabled = false;
+            webView21.CoreWebView2.Settings.AreDevToolsEnabled = true;
             webView21.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 
-            string prodFilePath = Path.Combine(Application.StartupPath, "Frontend", "dist", "index.html");
+            string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
 
-            if (File.Exists(prodFilePath))
+            if (Directory.Exists(distPath))
             {
-                webView21.CoreWebView2.Navigate(prodFilePath);
+                webView21.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
+                webView21.CoreWebView2.Navigate("https://app.local/index.html");
             }
             else
             {

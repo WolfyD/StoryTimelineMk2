@@ -7,10 +7,10 @@ namespace StoryTimelineMk2.Database
     public class SettingsItem
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
-        public string Font { get; set; }
+        public string Font { get; set; } = null!;
         public float FontSizeScale { get; set; }
         public int PixelsPerSubtick { get; set; }
-        public string CustomCss { get; set; }
+        public string CustomCss { get; set; } = null!;
         public bool UseCustomCss { get; set; }
         public bool IsFullscreen { get; set; }
         public bool ShowGuides { get; set; }
@@ -22,7 +22,7 @@ namespace StoryTimelineMk2.Database
         public bool UseCustomScaling { get; set; }
         public float CustomScale { get; set; }
         public int DisplayRadius { get; set; }
-        public string CanvasSettings { get; set; }
+        public string CanvasSettings { get; set; } = null!;
         public bool TimelineMinimised { get; set; } = false;
         public DateTime UpdatedAt { get; set; }
         public int TimelineId { get; set; }

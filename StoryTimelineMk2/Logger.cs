@@ -12,7 +12,7 @@ namespace StoryTimelineMk2
     public static class Logger
     {
         private static readonly object _lock = new object();
-        private static string _logPath;
+        private static string _logPath = null!;
 
         private static string LogPath
         {

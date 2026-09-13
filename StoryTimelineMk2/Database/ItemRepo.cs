@@ -88,7 +88,7 @@ namespace StoryTimelineMk2.Database
         public TimelineItem GetItemById(string id)
         {
             using var db = new SqliteConnection(_connString);
-            return db.QueryFirstOrDefault<TimelineItem>("SELECT * FROM items WHERE id = @Id", new { Id = id });
+            return db.QueryFirstOrDefault<TimelineItem>("SELECT * FROM items WHERE id = @Id", new { Id = id })!;
         }
 
         public IEnumerable<ItemTagLink> GetAllItemTagsForTimeline(int timelineId)
@@ -126,10 +126,10 @@ namespace StoryTimelineMk2.Database
 
         public class ItemCharacterAppearanceRow
         {
-            public string CharacterId { get; set; }
-            public string CharacterName { get; set; }
-            public string CharacterColor { get; set; }
-            public string Role { get; set; }
+            public string CharacterId { get; set; } = null!;
+            public string CharacterName { get; set; } = null!;
+            public string CharacterColor { get; set; } = null!;
+            public string Role { get; set; } = null!;
         }
 
         public IEnumerable<ItemCharacterAppearanceRow> GetItemCharacterAppearances(string itemId)
@@ -144,8 +144,8 @@ namespace StoryTimelineMk2.Database
 
         public class ItemStoryRefRow
         {
-            public string StoryId { get; set; }
-            public string StoryTitle { get; set; }
+            public string StoryId { get; set; } = null!;
+            public string StoryTitle { get; set; } = null!;
         }
 
         public IEnumerable<ItemStoryRefRow> GetItemStoryRefs(string itemId)
@@ -160,11 +160,11 @@ namespace StoryTimelineMk2.Database
 
         public class ItemChapterRefRow
         {
-            public string ChapterId { get; set; }
+            public string ChapterId { get; set; } = null!;
             public int ChapterNumber { get; set; }
-            public string ChapterTitle { get; set; }
-            public string BookId { get; set; }
-            public string BookTitle { get; set; }
+            public string ChapterTitle { get; set; } = null!;
+            public string BookId { get; set; } = null!;
+            public string BookTitle { get; set; } = null!;
         }
 
         public IEnumerable<ItemChapterRefRow> GetItemChapterRefs(string itemId)
@@ -181,8 +181,8 @@ namespace StoryTimelineMk2.Database
 
         public class CharacterAppearanceInput
         {
-            public string CharacterId { get; set; }
-            public string Role { get; set; }
+            public string CharacterId { get; set; } = null!;
+            public string Role { get; set; } = null!;
         }
 
         public string SaveItemFull(TimelineItem item, List<string> tagNames,

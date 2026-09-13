@@ -34,6 +34,18 @@
     <Folder Include="Frontend\src\pages\" />
   </ItemGroup>
 
+  <!-- Build the Vue SPA and copy its output next to the exe on every dotnet publish -->
+  <Target Name="PublishFrontend" AfterTargets="Publish">
+    <Message Text="[PublishFrontend] Building Vue frontend..." Importance="high" />
+    <Exec Command="npm run build-only" WorkingDirectory="$(MSBuildProjectDirectory)\Frontend" />
+    <ItemGroup>
+      <FrontendDistFiles Include="$(MSBuildProjectDirectory)\Frontend\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendDistFiles)"
+          DestinationFiles="@(FrontendDistFiles->'$(PublishDir)Frontend\dist\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Message Text="[PublishFrontend] Copied dist → $(PublishDir)Frontend\dist\" Importance="high" />
+  </Target>
+
   <ItemGroup>
     <Content Remove="Frontend\**" />
     <Compile Remove="Frontend\**" />

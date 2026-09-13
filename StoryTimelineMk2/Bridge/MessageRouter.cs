@@ -14,10 +14,10 @@ namespace StoryTimelineMk2.Bridge
     public class MessageRouter
     {
         private readonly CoreWebView2 _webView;
-        private readonly Form _parentForm;
+        private readonly Form? _parentForm;
         private static readonly JsonSerializerOptions _jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-        public MessageRouter(CoreWebView2 webView, Form parentForm = null)
+        public MessageRouter(CoreWebView2 webView, Form? parentForm = null)
         {
             _webView = webView;
             _parentForm = parentForm;
@@ -27,7 +27,7 @@ namespace StoryTimelineMk2.Bridge
 
         public void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
-            BridgeMessage message = null;
+            BridgeMessage? message = null;
             try
             {
                 string rawJson = e.WebMessageAsJson;
@@ -222,7 +222,7 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleOpenTimeline(BridgeMessage message)
         {
-            f_Main mainForm = null;
+            f_Main? mainForm = null;
             foreach (Form f in Application.OpenForms)
             {
                 if (f.Name == "f_Main") mainForm = f as f_Main;
@@ -284,7 +284,7 @@ namespace StoryTimelineMk2.Bridge
         private void HandleOpenAddEditItemWindow(BridgeMessage message)
         {
             int timelineId = 0;
-            string itemId = null;
+            string? itemId = null;
             int typeId = 1;
 
             if (message.Payload.TryGetProperty("timelineId", out var tlProp) && tlProp.TryGetInt32(out int tl))
@@ -328,7 +328,7 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleGetItemForEdit(BridgeMessage message)
         {
-            string itemId = null;
+            string? itemId = null;
             if (message.Payload.TryGetProperty("itemId", out var idProp))
                 itemId = idProp.GetString();
 
@@ -378,16 +378,16 @@ namespace StoryTimelineMk2.Bridge
             public JsonElement Item { get; set; }
 
             [JsonPropertyName("tagNames")]
-            public List<string> TagNames { get; set; }
+            public List<string> TagNames { get; set; } = null!;
 
             [JsonPropertyName("characterAppearances")]
-            public List<ItemRepo.CharacterAppearanceInput> CharacterAppearances { get; set; }
+            public List<ItemRepo.CharacterAppearanceInput> CharacterAppearances { get; set; } = null!;
 
             [JsonPropertyName("storyRefs")]
-            public List<string> StoryRefs { get; set; }
+            public List<string> StoryRefs { get; set; } = null!;
 
             [JsonPropertyName("chapterRefs")]
-            public List<string> ChapterRefs { get; set; }
+            public List<string> ChapterRefs { get; set; } = null!;
         }
 
         private void HandleSaveItem(BridgeMessage message)
@@ -395,10 +395,10 @@ namespace StoryTimelineMk2.Bridge
             try
             {
                 var payload = JsonSerializer.Deserialize<SaveItemPayload>(message.Payload.GetRawText(), _jsonOpts);
-                var item = JsonSerializer.Deserialize<TimelineItem>(payload.Item.GetRawText(), _jsonOpts);
+                var item = JsonSerializer.Deserialize<TimelineItem>(payload!.Item.GetRawText(), _jsonOpts);
 
                 var itemRepo = new ItemRepo();
-                string savedId = itemRepo.SaveItemFull(item, payload.TagNames, payload.CharacterAppearances,
+                string savedId = itemRepo.SaveItemFull(item!, payload.TagNames, payload.CharacterAppearances,
                     payload.StoryRefs, payload.ChapterRefs);
 
                 ReplyToVue(message.MessageId, new { status = "ok", itemId = savedId });
@@ -447,8 +447,8 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleGetBookChapters(BridgeMessage message)
         {
-            string bookId = message.Payload.GetProperty("bookId").GetString();
-            var chapters = new BookRepo().GetChaptersForBook(bookId);
+            string? bookId = message.Payload.GetProperty("bookId").GetString();
+            var chapters = new BookRepo().GetChaptersForBook(bookId!);
             ReplyToVue(message.MessageId, chapters);
         }
 
@@ -461,8 +461,8 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleDeleteItem(BridgeMessage message)
         {
-            string itemId = message.Payload.GetProperty("itemId").GetString();
-            new ItemRepo().DeleteItem(itemId);
+            string? itemId = message.Payload.GetProperty("itemId").GetString();
+            new ItemRepo().DeleteItem(itemId!);
             ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
@@ -485,8 +485,8 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                string noteId = message.Payload.GetProperty("noteId").GetString();
-                new NoteRepo().DeleteNote(noteId);
+                string? noteId = message.Payload.GetProperty("noteId").GetString();
+                new NoteRepo().DeleteNote(noteId!);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)
@@ -814,8 +814,8 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                string id = message.Payload.GetProperty("id").GetString();
-                var cal = new CalendarRepo().GetCalendarById(id);
+                string? id = message.Payload.GetProperty("id").GetString();
+                var cal = new CalendarRepo().GetCalendarById(id!);
                 ReplyToVue(message.MessageId, cal);
             }
             catch (Exception ex)
@@ -845,7 +845,7 @@ namespace StoryTimelineMk2.Bridge
             {
                 string cloneFrom = "cal_default_gregorian";
                 if (message.Payload.TryGetProperty("cloneFrom", out var cfProp) && cfProp.GetString() != null)
-                    cloneFrom = cfProp.GetString();
+                    cloneFrom = cfProp.GetString()!;
 
                 var calRepo = new CalendarRepo();
                 var lodRepo = new LodRepo();
@@ -873,8 +873,8 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                string id = message.Payload.GetProperty("id").GetString();
-                new CalendarRepo().DeleteCalendar(id);
+                string? id = message.Payload.GetProperty("id").GetString();
+                new CalendarRepo().DeleteCalendar(id!);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)
@@ -885,7 +885,7 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleOpenCalendarEditorWindow(BridgeMessage message)
         {
-            string calendarId = null;
+            string? calendarId = null;
             if (message.Payload.TryGetProperty("calendarId", out var idProp))
                 calendarId = idProp.GetString();
 
@@ -898,14 +898,14 @@ namespace StoryTimelineMk2.Bridge
         // Helpers
         // -----------------------------------------------------------------------
 
-        public void SendToVue(string action, object payload = null)
+        public void SendToVue(string action, object? payload = null)
         {
             var response = new { action, payload };
             string json = JsonSerializer.Serialize(response);
             _webView.PostWebMessageAsJson(json);
         }
 
-        private void ReplyToVue(int? messageId, object payload)
+        private void ReplyToVue(int? messageId, object? payload)
         {
             var response = new { messageId, payload };
             string json = JsonSerializer.Serialize(response);
@@ -918,7 +918,7 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleAddImageToItem(BridgeMessage message)
         {
-            var itemId = message.Payload.GetProperty("itemId").GetString();
+            var itemId = message.Payload.GetProperty("itemId").GetString()!;
 
             using var dialog = new OpenFileDialog
             {
@@ -959,8 +959,8 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleLinkImageToItem(BridgeMessage message)
         {
-            var pictureId = message.Payload.GetProperty("pictureId").GetString();
-            var itemId    = message.Payload.GetProperty("itemId").GetString();
+            var pictureId = message.Payload.GetProperty("pictureId").GetString()!;
+            var itemId    = message.Payload.GetProperty("itemId").GetString()!;
             try
             {
                 new MediaRepo().LinkPictureToItem(pictureId, itemId);
@@ -974,8 +974,8 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleRemoveImageFromItem(BridgeMessage message)
         {
-            var pictureId = message.Payload.GetProperty("pictureId").GetString();
-            var itemId    = message.Payload.GetProperty("itemId").GetString();
+            var pictureId = message.Payload.GetProperty("pictureId").GetString()!;
+            var itemId    = message.Payload.GetProperty("itemId").GetString()!;
             try
             {
                 new MediaRepo().UnlinkAndPruneImage(pictureId, itemId);
@@ -1058,7 +1058,7 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                var id = message.Payload.GetProperty("id").GetString();
+                var id = message.Payload.GetProperty("id").GetString()!;
                 DbInitializer.ResetBuiltinPreset(id);
                 var fresh = new LayoutSettingsRepo().GetById(id);
                 ReplyToVue(message.MessageId, new { status = "ok", layoutSettings = fresh });
@@ -1409,7 +1409,7 @@ namespace StoryTimelineMk2.Bridge
             try
             {
                 var rule = JsonSerializer.Deserialize<FilterRuleItem>(message.Payload.GetRawText(), _jsonOpts);
-                new FilterRuleRepo().Save(rule);
+                new FilterRuleRepo().Save(rule!);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)
@@ -1423,8 +1423,8 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                string id = message.Payload.GetProperty("id").GetString();
-                new FilterRuleRepo().Delete(id);
+                string? id = message.Payload.GetProperty("id").GetString();
+                new FilterRuleRepo().Delete(id!);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)
@@ -1457,7 +1457,7 @@ namespace StoryTimelineMk2.Bridge
             try
             {
                 var preset = JsonSerializer.Deserialize<FilterPresetItem>(message.Payload.GetRawText(), _jsonOpts);
-                new FilterPresetRepo().Save(preset);
+                new FilterPresetRepo().Save(preset!);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)
@@ -1471,8 +1471,8 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                string id = message.Payload.GetProperty("id").GetString();
-                new FilterPresetRepo().Delete(id);
+                string? id = message.Payload.GetProperty("id").GetString();
+                new FilterPresetRepo().Delete(id!);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)
@@ -1490,9 +1490,9 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                string key = message.Payload.GetProperty("key").GetString();
+                string? key = message.Payload.GetProperty("key").GetString();
                 int timelineId = message.Payload.TryGetProperty("timelineId", out var tl) ? tl.GetInt32() : 0;
-                string value = new MiscSettingsRepo().Get(key, timelineId);
+                string value = new MiscSettingsRepo().Get(key!, timelineId);
                 ReplyToVue(message.MessageId, new { status = "ok", value });
             }
             catch (Exception ex)
@@ -1506,10 +1506,10 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                string key = message.Payload.GetProperty("key").GetString();
-                string value = message.Payload.GetProperty("value").GetString();
+                string? key = message.Payload.GetProperty("key").GetString();
+                string? value = message.Payload.GetProperty("value").GetString();
                 int timelineId = message.Payload.TryGetProperty("timelineId", out var tl) ? tl.GetInt32() : 0;
-                new MiscSettingsRepo().Set(key, value, timelineId);
+                new MiscSettingsRepo().Set(key!, value!, timelineId);
                 ReplyToVue(message.MessageId, new { status = "ok" });
             }
             catch (Exception ex)

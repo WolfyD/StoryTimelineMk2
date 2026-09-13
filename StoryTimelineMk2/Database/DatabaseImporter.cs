@@ -470,7 +470,7 @@ namespace StoryTimelineMk2.Database
                 var itemPictures = dbV1.Query("SELECT * FROM item_pictures");
                 foreach (var ip in itemPictures)
                 {
-                    if (mediaIdMap.TryGetValue((int)ip.picture_id, out string mappedMediaId))
+                    if (mediaIdMap.TryGetValue((int)ip.picture_id, out string? mappedMediaId))
                     {
                         dbV2.Execute("INSERT OR IGNORE INTO item_pictures (item_id, picture_id) VALUES (@item_id, @mappedMediaId)",
                             new { ip.item_id, mappedMediaId }, transaction);

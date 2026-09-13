@@ -51,9 +51,9 @@ namespace StoryTimelineMk2.Database
         // --- C# BFS Graph Traversal ---
         public class CharacterEdge
         {
-            public string SourceId { get; set; }
-            public string TargetId { get; set; }
-            public string RelationshipType { get; set; }
+            public string SourceId { get; set; } = null!;
+            public string TargetId { get; set; } = null!;
+            public string RelationshipType { get; set; } = null!;
         }
 
         public IEnumerable<string> GetNetwork(int timelineId, string startCharId, int maxDepth = 2)

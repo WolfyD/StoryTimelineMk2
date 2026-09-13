@@ -9,10 +9,10 @@ namespace StoryTimelineMk2.Forms
 {
     public partial class f_Calendar : BorderlessFormBase
     {
-        private MessageRouter _messageRouter;
+        private MessageRouter _messageRouter = null!;
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public string CalendarId { get; set; }
+        public string? CalendarId { get; set; }
 
         public f_Calendar()
         {
@@ -35,9 +35,13 @@ namespace StoryTimelineMk2.Forms
 
                 var query = string.IsNullOrEmpty(CalendarId) ? "" : $"?calendarId={Uri.EscapeDataString(CalendarId)}";
 
-                string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "calendar.html");
-                if (File.Exists(prodPath))
-                    wv_Calendar.CoreWebView2.Navigate(prodPath + query);
+                string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
+                if (Directory.Exists(distPath))
+                {
+                    wv_Calendar.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
+                    wv_Calendar.CoreWebView2.Navigate($"https://app.local/calendar.html{query}");
+                }
                 else
                     wv_Calendar.CoreWebView2.Navigate($"http://localhost:5173/calendar.html{query}");
             }

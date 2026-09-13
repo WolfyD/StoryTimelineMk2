@@ -9,13 +9,13 @@ namespace StoryTimelineMk2.Forms
 {
     public partial class f_AddEditItem : BorderlessFormBase
     {
-        private MessageRouter _messageRouter;
+        private MessageRouter _messageRouter = null!;
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int TimelineId { get; set; }
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public string ItemId { get; set; }  // null for new items
+        public string? ItemId { get; set; }  // null for new items
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int DefaultTypeId { get; set; } = 1;
@@ -27,7 +27,7 @@ namespace StoryTimelineMk2.Forms
         public int? DefaultGranularity { get; set; }
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public Action<string, object> NotifyCallback { get; set; }
+        public Action<string, object>? NotifyCallback { get; set; }
 
         public f_AddEditItem()
         {
@@ -71,9 +71,13 @@ namespace StoryTimelineMk2.Forms
                         query += $"&granularity={DefaultGranularity.Value}";
                 }
 
-                string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "editItem.html");
-                if (File.Exists(prodPath))
-                    wv_AddEditItem.CoreWebView2.Navigate(prodPath + query);
+                string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
+                if (Directory.Exists(distPath))
+                {
+                    wv_AddEditItem.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
+                    wv_AddEditItem.CoreWebView2.Navigate($"https://app.local/editItem.html{query}");
+                }
                 else
                     wv_AddEditItem.CoreWebView2.Navigate($"http://localhost:5173/editItem.html{query}");
             }

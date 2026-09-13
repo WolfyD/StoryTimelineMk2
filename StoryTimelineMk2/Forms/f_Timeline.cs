@@ -10,8 +10,8 @@ namespace StoryTimelineMk2.Forms
 {
     public partial class f_Timeline : BorderlessFormBase
     {
-        private MessageRouter _messageRouter;
-        private Database.SettingsItem _savedSettings;
+        private MessageRouter _messageRouter = null!;
+        private Database.SettingsItem _savedSettings = null!;
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int TimelineId { get; set; }
@@ -58,12 +58,14 @@ namespace StoryTimelineMk2.Forms
                 // Apply CSS zoom once the page finishes loading
                 wv_Timeline.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
 
-                string prodPath = Path.Combine(Application.StartupPath, "Frontend", "dist", "timeline.html");
+                string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
                 string query = $"?id={TimelineId}";
 
-                if (File.Exists(prodPath))
+                if (Directory.Exists(distPath))
                 {
-                    wv_Timeline.CoreWebView2.Navigate(prodPath + query);
+                    wv_Timeline.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
+                    wv_Timeline.CoreWebView2.Navigate($"https://app.local/timeline.html{query}");
                 }
                 else
                 {
@@ -136,7 +138,7 @@ namespace StoryTimelineMk2.Forms
             _moveTimer.Stop();
             PersistWindowState();
 
-            f_Main mainForm = null;
+            f_Main? mainForm = null;
             foreach (Form f in Application.OpenForms)
             {
                 if (f.Name == "f_Main")

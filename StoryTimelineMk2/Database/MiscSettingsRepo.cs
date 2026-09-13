@@ -12,7 +12,7 @@ namespace StoryTimelineMk2.Database
             using var db = new SqliteConnection(_connString);
             return db.QueryFirstOrDefault<string>(
                 "SELECT value FROM misc_settings WHERE key = @Key AND timeline_id = @TlId",
-                new { Key = key, TlId = timelineId });
+                new { Key = key, TlId = timelineId })!;
         }
 
         public void Set(string key, string value, int timelineId = 0)

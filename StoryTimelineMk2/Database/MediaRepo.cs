@@ -102,8 +102,8 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection(_connString);
 
-            string storedPath = db.QuerySingleOrDefault<string>("SELECT file_path FROM pictures WHERE id = @Id", new { Id = id });
-            string filePath = storedPath != null ? GetFullPath(storedPath) : null;
+            string? storedPath = db.QuerySingleOrDefault<string>("SELECT file_path FROM pictures WHERE id = @Id", new { Id = id });
+            string? filePath = storedPath != null ? GetFullPath(storedPath) : null;
 
             // 1. Delete from SQLite (CASCADE removes item_pictures junctions)
             db.Execute("DELETE FROM pictures WHERE id = @Id", new { Id = id });
