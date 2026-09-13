@@ -317,6 +317,7 @@ async function createBackup() {
     border: 1px solid var(--app-border, #2d3a56);
     border-radius: var(--app-radius, 8px);
     width: min(520px, 92vw); box-shadow: 0 24px 48px #00000066;
+    max-height: 98dvh;
 }
 
 .modal-header {
@@ -338,6 +339,7 @@ async function createBackup() {
 .modal-body {
     padding: 16px 24px 20px;
     display: flex; flex-direction: column; gap: 16px;
+    overflow-y: auto;
 }
 
 .modal-footer {

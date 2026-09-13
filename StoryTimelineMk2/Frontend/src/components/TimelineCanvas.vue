@@ -1446,7 +1446,12 @@ onMounted(() => {
                 renderWithDimming(props.layoutSettings!);
             } else {
                 // Items update every frame (fast: position math + batchDraw).
-                // Grid stays put — rebuilt only when gridPanOffset exceeds DRIFT_THRESHOLD.
+                // Slide the pre-rendered grid layer so ticks track the pan continuously.
+                // GRID_EXTRA_PX overhang (500px) exceeds DRIFT_THRESHOLD (300px), so ticks
+                // never go off-screen before the next full rebuild resets layer.x to 0.
+                gridLayer.x(gridPanOffset);
+                boundaryOverlayLayer.x(gridPanOffset);
+                gridLayer.batchDraw();
                 renderWithDimming(props.layoutSettings!);
             }
             hideTooltip();
