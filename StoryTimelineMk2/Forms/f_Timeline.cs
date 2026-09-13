@@ -127,7 +127,7 @@ namespace StoryTimelineMk2.Forms
 
         private void PersistWindowState()
         {
-            if (this.WindowState != FormWindowState.Normal) return;
+            if (this.WindowState != FormWindowState.Normal || IsManuallyMaximized) return;
             new SettingsRepo().SaveWindowState(TimelineId, this.Left, this.Top, this.Width, this.Height);
         }
 

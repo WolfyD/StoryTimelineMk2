@@ -397,6 +397,10 @@ export const BackendAPI = {
 	WindowMaximizeRestore() { this.send('WindowMaximizeRestore', {}) },
 	WindowClose()           { this.send('WindowClose', {}) },
 	WindowStartDrag()       { this.send('WindowStartDrag', {}) },
+
+	async WindowGetMaximized() {
+		return await this.request<{ isMaximized: boolean }>('WindowGetMaximized', {});
+	},
 };
 
 // Listen for replies and unprompted pushes from C#

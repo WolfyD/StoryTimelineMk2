@@ -67,7 +67,7 @@ namespace StoryTimelineMk2.Forms
             }
 
             if (saved.WindowMaximized)
-                this.WindowState = FormWindowState.Maximized;
+                MaximizeToWindowScreen();
         }
 
         private void F_Main_ResizeEnd(object? sender, EventArgs e) => PersistWindowState();
@@ -86,9 +86,8 @@ namespace StoryTimelineMk2.Forms
 
         private void PersistWindowState()
         {
-            bool maximized = this.WindowState == FormWindowState.Maximized;
-            // When maximized, save the restore-bounds so position/size survive the session.
-            var b = maximized ? this.RestoreBounds : this.Bounds;
+            bool maximized = IsManuallyMaximized || this.WindowState == FormWindowState.Maximized;
+            var b = GetRestoreBounds();
             new SettingsRepo().SaveAppWindowState(b.Left, b.Top, b.Width, b.Height, maximized);
         }
 

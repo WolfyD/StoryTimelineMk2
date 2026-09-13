@@ -26,9 +26,9 @@ namespace StoryTimelineMk2.Forms
         private const int HTBOTTOMLEFT  = 16;
         private const int HTBOTTOMRIGHT = 17;
 
-        private const int WM_NCHITTEST     = 0x0084;
-        private const int WM_NCLBUTTONDOWN = 0x00A1;
-        private const int WM_GETMINMAXINFO = 0x0024;
+        private const int WM_NCHITTEST       = 0x0084;
+        private const int WM_NCLBUTTONDOWN   = 0x00A1;
+        private const int WM_NCLBUTTONDBLCLK = 0x00A3;
 
         // ── Layout / visual constants ──────────────────────────────────────────
         public  const int TitleBarHeight    = 36;  // px — must match WindowTitleBar.vue
@@ -40,6 +40,18 @@ namespace StoryTimelineMk2.Forms
         [System.ComponentModel.Browsable(false)]
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool IsFullscreenMode { get; set; } = false;
+
+        // ── Fake-maximize state ───────────────────────────────────────────────
+        // We never set WindowState = Maximized for the user-triggered maximize path
+        // because WM_GETMINMAXINFO's ptMaxPosition needs physical screen coordinates
+        // while Screen.WorkingArea returns DPI-scaled logical coordinates — on a 200%
+        // secondary monitor this doubles the position offset and sends the window
+        // off-screen.  Instead we track maximized state ourselves and set Bounds
+        // directly, which is always consistent with Screen.WorkingArea.
+        private bool      _isManuallyMaximized = false;
+        private Rectangle _preMaximizeBounds;
+
+        public bool IsManuallyMaximized => _isManuallyMaximized;
 
         // ── P/Invoke ──────────────────────────────────────────────────────────
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
@@ -70,7 +82,8 @@ namespace StoryTimelineMk2.Forms
         protected override void OnSizeChanged(EventArgs e)
         {
             base.OnSizeChanged(e);
-            Padding = WindowState == FormWindowState.Maximized
+            bool isMaximized = _isManuallyMaximized || WindowState == FormWindowState.Maximized;
+            Padding = isMaximized
                 ? new Padding(0)
                 : new Padding(ResizeBorder, 0, ResizeBorder, ResizeBorder);
             ApplyRoundedRegion();
@@ -82,7 +95,7 @@ namespace StoryTimelineMk2.Forms
 
             // No rounding when maximized — the window covers the entire work area
             // and clipping corners would leave transparent gaps at the screen edge.
-            if (WindowState == FormWindowState.Maximized)
+            if (_isManuallyMaximized || WindowState == FormWindowState.Maximized)
             {
                 Region = null;
                 return;
@@ -105,33 +118,105 @@ namespace StoryTimelineMk2.Forms
         /// </summary>
         public void StartWindowDrag()
         {
+            if (_isManuallyMaximized) return;
             ReleaseCapture();
             SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
         }
 
-        // ── MINMAXINFO ────────────────────────────────────────────────────────
-        [StructLayout(LayoutKind.Sequential)]
-        private struct POINT { public int X, Y; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MINMAXINFO
+        /// <summary>
+        /// Maximises to the working area of the monitor under the cursor (user-initiated).
+        /// Uses Bounds assignment instead of WindowState = Maximized to avoid the
+        /// WM_GETMINMAXINFO DPI coordinate mismatch on non-primary monitors.
+        /// </summary>
+        public void MaximizeToCurrentScreen()
         {
-            public POINT ptReserved;
-            public POINT ptMaxSize;
-            public POINT ptMaxPosition;
-            public POINT ptMinTrackSize;
-            public POINT ptMaxTrackSize;
+            _preMaximizeBounds = Bounds;
+            _isManuallyMaximized = true;
+            Bounds = Screen.FromPoint(Cursor.Position).WorkingArea;
+        }
+
+        /// <summary>
+        /// Maximises to the working area of the monitor that currently contains the
+        /// window.  Used on session restore so the window maximises to the same screen
+        /// it was on when the app was last closed (not where the cursor is now).
+        /// </summary>
+        public void MaximizeToWindowScreen()
+        {
+            _preMaximizeBounds = Bounds;
+            _isManuallyMaximized = true;
+            Bounds = Screen.FromHandle(Handle).WorkingArea;
+        }
+
+        /// <summary>Restores the window to its pre-maximize size and position.</summary>
+        public void RestoreFromMaximize()
+        {
+            _isManuallyMaximized = false;
+            Bounds = _preMaximizeBounds;
+        }
+
+        /// <summary>
+        /// Returns the bounds to persist: pre-maximize bounds when fake-maximized,
+        /// RestoreBounds when Windows-maximized, or current Bounds otherwise.
+        /// </summary>
+        public Rectangle GetRestoreBounds()
+        {
+            if (_isManuallyMaximized) return _preMaximizeBounds;
+            if (WindowState == FormWindowState.Maximized) return RestoreBounds;
+            return Bounds;
+        }
+
+        // ── Off-screen guard ─────────────────────────────────────────────────
+        // Runs once, ~1 s after the window is first shown.  If the title-bar
+        // strip is not visible on any connected screen (e.g. a monitor was
+        // unplugged since the last session), the window is re-centred on the
+        // primary screen so the user is not stranded with an invisible window.
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            var guard = new System.Windows.Forms.Timer { Interval = 1000 };
+            guard.Tick += (_, _) =>
+            {
+                guard.Stop();
+                guard.Dispose();
+                if (IsDisposed || WindowState != FormWindowState.Normal || _isManuallyMaximized) return;
+                EnsureOnScreen();
+            };
+            guard.Start();
+        }
+
+        private void EnsureOnScreen()
+        {
+            // Require the title-bar strip (full width × TitleBarHeight) to
+            // intersect at least one screen's working area.
+            var titleStrip = new Rectangle(Left, Top, Math.Max(Width, 1), TitleBarHeight);
+            foreach (var screen in Screen.AllScreens)
+            {
+                if (screen.WorkingArea.IntersectsWith(titleStrip)) return;
+            }
+
+            // Title bar is off every screen — re-centre on the primary screen.
+            var wa = Screen.PrimaryScreen!.WorkingArea;
+            Size = new Size(
+                Math.Min(Width,  wa.Width),
+                Math.Min(Height, wa.Height)
+            );
+            Location = new Point(
+                wa.Left + (wa.Width  - Width)  / 2,
+                wa.Top  + (wa.Height - Height) / 2
+            );
         }
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == WM_GETMINMAXINFO && !IsFullscreenMode)
+            // StartWindowDrag() injects WM_NCLBUTTONDOWN/HTCAPTION to start a native
+            // move-loop.  If the user double-clicks before the drag threshold fires,
+            // Windows detects a dblclk on HTCAPTION and the default DefWindowProc
+            // behaviour — when WS_MAXIMIZEBOX is absent (FormBorderStyle.None) — is
+            // to minimise the window.  Suppress the message entirely: the Vue
+            // @dblclick handler on the title bar already calls WindowMaximizeRestore
+            // via BeginInvoke, so letting WndProc also act would cause a double-toggle.
+            if (m.Msg == WM_NCLBUTTONDBLCLK && m.WParam.ToInt32() == HTCAPTION)
             {
-                var info = Marshal.PtrToStructure<MINMAXINFO>(m.LParam);
-                var area = Screen.FromHandle(Handle).WorkingArea;
-                info.ptMaxPosition = new POINT { X = area.Left, Y = area.Top };
-                info.ptMaxSize     = new POINT { X = area.Width, Y = area.Height };
-                Marshal.StructureToPtr(info, m.LParam, false);
                 m.Result = IntPtr.Zero;
                 return;
             }
@@ -142,7 +227,8 @@ namespace StoryTimelineMk2.Forms
                 int screenY = unchecked((short)((m.LParam.ToInt32() >> 16) & 0xFFFF));
                 var pt = PointToClient(new Point(screenX, screenY));
 
-                if (WindowState != FormWindowState.Maximized)
+                // No resize grips when maximized (Windows-maximized or fake-maximized).
+                if (WindowState != FormWindowState.Maximized && !_isManuallyMaximized)
                 {
                     bool top    = pt.Y < ResizeBorder;
                     bool bottom = pt.Y > ClientSize.Height - ResizeBorder;

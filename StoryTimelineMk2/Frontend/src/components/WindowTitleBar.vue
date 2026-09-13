@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 
 withDefaults(defineProps<{
@@ -11,6 +11,11 @@ withDefaults(defineProps<{
 })
 
 const isMaximized = ref(false)
+
+onMounted(async () => {
+    const result = await BackendAPI.WindowGetMaximized()
+    if (result) isMaximized.value = result.isMaximized
+})
 
 function minimize()       { BackendAPI.WindowMinimize() }
 function toggleMaximize() { cancelDrag(); isMaximized.value = !isMaximized.value; BackendAPI.WindowMaximizeRestore() }

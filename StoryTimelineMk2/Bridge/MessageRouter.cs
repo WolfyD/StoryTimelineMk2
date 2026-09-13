@@ -108,6 +108,7 @@ namespace StoryTimelineMk2.Bridge
                 // Window chrome (borderless)
                 case "WindowMinimize":          HandleWindowMinimize(message); break;
                 case "WindowMaximizeRestore":   HandleWindowMaximizeRestore(message); break;
+                case "WindowGetMaximized":      HandleWindowGetMaximized(message); break;
                 case "WindowClose":             HandleWindowClose(message); break;
                 case "WindowStartDrag":         HandleWindowStartDrag(message); break;
 
@@ -689,10 +690,34 @@ namespace StoryTimelineMk2.Bridge
             if (_parentForm == null) return;
             _parentForm.BeginInvoke((MethodInvoker)(() =>
             {
-                _parentForm.WindowState = _parentForm.WindowState == FormWindowState.Maximized
-                    ? FormWindowState.Normal
-                    : FormWindowState.Maximized;
+                if (_parentForm is Forms.BorderlessFormBase bf)
+                {
+                    if (bf.IsManuallyMaximized)
+                        bf.RestoreFromMaximize();
+                    else if (_parentForm.WindowState == FormWindowState.Maximized)
+                        _parentForm.WindowState = FormWindowState.Normal;
+                    else
+                        bf.MaximizeToCurrentScreen();
+                }
+                else
+                {
+                    _parentForm.WindowState = _parentForm.WindowState == FormWindowState.Maximized
+                        ? FormWindowState.Normal : FormWindowState.Maximized;
+                }
             }));
+        }
+
+        private void HandleWindowGetMaximized(BridgeMessage message)
+        {
+            bool maximized = false;
+            if (_parentForm != null)
+                _parentForm.Invoke((MethodInvoker)(() =>
+                {
+                    maximized = _parentForm is Forms.BorderlessFormBase bf
+                        ? bf.IsManuallyMaximized || _parentForm.WindowState == FormWindowState.Maximized
+                        : _parentForm.WindowState == FormWindowState.Maximized;
+                }));
+            ReplyToVue(message.MessageId, new { isMaximized = maximized });
         }
 
         private void HandleWindowClose(BridgeMessage message)
