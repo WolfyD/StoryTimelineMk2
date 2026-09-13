@@ -31,8 +31,15 @@ let stage: Stage | null = null;
 let _fpsRafId: number | null = null;
 let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 let _keyupHandler:   ((e: KeyboardEvent) => void) | null = null;
-let _mouseupHandler: (() => void) | null = null;
+let _mouseupHandler: ((e: MouseEvent) => void) | null = null;
+let _windowMoveHandler: ((e: MouseEvent) => void) | null = null;
 let _jumpRafId: number | null = null;
+let _midMouseRafId: number | null = null;
+
+// Custom SVG arrow cursors — Windows renders e-resize/w-resize identically to ew-resize (all ↔)
+const MID_CURSOR_LEFT   = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><polygon points='0,10 14,2 14,8 20,8 20,12 14,12 14,18' fill='white' stroke='%23444' stroke-width='1.5' stroke-linejoin='round'/></svg>") 0 10, w-resize`;
+const MID_CURSOR_RIGHT  = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><polygon points='20,10 6,2 6,8 0,8 0,12 6,12 6,18' fill='white' stroke='%23444' stroke-width='1.5' stroke-linejoin='round'/></svg>") 20 10, e-resize`;
+const MID_CURSOR_CENTER = `ew-resize`;
 
 const gridLayer = new Konva.Layer();
 const uiLayer = new Konva.Layer();
@@ -1311,15 +1318,63 @@ onMounted(() => {
     let lastPointerX = 0;
     let dragStartX = 0;
 
+    // --- Shared pan logic used by both left-drag and middle-mouse velocity pan ---
+    function applyPan(deltaX: number) {
+        const _ranges = getActiveRanges();
+        const _step   = viewport.lodStepFraction;
+        const _vc     = absoluteToVisual(viewport.centerTime, _ranges, _step);
+        viewport.centerTime = clampToBoundaries(visualToAbsolute(
+            _vc - (deltaX / store.layoutSettings!.TimelineTickDistance) * _step,
+            _ranges, _step
+        ));
+        gridPanOffset += deltaX;
+        if (!store.performantPanning || Math.abs(gridPanOffset) > DRIFT_THRESHOLD) {
+            renderGrid(gridLayer, props.layoutSettings!);
+            renderWithDimming(props.layoutSettings!);
+        } else {
+            gridLayer.x(gridPanOffset);
+            boundaryOverlayLayer.x(gridPanOffset);
+            gridLayer.batchDraw();
+            renderWithDimming(props.layoutSettings!);
+        }
+        hideTooltip();
+        updateCurrentYearInStore();
+        hideCursor();
+    }
+
+    // --- Left-click drag ---
     stage.on('mousedown', (e) => {
-        if (!stage) return;
-        const pos = stage.getPointerPosition();
-        if (!pos) return;
-        if (e.evt.button !== 0) { return; }
+        if (e.evt.button !== 0) return;
         isDragging = true;
         hasDragged = false;
-        lastPointerX = pos.x;
-        dragStartX = pos.x;
+        lastPointerX = e.evt.clientX;
+        dragStartX = e.evt.clientX;
+    });
+
+    // --- Middle-mouse velocity pan ---
+    let midMouseActive = false;
+    let midMouseClientX = 0;
+
+    stage.on('mousedown', (e) => {
+        if (e.evt.button !== 1) return;
+        e.evt.preventDefault(); // prevent autoscroll cursor
+        midMouseActive = true;
+        midMouseClientX = e.evt.clientX;
+
+        const loop = () => {
+            if (!midMouseActive || !stage || !store.layoutSettings) return;
+            const rect = stage.container().getBoundingClientRect();
+            const canvasX = midMouseClientX - rect.left;
+            const halfWidth = viewport.width / 2;
+            const normalised = (canvasX - halfWidth) / halfWidth; // -1 … +1
+            const maxPx = store.layoutSettings.TimelineTickDistance * 3.5;
+            const deltaX = -normalised * maxPx;
+            if (Math.abs(deltaX) > 0.5) applyPan(deltaX);
+            const cur = normalised > 0.05 ? MID_CURSOR_RIGHT : normalised < -0.05 ? MID_CURSOR_LEFT : MID_CURSOR_CENTER;
+            document.body.style.cursor = cur;
+            _midMouseRafId = requestAnimationFrame(loop);
+        };
+        _midMouseRafId = requestAnimationFrame(loop);
     });
 
     _keydownHandler = (e) => { if (e.key === 'Shift') { shiftHeld = true;  if (mouseOnCanvas && lastMouseX !== null && lastMouseY !== null) updateCursor(lastMouseX, lastMouseY); } };
@@ -1327,60 +1382,50 @@ onMounted(() => {
     window.addEventListener('keydown', _keydownHandler);
     window.addEventListener('keyup',   _keyupHandler);
 
-    _mouseupHandler = () => {
-        isDragging = false;
-        document.body.style.cursor = 'default';
-    };
-    window.addEventListener('mouseup', _mouseupHandler);
-
-    stage.on('mousemove', () => {
-        if (!stage) return;
-        const pos = stage.getPointerPosition();
-        if (!pos) return;
-
-        if (isDragging) {
-            if (!hasDragged && Math.abs(pos.x - dragStartX) < DRAG_THRESHOLD) {
-                lastPointerX = pos.x;
-                return;
-            }
-            hasDragged = true;
-            const deltaX = pos.x - lastPointerX;
-            if (deltaX === 0) return;
-
-            document.body.style.cursor = 'grabbing';
-            const _ranges = getActiveRanges();
-            const _step   = viewport.lodStepFraction;
-            const _vc     = absoluteToVisual(viewport.centerTime, _ranges, _step);
-            viewport.centerTime = clampToBoundaries(visualToAbsolute(
-                _vc - (deltaX / store.layoutSettings!.TimelineTickDistance) * _step,
-                _ranges, _step
-            ));
-            lastPointerX = pos.x;
-
-            gridPanOffset += deltaX;
-            if (!store.performantPanning || Math.abs(gridPanOffset) > DRIFT_THRESHOLD) {
-                // Full re-render: grid ticks are stale, or performant mode is off
-                renderGrid(gridLayer, props.layoutSettings!);
-                renderWithDimming(props.layoutSettings!);
-            } else {
-                // Items update every frame (fast: position math + batchDraw).
-                // Slide the pre-rendered grid layer so ticks track the pan continuously.
-                // GRID_EXTRA_PX overhang (500px) exceeds DRIFT_THRESHOLD (300px), so ticks
-                // never go off-screen before the next full rebuild resets layer.x to 0.
-                gridLayer.x(gridPanOffset);
-                boundaryOverlayLayer.x(gridPanOffset);
-                gridLayer.batchDraw();
-                renderWithDimming(props.layoutSettings!);
-            }
-            hideTooltip();
-            updateCurrentYearInStore();
-            hideCursor();
+    // Window-level mousemove so drag continues when cursor leaves the canvas
+    _windowMoveHandler = (e: MouseEvent) => {
+        // Track middle-mouse cursor position regardless of drag state
+        if (midMouseActive) {
+            midMouseClientX = e.clientX;
             return;
         }
 
+        if (!isDragging) return;
+        const clientX = e.clientX;
+        if (!hasDragged && Math.abs(clientX - dragStartX) < DRAG_THRESHOLD) {
+            lastPointerX = clientX;
+            return;
+        }
+        hasDragged = true;
+        const deltaX = clientX - lastPointerX;
+        if (deltaX === 0) return;
+        document.body.style.cursor = 'grabbing';
+        applyPan(deltaX);
+        lastPointerX = clientX;
+    };
+    window.addEventListener('mousemove', _windowMoveHandler);
+
+    _mouseupHandler = (e: MouseEvent) => {
+        if (e.button === 0) {
+            isDragging = false;
+            document.body.style.cursor = 'default';
+        }
+        if (e.button === 1) {
+            midMouseActive = false;
+            if (_midMouseRafId !== null) { cancelAnimationFrame(_midMouseRafId); _midMouseRafId = null; }
+            document.body.style.cursor = 'default';
+        }
+    };
+    window.addEventListener('mouseup', _mouseupHandler);
+
+    // Stage mousemove: cursor marker updates only (drag is handled by window handler above)
+    stage.on('mousemove', (e) => {
+        if (isDragging || midMouseActive) return;
         if (contextMenu.isOpen) {
             hideCursor();
         } else {
+            const pos = stage?.getPointerPosition();
+            if (!pos) return;
             mouseOnCanvas = true;
             lastMouseX = pos.x;
             lastMouseY = pos.y;
@@ -1391,7 +1436,7 @@ onMounted(() => {
     stage.on('mouseleave', () => {
         mouseOnCanvas = false;
         lastMouseX = null;
-        hideCursor();
+        if (!isDragging && !midMouseActive) hideCursor();
     });
 
     stage.on('mouseenter', () => {
@@ -1441,9 +1486,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
     if (_fpsRafId !== null) cancelAnimationFrame(_fpsRafId);
     if (_jumpRafId !== null) { cancelAnimationFrame(_jumpRafId); _jumpRafId = null; }
+    if (_midMouseRafId !== null) { cancelAnimationFrame(_midMouseRafId); _midMouseRafId = null; }
     if (_keydownHandler) window.removeEventListener('keydown', _keydownHandler);
     if (_keyupHandler)   window.removeEventListener('keyup',   _keyupHandler);
     if (_mouseupHandler) window.removeEventListener('mouseup', _mouseupHandler);
+    if (_windowMoveHandler) window.removeEventListener('mousemove', _windowMoveHandler);
     stage?.destroy();
     stage = null;
     nodeCache.clear();
@@ -1471,7 +1518,7 @@ defineExpose({
 
 <template>
     <div style="position: relative; width: 100%; height: 100%;">
-        <div ref="containerRef" style="width: 100%; height: 100%;"></div>
+        <div ref="containerRef" style="width: 100%; height: 100%;" @mousedown.middle.prevent></div>
 
         <!-- CSS blur overlays for out-of-bounds areas (pointer-events:none so canvas stays interactive) -->
         <div v-if="boundaryStartPx !== null && boundaryStartPx > 0"
