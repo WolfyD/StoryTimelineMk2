@@ -143,6 +143,22 @@ const filteredCharacters = computed(() => {
     .filter(c => !q || c.Name.toLowerCase().includes(q))
 })
 
+// Given a fractional year position (0..1) and the calendar's LOD profile, find the
+// coarsest sub-year LOD that can represent the position without ambiguity.
+// Tries seasons, then months; falls back to the finest available (days = month+day).
+function findBestSubYearLod(frac: number, profile: LodLevel[]): number {
+    const lods = profile
+        .filter(l => l.stepFraction > 0 && l.stepFraction < 1)
+        .sort((a, b) => b.stepFraction - a.stepFraction) // coarsest first
+    for (const lod of lods) {
+        if (lod.stepFraction < 0.05) break // stop before weeks / days in this pass
+        const nearest = Math.round(frac / lod.stepFraction) * lod.stepFraction
+        // "Close" = within 25% of one step from the nearest tick
+        if (Math.abs(frac - nearest) <= lod.stepFraction * 0.25) return lod.index
+    }
+    return lods[lods.length - 1]?.index ?? 5 // finest available (days shows month+day)
+}
+
 // Parse month names from the calendar's year_definition JSON
 function extractMonthNames(yearDefinition: string): string[] {
   try {
@@ -177,8 +193,10 @@ onMounted(async () => {
       item.value.TypeId = defaultType
       item.value.CreationGranularity = defaultGranularity
       if (defaultAbsoluteTime) {
-        item.value.Year    = Math.floor(defaultAbsoluteTime)
-        item.value.EndYear = item.value.Year
+        item.value.Year          = Math.floor(defaultAbsoluteTime)
+        item.value.EndYear       = item.value.Year
+        item.value.AbsoluteStart = defaultAbsoluteTime
+        item.value.AbsoluteEnd   = defaultAbsoluteTime
       }
     }
 
@@ -197,18 +215,36 @@ onMounted(async () => {
           : rawProfile as unknown as LodLevel[]
       }
       monthNames.value = extractMonthNames(data.Calendar.YearDefinition ?? '')
-
     }
 
-    // Derive sub-year UI position from AbsoluteStart/AbsoluteEnd, then sync date fields
+    // For new items: choose the best granularity to represent the canvas position.
+    // If the canvas LOD is year-level or coarser (step >= 1), pick the right sub-year LOD
+    // based on how close the fraction is to a recognisable tick (season → month → days).
+    if (isNew.value && defaultAbsoluteTime) {
+      const frac = defaultAbsoluteTime - Math.floor(defaultAbsoluteTime)
+      if (frac > 0.001) {
+        const curLod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
+        if (!curLod || curLod.stepFraction >= 1) {
+          item.value.CreationGranularity = findBestSubYearLod(frac, lodProfile.value)
+        }
+      }
+    }
+
+    // Derive sub-year UI position from AbsoluteStart/AbsoluteEnd, then sync date fields.
+    // For new items we use Math.floor ("which unit am I currently in") so that a position
+    // mid-summer doesn't round up to fall. For existing saved items Math.round is correct
+    // because AbsoluteStart was stored as an exact tick multiple.
     {
       const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
       const step = lod?.stepFraction ?? 1
       const maxSubYear = step > 0 ? Math.round(1 / step) : 1
       const startFrac = item.value.AbsoluteStart - item.value.Year
       const endFrac   = item.value.AbsoluteEnd   - item.value.EndYear
-      startSubYear.value = startFrac > 0.000001 ? Math.max(0, Math.min(Math.round(startFrac / step), maxSubYear - 1)) : 0
-      endSubYear.value   = endFrac   > 0.000001 ? Math.max(0, Math.min(Math.round(endFrac   / step), maxSubYear - 1)) : 0
+      const snapFn = isNew.value
+          ? (v: number) => Math.floor(v + 1e-9)   // "which unit am I in" (epsilon avoids fp rounding down)
+          : Math.round                              // "nearest saved tick"
+      startSubYear.value = startFrac > 0.000001 ? Math.max(0, Math.min(snapFn(startFrac / step), maxSubYear - 1)) : 0
+      endSubYear.value   = endFrac   > 0.000001 ? Math.max(0, Math.min(snapFn(endFrac   / step), maxSubYear - 1)) : 0
     }
     startYear.value = item.value.Year
     endYear.value   = item.value.EndYear

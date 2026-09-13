@@ -146,10 +146,8 @@ const contextMenu = reactive({
 });
 
 function setCanvasDistancePoint(which: 'from' | 'to') {
-    const step = viewport.lodStepFraction;
-    const snapped = step > 0 ? Math.round(contextMenu.absoluteTime / step) * step : contextMenu.absoluteTime;
-    if (which === 'from') store.setDistanceFrom(snapped);
-    else store.setDistanceTo(snapped);
+    if (which === 'from') store.setDistanceFrom(contextMenu.absoluteTime);
+    else store.setDistanceTo(contextMenu.absoluteTime);
     store.setNotesDistanceTab('distance');
     closeContextMenu();
 }
@@ -1559,8 +1557,8 @@ defineExpose({
         <!-- Backdrop: catches outside clicks to close menu -->
         <div v-if="contextMenu.isOpen"
              class="context-menu-backdrop"
-             @mousedown="closeContextMenu"
-             @contextmenu.prevent="closeContextMenu">
+             @mousedown.stop="closeContextMenu"
+             @contextmenu.stop.prevent="closeContextMenu">
         </div>
 
         <div v-if="contextMenu.isOpen"

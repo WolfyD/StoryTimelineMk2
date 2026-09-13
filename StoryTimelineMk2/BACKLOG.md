@@ -883,3 +883,146 @@ Each section header has an anchor. The `?` buttons in individual panels send
 and scrolls to the right section.
 
 ---
+
+## [BL-35] Proper versioning
+
+**Status:** Pending.
+
+Establish a single version source of truth for the application. Currently no version number
+is defined anywhere — the csproj has no `<Version>` and the frontend has no version field.
+
+### Proposed approach
+
+- Set `<Version>`, `<AssemblyVersion>`, and `<FileVersion>` in `StoryTimelineMk2.csproj`.
+- Expose the version to the frontend via a bridge action (`GetAppVersion`) or by injecting it
+  into the WebView2 environment at startup as a meta tag / window global.
+- The version string should follow semver (`MAJOR.MINOR.PATCH`). Start at `1.0.0`.
+- CI / release workflow (if added later) can bump the patch automatically on each build.
+
+> The csproj version fields map directly to Windows file properties (right-click → Properties
+> → Details) and to the assembly's `AssemblyInformationalVersion`. A single set-and-forget
+> change; no runtime complexity. The bridge exposure is needed so the About modal (BL-37) can
+> display it without hardcoding.
+
+---
+
+## [BL-36] Rename output executable
+
+**Status:** Pending.
+
+The published executable is currently named `StoryTimelineMk2.exe` — a development codename,
+not a user-facing product name. Rename to something presentable (e.g. `StoryTimeline.exe`).
+
+### Rename changes required
+
+- Set `<AssemblyName>StoryTimeline</AssemblyName>` in the `.csproj`. This controls the output
+  `.exe` / `.dll` name without renaming the project or any source files.
+- Update `BUILD.md` to reflect the new binary name.
+- Check that `AppConfig` or any path that references the exe name by string is updated.
+
+> `<AssemblyName>` and the csproj filename / folder name are independent. The project can stay
+> in its current folder under its current `.csproj` name while the output binary uses a cleaner
+> name. No source files need to move.
+
+---
+
+## [BL-37] Application manifest — product identity
+
+**Status:** Pending.
+
+Set up the Windows application manifest and assembly attributes so the app presents with a
+proper product name, company/creator, copyright notice, and description in all the standard
+places (Windows file properties, Task Manager, Add/Remove Programs, UAC prompt).
+
+### Manifest changes required
+
+- In the `.csproj`, populate: `<Product>`, `<Company>`, `<Copyright>`, `<Description>`,
+  `<NeutralLanguage>`.
+- Confirm `<ApplicationManifest>` points to (or generates) a manifest that declares:
+  - `dpiAware` / `dpiAwareness` (already set, but worth verifying in context of the manifest).
+  - `requestedExecutionLevel` as `asInvoker` (no UAC elevation).
+- Optionally add a `[assembly: AssemblyProduct(...)]` etc. in `Program.cs` if the csproj
+  properties alone don't flow through to the manifest.
+
+> These are purely metadata changes — no runtime behaviour is affected. Payoff: the app looks
+> professional in file properties, Task Manager shows "StoryTimeline" not the exe path, and
+> any future installer / MSIX packaging picks up the metadata automatically.
+
+---
+
+## [BL-38] Help and About system
+
+**Status:** Pending.
+
+A `?` button at the bottom of the left activity strip opens a small submenu with two items:
+**Help** and **About**.
+
+### Help window
+
+A dedicated WebView2 window (`f_Help.cs`) showing in-app documentation. See BL-34 for the
+full specification. For an initial implementation, a simplified single-page version is
+acceptable: one scrollable page covering the main concepts (timeline, items, calendar, LOD,
+panning, filters) with a search bar.
+
+### About modal
+
+A Vue modal (not a new WinForms window) overlaid on the main window. Content:
+
+- App name and version (fetched from BL-35's `GetAppVersion` bridge action, or from the
+  version string injected at startup).
+- Creator / author name.
+- A one-sentence description.
+- Build date (optional).
+- Links: GitHub repo (if public), bug report.
+- A small version of the app icon (BL-23).
+
+### Activity strip button
+
+- Icon: `?` rendered as a Phosphor `PhQuestion` component (it represents an app section, so
+  Phosphor per the icon convention).
+- Positioned at the bottom of the left strip, separated from the feature icons by a divider.
+- Click opens a small popover menu anchored to the button with two items: "Help" and "About".
+
+> The About modal is entirely frontend — no backend call needed if the version is injected at
+> startup. The Help window reuses the existing WebView2 infrastructure; it's a new
+> `BorderlessFormBase` subclass with its own entry point (`help.html`).
+
+---
+
+## [BL-39] Extended keyboard shortcuts
+
+**Status:** Pending.
+
+Common timeline actions should have keyboard shortcuts so power users never need to reach for
+the mouse for routine operations.
+
+### Proposed shortcuts (baseline set)
+
+| Action | Shortcut |
+| ------ | -------- |
+| Scroll forward one tick | `→` or `L` |
+| Scroll back one tick | `←` or `H` |
+| Zoom in (LOD finer) | `+` / `=` |
+| Zoom out (LOD coarser) | `-` |
+| Jump to year (focus input) | `G` |
+| New Event at current position | `E` |
+| New Period | `P` |
+| New Age | `A` |
+| Toggle mini mode | `M` |
+| Toggle performant panning | `Shift+P` |
+| Toggle filter panel | `F` |
+| Toggle data panel | `D` |
+| Open Help | `?` |
+| Close modal / panel | `Escape` |
+
+### Shortcut implementation notes
+
+- Most of these map to existing functions already callable from the canvas or toolbar.
+- Add a `keydown` listener in `TimelineCanvas.vue` (already exists for `Shift`) extended to
+  the new keys, guarded against firing when a text input has focus.
+- Document the full shortcut table in the Help system (BL-38 / BL-34) under a dedicated
+  "Keyboard shortcuts" section.
+- Consider a shortcut cheat-sheet overlay triggered by `?` when no modal is open — a
+  semi-transparent overlay listing all shortcuts, dismissed by any key.
+
+---
