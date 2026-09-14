@@ -14,8 +14,10 @@ const isMaximized = ref(false)
 const isTopmost   = ref(false)
 
 function onTopMostPush(e: MessageEvent) {
-    if (e.data?.action === 'TopMostChanged' && typeof e.data.payload?.isTopmost === 'boolean')
-        isTopmost.value = e.data.payload.isTopmost
+    let msg: any
+    try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data } catch { return }
+    if (msg?.action === 'TopMostChanged' && typeof msg.payload?.isTopmost === 'boolean')
+        isTopmost.value = msg.payload.isTopmost
 }
 
 onMounted(async () => {
@@ -88,6 +90,7 @@ function cancelDrag() {
         <!-- ── Window controls ─────────────────────────────────────────── -->
         <div class="title-bar__controls">
             <button
+                tabindex="-1"
                 class="tb-btn tb-btn--pin"
                 :class="{ 'tb-btn--pin-active': isTopmost }"
                 :title="isTopmost ? 'Unpin window (stay on top)' : 'Pin window (stay on top)'"
@@ -96,18 +99,19 @@ function cancelDrag() {
                 <i :class="isTopmost ? 'ri-pushpin-fill' : 'ri-pushpin-line'"></i>
             </button>
             <div class="tb-controls-sep" aria-hidden="true"></div>
-            <button class="tb-btn tb-btn--min"   title="Minimize"                              @click="minimize">
+            <button tabindex="-1" class="tb-btn tb-btn--min"   title="Minimize"                              @click="minimize">
                 <i class="ri-subtract-line"></i>
             </button>
             <button
                 v-if="showMaximize"
+                tabindex="-1"
                 class="tb-btn tb-btn--max"
                 :title="isMaximized ? 'Restore' : 'Maximize'"
                 @click="toggleMaximize"
             >
                 <i :class="isMaximized ? 'ri-contract-up-down-line' : 'ri-expand-up-down-line'"></i>
             </button>
-            <button class="tb-btn tb-btn--close" title="Close"                                 @click="close">
+            <button tabindex="-1" class="tb-btn tb-btn--close" title="Close"                                 @click="close">
                 <i class="ri-close-line"></i>
             </button>
         </div>
@@ -154,6 +158,7 @@ function cancelDrag() {
     display: flex;
     align-items: center;
     gap: 9px;
+    outline: none;
     // Right padding reserves space for the 3 window-control buttons (3 × 36px = 108px)
     // so title text never overlaps them. Left padding matches original 12px.
     padding: 0 120px 0 12px;
@@ -255,6 +260,7 @@ function cancelDrag() {
     justify-content: center;
     background: transparent;
     border: none;
+    outline: none;
     color: var(--tb-btn-color, #3d5166);
     cursor: pointer;
     font-size: 13px;

@@ -336,7 +336,6 @@ namespace StoryTimelineMk2.Bridge
             // The window is never truly closed (OnFormClosing hides it instead), so subsequent
             // opens skip WebView2 init — only re-navigate, which hits V8's in-memory bytecode cache.
             var addEditItemWindow = f_AddEditItem.GetOrCreate();
-            addEditItemWindow.TopMost = _parentForm?.TopMost ?? false;
 
             // Wire a callback so the edit window can push the saved item directly into
             // this (the caller's) WebView2 without a full timeline reload.
@@ -780,20 +779,6 @@ namespace StoryTimelineMk2.Bridge
             _parentForm.BeginInvoke((MethodInvoker)(() =>
             {
                 _parentForm.TopMost = topmost;
-                // When a window is pinned, its owned children must also become topmost
-                // so they never slip behind the now-topmost parent.
-                // We do not force-unpin children when the parent unpins — each child
-                // remains at its own state when the parent's pin is removed.
-                if (topmost)
-                {
-                    foreach (Form owned in _parentForm.OwnedForms)
-                    {
-                        if (owned is Forms.BorderlessFormBase bf)
-                            bf.PropagateTopMost(true);
-                        else
-                            owned.TopMost = true;
-                    }
-                }
             }));
         }
 
@@ -955,7 +940,6 @@ namespace StoryTimelineMk2.Bridge
 
             var calendarWindow = f_Calendar.TakePrewarmed() ?? new f_Calendar();
             calendarWindow.CalendarId = calendarId;
-            calendarWindow.TopMost = _parentForm?.TopMost ?? false;
             calendarWindow.Show(_parentForm);
             calendarWindow.Activate();
             // Re-warm for next use
@@ -984,7 +968,6 @@ namespace StoryTimelineMk2.Bridge
             _yearCalendarWindow = f_YearCalendar.TakePrewarmed() ?? new f_YearCalendar();
             _yearCalendarWindow.TimelineId = timelineId;
             _yearCalendarWindow.CalendarId = calendarId;
-            _yearCalendarWindow.TopMost = _parentForm?.TopMost ?? false;
             _yearCalendarWindow.FormClosed += (_, _) => _yearCalendarWindow = null;
             _yearCalendarWindow.Show(_parentForm);
             _yearCalendarWindow.Activate();
