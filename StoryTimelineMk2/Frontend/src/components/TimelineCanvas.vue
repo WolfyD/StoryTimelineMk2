@@ -29,6 +29,7 @@ const boundaryEndPx   = ref<number | null>(null);
 let localYearCache = store.currentNowYear;
 let _lastPanelUpdateMs = 0;
 let stage: Stage | null = null;
+let _canvasResizeObserver: ResizeObserver | null = null;
 let _fpsRafId: number | null = null;
 let _keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 let _keyupHandler:   ((e: KeyboardEvent) => void) | null = null;
@@ -454,10 +455,12 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         const x = getXFromTime(cleanTime, viewport.centerTime, step, viewport.width, store.layoutSettings!, ranges);
         const formatter = store.activeFormatRegistry[currentLod.formatKey] || store.activeFormatRegistry['YEARS'];
 
-        const tick = new Konva.Line({ points: [x, viewport.height / 2 - 10, x, viewport.height / 2 + 10], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth, listening: false });
+        const isYearTick = fraction < 0.000001;
+        const tickHalfH = (!isYearTick && layoutSettings.TimelineNonYearTicksSmaller) ? 6 : 10;
+        const tick = new Konva.Line({ points: [x, viewport.height / 2 - tickHalfH, x, viewport.height / 2 + tickHalfH], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth, listening: false });
         const text = new Konva.Text({ x: x - 50, y: viewport.height / 2 + 15,
             text: formatter(year, fraction), fill: layoutSettings.TimelineTickMarkerTextColor, align: 'center',
-            width: 100, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, listening: false });
+            width: 100, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, fontSize: layoutSettings.TimelineTickMarkerFontSize, listening: false });
 
         layer.add(tick, text);
     }
@@ -1203,6 +1206,10 @@ onMounted(() => {
     viewport.height = stage.height();
     store.setViewportWidth(viewport.width);
 
+    // Detect any container resize (filter panel toggle, splitpane drag, window resize)
+    _canvasResizeObserver = new ResizeObserver(() => updateStageSize());
+    _canvasResizeObserver.observe(containerRef.value);
+
     // Set initial LOD to prevent NaN issues
     viewport.lodStepFraction = store.lodProfile?.[store.currentLodIndex]?.stepFraction || 1;
 
@@ -1487,6 +1494,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    _canvasResizeObserver?.disconnect();
     if (_fpsRafId !== null) cancelAnimationFrame(_fpsRafId);
     if (_jumpRafId !== null) { cancelAnimationFrame(_jumpRafId); _jumpRafId = null; }
     if (_midMouseRafId !== null) { cancelAnimationFrame(_midMouseRafId); _midMouseRafId = null; }
@@ -1534,9 +1542,9 @@ defineExpose({
         </div>
 
         <!-- Vue cursor line + label — above all Konva layers -->
-        <template v-if="cursor.visible">
+        <template v-if="cursor.visible && props.layoutSettings?.TimelineShowHoverLine !== false">
             <div class="cursor-line"
-                 :style="{ left: cursor.x + 'px', top: cursor.lineY0 + 'px', height: (cursor.lineY1 - cursor.lineY0) + 'px' }">
+                 :style="{ left: cursor.x + 'px', top: cursor.lineY0 + 'px', height: (cursor.lineY1 - cursor.lineY0) + 'px', borderLeft: `${props.layoutSettings?.TimelineHoverLineWidth ?? 1}px ${props.layoutSettings?.TimelineHoverLineStyle ?? 'solid'} ${props.layoutSettings?.TimelineHoverLineColor ?? 'rgba(255,80,80,0.8)'}` }">
             </div>
             <div class="cursor-label"
                  :style="{ left: cursor.x + 'px', top: cursor.labelY + 'px', transform: cursor.labelRight ? 'translateX(8px)' : 'translateX(calc(-100% - 8px))' }">
@@ -1661,8 +1669,7 @@ defineExpose({
 
 .cursor-line {
     position: absolute;
-    width: 1px;
-    background: rgba(255, 80, 80, 0.8);
+    width: 0;
     pointer-events: none;
     z-index: 10;
 }

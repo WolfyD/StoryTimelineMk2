@@ -111,7 +111,7 @@ function jump() {
     // isFinite('') coerces to 0 → jumped to year 0 on empty input.
     if (!Number.isFinite(year)) return
     if (store.layoutSettings?.TimelineAnimateOnJumpToYear) {
-        timelineCanvasRef.value?.animateJumpToYear(year)
+        timelineCanvasRef.value?.animateJumpToYear(year, store.layoutSettings.TimelineJumpToYearAnimationLength)
     } else {
         timelineCanvasRef.value?.jumpToYear(year)
     }
@@ -154,7 +154,7 @@ function handleResizeEvent(){
 
 function onMinimapJump(year: number) {
     if (store.layoutSettings?.TimelineAnimateOnJumpToYear) {
-        timelineCanvasRef.value?.animateJumpToYear(year);
+        timelineCanvasRef.value?.animateJumpToYear(year, store.layoutSettings.TimelineJumpToYearAnimationLength);
     } else {
         timelineCanvasRef.value?.jumpToYear(year);
     }
@@ -163,7 +163,7 @@ function onMinimapJump(year: number) {
 async function onShiftComplete(delta: number) {
     const targetYear = store.currentNowYear + delta;
     await store.loadTimelineData(store.currentProject!.Id);
-    timelineCanvasRef.value?.animateJumpToYear(targetYear);
+    timelineCanvasRef.value?.animateJumpToYear(targetYear, store.layoutSettings?.TimelineJumpToYearAnimationLength ?? 600);
 }
 
 function onHotkey(e: KeyboardEvent) {

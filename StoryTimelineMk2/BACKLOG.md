@@ -219,7 +219,7 @@ A sticky search/filter input at the top of the settings page that helps the user
 
 ## [BL-12] Usage statistics and milestones
 
-**Status:** Framework done. Content pending.
+**Status:** Framework done. Content pending. Deferred — collaborative effort required for achievement definitions, character tier content, and portrait assets.
 
 Stats DB (`usage.sqlite` next to exe), session tracking, fire-and-forget item/activity event recording, DB-driven achievement definitions, character progression tables, achievement/milestone toast system (Steam-style lower-right + shimmer top-center), Web Audio chimes, DevTools console helpers (`window.__stl`), app settings toggles, and Vitest coverage all in place.
 
@@ -311,8 +311,9 @@ file:line references, and suggested fixes for every item below.
   hazard a code comment warns about; four handlers do it.
 - **`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5): torn copies possible; WAL
   sidecars ignored. Use the SQLite backup API or `VACUUM INTO`.
-- **`GetTimelineStories` ignores its `timelineId` parameter** (CT-M1): edit window offers
-  stories from ALL timelines. Decide: filter in `StoryRepo`, or rename to `GetAllStories`.
+- **`GetTimelineStories` name is misleading** (CT-M1): stories are not timeline-scoped — they
+  can appear in multiple timelines, so returning all stories is correct behaviour. Rename
+  the action to `GetAllStories` for clarity.
 
 ### Dead weight (delete or finish)
 
@@ -418,9 +419,9 @@ into the existing timeline colour tokens.
 
 ## [BL-23] App icon
 
-**Status:** Pending.
+**Status:** Placeholder in place. Pending commission of final artwork.
 
-The application currently uses the default .NET/Windows icon. A proper icon (`.ico` with
+The application currently uses a placeholder icon. A proper icon (`.ico` with
 16/32/48/256px variants, plus a matching `favicon` for the WebView2 shell) should be
 provided.
 
@@ -991,7 +992,7 @@ A Vue modal (not a new WinForms window) overlaid on the main window. Content:
 
 ## [BL-39] Extended keyboard shortcuts
 
-**Status:** Pending.
+**Status:** Pending. Deferred — needs more features implemented first; shortcut targets and the help system (BL-38) should be in place before this is tackled.
 
 Common timeline actions should have keyboard shortcuts so power users never need to reach for
 the mouse for routine operations.

@@ -10,9 +10,14 @@ const containerRef = ref<HTMLDivElement>();
 
 let stage: Konva.Stage | null = null;
 let layer: Konva.Layer | null = null;
+let dynamicLayer: Konva.Layer | null = null;
 let tooltipLayer: Konva.Layer | null = null;
 let tooltipLabel: Konva.Label | null = null;
 let resizeObserver: ResizeObserver | null = null;
+
+// Stored by renderStatic so renderDynamic can reposition the overlay without a full rebuild
+let _toX: ((t: number) => number) | null = null;
+let _H = 0;
 
 // Layout constants
 const MARGIN       = 36;   // px left/right
@@ -32,10 +37,57 @@ function buildToX(W: number, rangeStart: number, rangeEnd: number) {
     return (t: number) => MARGIN + ((t - rangeStart) / span) * usable;
 }
 
-// ─── Render ──────────────────────────────────────────────────────────────────
+// ─── Dynamic layer: NOW line + viewport rect — repositioned on every pan ──────
 
-function render() {
-    if (!stage || !layer || !tooltipLayer) return;
+function renderDynamic() {
+    if (!stage || !dynamicLayer || !_toX) return;
+    dynamicLayer.destroyChildren();
+
+    const W  = stage.width();
+    const H  = _H;
+    const ls = store.layoutSettings;
+
+    // NOW line
+    const nowX = _toX(store.centerAbsoluteTime);
+    if (nowX >= MARGIN && nowX <= W - MARGIN) {
+        dynamicLayer.add(new Konva.Line({
+            points: [nowX, 2, nowX, H - 2],
+            stroke: '#ef4444',
+            strokeWidth: 1,
+            opacity: 0.8,
+            listening: false,
+        }));
+    }
+
+    // Viewport window
+    if (store.viewportWidthPx > 0 && ls) {
+        const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
+        const tickDist = ls.TimelineTickDistance || 100;
+        const halfAbs  = (store.viewportWidthPx / 2 / tickDist) * lodStep;
+
+        const vpL = Math.max(MARGIN, _toX(store.centerAbsoluteTime - halfAbs));
+        const vpR = Math.min(W - MARGIN, _toX(store.centerAbsoluteTime + halfAbs));
+
+        if (vpR > vpL) {
+            dynamicLayer.add(new Konva.Rect({
+                x: vpL, y: 0,
+                width: vpR - vpL, height: H,
+                fill: '#3b82f6',
+                opacity: 0.08,
+                stroke: '#3b82f6',
+                strokeWidth: 1,
+                listening: false,
+            }));
+        }
+    }
+
+    dynamicLayer.batchDraw();
+}
+
+// ─── Static layer: items, structure — rebuilt only when data changes ──────────
+
+function renderStatic() {
+    if (!stage || !layer || !tooltipLayer || !dynamicLayer) return;
 
     layer.destroyChildren();
     tooltipLayer.destroyChildren();
@@ -45,7 +97,11 @@ function render() {
     const ls = store.layoutSettings;
     const allItems = store.items;
 
-    if (!ls || allItems.length === 0) { layer.batchDraw(); return; }
+    if (!ls || allItems.length === 0) {
+        layer.batchDraw();
+        dynamicLayer.destroyChildren(); dynamicLayer.batchDraw();
+        return;
+    }
 
     // ── 1. Range ───────────────────────────────────────────────────────────
     const startMarker = allItems.find(i => i.TypeId === 8);
@@ -57,7 +113,11 @@ function render() {
     const filteredIds     = hasActiveFilter ? new Set(store.filteredItems.map(i => i.Id)) : null;
     const fo = (id: string) => (filteredIds && !filteredIds.has(id)) ? 0.22 : 1;
 
-    if (visible.length === 0) { layer.batchDraw(); return; }
+    if (visible.length === 0) {
+        layer.batchDraw();
+        dynamicLayer.destroyChildren(); dynamicLayer.batchDraw();
+        return;
+    }
 
     const absEnds   = visible.map(i => i.AbsoluteEnd > i.AbsoluteStart ? i.AbsoluteEnd : i.AbsoluteStart);
     const absStarts = visible.map(i => i.AbsoluteStart);
@@ -65,10 +125,18 @@ function render() {
     const rangeStart = startMarker?.AbsoluteStart ?? Math.min(...absStarts);
     const rangeEnd   = endMarker?.AbsoluteStart   ?? Math.max(...absEnds);
 
-    if (rangeEnd <= rangeStart) { layer.batchDraw(); return; }
+    if (rangeEnd <= rangeStart) {
+        layer.batchDraw();
+        dynamicLayer.destroyChildren(); dynamicLayer.batchDraw();
+        return;
+    }
 
-    const toX     = buildToX(W, rangeStart, rangeEnd);
-    const lineY   = H * TIMELINE_Y;
+    const toX   = buildToX(W, rangeStart, rangeEnd);
+    const lineY = H * TIMELINE_Y;
+
+    // Store for renderDynamic so it doesn't need to recompute the range
+    _toX = toX;
+    _H   = H;
 
     // ── 2. Density histogram ───────────────────────────────────────────────
     const BUCKETS    = 80;
@@ -149,7 +217,7 @@ function render() {
         }));
 
         // Downward triangle ABOVE the timeline at the start position only
-        const TS   = 4;
+        const TS = 4;
         layer.add(new Konva.Line({
             points: [left - TS, lineY - AGE_H / 2 - TS * 2, left + TS, lineY - AGE_H / 2 - TS * 2, left, lineY - AGE_H / 2],
             closed: true, fill: color, opacity: 0.85 * periodFo, listening: false,
@@ -174,7 +242,6 @@ function render() {
     }
 
     // ── 7. Bookmarks (hoverable + clickable) ──────────────────────────────
-    // Build tooltip nodes once
     tooltipLabel = new Konva.Label({ opacity: 0.88, listening: false });
     tooltipLabel.add(new Konva.Tag({
         fill: '#1e293b', cornerRadius: 3,
@@ -193,24 +260,21 @@ function render() {
 
         const group = new Konva.Group({ opacity: fo(item.Id) });
 
-        // Stem
         group.add(new Konva.Line({
             points: [x, lineY - BM_STEM_H, x, lineY],
             stroke: color, strokeWidth: 2,
         }));
-        // Diamond head
         group.add(new Konva.Line({
             points: [x, lineY - BM_STEM_H - 6, x - 4, lineY - BM_STEM_H, x, lineY - BM_STEM_H + 6, x + 4, lineY - BM_STEM_H],
             closed: true, fill: color, stroke: color, strokeWidth: 1,
         }));
-        // Wide invisible hit area
         group.add(new Konva.Rect({
             x: x - 7, y: lineY - BM_STEM_H - 8,
             width: 14, height: BM_STEM_H + 8,
             fill: 'transparent',
         }));
 
-        group.on('mouseenter', (e) => {
+        group.on('mouseenter', () => {
             stage!.container().style.cursor = 'pointer';
             const textNode = tooltipLabel!.getText();
             textNode.text(item.Title || '—');
@@ -234,47 +298,14 @@ function render() {
     const ARROW_COLOR  = '#475569';
     const arrowOptions = { fill: ARROW_COLOR, stroke: ARROW_COLOR, strokeWidth: 1.5, pointerLength: 8, pointerWidth: 7, listening: false };
 
-    // Left: points right (inward)
     layer.add(new Konva.Arrow({ ...arrowOptions, points: [MARGIN - 2, lineY, MARGIN + 14, lineY] }));
-    // Right: points left (inward)
     layer.add(new Konva.Arrow({ ...arrowOptions, points: [W - MARGIN + 2, lineY, W - MARGIN - 14, lineY] }));
-
-    // ── 9. NOW line ────────────────────────────────────────────────────────
-    const nowX = toX(store.centerAbsoluteTime);
-    if (nowX >= MARGIN && nowX <= W - MARGIN) {
-        layer.add(new Konva.Line({
-            points: [nowX, 2, nowX, H - 2],
-            stroke: '#ef4444',
-            strokeWidth: 1,
-            opacity: 0.8,
-            listening: false,
-        }));
-    }
-
-    // ── 10. Viewport window ────────────────────────────────────────────────
-    if (store.viewportWidthPx > 0) {
-        const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
-        const tickDist = ls.TimelineTickDistance || 100;
-        const halfAbs  = (store.viewportWidthPx / 2 / tickDist) * lodStep;
-
-        const vpL = Math.max(MARGIN, toX(store.centerAbsoluteTime - halfAbs));
-        const vpR = Math.min(W - MARGIN, toX(store.centerAbsoluteTime + halfAbs));
-
-        if (vpR > vpL) {
-            layer.add(new Konva.Rect({
-                x: vpL, y: 0,
-                width: vpR - vpL, height: H,
-                fill: '#3b82f6',
-                opacity: 0.08,
-                stroke: '#3b82f6',
-                strokeWidth: 1,
-                listening: false,
-            }));
-        }
-    }
 
     layer.batchDraw();
     tooltipLayer.batchDraw();
+
+    // Position the dynamic overlay (NOW line + viewport rect) for the updated range
+    renderDynamic();
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
@@ -288,18 +319,19 @@ onMounted(() => {
         height: containerRef.value.clientHeight,
     });
     layer        = new Konva.Layer();
+    dynamicLayer = new Konva.Layer();
     tooltipLayer = new Konva.Layer();
-    stage.add(layer, tooltipLayer);
+    stage.add(layer, dynamicLayer, tooltipLayer);
 
     resizeObserver = new ResizeObserver(() => {
         if (!stage || !containerRef.value) return;
         stage.width(containerRef.value.clientWidth);
         stage.height(containerRef.value.clientHeight);
-        render();
+        renderStatic();
     });
     resizeObserver.observe(containerRef.value);
 
-    render();
+    renderStatic();
 });
 
 onUnmounted(() => {
@@ -307,10 +339,17 @@ onUnmounted(() => {
     stage?.destroy();
 });
 
-// Re-render whenever relevant store state changes
+// Static rebuild: only when items, filter state, or LOD level change
 watch(
-    [() => store.items, () => store.filteredItems, () => store.centerAbsoluteTime, () => store.viewportWidthPx, () => store.currentLodIndex],
-    render,
+    [() => store.items, () => store.filteredItems, () => store.currentLodIndex],
+    renderStatic,
+    { deep: false },
+);
+
+// Dynamic update: reposition NOW line + viewport rect during panning (no scene rebuild)
+watch(
+    [() => store.centerAbsoluteTime, () => store.viewportWidthPx],
+    renderDynamic,
     { deep: false },
 );
 </script>
