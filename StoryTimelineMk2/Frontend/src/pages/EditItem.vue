@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 import { useAppTheme } from '@/utils/useAppTheme'
@@ -178,85 +178,170 @@ function extractMonthNames(yearDefinition: string): string[] {
 // ---------------------------------------------------------------------------
 // Load
 // ---------------------------------------------------------------------------
-onMounted(async () => {
-  const [data, characters, stories] = await Promise.all([
-    BackendAPI.GetItemForEdit(timelineId, itemId, defaultType),
-    BackendAPI.GetTimelineCharacters(timelineId),
-    BackendAPI.GetAllStories(),
-  ])
 
-  if (data) {
-    if (!isNew.value) {
-      item.value = data.Item
-    } else {
-      item.value.TimelineId = timelineId
-      item.value.TypeId = defaultType
-      item.value.CreationGranularity = defaultGranularity
-      if (defaultAbsoluteTime) {
-        item.value.Year          = Math.floor(defaultAbsoluteTime)
-        item.value.EndYear       = item.value.Year
-        item.value.AbsoluteStart = defaultAbsoluteTime
-        item.value.AbsoluteEnd   = defaultAbsoluteTime
-      }
-    }
+async function loadData(tId: number, iId: string | null, dtype: number, absTime: number, gran: number) {
+  // Immediately reset to loading state — old content disappears in one frame,
+  // no waiting for navigation or V8 re-init.
+  isLoading.value = true
+  isNew.value = !iId
+  item.value = {
+    Id: crypto.randomUUID(),
+    Title: '',
+    Description: '',
+    Content: '',
+    StoryId: null,
+    TypeId: dtype,
+    Year: 0,
+    EndYear: 0,
+    AbsoluteStart: 0,
+    AbsoluteEnd: 0,
+    BookTitle: '',
+    Chapter: '',
+    Page: '',
+    Color: '#4a90d9',
+    CreationGranularity: 3,
+    TimelineId: tId,
+    ItemIndex: 0,
+    ShowInNotes: true,
+    Importance: 5,
+    MinLodLevel: 3,
+    LodVisibilityMask: 255,
+  }
+  startYear.value    = 0
+  startSubYear.value = 0
+  endYear.value      = 0
+  endSubYear.value   = 0
+  tags.value               = []
+  characterAppearances.value = []
+  storyRefs.value          = []
+  chapterRefs.value        = []
+  images.value             = []
+  lodProfile.value         = []
+  monthNames.value         = []
+  showImagePicker.value    = false
+  showCharPicker.value     = false
+  showStoryPicker.value    = false
+  charPickerFilter.value   = ''
+  pendingCharId.value      = ''
+  pendingCharRole.value    = ''
+  bookSearchValue.value    = ''
+  bookSuggestions.value    = []
+  selectedBook.value       = null
+  bookChapters.value       = []
+  selectedChapterId.value  = ''
+  tagInputValue.value      = ''
+  tagSuggestions.value     = []
+  topTags.value            = []
+  saveError.value          = ''
+  isSaving.value           = false
 
-    tags.value               = data.Tags ?? []
-    characterAppearances.value = data.Characters ?? []
-    storyRefs.value          = data.StoryRefs ?? []
-    chapterRefs.value        = data.ChapterRefs ?? []
-    images.value             = data.Pictures ?? []
+  try {
+    const [data, characters, stories] = await Promise.all([
+      BackendAPI.GetItemForEdit(tId, iId, dtype),
+      BackendAPI.GetTimelineCharacters(tId),
+      BackendAPI.GetAllStories(),
+    ])
 
-    if (data.Calendar) {
-      // Extract LOD profile (it comes as a raw JSON string in LodProfile.Profile)
-      const rawProfile = data.Calendar.LodProfile?.Profile
-      if (rawProfile) {
-        lodProfile.value = typeof rawProfile === 'string'
-          ? JSON.parse(rawProfile)
-          : rawProfile as unknown as LodLevel[]
-      }
-      monthNames.value = extractMonthNames(data.Calendar.YearDefinition ?? '')
-    }
-
-    // For new items: choose the best granularity to represent the canvas position.
-    // If the canvas LOD is year-level or coarser (step >= 1), pick the right sub-year LOD
-    // based on how close the fraction is to a recognisable tick (season → month → days).
-    if (isNew.value && defaultAbsoluteTime) {
-      const frac = defaultAbsoluteTime - Math.floor(defaultAbsoluteTime)
-      if (frac > 0.001) {
-        const curLod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
-        if (!curLod || curLod.stepFraction >= 1) {
-          item.value.CreationGranularity = findBestSubYearLod(frac, lodProfile.value)
+    if (data) {
+      if (!isNew.value) {
+        item.value = data.Item
+      } else {
+        item.value.TimelineId = tId
+        item.value.TypeId = dtype
+        item.value.CreationGranularity = gran
+        if (absTime) {
+          item.value.Year          = Math.floor(absTime)
+          item.value.EndYear       = item.value.Year
+          item.value.AbsoluteStart = absTime
+          item.value.AbsoluteEnd   = absTime
         }
       }
+
+      tags.value               = data.Tags ?? []
+      characterAppearances.value = data.Characters ?? []
+      storyRefs.value          = data.StoryRefs ?? []
+      chapterRefs.value        = data.ChapterRefs ?? []
+      images.value             = data.Pictures ?? []
+
+      if (data.Calendar) {
+        // Extract LOD profile (it comes as a raw JSON string in LodProfile.Profile)
+        const rawProfile = data.Calendar.LodProfile?.Profile
+        if (rawProfile) {
+          lodProfile.value = typeof rawProfile === 'string'
+            ? JSON.parse(rawProfile)
+            : rawProfile as unknown as LodLevel[]
+        }
+        monthNames.value = extractMonthNames(data.Calendar.YearDefinition ?? '')
+      }
+
+      // For new items: choose the best granularity to represent the canvas position.
+      // If the canvas LOD is year-level or coarser (step >= 1), pick the right sub-year LOD
+      // based on how close the fraction is to a recognisable tick (season → month → days).
+      if (isNew.value && absTime) {
+        const frac = absTime - Math.floor(absTime)
+        if (frac > 0.001) {
+          const curLod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
+          if (!curLod || curLod.stepFraction >= 1) {
+            item.value.CreationGranularity = findBestSubYearLod(frac, lodProfile.value)
+          }
+        }
+      }
+
+      // Derive sub-year UI position from AbsoluteStart/AbsoluteEnd, then sync date fields.
+      // For new items we use Math.floor ("which unit am I currently in") so that a position
+      // mid-summer doesn't round up to fall. For existing saved items Math.round is correct
+      // because AbsoluteStart was stored as an exact tick multiple.
+      {
+        const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
+        const step = lod?.stepFraction ?? 1
+        const maxSubYear = step > 0 ? Math.round(1 / step) : 1
+        const startFrac = item.value.AbsoluteStart - item.value.Year
+        const endFrac   = item.value.AbsoluteEnd   - item.value.EndYear
+        const snapFn = isNew.value
+            ? (v: number) => Math.floor(v + 1e-9)   // "which unit am I in" (epsilon avoids fp rounding down)
+            : Math.round                              // "nearest saved tick"
+        startSubYear.value = startFrac > 0.000001 ? Math.max(0, Math.min(snapFn(startFrac / step), maxSubYear - 1)) : 0
+        endSubYear.value   = endFrac   > 0.000001 ? Math.max(0, Math.min(snapFn(endFrac   / step), maxSubYear - 1)) : 0
+      }
+      startYear.value = item.value.Year
+      endYear.value   = item.value.EndYear
     }
 
-    // Derive sub-year UI position from AbsoluteStart/AbsoluteEnd, then sync date fields.
-    // For new items we use Math.floor ("which unit am I currently in") so that a position
-    // mid-summer doesn't round up to fall. For existing saved items Math.round is correct
-    // because AbsoluteStart was stored as an exact tick multiple.
-    {
-      const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
-      const step = lod?.stepFraction ?? 1
-      const maxSubYear = step > 0 ? Math.round(1 / step) : 1
-      const startFrac = item.value.AbsoluteStart - item.value.Year
-      const endFrac   = item.value.AbsoluteEnd   - item.value.EndYear
-      const snapFn = isNew.value
-          ? (v: number) => Math.floor(v + 1e-9)   // "which unit am I in" (epsilon avoids fp rounding down)
-          : Math.round                              // "nearest saved tick"
-      startSubYear.value = startFrac > 0.000001 ? Math.max(0, Math.min(snapFn(startFrac / step), maxSubYear - 1)) : 0
-      endSubYear.value   = endFrac   > 0.000001 ? Math.max(0, Math.min(snapFn(endFrac   / step), maxSubYear - 1)) : 0
-    }
-    startYear.value = item.value.Year
-    endYear.value   = item.value.EndYear
+    allCharacters.value = characters ?? []
+    allStories.value    = stories ?? []
+
+    BackendAPI.SearchTags('').then(results => {
+      topTags.value = (results ?? []).slice(0, 8)
+    })
+  } catch (err) {
+    console.error('[EditItem] loadData error:', err)
+  } finally {
+    isLoading.value = false
   }
+}
 
-  allCharacters.value = characters ?? []
-  allStories.value    = stories ?? []
-  isLoading.value = false
+// Receives LoadItem push messages from C# when the window is reused without page reload.
+function handlePushMessage(event: MessageEvent) {
+  let data: any
+  try { data = JSON.parse(event.data) } catch { return }
+  if (data.action !== 'LoadItem') return
+  const p = data.payload ?? {}
+  loadData(
+    p.timelineId ?? timelineId,
+    p.itemId ?? null,
+    p.typeId  ?? defaultType,
+    p.year    ?? 0,
+    p.granularity ?? defaultGranularity,
+  )
+}
 
-  BackendAPI.SearchTags('').then(results => {
-    topTags.value = (results ?? []).slice(0, 8)
-  })
+onMounted(() => {
+  loadData(timelineId, itemId, defaultType, defaultAbsoluteTime, defaultGranularity)
+  window.chrome?.webview?.addEventListener('message', handlePushMessage)
+})
+
+onBeforeUnmount(() => {
+  window.chrome?.webview?.removeEventListener('message', handlePushMessage)
 })
 
 // ---------------------------------------------------------------------------

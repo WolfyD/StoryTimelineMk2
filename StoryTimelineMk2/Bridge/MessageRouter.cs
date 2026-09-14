@@ -32,16 +32,19 @@ namespace StoryTimelineMk2.Bridge
             if (yearCal != null && !yearCal.IsDisposed && yearCal.IsHandleCreated)
                 yearCal.BeginInvoke((MethodInvoker)yearCal.Close);
 
-            // Calendar editor and edit-item windows
+            // Calendar editor windows
             var toClose = new List<Form>();
             foreach (Form f in System.Windows.Forms.Application.OpenForms)
-                if (f is f_Calendar || f is f_AddEditItem)
+                if (f is f_Calendar)
                     toClose.Add(f);
             foreach (var f in toClose)
             {
                 if (!f.IsDisposed && f.IsHandleCreated)
                     try { f.BeginInvoke((MethodInvoker)f.Close); } catch { }
             }
+
+            // Edit-item singleton: force-close so it actually disposes rather than hiding
+            f_AddEditItem.ForceCloseInstance();
         }
 
         public MessageRouter(CoreWebView2 webView, Form? parentForm = null)
@@ -263,7 +266,7 @@ namespace StoryTimelineMk2.Bridge
                 if (f.Name == "f_Main") mainForm = f as f_Main;
             }
 
-            f_Timeline TimelineForm = new f_Timeline();
+            f_Timeline TimelineForm = f_Timeline.TakePrewarmed() ?? new f_Timeline();
             JsonElement ot_pl_id = message.Payload.GetProperty("id");
             if (ot_pl_id.TryGetInt32(out int ot_timeline_id))
                 TimelineForm.TimelineId = ot_timeline_id;
@@ -329,19 +332,19 @@ namespace StoryTimelineMk2.Bridge
             if (message.Payload.TryGetProperty("granularity", out var granProp) && granProp.TryGetInt32(out int g))
                 granularity = g;
 
-            var addEditItemWindow = new f_AddEditItem
-            {
-                TimelineId = timelineId,
-                ItemId = itemId,
-                DefaultTypeId = typeId,
-                DefaultYear = year,
-                DefaultGranularity = granularity,
-                TopMost = _parentForm?.TopMost ?? false,
-            };
+            // GetOrCreate() returns the singleton, promoting the pre-warmed form if available.
+            // The window is never truly closed (OnFormClosing hides it instead), so subsequent
+            // opens skip WebView2 init — only re-navigate, which hits V8's in-memory bytecode cache.
+            var addEditItemWindow = f_AddEditItem.GetOrCreate();
+            addEditItemWindow.TopMost = _parentForm?.TopMost ?? false;
 
             // Wire a callback so the edit window can push the saved item directly into
             // this (the caller's) WebView2 without a full timeline reload.
             addEditItemWindow.NotifyCallback = (action, payload) => SendToVue(action, payload);
+
+            // ReopenWithParams sets props and re-navigates in-place if WebView2 is ready;
+            // otherwise AddEditItem_Load picks up the params on first Show().
+            addEditItemWindow.ReopenWithParams(timelineId, itemId, typeId, year, granularity);
 
             // Use Show() instead of ShowDialog(): calling ShowDialog from inside a
             // WebView2 WebMessageReceived handler creates a nested COM message loop
@@ -950,9 +953,13 @@ namespace StoryTimelineMk2.Bridge
             if (message.Payload.TryGetProperty("calendarId", out var idProp))
                 calendarId = idProp.GetString();
 
-            var calendarWindow = new f_Calendar { CalendarId = calendarId, TopMost = _parentForm?.TopMost ?? false };
+            var calendarWindow = f_Calendar.TakePrewarmed() ?? new f_Calendar();
+            calendarWindow.CalendarId = calendarId;
+            calendarWindow.TopMost = _parentForm?.TopMost ?? false;
             calendarWindow.Show(_parentForm);
             calendarWindow.Activate();
+            // Re-warm for next use
+            f_Calendar.BeginPrewarm();
         }
 
         private void HandleOpenYearCalendarWindow(BridgeMessage message)
@@ -974,10 +981,15 @@ namespace StoryTimelineMk2.Bridge
             if (message.Payload.TryGetProperty("calendarId", out var cidProp))
                 calendarId = cidProp.GetString();
 
-            _yearCalendarWindow = new f_YearCalendar { TimelineId = timelineId, CalendarId = calendarId, TopMost = _parentForm?.TopMost ?? false };
+            _yearCalendarWindow = f_YearCalendar.TakePrewarmed() ?? new f_YearCalendar();
+            _yearCalendarWindow.TimelineId = timelineId;
+            _yearCalendarWindow.CalendarId = calendarId;
+            _yearCalendarWindow.TopMost = _parentForm?.TopMost ?? false;
             _yearCalendarWindow.FormClosed += (_, _) => _yearCalendarWindow = null;
             _yearCalendarWindow.Show(_parentForm);
             _yearCalendarWindow.Activate();
+            // Re-warm for next use
+            f_YearCalendar.BeginPrewarm();
 
             ReplyToVue(message.MessageId, new { status = "opened" });
         }

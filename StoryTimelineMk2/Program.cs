@@ -53,7 +53,7 @@ namespace StoryTimelineMk2
                 Logger.Error("StatsDbInitializer", ex);
             }
 
-            Application.Run(new Forms.f_Main());
+            Application.Run(new AppStartupContext());
         }
     }
 }

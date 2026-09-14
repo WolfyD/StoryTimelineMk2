@@ -3,6 +3,7 @@ using StoryTimelineMk2.Bridge;
 using StoryTimelineMk2.Database;
 using System;
 using System.Drawing;
+using System.Text.Json;
 using System.Windows.Forms;
 using System.ComponentModel;
 
@@ -12,6 +13,8 @@ namespace StoryTimelineMk2.Forms
     {
         private MessageRouter _messageRouter = null!;
         private Database.SettingsItem _savedSettings = null!;
+        private bool _preNavComplete = false;
+        private bool _didPreNavigate = false;
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int TimelineId { get; set; }
@@ -30,6 +33,76 @@ namespace StoryTimelineMk2.Forms
             _moveTimer.Tick += MoveTimer_Tick;
         }
 
+        // ── Pre-warm: initialise WebView2 before the user requests the window ──
+        private static f_Timeline? _prewarmed;
+        private static bool _isPrewarming;
+
+        internal static void BeginPrewarm()
+        {
+            if (_prewarmed != null || _isPrewarming) return;
+            _isPrewarming = true;
+            Logger.Info("f_Timeline.Prewarm", "BeginPrewarm called");
+            _ = DoPrewarmAsync();
+        }
+
+        private static async Task DoPrewarmAsync()
+        {
+            try
+            {
+                var form = new f_Timeline();
+                form.ShowInTaskbar = false;
+                _ = form.Handle; // force HWND without Show()
+                Logger.Info("f_Timeline.Prewarm", "EnsureCoreWebView2Async starting");
+                var env = await WebView2EnvironmentFactory.GetAsync("timeline");
+                await form.wv_Timeline.EnsureCoreWebView2Async(env);
+                form.wv_Timeline.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
+                Logger.Info("f_Timeline.Prewarm", "EnsureCoreWebView2Async complete");
+
+                // Pre-navigate so Vue bootstraps in the background (release builds only)
+                string distPath = System.IO.Path.Combine(Application.StartupPath, "Frontend", "dist");
+                if (System.IO.Directory.Exists(distPath))
+                {
+                    var coreWV = form.wv_Timeline.CoreWebView2!;
+                    string mediaFolder = AppConfig.Instance.GetMediaFolder();
+                    System.IO.Directory.CreateDirectory(mediaFolder);
+                    coreWV.SetVirtualHostNameToFolderMapping("media.app", mediaFolder, CoreWebView2HostResourceAccessKind.Allow);
+                    coreWV.SetVirtualHostNameToFolderMapping("app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
+                    coreWV.NavigationCompleted += (_, _) =>
+                    {
+                        form._preNavComplete = true;
+                        Logger.Info("f_Timeline.Prewarm", "Pre-navigation complete");
+                    };
+                    coreWV.Navigate("https://app.local/timeline.html");
+                    form._didPreNavigate = true;
+                    Logger.Info("f_Timeline.Prewarm", "Pre-navigation started");
+                }
+
+                _prewarmed = form;
+                Logger.Info("f_Timeline.Prewarm", "Pre-warm ready");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("f_Timeline.Prewarm", ex);
+            }
+            finally
+            {
+                _isPrewarming = false;
+            }
+        }
+
+        internal static f_Timeline? TakePrewarmed()
+        {
+            var form = _prewarmed;
+            _prewarmed = null;
+            if (form is { IsDisposed: true })
+            {
+                Logger.Info("f_Timeline.TakePrewarmed", "pre-warmed form was disposed — creating fresh");
+                return null;
+            }
+            Logger.Info("f_Timeline.TakePrewarmed", form != null ? "using pre-warmed instance" : "no pre-warm ready — creating fresh");
+            return form;
+        }
+
         private async void F_Timeline_Load(object? sender, EventArgs e)
         {
             // async void: an unhandled exception here crashes the app — and the main
@@ -39,38 +112,85 @@ namespace StoryTimelineMk2.Forms
             {
                 RestoreWindowState();
 
-                var webEnvironment = await WebView2EnvironmentFactory.GetAsync("timeline");
+                bool wasPrewarmed = wv_Timeline.CoreWebView2 != null;
 
-                await wv_Timeline.EnsureCoreWebView2Async(webEnvironment);
-
-                string mediaFolder = AppConfig.Instance.GetMediaFolder();
-                Directory.CreateDirectory(mediaFolder);
-                wv_Timeline.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "media.app",
-                    mediaFolder,
-                    CoreWebView2HostResourceAccessKind.Allow);
-
-                _messageRouter = new MessageRouter(wv_Timeline.CoreWebView2, this);
-
-                // Let JavaScript window.close() close the WinForms host (needed for E2E test cleanup)
-                wv_Timeline.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
-
-                // Apply CSS zoom once the page finishes loading
-                wv_Timeline.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-
-                string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
-                string query = $"?id={TimelineId}";
-
-                if (Directory.Exists(distPath))
+                if (!wasPrewarmed)
                 {
-                    wv_Timeline.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                        "app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
-                    wv_Timeline.CoreWebView2.Navigate($"https://app.local/timeline.html{query}");
+                    Logger.Info("f_Timeline.Load", "WebView2 not pre-warmed — calling EnsureCoreWebView2Async");
+                    var webEnvironment = await WebView2EnvironmentFactory.GetAsync("timeline");
+                    await wv_Timeline.EnsureCoreWebView2Async(webEnvironment);
+                    Logger.Info("f_Timeline.Load", "EnsureCoreWebView2Async complete");
                 }
                 else
                 {
-                    wv_Timeline.CoreWebView2.Navigate($"http://localhost:5173/timeline.html{query}");
+                    Logger.Info("f_Timeline.Load", "WebView2 already initialized (pre-warmed)");
                 }
+                var coreWV = wv_Timeline.CoreWebView2!;
+                wv_Timeline.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
+
+                string mediaFolder = AppConfig.Instance.GetMediaFolder();
+                Directory.CreateDirectory(mediaFolder);
+                coreWV.SetVirtualHostNameToFolderMapping("media.app", mediaFolder, CoreWebView2HostResourceAccessKind.Allow);
+
+                _messageRouter = new MessageRouter(coreWV, this);
+                coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
+
+                string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
+
+                if (wasPrewarmed && _didPreNavigate)
+                {
+                    // Vue is already bootstrapping in the background.
+                    // Send the real timeline ID — Vue is listening for this push.
+                    string idMsg = JsonSerializer.Serialize(new { action = "SetTimelineId", payload = new { id = TimelineId } });
+
+                    void ApplyZoom()
+                    {
+                        if (_savedSettings is { UseCustomScaling: true, CustomScale: > 0 })
+                            _ = coreWV.ExecuteScriptAsync($"document.documentElement.style.zoom = '{_savedSettings.CustomScale:F2}'");
+                    }
+
+                    void SendId()
+                    {
+                        Logger.Info("f_Timeline.Load", $"Sending SetTimelineId={TimelineId} to pre-warmed page");
+                        coreWV.PostWebMessageAsString(idMsg);
+                        ApplyZoom();
+                    }
+
+                    if (_preNavComplete)
+                    {
+                        Logger.Info("f_Timeline.Load", "Pre-navigation already complete — sending immediately");
+                        SendId();
+                    }
+                    else
+                    {
+                        Logger.Info("f_Timeline.Load", "Pre-navigation still in progress — queuing SetTimelineId for NavigationCompleted");
+                        coreWV.NavigationCompleted += (_, navArgs) =>
+                        {
+                            Logger.Info("f_Timeline.Load", $"NavigationCompleted (pre-warm path, success={navArgs.IsSuccess})");
+                            SendId();
+                        };
+                    }
+                }
+                else
+                {
+                    // Cold start (or dev mode) — navigate with ?id= in the URL
+                    coreWV.NavigationCompleted += OnNavigationCompleted;
+
+                    Logger.Info("f_Timeline.Load", "Navigate starting");
+                    string query = $"?id={TimelineId}";
+                    if (Directory.Exists(distPath))
+                    {
+                        coreWV.SetVirtualHostNameToFolderMapping("app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
+                        coreWV.Navigate($"https://app.local/timeline.html{query}");
+                    }
+                    else
+                    {
+                        coreWV.Navigate($"http://localhost:5173/timeline.html{query}");
+                    }
+                }
+
+                // Stagger child pre-warms so Chromium starts are spread over ~600 ms
+                _ = PrewarmChildWindowsAsync();
             }
             catch (Exception ex)
             {
@@ -81,10 +201,23 @@ namespace StoryTimelineMk2.Forms
             }
         }
 
+        private static async Task PrewarmChildWindowsAsync()
+        {
+            await Task.Delay(400); // let timeline page start rendering first
+            f_AddEditItem.BeginPrewarm();
+            await Task.Delay(200);
+            f_YearCalendar.BeginPrewarm();
+            await Task.Delay(200);
+            f_Calendar.BeginPrewarm();
+            await Task.Delay(400); // start next timeline pre-warm last so it's ready before the user closes
+            BeginPrewarm();
+        }
+
         private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
         {
             // Fire only once (the initial page load)
             wv_Timeline.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+            Logger.Info("f_Timeline.Load", $"NavigationCompleted (success={e.IsSuccess})");
             if (_savedSettings != null && _savedSettings.UseCustomScaling && _savedSettings.CustomScale > 0)
                 _ = wv_Timeline.CoreWebView2.ExecuteScriptAsync($"document.documentElement.style.zoom = '{_savedSettings.CustomScale:F2}'");
         }
@@ -154,6 +287,8 @@ namespace StoryTimelineMk2.Forms
                 // would be an unhandled exception inside FormClosing.
                 mainForm._messageRouter?.SendToVue("InitReload");
                 mainForm.Show();
+                // Pre-warm a fresh timeline instance for the next session
+                BeginPrewarm();
             }
             else
             {

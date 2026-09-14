@@ -25,6 +25,7 @@ const store = useTimelineStore()
 useAppTheme()
 
 const loadError = ref<boolean>(false)
+const waitingForId = ref<boolean>(false)
 const timelineCanvasRef = ref();
 const showSettings = ref(false);
 const showFilterSetup = ref(false);
@@ -108,17 +109,14 @@ async function undoDelete() {
 
 // functions
 async function HandleLoadTimeline() {
-	// 1. Grab the ID from the WebView2 URL (e.g., ?id=5) passed by C#
 	const urlParams = new URLSearchParams(window.location.search)
-	const idParam = urlParams.get('id')
+	const id = parseInt(urlParams.get('id') ?? '0', 10)
 
-
-	if (idParam) {
-    const timelineId = parseInt(idParam, 10)
-
-		await store.loadTimelineData(timelineId)
+	if (id > 0) {
+		await store.loadTimelineData(id)
 	} else {
-		loadError.value = true
+		// Pre-warmed: no id in URL — wait for SetTimelineId push from C#
+		waitingForId.value = true
 	}
 }
 
@@ -197,12 +195,36 @@ function onHotkey(e: KeyboardEvent) {
     }
 }
 
+let _setIdListener: ((e: MessageEvent) => void) | null = null
+
 onMounted(async () => {
-	HandleLoadTimeline();
-	const cfg = await BackendAPI.GetAppConfig();
-	if (cfg) store.setPerformantPanning(cfg.performantPanning ?? true);
-	// addEventListener (not window.onresize =) so nothing else gets clobbered
-	// and the handler can be removed symmetrically on unmount.
+	HandleLoadTimeline()
+
+	// Listen for SetTimelineId — sent by C# when the window was pre-warmed
+	// (no ?id in URL, so Vue waited for this push to know which timeline to load)
+	_setIdListener = (e: MessageEvent) => {
+		const msg = JSON.parse(e.data)
+		if (msg.action !== 'SetTimelineId') return
+		window.chrome.webview.removeEventListener('message', _setIdListener!)
+		_setIdListener = null
+		waitingForId.value = false
+		const id = msg.payload?.id
+		if (id > 0) {
+			store.loadTimelineData(id)
+			BackendAPI.GetAppConfig().then(cfg => {
+				if (cfg) store.setPerformantPanning(cfg.performantPanning ?? true)
+			})
+		}
+	}
+	window.chrome.webview.addEventListener('message', _setIdListener)
+
+	// For the cold-start path (id in URL) the bridge is already ready — call GetAppConfig now
+	const urlId = parseInt(new URLSearchParams(window.location.search).get('id') ?? '0', 10)
+	if (urlId > 0) {
+		const cfg = await BackendAPI.GetAppConfig()
+		if (cfg) store.setPerformantPanning(cfg.performantPanning ?? true)
+	}
+
 	window.addEventListener('resize', handleResizeEvent)
     window.addEventListener('keydown', onHotkey)
 })
@@ -210,6 +232,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     window.removeEventListener('resize', handleResizeEvent)
     window.removeEventListener('keydown', onHotkey)
+    if (_setIdListener) {
+        window.chrome.webview.removeEventListener('message', _setIdListener)
+        _setIdListener = null
+    }
     clearTimeout(throttleTimer)
     clearTimeout(debounceTimer)
 })
@@ -218,7 +244,7 @@ onBeforeUnmount(() => {
 <template>
 	<div id="timeline-center">
 		<WindowTitleBar :title="store.title || 'Story Timeline'" />
-		<div v-if="store.isLoading && !loadError" id="status-container">
+		<div v-if="(store.isLoading || waitingForId) && !loadError" id="status-container">
 			<PhSpinner class="spinner-icon" :size="48" color="#79876b" />
 			<h2>Loading Timeline Data...</h2>
 		</div>

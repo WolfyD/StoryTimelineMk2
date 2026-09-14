@@ -32,18 +32,63 @@ namespace StoryTimelineMk2.Forms
             _moveTimer.Tick += (_, _) => { _moveTimer.Stop(); PersistWindowState(); };
         }
 
+        // ── Pre-warm: initialise WebView2 before the user requests the window ──
+        private static f_YearCalendar? _prewarmed;
+        private static bool _isPrewarming;
+
+        internal static void BeginPrewarm()
+        {
+            if (_prewarmed != null || _isPrewarming) return;
+            _isPrewarming = true;
+            _ = DoPrewarmAsync();
+        }
+
+        private static async Task DoPrewarmAsync()
+        {
+            try
+            {
+                var form = new f_YearCalendar();
+                form.ShowInTaskbar = false;
+                _ = form.Handle; // force HWND without Show()
+                var env = await WebView2EnvironmentFactory.GetAsync("yearCalendar");
+                await form.wv_YearCalendar.EnsureCoreWebView2Async(env);
+                _prewarmed = form;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("f_YearCalendar.Prewarm", ex);
+            }
+            finally
+            {
+                _isPrewarming = false;
+            }
+        }
+
+        internal static f_YearCalendar? TakePrewarmed()
+        {
+            var form = _prewarmed;
+            _prewarmed = null;
+            if (form is { IsDisposed: true }) return null;
+            return form;
+        }
+
         private async void F_YearCalendar_Load(object? sender, EventArgs e)
         {
             try
             {
                 RestoreWindowState();
 
-                var webEnvironment = await WebView2EnvironmentFactory.GetAsync("yearCalendar");
-                await wv_YearCalendar.EnsureCoreWebView2Async(webEnvironment);
+                if (wv_YearCalendar.CoreWebView2 == null)
+                {
+                    var webEnvironment = await WebView2EnvironmentFactory.GetAsync("yearCalendar");
+                    await wv_YearCalendar.EnsureCoreWebView2Async(webEnvironment);
+                }
+                var coreWV = wv_YearCalendar.CoreWebView2!;
+                wv_YearCalendar.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
 
-                wv_YearCalendar.CoreWebView2.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
+                coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
 
-                _messageRouter = new MessageRouter(wv_YearCalendar.CoreWebView2, this);
+                _messageRouter = new MessageRouter(coreWV, this);
 
                 var query = $"?timelineId={TimelineId}";
                 if (!string.IsNullOrEmpty(CalendarId))
@@ -52,12 +97,12 @@ namespace StoryTimelineMk2.Forms
                 string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
                 if (Directory.Exists(distPath))
                 {
-                    wv_YearCalendar.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    coreWV.SetVirtualHostNameToFolderMapping(
                         "app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
-                    wv_YearCalendar.CoreWebView2.Navigate($"https://app.local/yearCalendar.html{query}");
+                    coreWV.Navigate($"https://app.local/yearCalendar.html{query}");
                 }
                 else
-                    wv_YearCalendar.CoreWebView2.Navigate($"http://localhost:5173/yearCalendar.html{query}");
+                    coreWV.Navigate($"http://localhost:5173/yearCalendar.html{query}");
             }
             catch (Exception ex)
             {
