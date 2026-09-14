@@ -62,10 +62,9 @@ Key actions: `GetTimelineData`, `SaveItem`, `GetTimelineCharacters`, `GetTimelin
 
 ### Multiple Entry Points (Vite)
 
-The build produces four HTML files, each loaded by a different WinForms window:
+The build produces three HTML files, each loaded by a different WinForms window:
 - `index.html` → `TimelineApp` (main project list / timeline viewer)
 - `timeline.html` → timeline canvas
-- `settings.html` → `SettingsApp`
 - `editItem.html` → `EditItem`
 
 ### Backend Structure
@@ -98,3 +97,7 @@ SQLite database lives at `%LOCALAPPDATA%\StoryTimelineMk2_Data\timeline.sqlite`.
 
 - **Remix Icons** (`<i class="ri-*">`) — UI chrome: buttons, close/open controls, form actions, inline panel decorations.
 - **Phosphor** (`@phosphor-icons/vue` components) — Feature/section icons: navigation strip, domain concepts (Characters, Map, Statistics, Timeline), and any icon that represents an app section.
+
+## Workflow
+
+Whenever a backlog item (BL-xx) is fully or partially completed, read `BACKLOG.md` and update the relevant item's **Status** field to accurately reflect what was done. Do not wait to be asked.

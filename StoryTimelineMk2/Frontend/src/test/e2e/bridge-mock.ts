@@ -394,7 +394,7 @@ export async function injectBridgeMock(page: Page, overrides: Record<string, unk
       GetHiddenRanges: { status: 'ok', ranges: [] },
       SearchTags: [],
       GetTimelineCharacters: [],
-      GetTimelineStories: [],
+      GetAllStories: [],
       SearchBooks: [],
       GetBookChapters: [],
       DeleteTimeline: { status: 'ok' },

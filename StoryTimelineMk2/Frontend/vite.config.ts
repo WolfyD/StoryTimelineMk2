@@ -21,7 +21,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        settings: resolve(__dirname, 'settings.html'),
         timeline: resolve(__dirname, 'timeline.html'),
         editItem: resolve(__dirname, 'editItem.html'),
         calendar: resolve(__dirname, 'calendar.html')

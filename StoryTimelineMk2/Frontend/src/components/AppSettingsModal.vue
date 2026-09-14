@@ -110,7 +110,10 @@ async function justSwitch() {
     if (result?.status === 'ok') {
         currentRoot.value = pendingPath.value
         pendingPath.value = ''
-        showFeedback('success', 'Data folder updated. Timelines reloaded from new location.')
+        if ((result as any).isNewDb)
+            showFeedback('success', 'Data folder switched. No existing database was found — a fresh one has been created.')
+        else
+            showFeedback('success', 'Data folder updated. Timelines reloaded from new location.')
         emit('refresh')
     } else {
         showFeedback('error', result?.message ?? 'Failed to update folder.')

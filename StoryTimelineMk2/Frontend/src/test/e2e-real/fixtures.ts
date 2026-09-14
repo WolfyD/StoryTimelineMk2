@@ -59,7 +59,7 @@ export { expect }
 
 // ─────────────────────────── helpers ────────────────────────────────────────
 
-type PageRole = 'main' | 'timeline' | 'editItem' | 'settings' | 'calendar'
+type PageRole = 'main' | 'timeline' | 'editItem' | 'calendar'
 
 export function findPageByRole(ctx: BrowserContext, role: PageRole): Page | undefined {
   const pages = ctx.pages()
@@ -69,12 +69,10 @@ export function findPageByRole(ctx: BrowserContext, role: PageRole): Page | unde
         const u = p.url()
         return !u.includes('timeline.html') &&
                !u.includes('editItem.html') &&
-               !u.includes('settings.html') &&
                !u.includes('calendar.html')
       })
     case 'timeline':  return pages.find(p => p.url().includes('timeline.html'))
     case 'editItem':  return pages.find(p => p.url().includes('editItem.html'))
-    case 'settings':  return pages.find(p => p.url().includes('settings.html'))
     case 'calendar':  return pages.find(p => p.url().includes('calendar.html'))
   }
 }

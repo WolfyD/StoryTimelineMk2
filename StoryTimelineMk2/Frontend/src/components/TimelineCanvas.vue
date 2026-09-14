@@ -275,6 +275,14 @@ const deleteItem = async (itemId: string) => {
         store.removeItem(itemId);
         const bm = bookmarkNodeCache.get(itemId);
         if (bm) { bm.group.destroy(); bookmarkNodeCache.delete(itemId); }
+        const cached = nodeCache.get(itemId);
+        if (cached) {
+            cached.box?.destroy();
+            cached.label?.destroy();
+            cached.stem?.destroy();
+            cached.colorStrip?.destroy();
+            nodeCache.delete(itemId);
+        }
         if (props.layoutSettings) {
             lockedLanes.clear();
             renderGrid(gridLayer, props.layoutSettings);

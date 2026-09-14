@@ -246,6 +246,9 @@ namespace StoryTimelineMk2.Database
                 if (TableExistsInBackup(dbTarget, tx, "item_character_appearances"))
                     dbTarget.Execute("INSERT OR IGNORE INTO main.item_character_appearances SELECT * FROM BackupDb.item_character_appearances", transaction: tx);
 
+                if (TableExistsInBackup(dbTarget, tx, "notes"))
+                    dbTarget.Execute("INSERT OR IGNORE INTO main.notes SELECT * FROM BackupDb.notes", transaction: tx);
+
                 if (TableExistsInBackup(dbTarget, tx, "timeline_hidden_ranges"))
                     dbTarget.Execute("INSERT OR IGNORE INTO main.timeline_hidden_ranges SELECT * FROM BackupDb.timeline_hidden_ranges", transaction: tx);
 
@@ -366,11 +369,11 @@ namespace StoryTimelineMk2.Database
                         )", (object)c, transaction);
                         }
 
-                        // Straight Junctions
-                        var itemCharacters = dbV1.Query("SELECT * FROM item_characters");
+                        // Map V1 item_characters → V2 item_character_appearances (role replaces relationship_type)
+                        var itemCharacters = dbV1.Query("SELECT item_id, character_id, relationship_type AS role FROM item_characters");
                         foreach (var ic in itemCharacters)
                         {
-                            dbV2.Execute("INSERT OR IGNORE INTO item_characters (item_id, character_id, relationship_type, timeline_id) VALUES (@item_id, @character_id, @relationship_type, @timeline_id)", (object)ic, transaction);
+                            dbV2.Execute("INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role) VALUES (@item_id, @character_id, @role)", (object)ic, transaction);
                         }
 
                         var charRels = dbV1.Query("SELECT * FROM character_relationships");

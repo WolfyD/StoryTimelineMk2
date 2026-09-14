@@ -110,11 +110,14 @@ export const useTimelineStore = defineStore('timeline', () => {
 		projects.value = response?.data ?? [];
 	}
 
+	let _loadSeq = 0;
+
 	async function loadTimelineData (id:number) {
+		const seq = ++_loadSeq;
 		try {
 			// 1. Fire the request across the bridge to C#
 			const response:FullTimelineProject = await BackendAPI.LoadTimelineData(id);
-			if (!response) return;
+			if (!response || seq !== _loadSeq) return;
 
 			// 2. Populate the state with the C# response
 			title.value = response.Project.Title;
@@ -356,8 +359,10 @@ export const useTimelineStore = defineStore('timeline', () => {
 				SortOrder: i,
 			}));
 		} catch { return; }
+		const oldRules = filterRules.value;
 		filterRules.value = rules;
 		filterAndMode.value = preset.AndMode === 1;
+		await Promise.all(oldRules.map(r => BackendAPI.DeleteFilterRule(r.Id)));
 		await Promise.all([
 			...rules.map(r => BackendAPI.SaveFilterRule(r)),
 			BackendAPI.SetMiscSetting('filter_and_mode', filterAndMode.value ? '1' : '0', tlId),

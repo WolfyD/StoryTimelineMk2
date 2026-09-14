@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using Dapper;
+using Microsoft.Data.Sqlite;
 
 namespace StoryTimelineMk2.Database
 {
@@ -49,7 +51,11 @@ namespace StoryTimelineMk2.Database
             {
                 string sqlitePath = Path.Combine(folder, $"timeline_{timestamp}.sqlite");
                 if (File.Exists(dbFile))
-                    File.Copy(dbFile, sqlitePath, overwrite: true);
+                {
+                    using var conn = new SqliteConnection($"Data Source={dbFile}");
+                    conn.Open();
+                    conn.Execute($"VACUUM INTO '{sqlitePath}'");
+                }
                 return sqlitePath;
             }
         }

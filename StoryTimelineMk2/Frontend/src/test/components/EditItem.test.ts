@@ -7,7 +7,7 @@ vi.mock('@/bridge/api', () => ({
   BackendAPI: {
     GetItemForEdit: vi.fn(),
     GetTimelineCharacters: vi.fn().mockResolvedValue([]),
-    GetTimelineStories: vi.fn().mockResolvedValue([]),
+    GetAllStories: vi.fn().mockResolvedValue([]),
     SearchTags: vi.fn().mockResolvedValue([]),
     SaveItem: vi.fn(),
     RemoveImageFromItem: vi.fn().mockResolvedValue({ status: 'ok' }),

@@ -182,7 +182,7 @@ onMounted(async () => {
   const [data, characters, stories] = await Promise.all([
     BackendAPI.GetItemForEdit(timelineId, itemId, defaultType),
     BackendAPI.GetTimelineCharacters(timelineId),
-    BackendAPI.GetTimelineStories(timelineId),
+    BackendAPI.GetAllStories(),
   ])
 
   if (data) {

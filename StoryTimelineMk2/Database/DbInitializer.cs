@@ -654,7 +654,7 @@ namespace StoryTimelineMk2.Database
                             0,
                             15,
                             10,
-                            5,
+                            20,
                             30,
                             1,
                             100,
@@ -766,6 +766,12 @@ namespace StoryTimelineMk2.Database
                 WHERE id = 'ls_dark';
             ");
 
+            // Fix period_y_margin default: initial INSERT had 5, correct value is 20
+            db.Execute(@"
+                UPDATE layout_settings SET timeline_period_y_margin = 20
+                    WHERE id IN ('ls_default', 'ls_dark') AND timeline_period_y_margin = 5;
+            ");
+
             // Seed dark preset
             InsertDarkPreset(db);
         }
@@ -791,81 +797,6 @@ namespace StoryTimelineMk2.Database
             // (timelines may reference these preset ids)
             if (id == "ls_default") UpdateDefaultValues(db);
             else UpdateDarkValues(db);
-        }
-
-        private static void InsertDefaultPreset(SqliteConnection db)
-        {
-            db.Execute(@"INSERT OR IGNORE INTO layout_settings (
-                    id, name,
-                    timeline_event_box_width, timeline_event_box_height, timeline_event_box_stem_offset,
-                    timeline_event_border_color, timeline_event_border_width, timeline_event_border_radius,
-                    timeline_event_padding, timeline_event_y_margin,
-                    timeline_event_text_color, timeline_event_background_color,
-                    timeline_event_font_family, timeline_event_font_size,
-                    timeline_event_text_use_ellipsis, timeline_event_box_show_color,
-                    timeline_event_box_show_color_on_bottom, timeline_event_has_hover_highlight,
-                    timeline_event_hover_color,
-                    timeline_age_height, timeline_age_corner_rounding,
-                    timeline_period_height, timeline_period_corner_rounding,
-                    timeline_period_y_margin, timeline_period_y_offset,
-                    timeline_box_types_show_as_box, timeline_box_types_box_width, timeline_box_types_show_image,
-                    timeline_canvas_background_color,
-                    timeline_show_now_line, timeline_show_now_line_text,
-                    timeline_now_line_color, timeline_now_line_style,
-                    timeline_tick_distance, timeline_tick_width, timeline_non_year_ticks_smaller,
-                    timeline_tick_marker_font_family, timeline_tick_marker_font_style,
-                    timeline_tick_marker_text_color, timeline_tick_marker_font_size,
-                    timeline_tick_marker_text_always_on_top,
-                    timeline_show_hover_line,
-                    timeline_hover_line_color, timeline_hover_line_style, timeline_hover_line_width,
-                    timeline_edge_margin_width,
-                    timeline_data_range_width, timeline_is_data_range_visible, timeline_data_range_color,
-                    timeline_animate_on_jump_to_year, timeline_jump_to_year_animation_length,
-                    timeline_animate_lod_change, timeline_lod_change_animation_length,
-                    timeline_tick_color, timeline_axis_color,
-                    notes_panel_background_color, notes_panel_card_background_color,
-                    notes_panel_text_color, notes_panel_heading_color,
-                    notes_panel_accent_color, notes_panel_font_size,
-                    data_panel_background_color, data_panel_card_background_color,
-                    data_panel_h1_color, data_panel_h2_color, data_panel_h3_color, data_panel_h4_color,
-                    data_panel_font_family, data_panel_font_size,
-                    gallery_panel_background_color, gallery_panel_border_color, gallery_panel_text_color
-                ) VALUES (
-                    'ls_default', 'Default layout settings',
-                    130, 30, 10,
-                    '#44A8', 1, 3,
-                    '10', 5,
-                    '#000', '#fff',
-                    'Arial', 16,
-                    1, 1,
-                    0, 1,
-                    '#33f',
-                    30, 0,
-                    15, 10,
-                    5, 30,
-                    1, 100, 1,
-                    '#f1e7d5',
-                    1, 1,
-                    '#f00', 'dashed',
-                    100, 1, 1,
-                    'Arial', 'normal',
-                    '#2a1a0e', 14,
-                    0,
-                    1,
-                    '#f00', 'solid', 1,
-                    10,
-                    100, 1, '#ff72',
-                    1, 600,
-                    1, 200,
-                    '#c8b9a4', '#b5a692',
-                    '#f9f7fe', '#e8e4f5',
-                    '#1e1640', '#5b4d8a',
-                    '#6366f1', 13,
-                    '#f5f0e8', '#ffffffaa',
-                    '#2c1f0f', '#3a2b1a', '#2c1f0f', '#5c4a38',
-                    'Georgia, serif', 14,
-                    '#f5f0e8', '#d5cec4', '#5c4a38'
-                );");
         }
 
         private static void InsertDarkPreset(SqliteConnection db)
@@ -917,7 +848,7 @@ namespace StoryTimelineMk2.Database
                     '#3b6ec4',
                     30, 0,
                     15, 10,
-                    5, 30,
+                    20, 30,
                     1, 100, 1,
                     '#0f172a',
                     1, 1,

@@ -38,21 +38,20 @@ export const BackendAPI = {
 
 	// Request-response
 	request<T>(action: string, payload: unknown = null): Promise<T> {
-		return new Promise((resolve) => {
+		return new Promise<T>((resolve, reject) => {
 			if (!window.chrome?.webview) {
 				console.warn(`[Bridge Offline] Cannot request ${action}`);
 				return resolve(null as T);
 			}
 			const id = ++messageCounter;
 			// Safety net: if the backend never replies (handler crash before the
-			// centralized catch, dropped message), resolve null after 30s instead of
-			// leaving the caller awaiting forever. Callers already handle null
-			// (bridge-offline path returns it too).
+			// centralized catch, dropped message), reject after 30s instead of
+			// leaving the caller awaiting forever.
 			const timeout = setTimeout(() => {
 				if (pendingRequests.has(id)) {
 					pendingRequests.delete(id);
 					console.error(`[Bridge Timeout] No reply for '${action}' after 30s`);
-					resolve(null as T);
+					reject(new Error(`Bridge timeout: no reply for '${action}' after 30s`));
 				}
 			}, 30_000);
 			pendingRequests.set(id, (data) => {
@@ -155,8 +154,8 @@ export const BackendAPI = {
 		return await this.request<CharacterItem[]>('GetTimelineCharacters', { timelineId });
 	},
 
-	async GetTimelineStories(timelineId: number) {
-		return await this.request<Story[]>('GetTimelineStories', { timelineId });
+	async GetAllStories() {
+		return await this.request<Story[]>('GetAllStories', {});
 	},
 
 	async SearchBooks(query: string) {
