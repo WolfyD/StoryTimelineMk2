@@ -13,6 +13,16 @@ vi.mock('@/bridge/api', () => ({
     GetItemForEdit: vi.fn().mockResolvedValue(null),
     LoadTimelineData: vi.fn().mockResolvedValue(null),
     GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
+    OpenYearCalendarWindow: vi.fn().mockResolvedValue({ status: 'opened' }),
+    SetCalendarYear: vi.fn(),
+    // WindowTitleBar (child of TimelineApp) calls these on mount
+    WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
+    WindowGetTopMost:   vi.fn().mockResolvedValue({ isTopmost: false }),
+    WindowSetTopMost:   vi.fn(),
+    WindowMinimize:     vi.fn(),
+    WindowMaximizeRestore: vi.fn(),
+    WindowClose:        vi.fn(),
+    WindowStartDrag:    vi.fn(),
   },
 }))
 
@@ -527,6 +537,132 @@ describe('TimelineApp', () => {
     await wrapper.vm.$nextTick()
     expect(vm.viewItemId).toBeNull()
 
+    wrapper.unmount()
+  })
+
+  // ── Year calendar toggle ───────────────────────────────────────────────────
+
+  it('yearCalendarOpen is false by default', async () => {
+    setUrlParams({ id: '1' })
+    store.isLoading = false
+    store.layoutSettings = makeLayoutSettings()
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    expect((wrapper.vm as any).yearCalendarOpen).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('toggleYearCalendar calls OpenYearCalendarWindow with the right ids', async () => {
+    setUrlParams({ id: '1' })
+    store.isLoading = false
+    store.layoutSettings = makeLayoutSettings()
+    store.currentProject = { Id: 42, Title: 'T', Author: '', Description: '', StartYear: 0, Color: null, CalendarId: 'cal_x' } as any
+    store.calendar = { Id: 'cal_x', Name: 'Test' } as any
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await (wrapper.vm as any).toggleYearCalendar()
+
+    expect(BackendAPI.OpenYearCalendarWindow).toHaveBeenCalledWith(42, 'cal_x')
+
+    wrapper.unmount()
+  })
+
+  it('yearCalendarOpen becomes true when OpenYearCalendarWindow returns status=opened', async () => {
+    setUrlParams({ id: '1' })
+    store.isLoading = false
+    store.layoutSettings = makeLayoutSettings()
+    store.currentProject = { Id: 1, Title: 'T', Author: '', Description: '', StartYear: 0, Color: null, CalendarId: 'c1' } as any
+
+    ;(BackendAPI.OpenYearCalendarWindow as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'opened' })
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await (wrapper.vm as any).toggleYearCalendar()
+    await flushPromises()
+
+    expect((wrapper.vm as any).yearCalendarOpen).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('yearCalendarOpen is false when OpenYearCalendarWindow returns a non-opened status', async () => {
+    setUrlParams({ id: '1' })
+    store.isLoading = false
+    store.layoutSettings = makeLayoutSettings()
+    store.currentProject = { Id: 1, Title: 'T', Author: '', Description: '', StartYear: 0, Color: null, CalendarId: 'c1' } as any
+
+    ;(BackendAPI.OpenYearCalendarWindow as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'already_open' })
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    await (wrapper.vm as any).toggleYearCalendar()
+    await flushPromises()
+
+    expect((wrapper.vm as any).yearCalendarOpen).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  // ── centerAbsoluteTime watcher → SetCalendarYear (debounced) ──────────────
+
+  it('watcher calls SetCalendarYear after centerAbsoluteTime changes year (debounced)', async () => {
+    vi.useFakeTimers()
+    setUrlParams({ id: '1' })
+    store.isLoading = false
+    store.layoutSettings = makeLayoutSettings()
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    // Change centerAbsoluteTime to a new year
+    store.centerAbsoluteTime = 1500.5
+    // Flush so the Vue watcher runs and registers its setTimeout
+    await wrapper.vm.$nextTick()
+
+    // Before debounce fires — should not have been called yet
+    expect(BackendAPI.SetCalendarYear).not.toHaveBeenCalled()
+
+    // Advance past the 300ms debounce, then let microtasks settle
+    vi.advanceTimersByTime(350)
+    await wrapper.vm.$nextTick()
+
+    expect(BackendAPI.SetCalendarYear).toHaveBeenCalledWith(1500)
+
+    vi.useRealTimers()
+    wrapper.unmount()
+  })
+
+  it('watcher does not call SetCalendarYear if the year did not change', async () => {
+    vi.useFakeTimers()
+    setUrlParams({ id: '1' })
+    store.isLoading = false
+    store.layoutSettings = makeLayoutSettings()
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    // First change — fire the debounce so _lastSentYear is set to 1400
+    store.centerAbsoluteTime = 1400.1
+    await wrapper.vm.$nextTick()   // watcher runs, setTimeout registered
+    vi.advanceTimersByTime(350)    // fires: _lastSentYear = 1400, SetCalendarYear(1400) called
+    vi.clearAllMocks()
+
+    // Second change — same integer year, watcher should bail out early
+    store.centerAbsoluteTime = 1400.9
+    await wrapper.vm.$nextTick()   // watcher runs, sees year === _lastSentYear, returns early
+    vi.advanceTimersByTime(350)
+    await wrapper.vm.$nextTick()
+
+    expect(BackendAPI.SetCalendarYear).not.toHaveBeenCalled()
+
+    vi.useRealTimers()
     wrapper.unmount()
   })
 })

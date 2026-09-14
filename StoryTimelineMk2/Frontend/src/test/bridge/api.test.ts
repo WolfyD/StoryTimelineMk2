@@ -124,4 +124,88 @@ describe('BackendAPI', () => {
       )
     })
   })
+
+  describe('OpenYearCalendarWindow', () => {
+    it('sends OpenYearCalendarWindow action with timelineId and calendarId', async () => {
+      const { BackendAPI } = await import('@/bridge/api')
+      postMessageMock.mockClear()
+      BackendAPI.OpenYearCalendarWindow(7, 'cal_gregorian')
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'OpenYearCalendarWindow',
+          payload: { timelineId: 7, calendarId: 'cal_gregorian' },
+          messageId: expect.any(Number),
+        })
+      )
+    })
+  })
+
+  describe('GetItemsForYear', () => {
+    it('sends GetItemsForYear action with timelineId and year', async () => {
+      const { BackendAPI } = await import('@/bridge/api')
+      postMessageMock.mockClear()
+      BackendAPI.GetItemsForYear(3, 1944)
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'GetItemsForYear',
+          payload: { timelineId: 3, year: 1944 },
+          messageId: expect.any(Number),
+        })
+      )
+    })
+  })
+
+  describe('SetCalendarYear', () => {
+    it('sends SetCalendarYear via send (fire-and-forget, no messageId)', async () => {
+      const { BackendAPI } = await import('@/bridge/api')
+      postMessageMock.mockClear()
+      BackendAPI.SetCalendarYear(1500)
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'SetCalendarYear',
+          payload: { year: 1500 },
+        })
+      )
+      const call = postMessageMock.mock.calls[0][0]
+      expect(call.messageId).toBeUndefined()
+    })
+  })
+
+  describe('WindowGetTopMost', () => {
+    it('sends WindowGetTopMost as a request (has messageId)', async () => {
+      const { BackendAPI } = await import('@/bridge/api')
+      postMessageMock.mockClear()
+      BackendAPI.WindowGetTopMost()
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'WindowGetTopMost',
+          messageId: expect.any(Number),
+        })
+      )
+    })
+  })
+
+  describe('WindowSetTopMost', () => {
+    it('sends WindowSetTopMost via send (fire-and-forget, no messageId)', async () => {
+      const { BackendAPI } = await import('@/bridge/api')
+      postMessageMock.mockClear()
+      BackendAPI.WindowSetTopMost(true)
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'WindowSetTopMost',
+          payload: { topmost: true },
+        })
+      )
+      const call = postMessageMock.mock.calls[0][0]
+      expect(call.messageId).toBeUndefined()
+    })
+
+    it('sends topmost: false correctly', async () => {
+      const { BackendAPI } = await import('@/bridge/api')
+      postMessageMock.mockClear()
+      BackendAPI.WindowSetTopMost(false)
+      const call = postMessageMock.mock.calls[0][0]
+      expect(call.payload.topmost).toBe(false)
+    })
+  })
 })
