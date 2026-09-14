@@ -294,7 +294,13 @@ namespace StoryTimelineMk2.Database
                     timeline_jump_to_year_animation_length INTEGER NOT NULL,
 
                     timeline_animate_lod_change INTEGER NOT NULL DEFAULT 1,
-                    timeline_lod_change_animation_length INTEGER NOT NULL
+                    timeline_lod_change_animation_length INTEGER NOT NULL,
+
+                    timeline_calendar_overlay_enabled INTEGER NOT NULL DEFAULT 0,
+                    timeline_calendar_overlay_season_color TEXT NOT NULL DEFAULT '#ffffff0a',
+                    timeline_calendar_overlay_month_color TEXT NOT NULL DEFAULT '#ffffff08',
+                    timeline_calendar_overlay_week_color TEXT NOT NULL DEFAULT '#ffffff06',
+                    timeline_calendar_overlay_day_color TEXT NOT NULL DEFAULT '#ffffff05'
                 );
 
                 -- Character-to-character relationships (ported from v1, kept separate from relationship_types lookup)
@@ -462,7 +468,11 @@ namespace StoryTimelineMk2.Database
             // settings
             if (!settings.Contains("timeline_id"))       db.Execute("ALTER TABLE settings ADD COLUMN timeline_id INTEGER");
             if (!settings.Contains("window_maximized"))  db.Execute("ALTER TABLE settings ADD COLUMN window_maximized INTEGER DEFAULT 0");
-            if (!settings.Contains("timeline_minimised"))db.Execute("ALTER TABLE settings ADD COLUMN timeline_minimised INTEGER DEFAULT 0");
+            if (!settings.Contains("timeline_minimised"))         db.Execute("ALTER TABLE settings ADD COLUMN timeline_minimised INTEGER DEFAULT 0");
+            if (!settings.Contains("year_calendar_position_x"))  db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_position_x INTEGER DEFAULT 0");
+            if (!settings.Contains("year_calendar_position_y"))  db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_position_y INTEGER DEFAULT 0");
+            if (!settings.Contains("year_calendar_size_x"))      db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_size_x INTEGER DEFAULT 0");
+            if (!settings.Contains("year_calendar_size_y"))      db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_size_y INTEGER DEFAULT 0");
 
             // notes — seed DB has old schema (year/subtick/content) without timeline_id
             if (!notes.Contains("timeline_id"))        db.Execute("ALTER TABLE notes ADD COLUMN timeline_id INTEGER");
@@ -629,7 +639,12 @@ namespace StoryTimelineMk2.Database
                             timeline_animate_on_jump_to_year,
                             timeline_jump_to_year_animation_length,
                             timeline_animate_lod_change,
-                            timeline_lod_change_animation_length
+                            timeline_lod_change_animation_length,
+                            timeline_calendar_overlay_enabled,
+                            timeline_calendar_overlay_season_color,
+                            timeline_calendar_overlay_month_color,
+                            timeline_calendar_overlay_week_color,
+                            timeline_calendar_overlay_day_color
                         ) VALUES (
                             'ls_default',
                             'Default layout settings',
@@ -683,7 +698,12 @@ namespace StoryTimelineMk2.Database
                             1,
                             600,
                             1,
-                            200
+                            200,
+                            0,
+                            '#ffffff0a',
+                            '#ffffff08',
+                            '#ffffff06',
+                            '#ffffff05'
                         );";
 
             db.Execute(insertSql);
@@ -719,6 +739,16 @@ namespace StoryTimelineMk2.Database
             AddCol(db, "layout_settings", "gallery_panel_background_color", "TEXT NOT NULL DEFAULT '#0f172a'");
             AddCol(db, "layout_settings", "gallery_panel_border_color",     "TEXT NOT NULL DEFAULT '#1e293b'");
             AddCol(db, "layout_settings", "gallery_panel_text_color",       "TEXT NOT NULL DEFAULT '#94a3b8'");
+            AddCol(db, "layout_settings", "calendar_panel_background_color", "TEXT NOT NULL DEFAULT '#f5f0e8'");
+            AddCol(db, "layout_settings", "calendar_panel_border_color",     "TEXT NOT NULL DEFAULT '#d5cec4'");
+            AddCol(db, "layout_settings", "calendar_panel_text_color",       "TEXT NOT NULL DEFAULT '#5c4a38'");
+            AddCol(db, "layout_settings", "calendar_panel_week_highlight_color", "TEXT NOT NULL DEFAULT '#6366f118'");
+            AddCol(db, "layout_settings", "calendar_panel_day_highlight_color",  "TEXT NOT NULL DEFAULT '#6366f135'");
+            AddCol(db, "layout_settings", "timeline_calendar_overlay_enabled",      "INTEGER NOT NULL DEFAULT 0");
+            AddCol(db, "layout_settings", "timeline_calendar_overlay_season_color", "TEXT NOT NULL DEFAULT '#ffffff0a'");
+            AddCol(db, "layout_settings", "timeline_calendar_overlay_month_color",  "TEXT NOT NULL DEFAULT '#ffffff08'");
+            AddCol(db, "layout_settings", "timeline_calendar_overlay_week_color",   "TEXT NOT NULL DEFAULT '#ffffff06'");
+            AddCol(db, "layout_settings", "timeline_calendar_overlay_day_color",    "TEXT NOT NULL DEFAULT '#ffffff05'");
 
             // Fix dark preset data panel colors if they were created with light defaults
             db.Execute(@"
@@ -835,7 +865,12 @@ namespace StoryTimelineMk2.Database
                     data_panel_background_color, data_panel_card_background_color,
                     data_panel_h1_color, data_panel_h2_color, data_panel_h3_color, data_panel_h4_color,
                     data_panel_font_family, data_panel_font_size,
-                    gallery_panel_background_color, gallery_panel_border_color, gallery_panel_text_color
+                    gallery_panel_background_color, gallery_panel_border_color, gallery_panel_text_color,
+                    calendar_panel_background_color, calendar_panel_border_color, calendar_panel_text_color,
+                    calendar_panel_week_highlight_color, calendar_panel_day_highlight_color,
+                    timeline_calendar_overlay_enabled,
+                    timeline_calendar_overlay_season_color, timeline_calendar_overlay_month_color,
+                    timeline_calendar_overlay_week_color, timeline_calendar_overlay_day_color
                 ) VALUES (
                     'ls_dark', 'Dark Mode',
                     130, 30, 10,
@@ -870,7 +905,12 @@ namespace StoryTimelineMk2.Database
                     '#0f172a', '#1e293b44',
                     '#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b',
                     'Georgia, serif', 14,
-                    '#0f172a', '#1e293b', '#94a3b8'
+                    '#0f172a', '#1e293b', '#94a3b8',
+                    '#0f172a', '#1e293b', '#94a3b8',
+                    '#818cf818', '#818cf835',
+                    0,
+                    '#ffffff10', '#ffffff0c',
+                    '#ffffff08', '#ffffff06'
                 );");
         }
 
@@ -912,7 +952,13 @@ namespace StoryTimelineMk2.Database
                     data_panel_h3_color = '#2c1f0f', data_panel_h4_color = '#5c4a38',
                     data_panel_font_family = 'Georgia, serif', data_panel_font_size = 14,
                     gallery_panel_background_color = '#f5f0e8', gallery_panel_border_color = '#d5cec4',
-                    gallery_panel_text_color = '#5c4a38'
+                    gallery_panel_text_color = '#5c4a38',
+                    calendar_panel_background_color = '#f5f0e8', calendar_panel_border_color = '#d5cec4',
+                    calendar_panel_text_color = '#5c4a38',
+                    calendar_panel_week_highlight_color = '#6366f118', calendar_panel_day_highlight_color = '#6366f135',
+                    timeline_calendar_overlay_enabled = 0,
+                    timeline_calendar_overlay_season_color = '#ffffff0a', timeline_calendar_overlay_month_color = '#ffffff08',
+                    timeline_calendar_overlay_week_color = '#ffffff06', timeline_calendar_overlay_day_color = '#ffffff05'
                 WHERE id = 'ls_default';");
         }
 
@@ -954,7 +1000,13 @@ namespace StoryTimelineMk2.Database
                     data_panel_h3_color = '#94a3b8', data_panel_h4_color = '#64748b',
                     data_panel_font_family = 'Georgia, serif', data_panel_font_size = 14,
                     gallery_panel_background_color = '#0f172a', gallery_panel_border_color = '#1e293b',
-                    gallery_panel_text_color = '#94a3b8'
+                    gallery_panel_text_color = '#94a3b8',
+                    calendar_panel_background_color = '#0f172a', calendar_panel_border_color = '#1e293b',
+                    calendar_panel_text_color = '#94a3b8',
+                    calendar_panel_week_highlight_color = '#818cf818', calendar_panel_day_highlight_color = '#818cf835',
+                    timeline_calendar_overlay_enabled = 0,
+                    timeline_calendar_overlay_season_color = '#ffffff10', timeline_calendar_overlay_month_color = '#ffffff0c',
+                    timeline_calendar_overlay_week_color = '#ffffff08', timeline_calendar_overlay_day_color = '#ffffff06'
                 WHERE id = 'ls_dark';");
         }
     }

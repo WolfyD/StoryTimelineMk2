@@ -33,8 +33,8 @@ export function dayOfYearToMonthDay(
 ): { monthIndex: number; dayOfMonth: number } {
     if (months.length === 0) return { monthIndex: 0, dayOfMonth: dayOfYear }
     for (let i = months.length - 1; i >= 0; i--) {
-        if (dayOfYear >= months[i].startDay) {
-            return { monthIndex: i, dayOfMonth: dayOfYear - months[i].startDay }
+        if (dayOfYear >= months[i]!.startDay) {
+            return { monthIndex: i, dayOfMonth: dayOfYear - months[i]!.startDay }
         }
     }
     return { monthIndex: 0, dayOfMonth: dayOfYear }

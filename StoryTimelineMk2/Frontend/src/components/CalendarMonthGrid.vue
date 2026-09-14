@@ -1,18 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { MemDayMarker } from '@/types/models'
 
-export interface MemDayMarker {
-    id: string
-    name: string
-    color: string
-    type: 'fixed' | 'weekly' | 'relative'
-    startMonth: number
-    startDay: number
-    endMonth: number
-    endDay: number
-    isRange: boolean
-    weekDays: number[]
-}
+export type { MemDayMarker }
+
+export interface ItemDot { color: string; title: string }
 
 const props = defineProps<{
     monthName: string
@@ -22,6 +14,7 @@ const props = defineProps<{
     dayLabels: string[]
     weekendDays: number[]
     memorableDays?: MemDayMarker[]
+    itemDots?: Record<number, ItemDot[]>
 }>()
 
 const abbrevLen = computed(() => props.weekLength > 10 ? 1 : 2)
@@ -86,9 +79,24 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
             <tbody>
                 <tr v-for="(row, ri) in rows" :key="ri">
                     <td v-for="(day, ci) in row" :key="ci"
-                        :class="{ weekend: isWeekend(ci), empty: day === null }">
+                        :class="{ weekend: isWeekend(ci), empty: day === null, 'has-items': day !== null && !!itemDots?.[day]?.length }">
                         <div v-if="day !== null" class="cell-wrap">
                             <span class="day-num">{{ day }}</span>
+                            <!-- Item dots -->
+                            <div v-if="itemDots?.[day]?.length" class="dot-row item-dot-row">
+                                <template v-if="(itemDots[day]?.length ?? 0) <= 3">
+                                    <span
+                                        v-for="(dot, di) in itemDots[day]"
+                                        :key="di"
+                                        class="item-dot"
+                                        :style="{ background: dot.color || '#6366f1' }"
+                                    />
+                                </template>
+                                <template v-else>
+                                    <span class="item-count-badge">{{ itemDots[day]?.length }}</span>
+                                </template>
+                            </div>
+                            <!-- Memorable day dots -->
                             <div v-if="markersForCell(day, ci).length" class="dot-row">
                                 <span
                                     v-for="m in markersForCell(day, ci)"
@@ -97,8 +105,13 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
                                     :style="{ background: m.color || '#aaa' }"
                                 />
                             </div>
-                            <!-- Tooltip -->
-                            <div v-if="markersForCell(day, ci).length" class="cell-tooltip">
+                            <!-- Tooltip: items first, then memorable days -->
+                            <div v-if="itemDots?.[day]?.length || markersForCell(day, ci).length" class="cell-tooltip">
+                                <div v-for="(dot, di) in (itemDots?.[day] ?? [])" :key="`i${di}`" class="tooltip-row">
+                                    <span class="tooltip-dot" :style="{ background: dot.color || '#6366f1' }" />
+                                    <span class="tooltip-name">{{ dot.title }}</span>
+                                </div>
+                                <div v-if="markersForCell(day, ci).length && itemDots?.[day]?.length" class="tooltip-sep" />
                                 <div v-for="m in markersForCell(day, ci)" :key="m.id" class="tooltip-row">
                                     <span class="tooltip-dot" :style="{ background: m.color || '#aaa' }" />
                                     <span class="tooltip-name">{{ m.name }}</span>
@@ -184,6 +197,47 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
     display: block;
     line-height: 1.5;
     min-width: 16px;
+}
+
+// ── Item highlight background ─────────────────────────────────────────────────
+
+td.has-items {
+    background: rgba(99, 102, 241, 0.09);
+}
+
+// ── Item dots ─────────────────────────────────────────────────────────────────
+
+.item-dot-row {
+    margin-bottom: 1px;
+}
+
+.item-dot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.item-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 14px;
+    height: 12px;
+    border-radius: 6px;
+    background: var(--app-accent, #6366f1);
+    color: #fff;
+    font-size: 0.58rem;
+    font-weight: 700;
+    padding: 0 3px;
+    line-height: 1;
+}
+
+.tooltip-sep {
+    height: 1px;
+    background: var(--app-border, #2d3a56);
+    margin: 3px 0;
 }
 
 // ── Memorable day dots ───────────────────────────────────────────────────────

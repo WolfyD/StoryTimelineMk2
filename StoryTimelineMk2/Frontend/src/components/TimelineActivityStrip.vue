@@ -9,17 +9,20 @@ import {
     PhGear,
     PhArrowsIn,
     PhArrowsOut,
+    PhCalendarDots,
 } from '@phosphor-icons/vue'
 
 defineProps<{
     filterActive: boolean
     miniMode: boolean
+    yearCalendarOpen: boolean
 }>()
 
 const emit = defineEmits<{
     'toggle-filter': []
     'open-settings': []
     'toggle-mini': []
+    'toggle-year-calendar': []
 }>()
 
 const navItems = [
@@ -59,6 +62,16 @@ const navItems = [
         >
             <PhArrowsIn v-if="!miniMode" :size="20" />
             <PhArrowsOut v-else :size="20" />
+        </button>
+
+        <!-- ── Year calendar ──────────────────────────────────────── -->
+        <button
+            class="strip-btn strip-btn--year-cal"
+            :class="{ 'strip-btn--tool-active': yearCalendarOpen }"
+            title="Year calendar"
+            @click="emit('toggle-year-calendar')"
+        >
+            <PhCalendarDots :size="20" :weight="yearCalendarOpen ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── gap + separator ───────────────────────────────────── -->

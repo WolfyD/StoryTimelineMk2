@@ -23,6 +23,13 @@ namespace StoryTimelineMk2.Database
             return db.Query<TimelineItem>(sql, new { TimelineId = timelineId });
         }
 
+        public IEnumerable<TimelineItem> GetItemsByYear(int timelineId, int year)
+        {
+            using var db = new SqliteConnection(_connString);
+            string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND year = @Year AND type_id != 7 ORDER BY absolute_start, item_index";
+            return db.Query<TimelineItem>(sql, new { TimelineId = timelineId, Year = year });
+        }
+
         public void SaveItemWithTags(TimelineItem item, List<int> tagIds)
         {
             using var db = new SqliteConnection(_connString);

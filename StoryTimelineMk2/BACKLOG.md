@@ -498,7 +498,7 @@ instantly. The close action should reverse the animation.
 
 ## [BL-28] Toolstrip calendar overlay
 
-**Status:** Pending.
+**Status:** Done (canvas band overlay). Konva `Rect` bands rendered on the `gridLayer` background, showing one LOD level deeper than the current zoom (seasons at year-LOD, months at season-LOD, weeks at month-LOD, days at week-LOD). LOD detection uses step-fraction thresholds derived from `calendarConfig` (no hardcoded format key strings). Hidden in mini view. Toggle + 4 RGBA color controls (season/month/week/day) added to Timeline Settings modal. Five new DB columns in `layout_settings` with schema migration and preset defaults.
 
 A new toggle in the left activity strip (calendar icon). When active, a floating panel appears
 anchored to the upper-left corner of the timeline canvas. The panel shows a standard monthly
@@ -552,7 +552,7 @@ calendar isn't recomputing every wheel event during fast scroll.
 
 ## [BL-29] Toolstrip year-calendar window
 
-**Status:** Pending.
+**Status:** Partially done. Steps 3 and 4 complete. Step 3 (gallery panel calendar tab): `CalendarPanel.vue` added as a third tab in `TimelineGalleryPanel.vue` with LOD-aware calendar context. Step 4 (floating year calendar window): `f_YearCalendar.cs` borderless WinForms form added with `yearCalendar.html` / `YearCalendarApp.vue` entry point; `PhCalendarDots` toggle button added to `TimelineActivityStrip`; `OpenYearCalendarWindow` / `GetItemsForYear` / `SetCalendarYear` bridge actions added; `CalendarMonthGrid` extended with `itemDots` prop for timeline-item highlighting; `ItemRepo.GetItemsByYear` added; year-calendar window position persisted in settings table. Step 5 (CC-1/CC-2 fixes) remains.
 
 A new toggle in the left activity strip (multi-calendar / year-grid icon — Phosphor, as it
 represents a section/feature). Clicking it opens a dedicated side window (`f_YearCalendar.cs`,
@@ -593,7 +593,7 @@ to the year view already present in the calendar setup screen — but read-only 
 
 ## [BL-30] Day-of-week origin calculation for calendar grids
 
-**Status:** Partial. `calendarMath.ts` exists with `getYearStartDow(year, yearLength, weekLength, baseStartDow)` implemented and used by `monthStartCol()`. Missing: `YearStartDayOfWeek` field in `YearDefinition` type and DB schema — the formula is wired up but the per-calendar anchor value isn't yet stored or exposed.
+**Status:** Done. `year_start_dow` field exists in `YearDefinition` interface and is parsed into `calendarConfig.yearStartDow` (defaulting to 0 = Monday per user decision — no config UI needed). `getYearStartDow()` and `monthStartCol()` in `calendarMath.ts` consume the value. No separate DB column is needed; the field lives inside the calendar's `year_definition` JSON.
 
 Currently the calendar grid renders all months starting on column 0 (Monday/first day of
 week), which is only correct for year 0. In a custom calendar with `yearLength` days, each

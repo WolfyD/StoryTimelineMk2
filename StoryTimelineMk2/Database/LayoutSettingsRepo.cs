@@ -130,7 +130,19 @@ namespace StoryTimelineMk2.Database
 
                     gallery_panel_background_color,
                     gallery_panel_border_color,
-                    gallery_panel_text_color
+                    gallery_panel_text_color,
+
+                    calendar_panel_background_color,
+                    calendar_panel_border_color,
+                    calendar_panel_text_color,
+                    calendar_panel_week_highlight_color,
+                    calendar_panel_day_highlight_color,
+
+                    timeline_calendar_overlay_enabled,
+                    timeline_calendar_overlay_season_color,
+                    timeline_calendar_overlay_month_color,
+                    timeline_calendar_overlay_week_color,
+                    timeline_calendar_overlay_day_color
                 )
                 VALUES (
                     @Id,
@@ -219,7 +231,19 @@ namespace StoryTimelineMk2.Database
 
                     @GalleryPanelBackgroundColor,
                     @GalleryPanelBorderColor,
-                    @GalleryPanelTextColor
+                    @GalleryPanelTextColor,
+
+                    @CalendarPanelBackgroundColor,
+                    @CalendarPanelBorderColor,
+                    @CalendarPanelTextColor,
+                    @CalendarPanelWeekHighlightColor,
+                    @CalendarPanelDayHighlightColor,
+
+                    @TimelineCalendarOverlayEnabled,
+                    @TimelineCalendarOverlaySeasonColor,
+                    @TimelineCalendarOverlayMonthColor,
+                    @TimelineCalendarOverlayWeekColor,
+                    @TimelineCalendarOverlayDayColor
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
@@ -307,7 +331,19 @@ namespace StoryTimelineMk2.Database
 
                     gallery_panel_background_color = excluded.gallery_panel_background_color,
                     gallery_panel_border_color = excluded.gallery_panel_border_color,
-                    gallery_panel_text_color = excluded.gallery_panel_text_color;";
+                    gallery_panel_text_color = excluded.gallery_panel_text_color,
+
+                    calendar_panel_background_color = excluded.calendar_panel_background_color,
+                    calendar_panel_border_color = excluded.calendar_panel_border_color,
+                    calendar_panel_text_color = excluded.calendar_panel_text_color,
+                    calendar_panel_week_highlight_color = excluded.calendar_panel_week_highlight_color,
+                    calendar_panel_day_highlight_color = excluded.calendar_panel_day_highlight_color,
+
+                    timeline_calendar_overlay_enabled = excluded.timeline_calendar_overlay_enabled,
+                    timeline_calendar_overlay_season_color = excluded.timeline_calendar_overlay_season_color,
+                    timeline_calendar_overlay_month_color = excluded.timeline_calendar_overlay_month_color,
+                    timeline_calendar_overlay_week_color = excluded.timeline_calendar_overlay_week_color,
+                    timeline_calendar_overlay_day_color = excluded.timeline_calendar_overlay_day_color;";
 
             db.Execute(sql, settings);
         }

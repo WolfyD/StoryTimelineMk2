@@ -103,6 +103,16 @@ function initLayout(ls: LayoutSettings | null | undefined): LayoutSettings {
         GalleryPanelBackgroundColor: d.GalleryPanelBackgroundColor ?? '#0f172a',
         GalleryPanelBorderColor: d.GalleryPanelBorderColor ?? '#1e293b',
         GalleryPanelTextColor: d.GalleryPanelTextColor ?? '#94a3b8',
+        CalendarPanelBackgroundColor: d.CalendarPanelBackgroundColor ?? '#f5f0e8',
+        CalendarPanelBorderColor: d.CalendarPanelBorderColor ?? '#d5cec4',
+        CalendarPanelTextColor: d.CalendarPanelTextColor ?? '#5c4a38',
+        CalendarPanelWeekHighlightColor: d.CalendarPanelWeekHighlightColor ?? '#6366f118',
+        CalendarPanelDayHighlightColor: d.CalendarPanelDayHighlightColor ?? '#6366f135',
+        TimelineCalendarOverlayEnabled: d.TimelineCalendarOverlayEnabled ?? false,
+        TimelineCalendarOverlaySeasonColor: d.TimelineCalendarOverlaySeasonColor ?? '#ffffff0a',
+        TimelineCalendarOverlayMonthColor:  d.TimelineCalendarOverlayMonthColor  ?? '#ffffff08',
+        TimelineCalendarOverlayWeekColor:   d.TimelineCalendarOverlayWeekColor   ?? '#ffffff06',
+        TimelineCalendarOverlayDayColor:    d.TimelineCalendarOverlayDayColor    ?? '#ffffff05',
     }
 }
 
@@ -202,6 +212,66 @@ const dataRangeAlpha = ref(_initDRC.alpha);
 watch([dataRangeRGB, dataRangeAlpha], ([rgb, alpha]) => {
     localLayout.TimelineDataRangeColor = buildHexAlpha(rgb, alpha);
 });
+
+// --- calendar overlay colors (RGBA split into rgb + alpha %) ---
+const _initOS = parseHexAlpha(localLayout.TimelineCalendarOverlaySeasonColor);
+const overlaySeasonRGB   = ref(_initOS.rgb);
+const overlaySeasonAlpha = ref(_initOS.alpha);
+watch([overlaySeasonRGB, overlaySeasonAlpha], ([rgb, alpha]) => {
+    localLayout.TimelineCalendarOverlaySeasonColor = buildHexAlpha(rgb, alpha);
+});
+
+const _initOM = parseHexAlpha(localLayout.TimelineCalendarOverlayMonthColor);
+const overlayMonthRGB   = ref(_initOM.rgb);
+const overlayMonthAlpha = ref(_initOM.alpha);
+watch([overlayMonthRGB, overlayMonthAlpha], ([rgb, alpha]) => {
+    localLayout.TimelineCalendarOverlayMonthColor = buildHexAlpha(rgb, alpha);
+});
+
+const _initOW = parseHexAlpha(localLayout.TimelineCalendarOverlayWeekColor);
+const overlayWeekRGB   = ref(_initOW.rgb);
+const overlayWeekAlpha = ref(_initOW.alpha);
+watch([overlayWeekRGB, overlayWeekAlpha], ([rgb, alpha]) => {
+    localLayout.TimelineCalendarOverlayWeekColor = buildHexAlpha(rgb, alpha);
+});
+
+const _initOD = parseHexAlpha(localLayout.TimelineCalendarOverlayDayColor);
+const overlayDayRGB   = ref(_initOD.rgb);
+const overlayDayAlpha = ref(_initOD.alpha);
+watch([overlayDayRGB, overlayDayAlpha], ([rgb, alpha]) => {
+    localLayout.TimelineCalendarOverlayDayColor = buildHexAlpha(rgb, alpha);
+});
+
+// --- calendar panel week/day highlight colors ---
+const _initCPW = parseHexAlpha(localLayout.CalendarPanelWeekHighlightColor);
+const calWeekHlRGB   = ref(_initCPW.rgb);
+const calWeekHlAlpha = ref(_initCPW.alpha);
+watch([calWeekHlRGB, calWeekHlAlpha], ([rgb, alpha]) => {
+    localLayout.CalendarPanelWeekHighlightColor = buildHexAlpha(rgb, alpha);
+});
+
+const _initCPD = parseHexAlpha(localLayout.CalendarPanelDayHighlightColor);
+const calDayHlRGB   = ref(_initCPD.rgb);
+const calDayHlAlpha = ref(_initCPD.alpha);
+watch([calDayHlRGB, calDayHlAlpha], ([rgb, alpha]) => {
+    localLayout.CalendarPanelDayHighlightColor = buildHexAlpha(rgb, alpha);
+});
+
+function applyCalendarPanelLight() {
+    localLayout.CalendarPanelBackgroundColor = '#f5f0e8'
+    localLayout.CalendarPanelBorderColor     = '#d5cec4'
+    localLayout.CalendarPanelTextColor       = '#5c4a38'
+    calWeekHlRGB.value = '#6366f1'; calWeekHlAlpha.value = 9
+    calDayHlRGB.value  = '#6366f1'; calDayHlAlpha.value  = 21
+}
+
+function applyCalendarPanelDark() {
+    localLayout.CalendarPanelBackgroundColor = '#0f172a'
+    localLayout.CalendarPanelBorderColor     = '#1e293b'
+    localLayout.CalendarPanelTextColor       = '#94a3b8'
+    calWeekHlRGB.value = '#818cf8'; calWeekHlAlpha.value = 9
+    calDayHlRGB.value  = '#818cf8'; calDayHlAlpha.value  = 21
+}
 
 onMounted(async () => {
     const [presets, fonts] = await Promise.all([
@@ -717,6 +787,85 @@ async function save() {
                     </div>
                 </div>
 
+                <!-- CALENDAR PANEL -->
+                <div class="section-title">Calendar Panel</div>
+                <div class="settings-grid">
+                    <span class="s-label">Theme</span>
+                    <div class="color-row">
+                        <button class="s-btn" type="button" @click="applyCalendarPanelLight">☀ Light</button>
+                        <button class="s-btn" type="button" @click="applyCalendarPanelDark">☽ Dark</button>
+                    </div>
+
+                    <span class="s-label">Background</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.CalendarPanelBackgroundColor" />
+                        <span class="color-hex">{{ localLayout.CalendarPanelBackgroundColor }}</span>
+                    </div>
+
+                    <span class="s-label">Borders / Dividers</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.CalendarPanelBorderColor" />
+                        <span class="color-hex">{{ localLayout.CalendarPanelBorderColor }}</span>
+                    </div>
+
+                    <span class="s-label">Text / Labels</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.CalendarPanelTextColor" />
+                        <span class="color-hex">{{ localLayout.CalendarPanelTextColor }}</span>
+                    </div>
+
+                    <span class="s-label">Week Highlight</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="calWeekHlRGB" />
+                        <input class="s-slider" type="range" v-model.number="calWeekHlAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.CalendarPanelWeekHighlightColor }}</span>
+                    </div>
+
+                    <span class="s-label">Day Highlight</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="calDayHlRGB" />
+                        <input class="s-slider" type="range" v-model.number="calDayHlAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.CalendarPanelDayHighlightColor }}</span>
+                    </div>
+                </div>
+
+                <!-- CALENDAR OVERLAY -->
+                <div class="section-title">Calendar Overlay</div>
+                <div class="settings-grid">
+                    <span class="s-label">Enabled</span>
+                    <button class="toggle" :class="{ 'is-on': localLayout.TimelineCalendarOverlayEnabled }" type="button" @click="localLayout.TimelineCalendarOverlayEnabled = !localLayout.TimelineCalendarOverlayEnabled">
+                        <span class="toggle-thumb" />
+                    </button>
+
+                    <span class="s-label">Season / Year band</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="overlaySeasonRGB" />
+                        <input class="s-slider" type="range" v-model.number="overlaySeasonAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.TimelineCalendarOverlaySeasonColor }}</span>
+                    </div>
+
+                    <span class="s-label">Month band</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="overlayMonthRGB" />
+                        <input class="s-slider" type="range" v-model.number="overlayMonthAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.TimelineCalendarOverlayMonthColor }}</span>
+                    </div>
+
+                    <span class="s-label">Week band</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="overlayWeekRGB" />
+                        <input class="s-slider" type="range" v-model.number="overlayWeekAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.TimelineCalendarOverlayWeekColor }}</span>
+                    </div>
+
+                    <span class="s-label">Day band</span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="overlayDayRGB" />
+                        <input class="s-slider" type="range" v-model.number="overlayDayAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.TimelineCalendarOverlayDayColor }}</span>
+                    </div>
+                </div>
+
                 <!-- DATA PANEL -->
                 <div class="section-title">Data Panel</div>
                 <div class="settings-grid">
@@ -944,6 +1093,22 @@ async function save() {
 select.s-input {
     cursor: pointer;
     appearance: auto;
+}
+
+.s-btn {
+    background: #1a2740;
+    border: 1px solid #2d3a56;
+    border-radius: 4px;
+    color: #94a3b8;
+    font-size: 12px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+
+    &:hover {
+        background: #233152;
+        color: #e2e8f0;
+    }
 }
 
 .toggle {

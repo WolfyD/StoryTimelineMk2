@@ -97,5 +97,19 @@
         public string GalleryPanelBackgroundColor { get; set; } = string.Empty;
         public string GalleryPanelBorderColor { get; set; } = string.Empty;
         public string GalleryPanelTextColor { get; set; } = string.Empty;
+
+        // Calendar panel (gallery tab)
+        public string CalendarPanelBackgroundColor { get; set; } = string.Empty;
+        public string CalendarPanelBorderColor { get; set; } = string.Empty;
+        public string CalendarPanelTextColor { get; set; } = string.Empty;
+        public string CalendarPanelWeekHighlightColor { get; set; } = string.Empty;
+        public string CalendarPanelDayHighlightColor { get; set; } = string.Empty;
+
+        // Calendar overlay
+        public bool TimelineCalendarOverlayEnabled { get; set; }
+        public string TimelineCalendarOverlaySeasonColor { get; set; } = string.Empty;
+        public string TimelineCalendarOverlayMonthColor { get; set; } = string.Empty;
+        public string TimelineCalendarOverlayWeekColor { get; set; } = string.Empty;
+        public string TimelineCalendarOverlayDayColor { get; set; } = string.Empty;
     }
 }

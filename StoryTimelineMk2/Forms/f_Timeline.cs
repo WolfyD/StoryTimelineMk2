@@ -138,6 +138,9 @@ namespace StoryTimelineMk2.Forms
             _moveTimer.Stop();
             PersistWindowState();
 
+            // Close all connected child windows (year calendar, calendar editor, edit item)
+            MessageRouter.NotifyTimelineClosing();
+
             f_Main? mainForm = null;
             foreach (Form f in Application.OpenForms)
             {

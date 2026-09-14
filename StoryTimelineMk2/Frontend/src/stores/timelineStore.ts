@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote, type CharacterItem, type ItemTagLink, type ItemCharacterLink, type ItemStoryRefLink, type FilterRule, type FilterPreset, type FilterState } from '@/types/models';
 import { BackendAPI } from '@/bridge/api';
 import { buildFormatRegistry, DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
+import type { MemDayMarker } from '@/types/models';
 import { applyFilters, buildItemDataMap } from '@/utils/filterMatcher';
 
 interface LastDeletedState {
@@ -435,13 +436,22 @@ export const useTimelineStore = defineStore('timeline', () => {
 			if (yd.season_definition && yd.seasons) {
 				for (let i = 0; i < (yd.seasons as number); i++) {
 					const s = yd.season_definition[String(i)]
-					seasons.push({ name: s?.name ?? `Season ${i + 1}`, start: s?.start ?? 0, end: s?.end ?? 0 })
+					seasons.push({
+						name: s?.name ?? `Season ${i + 1}`,
+						start: s?.start ?? 0,
+						end: s?.end ?? 0,
+						significance: s?.significance,
+					})
 				}
 			}
 
+			const memorableDays: MemDayMarker[] = Array.isArray(yd.memorable_days)
+				? (yd.memorable_days as MemDayMarker[])
+				: []
+
 			const weekLength: number = yd.week_definition?.length ?? 7
 			const yearStartDow: number = yd.year_start_dow ?? 0
-			return { yearLength, weekLength, yearStartDow, months, seasons }
+			return { yearLength, weekLength, yearStartDow, months, seasons, memorableDays }
 		} catch {
 			return DEFAULT_CALENDAR_CONFIG
 		}

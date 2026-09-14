@@ -5,6 +5,7 @@ import { BackendAPI } from '@/bridge/api';
 import type { LayoutSettings, MediaItem } from '@/types/models';
 import { useLightbox } from '@/composables/useLightbox';
 import LightboxOverlay from '@/components/LightboxOverlay.vue';
+import CalendarPanel from '@/components/CalendarPanel.vue';
 
 const props = defineProps<{
     layoutSettings: LayoutSettings | null;
@@ -12,7 +13,7 @@ const props = defineProps<{
 
 const store = useTimelineStore();
 
-type GalleryMode = 'grid' | 'cascade';
+type GalleryMode = 'grid' | 'cascade' | 'calendar';
 const mode = ref<GalleryMode>('grid');
 
 // { url, title, itemTitle }
@@ -105,8 +106,19 @@ const cascadeOrder = computed(() => {
                 @click="mode = 'cascade'"
                 title="Stack view"
             ><i class="ri-stack-fill" /></button>
+            <button
+                class="gallery-mode-btn"
+                :class="{ active: mode === 'calendar' }"
+                @click="mode = 'calendar'"
+                title="Calendar view"
+            ><i class="ri-calendar-line" /></button>
         </div>
 
+        <!-- Calendar mode -->
+        <CalendarPanel v-if="mode === 'calendar'" :layout-settings="layoutSettings" />
+
+        <!-- Image gallery modes -->
+        <template v-else>
         <div v-if="entries.length === 0" class="gallery-empty">No images in range</div>
 
         <!-- Grid mode -->
@@ -146,6 +158,7 @@ const cascadeOrder = computed(() => {
                 </button>
             </div>
         </div>
+        </template><!-- end v-else image gallery modes -->
 
         <!-- Lightbox -->
         <Teleport to="body">

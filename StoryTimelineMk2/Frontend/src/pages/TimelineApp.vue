@@ -9,7 +9,7 @@ import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
 import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
 import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
 import { Splitpanes, Pane } from 'splitpanes'
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { TimelineItem } from '@/types/models';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
@@ -33,6 +33,27 @@ const lightboxUrl = ref<string | null>(null);
 
 const isMinimised = ref(false)
 const miniHoverState = ref<{ item: TimelineItem; x: number; y: number } | null>(null)
+const yearCalendarOpen = ref(false)
+
+async function toggleYearCalendar() {
+    const calendarId = store.calendar?.Id ?? ''
+    const timelineId = store.currentProject?.Id ?? 0
+    const res = await BackendAPI.OpenYearCalendarWindow(timelineId, calendarId)
+    yearCalendarOpen.value = res?.status === 'opened'
+}
+
+// Debounced year sender — fires SetCalendarYear when centerAbsoluteTime crosses a year boundary
+let _yearSendTimer = 0
+let _lastSentYear = -Infinity
+watch(() => store.centerAbsoluteTime, (t) => {
+    const year = Math.floor(t)
+    if (year === _lastSentYear) return
+    clearTimeout(_yearSendTimer)
+    _yearSendTimer = window.setTimeout(() => {
+        _lastSentYear = year
+        BackendAPI.SetCalendarYear(year)
+    }, 300)
+})
 
 async function toggleMiniMode() {
     isMinimised.value = !isMinimised.value
@@ -211,9 +232,11 @@ onBeforeUnmount(() => {
             <TimelineActivityStrip
                 :filter-active="store.filterPanelOpen"
                 :mini-mode="isMinimised"
+                :year-calendar-open="yearCalendarOpen"
                 @toggle-filter="store.setFilterPanelOpen(!store.filterPanelOpen)"
                 @toggle-mini="toggleMiniMode"
                 @open-settings="showSettings = true"
+                @toggle-year-calendar="toggleYearCalendar"
             >
                 <template #actions>
                     <TimelineActionsMenu @shift-complete="onShiftComplete" />

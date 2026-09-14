@@ -24,6 +24,10 @@ namespace StoryTimelineMk2.Database
         public int DisplayRadius { get; set; }
         public string CanvasSettings { get; set; } = null!;
         public bool TimelineMinimised { get; set; } = false;
+        public int YearCalendarPositionX { get; set; }
+        public int YearCalendarPositionY { get; set; }
+        public int YearCalendarSizeX { get; set; }
+        public int YearCalendarSizeY { get; set; }
         public DateTime UpdatedAt { get; set; }
         public int TimelineId { get; set; }
     }

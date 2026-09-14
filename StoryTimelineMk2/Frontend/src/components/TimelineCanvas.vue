@@ -406,11 +406,106 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
 });
 
 // --- RENDER LOOPS ---
+
+function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSettings) {
+    if (!layoutSettings.TimelineCalendarOverlayEnabled) return;
+    if (store.settings?.TimelineMinimised) return;
+
+    const cfg = store.calendarConfig;
+    const step = viewport.lodStepFraction;
+    const ranges = getActiveRanges();
+    const yrLen = cfg.yearLength || 365;
+    const wkLen = cfg.weekLength || 7;
+    const numSeasons = cfg.seasons.length || 4;
+    const numMonths  = cfg.months.length  || 12;
+
+    // Thresholds derived from the calendar config — no hardcoded format-key strings
+    const seasonStep = 1 / numSeasons;
+    const monthStep  = 1 / numMonths;
+    const weekStep   = wkLen / yrLen;
+
+    type DivType = 'season' | 'month' | 'week' | 'day';
+    let divType: DivType;
+    let color: string;
+
+    if (step >= 1.0) {
+        divType = 'season'; color = layoutSettings.TimelineCalendarOverlaySeasonColor;
+    } else if (step >= seasonStep) {
+        if (cfg.months.length > 0) { divType = 'month'; color = layoutSettings.TimelineCalendarOverlayMonthColor; }
+        else if (cfg.weekLength > 1) { divType = 'week'; color = layoutSettings.TimelineCalendarOverlayWeekColor; }
+        else { divType = 'day'; color = layoutSettings.TimelineCalendarOverlayDayColor; }
+    } else if (step >= monthStep) {
+        if (cfg.weekLength > 1) { divType = 'week'; color = layoutSettings.TimelineCalendarOverlayWeekColor; }
+        else { divType = 'day'; color = layoutSettings.TimelineCalendarOverlayDayColor; }
+    } else if (step >= weekStep) {
+        divType = 'day'; color = layoutSettings.TimelineCalendarOverlayDayColor;
+    } else {
+        return; // finer than a day — nothing to overlay
+    }
+
+    // Visible absolute time range (with a margin for the overlay)
+    const halfAbs = ((viewport.width / 2 + GRID_EXTRA_PX) / layoutSettings.TimelineTickDistance) * step;
+    const leftAbs  = viewport.centerTime - halfAbs;
+    const rightAbs = viewport.centerTime + halfAbs;
+    const startYear = Math.floor(leftAbs) - 1;
+    const endYear   = Math.ceil(rightAbs)  + 1;
+
+    // Build sorted division-start absolute times
+    const starts: number[] = [];
+    for (let y = startYear; y <= endYear; y++) {
+        if (divType === 'season') {
+            if (cfg.seasons.length > 0) {
+                for (const s of cfg.seasons) starts.push(y + s.start / yrLen);
+            } else {
+                for (let q = 0; q < 4; q++) starts.push(y + q * 0.25);
+            }
+        } else if (divType === 'month') {
+            for (const m of cfg.months) starts.push(y + m.startDay / yrLen);
+        } else if (divType === 'week') {
+            const wFrac = wkLen / yrLen;
+            const numWeeks = Math.ceil(yrLen / wkLen);
+            for (let w = 0; w < numWeeks; w++) starts.push(y + w * wFrac);
+        } else {
+            const dFrac = 1 / yrLen;
+            for (let d = 0; d < yrLen; d++) starts.push(y + d * dFrac);
+        }
+    }
+    starts.push(endYear + 2); // sentinel — closes the last band
+    starts.sort((a, b) => a - b);
+
+    if (starts.length < 2) return;
+
+    // Early bail: if the first two divisions are sub-pixel there is nothing to render
+    const px0 = getXFromTime(starts[0], viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+    const px1 = getXFromTime(starts[1], viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+    if (Math.abs(px1 - px0) < 2) return;
+
+    // Render every other band (even indices) as a filled rect
+    for (let i = 0; i < starts.length - 1; i++) {
+        if (i % 2 !== 0) continue;
+        const absStart = starts[i];
+        const absEnd   = starts[i + 1];
+        if (absEnd < leftAbs || absStart > rightAbs) continue;
+
+        const xS = getXFromTime(absStart, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const xE = getXFromTime(absEnd,   viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        if (xE <= -GRID_EXTRA_PX || xS >= viewport.width + GRID_EXTRA_PX) continue;
+
+        const cx = Math.max(xS, -GRID_EXTRA_PX);
+        const cw = Math.min(xE, viewport.width + GRID_EXTRA_PX) - cx;
+        if (cw <= 0) continue;
+
+        layer.add(new Konva.Rect({ x: cx, y: 0, width: cw, height: viewport.height, fill: color, listening: false }));
+    }
+}
+
 const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
     gridPanOffset = 0;
     layer.x(0);
     boundaryOverlayLayer.x(0);
     layer.destroyChildren();
+
+    renderCalendarOverlay(layer, layoutSettings);
 
     const currentLod = store.lodProfile?.[store.currentLodIndex];
     if (!currentLod) return;

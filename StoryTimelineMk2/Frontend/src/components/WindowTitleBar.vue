@@ -103,8 +103,9 @@ function cancelDrag() {
     flex-direction: row;
     align-items: stretch;
     flex-shrink: 0;
-    position: relative;
+    position: relative;     // positioning context for absolutely-placed controls
     z-index: 2;             // shadow renders above the content below
+    overflow: hidden;       // clip any overflowing content at our boundary
 
     // Darkest layer: top #060c19, blends toward content (#0a1424 ≈ halfway to #0f172a)
     background: linear-gradient(180deg, var(--tb-bg-from, #060c19) 0%, var(--tb-bg-to, #0a1424) 100%);
@@ -128,8 +129,11 @@ function cancelDrag() {
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 0 12px;
+    // Right padding reserves space for the 3 window-control buttons (3 × 36px = 108px)
+    // so title text never overlaps them. Left padding matches original 12px.
+    padding: 0 120px 0 12px;
     cursor: default;
+    overflow: hidden;
 }
 
 // ── Brand orb ──────────────────────────────────────────────────────────────────
@@ -203,11 +207,19 @@ function cancelDrag() {
 // This makes the entire left edge of the window feel visually unified.
 
 .title-bar__controls {
+    // Anchored to the right edge so buttons are always visible regardless of
+    // how narrow the window gets. The drag area's padding-right reserves the
+    // same 120px so title text never slides under these buttons.
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
     display: flex;
     flex-direction: row;
     align-items: stretch;
-    flex-shrink: 0;
-    // Thin separator that visually divides drag area from buttons
+    z-index: 1;
+    // Gradient matches the title bar so any content behind is covered cleanly
+    background: linear-gradient(180deg, var(--tb-bg-from, #060c19) 0%, var(--tb-bg-to, #0a1424) 100%);
     border-left: 1px solid rgba(255, 255, 255, 0.05);
 }
 

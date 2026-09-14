@@ -100,6 +100,20 @@ namespace StoryTimelineMk2.Database
                 new { TimelineId = timelineId, X = x, Y = y, Width = width, Height = height });
         }
 
+        public void SaveYearCalendarWindowState(int timelineId, int x, int y, int width, int height)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Execute(@"
+                UPDATE settings SET
+                    year_calendar_position_x = @X,
+                    year_calendar_position_y = @Y,
+                    year_calendar_size_x     = @Width,
+                    year_calendar_size_y     = @Height,
+                    updated_at               = CURRENT_TIMESTAMP
+                WHERE timeline_id = @TimelineId;",
+                new { TimelineId = timelineId, X = x, Y = y, Width = width, Height = height });
+        }
+
         // --- App-level (no timeline) settings, stored with timeline_id = NULL ---
 
         public SettingsItem GetOrCreateAppSettings()

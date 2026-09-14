@@ -402,6 +402,20 @@ export interface LayoutSettings {
 	GalleryPanelBackgroundColor: string;
 	GalleryPanelBorderColor: string;
 	GalleryPanelTextColor: string;
+
+	// Calendar panel (gallery tab)
+	CalendarPanelBackgroundColor: string;
+	CalendarPanelBorderColor: string;
+	CalendarPanelTextColor: string;
+	CalendarPanelWeekHighlightColor: string;
+	CalendarPanelDayHighlightColor: string;
+
+	// Calendar overlay
+	TimelineCalendarOverlayEnabled: boolean;
+	TimelineCalendarOverlaySeasonColor: string;
+	TimelineCalendarOverlayMonthColor: string;
+	TimelineCalendarOverlayWeekColor: string;
+	TimelineCalendarOverlayDayColor: string;
 }
 
 export interface ImportPreview {
@@ -437,4 +451,17 @@ export interface TimelineImportPreview {
 	hasConflict: boolean;
 	conflictingTimelineTitle: string | null;
 	timelineId: number | null;
+}
+
+export interface MemDayMarker {
+    id: string
+    name: string
+    color: string
+    type: 'fixed' | 'weekly' | 'relative'
+    startMonth: number
+    startDay: number
+    endMonth: number
+    endDay: number
+    isRange: boolean
+    weekDays: number[]
 }

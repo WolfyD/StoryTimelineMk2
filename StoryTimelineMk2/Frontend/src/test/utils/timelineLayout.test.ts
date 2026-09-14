@@ -9,7 +9,7 @@ import {
 } from '@/utils/timelineLayout'
 import type { HiddenRange, LayoutSettings } from '@/types/models'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function makeRange(startYear: number, endYear: number, id = 1): HiddenRange {
   return { Id: id, TimelineId: 1, StartYear: startYear, EndYear: endYear, Label: null }
@@ -89,102 +89,112 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     GalleryPanelBackgroundColor: '#f5f0e8',
     GalleryPanelBorderColor: '#d5cec4',
     GalleryPanelTextColor: '#5c4a38',
+    CalendarPanelBackgroundColor: '#f5f0e8',
+    CalendarPanelBorderColor: '#d5cec4',
+    CalendarPanelTextColor: '#5c4a38',
+    CalendarPanelWeekHighlightColor: '#6366f118',
+    CalendarPanelDayHighlightColor: '#6366f135',
+    TimelineCalendarOverlayEnabled: false,
+    TimelineCalendarOverlaySeasonColor: '#ffffff10',
+    TimelineCalendarOverlayMonthColor: '#ffffff0c',
+    TimelineCalendarOverlayWeekColor: '#ffffff08',
+    TimelineCalendarOverlayDayColor: '#ffffff06',
     ...overrides,
   }
 }
 
-// ── FormatRegistry ────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ FormatRegistry Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 describe('FormatRegistry', () => {
   describe('MILLENNIA', () => {
     it('renders zero fraction as "<year>s"', () => {
-      expect(FormatRegistry['MILLENNIA'](2000, 0)).toBe('2000s')
+      expect(FormatRegistry['MILLENNIA']!(2000, 0)).toBe('2000s')
     })
     it('renders non-zero fraction (ignores fraction) as "<floor>s"', () => {
-      expect(FormatRegistry['MILLENNIA'](1999.7, 0.7)).toBe('1999s')
+      expect(FormatRegistry['MILLENNIA']!(1999.7, 0.7)).toBe('1999s')
     })
   })
 
   describe('CENTURIES', () => {
     it('renders zero fraction', () => {
-      expect(FormatRegistry['CENTURIES'](1900, 0)).toBe('1900')
+      expect(FormatRegistry['CENTURIES']!(1900, 0)).toBe('1900')
     })
     it('renders non-zero fraction (ignores fraction)', () => {
-      expect(FormatRegistry['CENTURIES'](1950.5, 0.5)).toBe('1950')
+      expect(FormatRegistry['CENTURIES']!(1950.5, 0.5)).toBe('1950')
     })
   })
 
   describe('DECADES', () => {
     it('renders zero fraction', () => {
-      expect(FormatRegistry['DECADES'](1990, 0)).toBe('1990')
+      expect(FormatRegistry['DECADES']!(1990, 0)).toBe('1990')
     })
     it('renders non-zero fraction (floor)', () => {
-      expect(FormatRegistry['DECADES'](1997.3, 0.3)).toBe('1997')
+      expect(FormatRegistry['DECADES']!(1997.3, 0.3)).toBe('1997')
     })
   })
 
   describe('YEARS', () => {
     it('renders the floored year', () => {
-      expect(FormatRegistry['YEARS'](2024, 0)).toBe('2024')
-      expect(FormatRegistry['YEARS'](2024.9, 0.9)).toBe('2024')
+      expect(FormatRegistry['YEARS']!(2024, 0)).toBe('2024')
+      expect(FormatRegistry['YEARS']!(2024.9, 0.9)).toBe('2024')
     })
   })
 
   describe('QUARTERS', () => {
     it('returns year when fraction is 0', () => {
-      expect(FormatRegistry['QUARTERS'](2020, 0)).toBe('2020')
+      expect(FormatRegistry['QUARTERS']!(2020, 0)).toBe('2020')
     })
     it('returns Q label when fraction is non-zero', () => {
-      // fraction 0.25 → Math.round(0.25/0.25)+1 = 2 → Q2
-      const result = FormatRegistry['QUARTERS'](2020, 0.25)
+      // fraction 0.25 Ã¢â€ â€™ Math.round(0.25/0.25)+1 = 2 Ã¢â€ â€™ Q2
+      const result = FormatRegistry['QUARTERS']!(2020, 0.25)
       expect(result).toMatch(/^Q\d$/)
     })
   })
 
   describe('SEASONS', () => {
     it('returns year string when fraction is 0', () => {
-      expect(FormatRegistry['SEASONS'](2020, 0)).toBe('2020')
+      expect(FormatRegistry['SEASONS']!(2020, 0)).toBe('2020')
     })
     it('returns season name for non-zero fraction', () => {
       const seasons = ['Spring', 'Summer', 'Fall', 'Winter']
-      const result = FormatRegistry['SEASONS'](2020, 0.5)
+      const result = FormatRegistry['SEASONS']!(2020, 0.5)
       expect(seasons).toContain(result)
     })
   })
 
   describe('MONTHS', () => {
     it('returns year string when fraction is 0', () => {
-      expect(FormatRegistry['MONTHS'](2020, 0)).toBe('2020')
+      expect(FormatRegistry['MONTHS']!(2020, 0)).toBe('2020')
     })
     it('returns a month abbreviation for non-zero fraction', () => {
       const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      const result = FormatRegistry['MONTHS'](2020, 0.5)
+      const result = FormatRegistry['MONTHS']!(2020, 0.5)
       expect(months).toContain(result)
     })
   })
 
   describe('WEEKS', () => {
     it('returns year string when fraction is 0', () => {
-      expect(FormatRegistry['WEEKS'](2020, 0)).toBe('2020')
+      expect(FormatRegistry['WEEKS']!(2020, 0)).toBe('2020')
     })
     it('returns a "WN" string for non-zero fraction', () => {
-      const result = FormatRegistry['WEEKS'](2020, 0.5)
+      const result = FormatRegistry['WEEKS']!(2020, 0.5)
       expect(result).toMatch(/^W\d+$/)
     })
   })
 
   describe('DAYS', () => {
     it('returns year string when fraction is 0', () => {
-      expect(FormatRegistry['DAYS'](2020, 0)).toBe('2020')
+      expect(FormatRegistry['DAYS']!(2020, 0)).toBe('2020')
     })
     it('returns "Day N" string for non-zero fraction', () => {
-      const result = FormatRegistry['DAYS'](2020, 0.5)
+      const result = FormatRegistry['DAYS']!(2020, 0.5)
       expect(result).toMatch(/^Day \d+$/)
     })
   })
 })
 
-// ── absoluteToVisual ──────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ absoluteToVisual Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 describe('absoluteToVisual', () => {
   const step = 1
@@ -203,7 +213,7 @@ describe('absoluteToVisual', () => {
   })
 
   it('shifts t when range is entirely before t', () => {
-    // Range 1000–2000 hidden: hiddenSize=1000, breakSize=0.3*1 = 0.3
+    // Range 1000Ã¢â‚¬â€œ2000 hidden: hiddenSize=1000, breakSize=0.3*1 = 0.3
     // net offset = -(1000 - 0.3) = -999.7
     const ranges = [makeRange(1000, 2000)]
     const result = absoluteToVisual(3000, ranges, step)
@@ -224,7 +234,7 @@ describe('absoluteToVisual', () => {
     const ranges = [makeRange(100, 200), makeRange(300, 400)]
     // t=500, after both ranges
     // offset1 = -(100-0.3) = -99.7
-    // offset2 = -(100-0.3) = -99.7 → total -199.4
+    // offset2 = -(100-0.3) = -99.7 Ã¢â€ â€™ total -199.4
     const result = absoluteToVisual(500, ranges, step)
     const breakSize = BREAK_TICKS * step
     const expected = 500 - 2 * (100 - breakSize)
@@ -232,7 +242,7 @@ describe('absoluteToVisual', () => {
   })
 })
 
-// ── visualToAbsolute ──────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ visualToAbsolute Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 describe('visualToAbsolute', () => {
   const step = 1
@@ -271,7 +281,7 @@ describe('visualToAbsolute', () => {
   })
 })
 
-// ── isLeftOfNow ───────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ isLeftOfNow Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 describe('isLeftOfNow', () => {
   it('returns true when xPos < viewportWidth/2', () => {
@@ -284,7 +294,7 @@ describe('isLeftOfNow', () => {
   })
 })
 
-// ── getXFromTime ──────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ getXFromTime Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 describe('getXFromTime', () => {
   it('returns centerScreenX when absoluteTime equals centerTime with no ranges', () => {

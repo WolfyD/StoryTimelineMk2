@@ -391,6 +391,18 @@ export const BackendAPI = {
 		this.send('OpenAddEditItemWindow', { timelineId, itemId })
 	},
 
+	async OpenYearCalendarWindow(timelineId: number, calendarId: string) {
+		return await this.request<{ status: string }>('OpenYearCalendarWindow', { timelineId, calendarId });
+	},
+
+	async GetItemsForYear(timelineId: number, year: number) {
+		return await this.request<{ status: string; items: import('@/types/models').TimelineItem[] }>('GetItemsForYear', { timelineId, year });
+	},
+
+	SetCalendarYear(year: number) {
+		this.send('SetCalendarYear', { year });
+	},
+
 	// Window chrome (borderless) — fire-and-forget, no response needed
 	WindowMinimize()        { this.send('WindowMinimize', {}) },
 	WindowMaximizeRestore() { this.send('WindowMaximizeRestore', {}) },

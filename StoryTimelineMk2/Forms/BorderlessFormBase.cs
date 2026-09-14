@@ -65,6 +65,9 @@ namespace StoryTimelineMk2.Forms
             // Matches the Vue title-bar gradient start colour so the side/bottom rim
             // is invisible against the dark content.
             BackColor = Color.FromArgb(6, 12, 25);   // #060c19 — matches title bar top
+            // 3 window-control buttons × 36 px each = 108 px; 200 gives comfortable drag room.
+            // Height floor = title bar (36) + activity strip (40) + minimal content.
+            MinimumSize = new Size(200, 140);
 
             // Apply the embedded application icon to every window (taskbar, Alt-Tab, etc).
             // ExtractAssociatedIcon reads the Win32 icon resource set by <ApplicationIcon>

@@ -17,6 +17,33 @@ namespace StoryTimelineMk2.Bridge
         private readonly Form? _parentForm;
         private static readonly JsonSerializerOptions _jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
+        // Held so timeline can push year updates to the year-calendar window
+        private static f_YearCalendar? _yearCalendarWindow;
+
+        /// <summary>
+        /// Called by f_Timeline when it is closing. Schedules all connected child
+        /// windows to close asynchronously via BeginInvoke so we don't nest a
+        /// WM_CLOSE inside another WM_CLOSE handler.
+        /// </summary>
+        public static void NotifyTimelineClosing()
+        {
+            // Year calendar
+            var yearCal = _yearCalendarWindow;
+            if (yearCal != null && !yearCal.IsDisposed && yearCal.IsHandleCreated)
+                yearCal.BeginInvoke((MethodInvoker)yearCal.Close);
+
+            // Calendar editor and edit-item windows
+            var toClose = new List<Form>();
+            foreach (Form f in System.Windows.Forms.Application.OpenForms)
+                if (f is f_Calendar || f is f_AddEditItem)
+                    toClose.Add(f);
+            foreach (var f in toClose)
+            {
+                if (!f.IsDisposed && f.IsHandleCreated)
+                    try { f.BeginInvoke((MethodInvoker)f.Close); } catch { }
+            }
+        }
+
         public MessageRouter(CoreWebView2 webView, Form? parentForm = null)
         {
             _webView = webView;
@@ -119,6 +146,11 @@ namespace StoryTimelineMk2.Bridge
                 case "CreateCalendar":              HandleCreateCalendar(message); break;
                 case "DeleteCalendar":              HandleDeleteCalendar(message); break;
                 case "OpenCalendarEditorWindow":    HandleOpenCalendarEditorWindow(message); break;
+
+                // Year calendar window
+                case "OpenYearCalendarWindow":      HandleOpenYearCalendarWindow(message); break;
+                case "GetItemsForYear":             HandleGetItemsForYear(message); break;
+                case "SetCalendarYear":             HandleSetCalendarYear(message); break;
 
                 // Item deletion
                 case "DeleteItem":          HandleDeleteItem(message); break;
@@ -888,6 +920,53 @@ namespace StoryTimelineMk2.Bridge
             var calendarWindow = new f_Calendar { CalendarId = calendarId };
             calendarWindow.Show();
             calendarWindow.Activate();
+        }
+
+        private void HandleOpenYearCalendarWindow(BridgeMessage message)
+        {
+            // Toggle: close if already open, open if not
+            if (_yearCalendarWindow != null && !_yearCalendarWindow.IsDisposed)
+            {
+                _yearCalendarWindow.Close();
+                _yearCalendarWindow = null;
+                ReplyToVue(message.MessageId, new { status = "closed" });
+                return;
+            }
+
+            int timelineId = 0;
+            if (message.Payload.TryGetProperty("timelineId", out var tidProp))
+                tidProp.TryGetInt32(out timelineId);
+
+            string? calendarId = null;
+            if (message.Payload.TryGetProperty("calendarId", out var cidProp))
+                calendarId = cidProp.GetString();
+
+            _yearCalendarWindow = new f_YearCalendar { TimelineId = timelineId, CalendarId = calendarId };
+            _yearCalendarWindow.FormClosed += (_, _) => _yearCalendarWindow = null;
+            _yearCalendarWindow.Show();
+            _yearCalendarWindow.Activate();
+
+            ReplyToVue(message.MessageId, new { status = "opened" });
+        }
+
+        private void HandleGetItemsForYear(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            int year       = message.Payload.GetProperty("year").GetInt32();
+
+            var items = new ItemRepo().GetItemsByYear(timelineId, year);
+            ReplyToVue(message.MessageId, new { status = "ok", items });
+        }
+
+        private void HandleSetCalendarYear(BridgeMessage message)
+        {
+            // Fire-and-forget: forward year to the open year-calendar window if any
+            if (_yearCalendarWindow == null || _yearCalendarWindow.IsDisposed) return;
+            if (!message.Payload.TryGetProperty("year", out var yearProp)) return;
+            if (!yearProp.TryGetInt32(out int year)) return;
+
+            _yearCalendarWindow.BeginInvoke((MethodInvoker)(() =>
+                _yearCalendarWindow.SendYearUpdate(year)));
         }
 
         // -----------------------------------------------------------------------

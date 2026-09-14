@@ -3,7 +3,7 @@
  * Handles spatial coordinates, time translation, and 1D collision packing.
  */
 
-import type { LayoutSettings, HiddenRange } from "@/types/models";
+import type { LayoutSettings, HiddenRange, MemDayMarker } from "@/types/models";
 
 
 // ── Calendar format configuration ─────────────────────────────────────────────
@@ -13,7 +13,8 @@ export interface CalendarFormatConfig {
     weekLength: number
     yearStartDow: number
     months: { name: string; shortName: string; startDay: number }[]
-    seasons: { name: string; start: number; end: number }[]
+    seasons: { name: string; start: number; end: number; significance?: string }[]
+    memorableDays: MemDayMarker[]
 }
 
 export const DEFAULT_CALENDAR_CONFIG: CalendarFormatConfig = {
@@ -40,6 +41,7 @@ export const DEFAULT_CALENDAR_CONFIG: CalendarFormatConfig = {
         { name: 'Fall',   start: 183, end: 274 },
         { name: 'Winter', start: 274, end: 364 },
     ],
+    memorableDays: [],
 }
 
 export type FormatRegistryType = Record<string, (year: number, fraction: number) => string>
@@ -55,9 +57,9 @@ export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryTy
         if (months.length === 0) return `M${Math.floor(f * 12) + 1}`
         const day = Math.floor(f * yearLength)
         for (let i = 0; i < months.length - 1; i++) {
-            if (day < months[i + 1].startDay) return months[i].shortName
+            if (day < months[i + 1]!.startDay) return months[i]!.shortName
         }
-        return months[months.length - 1].shortName
+        return months[months.length - 1]!.shortName
     }
 
     function seasonLabel(f: number): string {
@@ -67,7 +69,7 @@ export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryTy
             if (s.start <= s.end ? (day >= s.start && day <= s.end) : (day >= s.start || day <= s.end))
                 return s.name
         }
-        return seasons[0].name
+        return seasons[0]!.name
     }
 
     return {
