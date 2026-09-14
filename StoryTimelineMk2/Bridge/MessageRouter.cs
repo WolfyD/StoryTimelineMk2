@@ -139,6 +139,8 @@ namespace StoryTimelineMk2.Bridge
                 case "WindowGetMaximized":      HandleWindowGetMaximized(message); break;
                 case "WindowClose":             HandleWindowClose(message); break;
                 case "WindowStartDrag":         HandleWindowStartDrag(message); break;
+                case "WindowGetTopMost":        HandleWindowGetTopMost(message); break;
+                case "WindowSetTopMost":        HandleWindowSetTopMost(message); break;
 
                 // Calendar actions
                 case "GetCalendarById":             HandleGetCalendarById(message); break;
@@ -334,6 +336,7 @@ namespace StoryTimelineMk2.Bridge
                 DefaultTypeId = typeId,
                 DefaultYear = year,
                 DefaultGranularity = granularity,
+                TopMost = _parentForm?.TopMost ?? false,
             };
 
             // Wire a callback so the edit window can push the saved item directly into
@@ -343,7 +346,7 @@ namespace StoryTimelineMk2.Bridge
             // Use Show() instead of ShowDialog(): calling ShowDialog from inside a
             // WebView2 WebMessageReceived handler creates a nested COM message loop
             // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
-            addEditItemWindow.Show();
+            addEditItemWindow.Show(_parentForm);
             addEditItemWindow.Activate();
         }
 
@@ -761,6 +764,36 @@ namespace StoryTimelineMk2.Bridge
             }));
         }
 
+        private void HandleWindowGetTopMost(BridgeMessage message)
+        {
+            bool topmost = _parentForm?.TopMost ?? false;
+            ReplyToVue(message.MessageId, new { isTopmost = topmost });
+        }
+
+        private void HandleWindowSetTopMost(BridgeMessage message)
+        {
+            if (_parentForm == null) return;
+            bool topmost = message.Payload.GetProperty("topmost").GetBoolean();
+            _parentForm.BeginInvoke((MethodInvoker)(() =>
+            {
+                _parentForm.TopMost = topmost;
+                // When a window is pinned, its owned children must also become topmost
+                // so they never slip behind the now-topmost parent.
+                // We do not force-unpin children when the parent unpins — each child
+                // remains at its own state when the parent's pin is removed.
+                if (topmost)
+                {
+                    foreach (Form owned in _parentForm.OwnedForms)
+                    {
+                        if (owned is Forms.BorderlessFormBase bf)
+                            bf.PropagateTopMost(true);
+                        else
+                            owned.TopMost = true;
+                    }
+                }
+            }));
+        }
+
         private void HandleSaveLayoutSettings(BridgeMessage message)
         {
             try
@@ -917,8 +950,8 @@ namespace StoryTimelineMk2.Bridge
             if (message.Payload.TryGetProperty("calendarId", out var idProp))
                 calendarId = idProp.GetString();
 
-            var calendarWindow = new f_Calendar { CalendarId = calendarId };
-            calendarWindow.Show();
+            var calendarWindow = new f_Calendar { CalendarId = calendarId, TopMost = _parentForm?.TopMost ?? false };
+            calendarWindow.Show(_parentForm);
             calendarWindow.Activate();
         }
 
@@ -941,9 +974,9 @@ namespace StoryTimelineMk2.Bridge
             if (message.Payload.TryGetProperty("calendarId", out var cidProp))
                 calendarId = cidProp.GetString();
 
-            _yearCalendarWindow = new f_YearCalendar { TimelineId = timelineId, CalendarId = calendarId };
+            _yearCalendarWindow = new f_YearCalendar { TimelineId = timelineId, CalendarId = calendarId, TopMost = _parentForm?.TopMost ?? false };
             _yearCalendarWindow.FormClosed += (_, _) => _yearCalendarWindow = null;
-            _yearCalendarWindow.Show();
+            _yearCalendarWindow.Show(_parentForm);
             _yearCalendarWindow.Activate();
 
             ReplyToVue(message.MessageId, new { status = "opened" });

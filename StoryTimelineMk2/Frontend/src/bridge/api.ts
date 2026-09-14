@@ -412,6 +412,10 @@ export const BackendAPI = {
 	async WindowGetMaximized() {
 		return await this.request<{ isMaximized: boolean }>('WindowGetMaximized', {});
 	},
+	async WindowGetTopMost() {
+		return await this.request<{ isTopmost: boolean }>('WindowGetTopMost', {});
+	},
+	WindowSetTopMost(topmost: boolean) { this.send('WindowSetTopMost', { topmost }) },
 };
 
 // Listen for replies and unprompted pushes from C#

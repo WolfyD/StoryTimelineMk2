@@ -68,6 +68,12 @@ namespace StoryTimelineMk2.Forms
             }
         }
 
+        public override void PropagateTopMost(bool topmost)
+        {
+            base.PropagateTopMost(topmost);
+            _messageRouter?.SendToVue("TopMostChanged", new { isTopmost = topmost });
+        }
+
         public void SendYearUpdate(int year)
         {
             if (_messageRouter == null) return;

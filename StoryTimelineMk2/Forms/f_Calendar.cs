@@ -21,6 +21,12 @@ namespace StoryTimelineMk2.Forms
             Load += F_Calendar_Load;
         }
 
+        public override void PropagateTopMost(bool topmost)
+        {
+            base.PropagateTopMost(topmost);
+            _messageRouter?.SendToVue("TopMostChanged", new { isTopmost = topmost });
+        }
+
         private async void F_Calendar_Load(object? sender, EventArgs e)
         {
             // async void: unhandled exceptions here crash the app. Catch, log, show, close.

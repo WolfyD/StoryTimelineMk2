@@ -36,6 +36,12 @@ namespace StoryTimelineMk2.Forms
             Load += AddEditItem_Load;
         }
 
+        public override void PropagateTopMost(bool topmost)
+        {
+            base.PropagateTopMost(topmost);
+            _messageRouter?.SendToVue("TopMostChanged", new { isTopmost = topmost });
+        }
+
         async private void AddEditItem_Load(object? sender, EventArgs e)
         {
             // async void: unhandled exceptions here crash the app. Catch, log, show, close.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 
 withDefaults(defineProps<{
@@ -11,15 +11,31 @@ withDefaults(defineProps<{
 })
 
 const isMaximized = ref(false)
+const isTopmost   = ref(false)
+
+function onTopMostPush(e: MessageEvent) {
+    if (e.data?.action === 'TopMostChanged' && typeof e.data.payload?.isTopmost === 'boolean')
+        isTopmost.value = e.data.payload.isTopmost
+}
 
 onMounted(async () => {
     const result = await BackendAPI.WindowGetMaximized()
     if (result) isMaximized.value = result.isMaximized
+
+    const topResult = await BackendAPI.WindowGetTopMost()
+    if (topResult) isTopmost.value = topResult.isTopmost
+
+    window.chrome?.webview?.addEventListener('message', onTopMostPush)
+})
+
+onUnmounted(() => {
+    window.chrome?.webview?.removeEventListener('message', onTopMostPush)
 })
 
 function minimize()       { BackendAPI.WindowMinimize() }
 function toggleMaximize() { cancelDrag(); isMaximized.value = !isMaximized.value; BackendAPI.WindowMaximizeRestore() }
 function close()          { BackendAPI.WindowClose() }
+function toggleTopmost()  { isTopmost.value = !isTopmost.value; BackendAPI.WindowSetTopMost(isTopmost.value) }
 
 // ── Drag: only start the native move-loop after the mouse actually moves.
 // Calling SendMessage(WM_NCLBUTTONDOWN, HTCAPTION) on every mousedown enters a
@@ -71,6 +87,15 @@ function cancelDrag() {
 
         <!-- ── Window controls ─────────────────────────────────────────── -->
         <div class="title-bar__controls">
+            <button
+                class="tb-btn tb-btn--pin"
+                :class="{ 'tb-btn--pin-active': isTopmost }"
+                :title="isTopmost ? 'Unpin window (stay on top)' : 'Pin window (stay on top)'"
+                @click="toggleTopmost"
+            >
+                <i :class="isTopmost ? 'ri-pushpin-fill' : 'ri-pushpin-line'"></i>
+            </button>
+            <div class="tb-controls-sep" aria-hidden="true"></div>
             <button class="tb-btn tb-btn--min"   title="Minimize"                              @click="minimize">
                 <i class="ri-subtract-line"></i>
             </button>
@@ -253,5 +278,23 @@ function cancelDrag() {
     &--close:active {
         background: #7f1d1d;
     }
+
+    // Pin (stay on top) — amber when active so it reads as a "lock" state
+    &--pin-active {
+        color: #f59e0b;
+        &:hover {
+            color: #fcd34d;
+            background: rgba(245, 158, 11, 0.12);
+        }
+        &:active { background: rgba(245, 158, 11, 0.06); }
+    }
+}
+
+// Thin vertical separator between the pin button and the min/max/close group
+.tb-controls-sep {
+    width: 1px;
+    margin: 8px 2px;
+    background: rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
 }
 </style>

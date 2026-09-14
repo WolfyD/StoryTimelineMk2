@@ -150,6 +150,16 @@ namespace StoryTimelineMk2.Forms
             Bounds = Screen.FromHandle(Handle).WorkingArea;
         }
 
+        /// <summary>
+        /// Called by the parent window when its own TopMost state changes to true,
+        /// so that owned child windows can stay above the now-topmost parent.
+        /// Override in forms that host a WebView2 to also push the state to Vue.
+        /// </summary>
+        public virtual void PropagateTopMost(bool topmost)
+        {
+            this.TopMost = topmost;
+        }
+
         /// <summary>Restores the window to its pre-maximize size and position.</summary>
         public void RestoreFromMaximize()
         {
