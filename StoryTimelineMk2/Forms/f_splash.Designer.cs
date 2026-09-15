@@ -35,7 +35,7 @@
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.FromArgb(15, 23, 42);
-            ClientSize = new Size(569, 681);
+            ClientSize = new Size(500, 600);
             FormBorderStyle = FormBorderStyle.None;
             Name = "f_splash";
             StartPosition = FormStartPosition.CenterScreen;
