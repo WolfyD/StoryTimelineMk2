@@ -14,6 +14,8 @@ vi.mock('@/bridge/api', () => ({
     SearchBooks: vi.fn().mockResolvedValue([]),
     GetBookChapters: vi.fn().mockResolvedValue([]),
     WindowClose: vi.fn(),
+    WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
+    WindowGetTopMost: vi.fn().mockResolvedValue({ isTopmost: false }),
     GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
     request: vi.fn(),
     send: vi.fn(),

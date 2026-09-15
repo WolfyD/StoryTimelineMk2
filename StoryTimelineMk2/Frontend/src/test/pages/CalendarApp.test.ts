@@ -7,6 +7,8 @@ vi.mock('@/bridge/api', () => ({
         GetCalendarById: vi.fn().mockResolvedValue(null),
         SaveCalendar: vi.fn().mockResolvedValue({ status: 'ok' }),
         GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
+        WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
+        WindowGetTopMost: vi.fn().mockResolvedValue({ isTopmost: false }),
         send: vi.fn(),
         request: vi.fn(),
     },

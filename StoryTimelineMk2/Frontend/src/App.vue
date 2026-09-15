@@ -157,7 +157,7 @@
 		<div id="bottom-menu-container">
 			<div id="import-export-container">
 				<div id="db-menu-container">
-					<div @click="toggleDbMenu" :title="dbMenuOpen ? 'Close DB menu' : 'Database'">
+					<div id="db-menu-btn" @click="toggleDbMenu" :title="dbMenuOpen ? 'Close DB menu' : 'Database'">
 						<PhDatabase
 							class="button-icon"
 							:class="{ 'db-active': dbMenuOpen }"
@@ -165,22 +165,25 @@
 							color="#79876b"
 						/>
 					</div>
-					<div id="db-expand" :class="{ open: dbMenuOpen }">
+					<div id="db-menu-panel" :class="{ open: dbMenuOpen }">
 						<div v-on:click="HandleImportDatabase()" title="Import / restore database">
 							<PhTrayArrowDown class="button-icon" :size="36" color="#79876b" />
+							<span class="menu-label">Import Database</span>
 						</div>
 						<div v-on:click="HandleExportDatabase()" title="Export full database">
 							<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
+							<span class="menu-label">Export Database</span>
 						</div>
 						<div v-on:click="HandleImportTimeline()" title="Import timeline (.stlm)">
 							<PhFileArrowDown class="button-icon" :size="36" color="#79876b" />
+							<span class="menu-label">Import Timeline</span>
 						</div>
 					</div>
 				</div>
 				<div @click="showCalendarManager = true" title="Manage Calendars">
 					<PhCalendarBlank class="button-icon" :size="36" color="#79876b" />
 				</div>
-				<div @click="showAppSettings = true" title="App Settings">
+				<div id="app-settings-btn" @click="showAppSettings = true" title="App Settings">
 					<PhGear class="button-icon" :size="36" color="#79876b" />
 				</div>
 			</div>
@@ -233,6 +236,7 @@
 		@close="timelineImportPreview = null"
 		@confirm="executeTimelineImport"
 	/>
+	<div id="db-menu-backdrop" v-if="dbMenuOpen" @click="dbMenuOpen = false"></div>
 	</div>
 </template>
 
@@ -268,17 +272,23 @@
 	#db-menu-container {
 		display: flex;
 		align-items: center;
+		position: relative;
+		z-index: 11;
 	}
 
-	#db-expand {
+	#db-menu-panel {
 		display: flex;
 		gap: 12px;
-		width: 0;
+		max-width: 0;
 		overflow: hidden;
-		transition: width 0.35s cubic-bezier(0.25, 1, 0.5, 1), margin-left 0.35s ease;
+		transition: max-width 0.35s cubic-bezier(0.25, 1, 0.5, 1), margin-left 0.35s ease;
 		margin-left: 0;
 
 		> div {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 2px;
 			opacity: 0;
 			transform: translateX(-6px);
 			transition: opacity 0.2s ease, transform 0.2s ease;
@@ -286,8 +296,8 @@
 		}
 	}
 
-	#db-expand.open {
-		width: 132px;
+	#db-menu-panel.open {
+		max-width: 400px;
 		margin-left: 12px;
 
 		> div {
@@ -296,6 +306,21 @@
 			pointer-events: auto;
 			transition-delay: 0.15s;
 		}
+	}
+
+	.menu-label {
+		font-size: 9px;
+		color: #79876b;
+		white-space: nowrap;
+		user-select: none;
+	}
+
+	#db-menu-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 10;
+		background: transparent;
+		cursor: default;
 	}
 
 	.db-active {

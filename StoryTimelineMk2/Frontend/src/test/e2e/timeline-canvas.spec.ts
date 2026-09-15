@@ -95,13 +95,13 @@ test.describe('Timeline canvas page', () => {
 })
 
 test.describe('Timeline canvas page — missing id', () => {
-  test('without ?id param, error message is shown', async ({ page }) => {
+  test('without ?id param, loading state is shown while waiting for host', async ({ page }) => {
     await injectBridgeMock(page)
     await page.goto('/timeline.html')
 
-    // TimelineApp shows the critical error <h2> when loadError is true
+    // No ?id in URL → waitingForId = true → spinner + loading h2
     await expect(
-      page.locator('h2', { hasText: 'Critical Error' }),
+      page.locator('h2').filter({ hasText: 'Loading Timeline Data' }),
     ).toBeVisible({ timeout: 5000 })
   })
 })

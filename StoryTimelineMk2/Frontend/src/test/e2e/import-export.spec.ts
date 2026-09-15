@@ -101,11 +101,14 @@ test.describe('DB import flow', () => {
   test('conflict scenario shows warning in DbImportModal', async ({ page }) => {
     await injectBridgeMock(page, {
       BrowseAndPreviewImport: {
-        sourcePath: 'C:/test/export.sqlite',
-        isV2: true,
-        timelineCount: 1,
-        itemCount: 20,
-        conflictingTimelines: ['Existing Story'],
+        status: 'ok',
+        preview: {
+          sourcePath: 'C:/test/export.sqlite',
+          isV2: true,
+          timelineCount: 1,
+          itemCount: 20,
+          conflictingTimelines: ['Existing Story'],
+        },
       },
     })
     await page.goto('/')
@@ -187,15 +190,18 @@ test.describe('Timeline import flow', () => {
   test('confirming ImportTimeline with no conflict uses btn-primary', async ({ page }) => {
     await injectBridgeMock(page, {
       BrowseAndPreviewTimelineImport: {
-        sourcePath: 'C:/test/timeline.zip',
-        timelineTitle: 'Fresh Import',
-        includeIds: false,
-        hasMedia: false,
-        itemCount: 10,
-        mediaCount: 0,
-        hasConflict: false,
-        conflictingTimelineTitle: null,
-        timelineId: null,
+        status: 'ok',
+        preview: {
+          sourcePath: 'C:/test/timeline.zip',
+          timelineTitle: 'Fresh Import',
+          includeIds: false,
+          hasMedia: false,
+          itemCount: 10,
+          mediaCount: 0,
+          hasConflict: false,
+          conflictingTimelineTitle: null,
+          timelineId: null,
+        },
       },
     })
     await page.goto('/')
@@ -212,15 +218,18 @@ test.describe('Timeline import flow', () => {
   test('conflict scenario shows btn-danger "Replace & Import"', async ({ page }) => {
     await injectBridgeMock(page, {
       BrowseAndPreviewTimelineImport: {
-        sourcePath: 'C:/test/timeline.zip',
-        timelineTitle: 'Conflict Import',
-        includeIds: true,
-        hasMedia: false,
-        itemCount: 8,
-        mediaCount: 0,
-        hasConflict: true,
-        conflictingTimelineTitle: 'My Existing Story',
-        timelineId: 5,
+        status: 'ok',
+        preview: {
+          sourcePath: 'C:/test/timeline.zip',
+          timelineTitle: 'Conflict Import',
+          includeIds: true,
+          hasMedia: false,
+          itemCount: 8,
+          mediaCount: 0,
+          hasConflict: true,
+          conflictingTimelineTitle: 'My Existing Story',
+          timelineId: 5,
+        },
       },
     })
     await page.goto('/')
@@ -232,5 +241,75 @@ test.describe('Timeline import flow', () => {
     await expect(page.locator('.conflict-block')).toBeVisible()
     await expect(page.locator('.conflict-block')).toContainText('My Existing Story')
     await expect(page.locator('.btn-danger')).toContainText('Replace & Import')
+  })
+})
+
+test.describe('DB import — post-import behaviour', () => {
+  test('import success calls GetAllTimelines to refresh the project list', async ({ page }) => {
+    const actions: string[] = []
+    await injectBridgeMock(page, { ExecuteImportDB: { status: 'ok' } })
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    await page.exposeFunction('_captureAction', (action: string) => { actions.push(action) })
+    await page.evaluate(() => {
+      const orig = window.chrome.webview.postMessage.bind(window.chrome.webview)
+      window.chrome.webview.postMessage = (msg: unknown) => {
+        const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg
+        if (parsed?.action)
+          ;(window as unknown as { _captureAction: (a: string) => void })._captureAction(parsed.action)
+        orig(msg)
+      }
+    })
+
+    await page.locator('#db-menu-btn').click()
+    await page.getByText('Import Database').click()
+    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await page.locator('.btn-danger').click()
+    await page.waitForTimeout(500)
+
+    const importIdx = actions.lastIndexOf('ExecuteImportDB')
+    expect(importIdx).toBeGreaterThanOrEqual(0)
+    // GetAllTimelines must fire after the import to refresh the project list
+    const refreshIdx = actions.indexOf('GetAllTimelines', importIdx + 1)
+    expect(refreshIdx).toBeGreaterThan(importIdx)
+  })
+
+  test('import failure shows an alert with the error message', async ({ page }) => {
+    await injectBridgeMock(page, {
+      ExecuteImportDB: { status: 'error', message: 'Database file is corrupted' },
+    })
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    let alertText = ''
+    page.on('dialog', async dialog => {
+      alertText = dialog.message()
+      await dialog.dismiss()
+    })
+
+    await page.locator('#db-menu-btn').click()
+    await page.getByText('Import Database').click()
+    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await page.locator('.btn-danger').click()
+    await page.waitForTimeout(500)
+
+    expect(alertText).toContain('Database import failed')
+    expect(alertText).toContain('Database file is corrupted')
+  })
+
+  test('import success closes the modal and shows the project list', async ({ page }) => {
+    await injectBridgeMock(page, { ExecuteImportDB: { status: 'ok' } })
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+
+    await page.locator('#db-menu-btn').click()
+    await page.getByText('Import Database').click()
+    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await page.locator('.btn-danger').click()
+
+    await expect(page.locator('.modal-title')).not.toBeVisible({ timeout: 3000 })
+    // Project list is restored after the refresh
+    await expect(page.locator('.project-timeline-row')).toBeVisible({ timeout: 3000 })
   })
 })

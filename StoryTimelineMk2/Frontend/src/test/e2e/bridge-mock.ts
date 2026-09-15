@@ -425,32 +425,38 @@ export async function injectBridgeMock(page: Page, overrides: Record<string, unk
 
       // Import / export / backup actions
       BrowseAndPreviewImport: {
-        sourcePath: 'C:/test/export.sqlite',
-        isV2: true,
-        timelineCount: 1,
-        itemCount: 42,
-        conflictingTimelines: [],
+        status: 'ok',
+        preview: {
+          sourcePath: 'C:/test/export.sqlite',
+          isV2: true,
+          timelineCount: 1,
+          itemCount: 42,
+          conflictingTimelines: [],
+        },
       },
       ExecuteImportDB: { status: 'ok' },
       ExportFullDB: { status: 'ok', path: 'C:/test/export.sqlite' },
       GetBackupSettings: {
         interval: 'weekly',
-        maxBackups: 5,
-        includeMedia: false,
+        lastAutoBackupAt: null,
+        backupsFolder: 'C:/test/backups',
         recentBackups: [],
       },
       SaveBackupSettings: { status: 'ok' },
       OpenBackupsFolder: { status: 'ok' },
       BrowseAndPreviewTimelineImport: {
-        sourcePath: 'C:/test/timeline.zip',
-        timelineTitle: 'Test Timeline',
-        includeIds: false,
-        hasMedia: false,
-        itemCount: 15,
-        mediaCount: 0,
-        hasConflict: false,
-        conflictingTimelineTitle: null,
-        timelineId: null,
+        status: 'ok',
+        preview: {
+          sourcePath: 'C:/test/timeline.zip',
+          timelineTitle: 'Test Timeline',
+          includeIds: false,
+          hasMedia: false,
+          itemCount: 15,
+          mediaCount: 0,
+          hasConflict: false,
+          conflictingTimelineTitle: null,
+          timelineId: null,
+        },
       },
       ImportTimeline: { status: 'ok' },
 
@@ -525,5 +531,6 @@ export async function injectBridgeMock(page: Page, overrides: Record<string, unk
     // ------------------------------------------------------------------ //
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(window as any).chrome = { webview: mockWebview }
-  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }, overrides as any)
 }
