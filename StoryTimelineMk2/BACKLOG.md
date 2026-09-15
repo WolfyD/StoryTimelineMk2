@@ -281,25 +281,15 @@ A visual network graph showing characters and their relationships (family, rival
 
 ## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
 
-**Status:** Pending. Documented during the 2026-09-11 full-codebase audit. Each item was left
-unfixed because it needs a design decision or is a larger refactor — the quick wins were already
-applied (see `CHANGES.md`). Finding IDs reference `AUDIT_FINDINGS.md`, which has full detail,
-file:line references, and suggested fixes for every item below.
+**Status:** Partially resolved. Several items fixed since the audit. Remaining items noted below.
 
-### Data integrity (decide semantics before touching)
+### Data integrity — RESOLVED
 
-- **V2 backup import silently drops entire tables** (DB-C2): notes, LOD profiles, layout
-  presets, hidden ranges, and filter rules/presets are never copied on restore. Also a custom
-  calendar referencing a custom LOD profile FK-fails and rolls back the whole import. Needs a
-  decision on copy order + which tables restore.
-- **V1 import writes character↔event links into a dead table** (DB-H1): rows go to
-  `item_characters`, but the app only reads `item_character_appearances` — v1 links are
-  invisible after import.
-- **`SetDataRoot` can silently create a fresh empty DB** (L5): pointing at an empty folder makes
-  timelines "vanish" from the user's perspective. Needs an explicit "point at existing" vs
-  "move data" distinction in the UI.
+- ~~**V2 backup import silently drops entire tables** (DB-C2)~~ — **Fixed.** `DatabaseImporter.ImportV2Backup` now restores lod_profiles, layout_settings, filter_presets, notes, timeline_hidden_ranges, and timeline_filter_rules. Copy order correct.
+- ~~**V1 import writes character↔event links into a dead table** (DB-H1)~~ — **Fixed.** V1 import now maps `item_characters` → `item_character_appearances` correctly.
+- ~~**`SetDataRoot` can silently create a fresh empty DB** (L5)~~ — **Mitigated.** `AppSettingsModal.vue` shows a warning before the action ("Use this folder will load whatever data already exists there") and informs the user after if `isNewDb` is true. Not a blocking issue.
 
-### Bridge / architecture (second half of the error-path fix)
+### Bridge / architecture (still pending)
 
 - **`request()` still resolves `null` instead of rejecting** (FC-C1/C2): a 30s timeout was added,
   but the full fix is status-discriminated response types (`{status:'ok'|'error'}` unions in
@@ -309,24 +299,19 @@ file:line references, and suggested fixes for every item below.
   move freezes the window. Wants `Task.Run` + marshalled replies for the heavy handlers.
 - **`ShowDialog` inside WebMessageReceived** (H2): nested COM message loop — the exact E_ABORT
   hazard a code comment warns about; four handlers do it.
-- **`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5): torn copies possible; WAL
-  sidecars ignored. Use the SQLite backup API or `VACUUM INTO`.
+- ~~**`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5)~~ — **Partially fixed.** `CreateBackup` uses `VACUUM INTO` (safe). `MoveDataFolder` still uses `File.Copy` on a live DB — low risk in practice but not atomic.
 - **`GetTimelineStories` name is misleading** (CT-M1): stories are not timeline-scoped — they
   can appear in multiple timelines, so returning all stories is correct behaviour. Rename
   the action to `GetAllStories` for clarity.
 
-### Dead weight (delete or finish)
+### Dead weight — RESOLVED
 
-- **`SettingsApp.vue` is broken boilerplate** (PG-C2): mounted as a live entry point
-  (settings.html) with required props never passed, a backend action that doesn't exist
-  (`UpdateItemTitle`), Tailwind classes this project doesn't have, and close buttons that can't
-  close. Delete it + `settings.ts` + the vite entry, or build the real page.
-- **Dead layout settings render in the Settings UI but are consumed nowhere** (TC-C2): the whole
-  Hover Line group, `TimelineJumpToYearAnimationLength`, `TimelineTickMarkerFontSize`,
-  `TimelineNonYearTicksSmaller`. Wire them into the canvas or remove the controls.
-- **Dead backend/schema**: `GetTimelineItems` action (no caller), `SaveItemWithTags` (unused,
-  has latent bugs), `InsertDefaultPreset`, `relationship_types` + `timeline_calendars` +
-  `item_characters` tables (DB-L1, CT-L1, DB-M2).
+- ~~**`SettingsApp.vue` is broken boilerplate** (PG-C2)~~ — **Deleted.** `SettingsApp.vue`, `settings.ts`, `settings.html` removed; vite entry removed.
+- ~~**Dead layout settings render in the Settings UI but are consumed nowhere** (TC-C2)~~ — **Fixed.** Hover Line group, `TimelineJumpToYearAnimationLength`, `TimelineTickMarkerFontSize`, `TimelineNonYearTicksSmaller` are all wired into the canvas.
+- **Dead backend code**: `SaveItemWithTags` in `Database/ItemRepo.cs` — unused, no bridge caller, has latent bugs. `GetTimelineItems` and `InsertDefaultPreset` already removed.
+  Note: `relationship_types`, `timeline_calendars`, and `item_characters` are reserved schema
+  for future modules (BL-17 character relations, multi-calendar support, character event links)
+  — not dead, do not remove.
 
 ### Custom-calendar correctness (core-feature gaps)
 
@@ -552,7 +537,7 @@ calendar isn't recomputing every wheel event during fast scroll.
 
 ## [BL-29] Toolstrip year-calendar window
 
-**Status:** Partially done. Steps 3 and 4 complete. Step 3 (gallery panel calendar tab): `CalendarPanel.vue` added as a third tab in `TimelineGalleryPanel.vue` with LOD-aware calendar context. Step 4 (floating year calendar window): `f_YearCalendar.cs` borderless WinForms form added with `yearCalendar.html` / `YearCalendarApp.vue` entry point; `PhCalendarDots` toggle button added to `TimelineActivityStrip`; `OpenYearCalendarWindow` / `GetItemsForYear` / `SetCalendarYear` bridge actions added; `CalendarMonthGrid` extended with `itemDots` prop for timeline-item highlighting; `ItemRepo.GetItemsByYear` added; year-calendar window position persisted in settings table. Step 5 (CC-1/CC-2 fixes) remains.
+**Status:** Done. Step 3 (gallery panel calendar tab): `CalendarPanel.vue` added as a third tab in `TimelineGalleryPanel.vue` with LOD-aware calendar context. Step 4 (floating year calendar window): `f_YearCalendar.cs` borderless WinForms form added with `yearCalendar.html` / `YearCalendarApp.vue` entry point; `PhCalendarDots` toggle button added to `TimelineActivityStrip`; `OpenYearCalendarWindow` / `GetItemsForYear` / `SetCalendarYear` bridge actions added; `CalendarMonthGrid` extended with `itemDots` prop for timeline-item highlighting; `ItemRepo.GetItemsByYear` added; year-calendar window position persisted in settings table. The previously-listed "Step 5 (CC-1/CC-2)" items are bridge error-path issues tracked under BL-18, not year-calendar specific.
 
 A new toggle in the left activity strip (multi-calendar / year-grid icon — Phosphor, as it
 represents a section/feature). Clicking it opens a dedicated side window (`f_YearCalendar.cs`,
@@ -720,7 +705,7 @@ anchor date picker, colour. The anchor date picker reuses `LodDateInput` at DAY 
 
 ## [BL-32] Minimised timeline mode — data-first layout
 
-**Status:** Pending.
+**Status:** Done. Toggle button in `TimelineActivityStrip.vue`, `isMinimised` ref in `TimelineApp.vue` gates the splitpanes layout, `miniMode` prop wired into `TimelineCanvas.vue` with dedicated mini layer (pin-head stems), `SaveTimelineMinimised` bridge action persists state via `SettingsRepo`, `timeline_minimised` DB column in `settings` table.
 
 A collapse/minimise button on the timeline strip. When activated, the timeline shrinks to a
 fixed 100 px rail at the bottom of the workspace and the data panel expands to fill the freed
