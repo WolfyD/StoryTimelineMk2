@@ -48,8 +48,7 @@
     <ItemGroup>
       <FrontendDistFiles Include="$(MSBuildProjectDirectory)\Frontend\dist\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(FrontendDistFiles)"
-          DestinationFiles="@(FrontendDistFiles->'$(PublishDir)Frontend\dist\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(FrontendDistFiles)" DestinationFiles="@(FrontendDistFiles->'$(PublishDir)Frontend\dist\%(RecursiveDir)%(Filename)%(Extension)')" />
     <Message Text="[PublishFrontend] Copied dist → $(PublishDir)Frontend\dist\" Importance="high" />
   </Target>
 
@@ -62,6 +61,21 @@
     <Compile Remove="StoryTimelineMk2.Tests\**" />
     <EmbeddedResource Remove="StoryTimelineMk2.Tests\**" />
     <None Remove="StoryTimelineMk2.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>
