@@ -2,6 +2,7 @@
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 namespace StoryTimelineMk2.Database
@@ -28,68 +29,6 @@ namespace StoryTimelineMk2.Database
             using var db = new SqliteConnection(_connString);
             string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND year = @Year AND type_id != 7 ORDER BY absolute_start, item_index";
             return db.Query<TimelineItem>(sql, new { TimelineId = timelineId, Year = year });
-        }
-
-        public void SaveItemWithTags(TimelineItem item, List<int> tagIds)
-        {
-            using var db = new SqliteConnection(_connString);
-            db.Open();
-            using var tx = db.BeginTransaction();
-
-            try
-            {
-                // 1. Save or Update the Item
-                string sql = @"
-                    INSERT INTO items (
-                        id, title, description, content, story_id, type_id,
-                        year, end_year,
-                        book_title, chapter, page, color, creation_granularity,
-                        timeline_id, item_index, show_in_notes, importance
-                    )
-                    VALUES (
-                        @Id, @Title, @Description, @Content, @StoryId, @TypeId,
-                        @Year, @EndYear,
-                        @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
-                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance
-                    )
-                    ON CONFLICT(id) DO UPDATE SET
-                        title = excluded.title,
-                        description = excluded.description,
-                        content = excluded.content,
-                        story_id = excluded.story_id,
-                        type_id = excluded.type_id,
-                        year = excluded.year,
-                        end_year = excluded.end_year,
-                        book_title = excluded.book_title,
-                        chapter = excluded.chapter,
-                        page = excluded.page,
-                        color = excluded.color,
-                        item_index = excluded.item_index,
-                        show_in_notes = excluded.show_in_notes,
-                        importance = excluded.importance,
-                        updated_at = CURRENT_TIMESTAMP;";
-
-                db.Execute(sql, item, tx);
-
-                // 2. Refresh Tags (Clear old, insert new)
-                db.Execute("DELETE FROM item_tags WHERE item_id = @Id", new { item.Id }, tx);
-
-                if (tagIds != null)
-                {
-                    foreach (var tagId in tagIds)
-                    {
-                        db.Execute("INSERT INTO item_tags (item_id, tag_id) VALUES (@ItemId, @TagId)",
-                            new { ItemId = item.Id, TagId = tagId }, tx);
-                    }
-                }
-
-                tx.Commit();
-            }
-            catch
-            {
-                tx.Rollback();
-                throw;
-            }
         }
 
         public TimelineItem GetItemById(string id)
@@ -297,6 +236,63 @@ namespace StoryTimelineMk2.Database
                 FROM item_pictures ip
                 INNER JOIN items i ON i.id = ip.item_id
                 WHERE i.timeline_id = @TimelineId", new { TimelineId = timelineId });
+        }
+
+        public void VacuumInto(string destPath)
+        {
+            if (File.Exists(destPath))
+                File.Delete(destPath);
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            // VACUUM INTO does not reliably support parameter binding; escape manually
+            var safeDest = destPath.Replace("'", "''");
+            db.Execute($"VACUUM INTO '{safeDest}'");
+        }
+
+        public class ItemSaveLinks
+        {
+            public List<ItemTagLink> Tags { get; set; } = new();
+            public List<ItemCharacterLink> Characters { get; set; } = new();
+            public List<ItemStoryRefLink> StoryRefs { get; set; } = new();
+            public bool HasPicture { get; set; }
+        }
+
+        public ItemSaveLinks GetItemLinksById(string itemId)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+
+            var tags = db.Query<ItemTagLink>(@"
+                SELECT it.item_id AS ItemId, t.id AS TagId, t.name AS TagName
+                FROM item_tags it
+                INNER JOIN tags t ON t.id = it.tag_id
+                WHERE it.item_id = @ItemId
+                ORDER BY t.name", new { ItemId = itemId });
+
+            var characters = db.Query<ItemCharacterLink>(@"
+                SELECT ica.item_id AS ItemId, ica.character_id AS CharacterId,
+                       c.name AS CharacterName, c.color AS CharacterColor
+                FROM item_character_appearances ica
+                INNER JOIN characters c ON c.id = ica.character_id
+                WHERE ica.item_id = @ItemId", new { ItemId = itemId });
+
+            var storyRefs = db.Query<ItemStoryRefLink>(@"
+                SELECT isr.item_id AS ItemId, isr.story_id AS StoryId, s.title AS StoryTitle
+                FROM item_story_refs isr
+                INNER JOIN stories s ON s.id = isr.story_id
+                WHERE isr.item_id = @ItemId", new { ItemId = itemId });
+
+            var hasPicture = db.ExecuteScalar<int>(
+                "SELECT COUNT(1) FROM item_pictures WHERE item_id = @ItemId",
+                new { ItemId = itemId }) > 0;
+
+            return new ItemSaveLinks
+            {
+                Tags = tags.ToList(),
+                Characters = characters.ToList(),
+                StoryRefs = storyRefs.ToList(),
+                HasPicture = hasPicture,
+            };
         }
 
         public void DeleteItem(string id)

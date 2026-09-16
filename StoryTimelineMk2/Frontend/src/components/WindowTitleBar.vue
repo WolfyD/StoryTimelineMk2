@@ -122,7 +122,7 @@ function cancelDrag() {
 // ── Title bar shell ────────────────────────────────────────────────────────────
 //
 // Design intent: the title bar is the darkest layer — it "caps" the window
-// like a roof, framing the activity strip (#182236) and content (#0f172a) below.
+// like a roof, framing the activity strip (#182236) and content (var(--app-bg, #0f172a)) below.
 // The indigo bottom glow ties it to the same accent system the activity strip uses.
 
 .title-bar {
@@ -136,7 +136,7 @@ function cancelDrag() {
     z-index: 2;             // shadow renders above the content below
     overflow: hidden;       // clip any overflowing content at our boundary
 
-    // Darkest layer: top #060c19, blends toward content (#0a1424 ≈ halfway to #0f172a)
+    // Darkest layer: top #060c19, blends toward content (#0a1424 ≈ halfway to var(--app-bg, #0f172a))
     background: linear-gradient(180deg, var(--tb-bg-from, #060c19) 0%, var(--tb-bg-to, #0a1424) 100%);
 
     border-bottom: 1px solid var(--tb-border-color, rgba(79, 70, 229, 0.18));
@@ -168,8 +168,8 @@ function cancelDrag() {
 
 // ── Brand orb ──────────────────────────────────────────────────────────────────
 //
-// Matches the indigo accent system from the activity strip (active icon #818cf8,
-// active border #6366f1). A slow breath animation makes the window feel alive
+// Matches the indigo accent system from the activity strip (active icon var(--app-accent-hover, #818cf8),
+// active border var(--app-accent, #6366f1)). A slow breath animation makes the window feel alive
 // without being distracting.
 
 .title-bar__orb {
@@ -211,7 +211,7 @@ function cancelDrag() {
 .title-bar__name {
     font-size: 12px;
     font-weight: 500;
-    // Cooler-tinted slate — slightly more blue than the neutral #94a3b8 so it
+    // Cooler-tinted slate — slightly more blue than the neutral var(--app-text-muted, #94a3b8) so it
     // harmonises with the indigo accent and the dark navy background.
     color: var(--tb-text, #8ea5c0);
     letter-spacing: 0.04em;

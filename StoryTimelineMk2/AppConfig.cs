@@ -26,8 +26,10 @@ namespace StoryTimelineMk2
         [JsonPropertyName("appText")]          public string AppText          { get; set; } = "#e2e8f0";
         [JsonPropertyName("appTextMuted")]     public string AppTextMuted     { get; set; } = "#94a3b8";
         [JsonPropertyName("appTextDim")]       public string AppTextDim       { get; set; } = "#4a6080";
-        [JsonPropertyName("appAccent")]        public string AppAccent        { get; set; } = "#6366f1";
-        [JsonPropertyName("appAccentHover")]   public string AppAccentHover   { get; set; } = "#818cf8";
+        [JsonPropertyName("appAccent")]          public string AppAccent          { get; set; } = "#6366f1";
+        [JsonPropertyName("appAccentHover")]     public string AppAccentHover     { get; set; } = "#818cf8";
+        [JsonPropertyName("appSaveAccent")]      public string AppSaveAccent      { get; set; } = "#446b40";
+        [JsonPropertyName("appSaveAccentHover")] public string AppSaveAccentHover { get; set; } = "#52804c";
 
         // ── Sizes ────────────────────────────────────────────────────────────
         [JsonPropertyName("appRadius")]   public string AppRadius   { get; set; } = "8px";

@@ -1,6 +1,7 @@
 import type { ChromeTheme } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
 import { onMounted } from 'vue'
+import { invalidateCanvasThemeCache } from './canvasTheme'
 
 export const DARK_PRESET: ChromeTheme = {
     tbBgFrom:        '#060c19',
@@ -23,6 +24,8 @@ export const DARK_PRESET: ChromeTheme = {
     appTextDim:       '#4a6080',
     appAccent:        '#6366f1',
     appAccentHover:   '#818cf8',
+    appSaveAccent:    '#446b40',
+    appSaveAccentHover: '#52804c',
     appRadius:   '8px',
     appRadiusSm: '4px',
     appRadiusLg: '12px',
@@ -49,12 +52,15 @@ export const LIGHT_PRESET: ChromeTheme = {
     appTextDim:       '#8b7ab8',
     appAccent:        '#6366f1',
     appAccentHover:   '#4f46e5',
+    appSaveAccent:    '#3a7a36',
+    appSaveAccentHover: '#4a9445',
     appRadius:   '8px',
     appRadiusSm: '4px',
     appRadiusLg: '12px',
 }
 
 export function applyAppTheme(theme: ChromeTheme) {
+    invalidateCanvasThemeCache()
     const r = document.documentElement
     r.style.setProperty('--tb-bg-from',         theme.tbBgFrom)
     r.style.setProperty('--tb-bg-to',           theme.tbBgTo)
@@ -74,9 +80,11 @@ export function applyAppTheme(theme: ChromeTheme) {
     r.style.setProperty('--app-text',           theme.appText)
     r.style.setProperty('--app-text-muted',     theme.appTextMuted)
     r.style.setProperty('--app-text-dim',       theme.appTextDim)
-    r.style.setProperty('--app-accent',         theme.appAccent)
-    r.style.setProperty('--app-accent-hover',   theme.appAccentHover)
-    r.style.setProperty('--app-radius',         theme.appRadius)
+    r.style.setProperty('--app-accent',            theme.appAccent)
+    r.style.setProperty('--app-accent-hover',      theme.appAccentHover)
+    r.style.setProperty('--app-save-accent',       theme.appSaveAccent)
+    r.style.setProperty('--app-save-accent-hover', theme.appSaveAccentHover)
+    r.style.setProperty('--app-radius',            theme.appRadius)
     r.style.setProperty('--app-radius-sm',      theme.appRadiusSm)
     r.style.setProperty('--app-radius-lg',      theme.appRadiusLg)
 }

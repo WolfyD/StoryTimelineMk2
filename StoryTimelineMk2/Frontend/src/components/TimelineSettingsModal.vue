@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { PhX, PhPlus } from '@phosphor-icons/vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
+import { PhPlus } from '@phosphor-icons/vue'
 import type { TimelineSettings, LayoutSettings } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import FontPicker from './FontPicker.vue'
+import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{
     settings?: TimelineSettings
@@ -280,16 +281,7 @@ onMounted(async () => {
     ])
     if (presets) layoutPresets.value = presets
     if (fonts) systemFonts.value = fonts
-    window.addEventListener('keydown', onEscKey)
 })
-
-onBeforeUnmount(() => {
-    window.removeEventListener('keydown', onEscKey)
-})
-
-function onEscKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') emit('close')
-}
 
 watch(() => local.selectedLayoutId, async (newId) => {
     const ls = await BackendAPI.GetLayoutSettingsById(newId)
@@ -352,14 +344,7 @@ async function save() {
 </script>
 
 <template>
-    <div class="modal-backdrop" @click.self="emit('close')">
-        <div class="modal-panel">
-
-            <div class="modal-header">
-                <span class="modal-title">Settings</span>
-                <button class="close-btn" @click="emit('close')"><PhX :size="18" /></button>
-            </div>
-
+    <BaseModal title="Settings" width="min(560px, 92vw)" max-height="82vh" @close="emit('close')">
             <div class="search-bar">
                 <input
                     class="search-input"
@@ -918,95 +903,36 @@ async function save() {
 
             </div>
 
-            <div class="modal-footer">
-                <button class="btn btn-cancel" @click="emit('close')">Cancel</button>
-                <button class="btn btn-save" :disabled="isSaving" @click="save">
-                    {{ isSaving ? 'Saving…' : 'Save Changes' }}
-                </button>
-            </div>
-
-        </div>
-    </div>
+        <template #footer>
+            <button class="btn btn-cancel" @click="emit('close')">Cancel</button>
+            <button class="btn btn-save" :disabled="isSaving" @click="save">
+                {{ isSaving ? 'Saving…' : 'Save Changes' }}
+            </button>
+        </template>
+    </BaseModal>
 </template>
 
 <style scoped lang="scss">
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: #00000088;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.modal-panel {
-    display: flex;
-    flex-direction: column;
-    background: #141e33;
-    border: 1px solid #2d3a56;
-    border-radius: 8px;
-    width: min(560px, 92vw);
-    max-height: 82vh;
-    box-shadow: 0 24px 48px #00000066;
-    overflow: hidden;
-}
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 20px;
-    background: #1e2b44;
-    border-bottom: 1px solid #2d3a56;
-    flex-shrink: 0;
-}
-
-.modal-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: #e2e8f0;
-    letter-spacing: 0.02em;
-}
-
-.close-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    color: #64748b;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    transition: color 0.15s, background 0.15s;
-
-    &:hover {
-        color: #e2e8f0;
-        background: #ffffff12;
-    }
-}
-
 .search-bar {
     padding: 8px 20px;
     background: #1a2438;
-    border-bottom: 1px solid #2d3a56;
+    border-bottom: 1px solid var(--app-border, #2d3a56);
     flex-shrink: 0;
 }
 
 .search-input {
     width: 100%;
     box-sizing: border-box;
-    background: #0c1524;
-    border: 1px solid #2d3a56;
+    background: var(--app-surface, #0c1524);
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--app-text, #e2e8f0);
     font-size: 13px;
     padding: 5px 10px;
     outline: none;
     transition: border-color 0.15s;
 
-    &:focus { border-color: #3b6ec4; }
+    &:focus { border-color: var(--app-accent, #3b6ec4); }
     &::placeholder { color: #4a5568; }
 }
 
@@ -1017,7 +943,7 @@ async function save() {
 
     &::-webkit-scrollbar { width: 6px; }
     &::-webkit-scrollbar-track { background: transparent; }
-    &::-webkit-scrollbar-thumb { background: #2d3a56; border-radius: 3px; }
+    &::-webkit-scrollbar-thumb { background: var(--app-border, #2d3a56); border-radius: 3px; }
 }
 
 .section-title {
@@ -1029,13 +955,13 @@ async function save() {
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
 
     &::after {
         content: '';
         flex: 1;
         height: 1px;
-        background: #1e2b44;
+        background: var(--app-surface-high, #1e2b44);
     }
 
     &:first-child {
@@ -1064,16 +990,16 @@ async function save() {
 
 .s-label {
     font-size: 13px;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     padding: 5px 12px 5px 0;
     line-height: 1.4;
 }
 
 .s-input {
-    background: #0c1524;
-    border: 1px solid #2d3a56;
+    background: var(--app-surface, #0c1524);
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--app-text, #e2e8f0);
     font-size: 13px;
     padding: 4px 8px;
     outline: none;
@@ -1082,7 +1008,7 @@ async function save() {
     transition: border-color 0.15s;
 
     &:focus {
-        border-color: #3b6ec4;
+        border-color: var(--app-accent, #3b6ec4);
     }
 
     &.s-input--narrow {
@@ -1097,9 +1023,9 @@ select.s-input {
 
 .s-btn {
     background: #1a2740;
-    border: 1px solid #2d3a56;
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     font-size: 12px;
     padding: 3px 10px;
     cursor: pointer;
@@ -1107,7 +1033,7 @@ select.s-input {
 
     &:hover {
         background: #233152;
-        color: #e2e8f0;
+        color: var(--app-text, #e2e8f0);
     }
 }
 
@@ -1116,7 +1042,7 @@ select.s-input {
     width: 38px;
     height: 20px;
     border-radius: 10px;
-    background: #2d3a56;
+    background: var(--app-border, #2d3a56);
     border: none;
     cursor: pointer;
     padding: 0;
@@ -1124,7 +1050,7 @@ select.s-input {
     transition: background 0.2s;
 
     &.is-on {
-        background: #3b6ec4;
+        background: var(--app-accent, #3b6ec4);
     }
 
     .toggle-thumb {
@@ -1153,22 +1079,22 @@ select.s-input {
 .s-color {
     width: 36px;
     height: 28px;
-    border: 1px solid #2d3a56;
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    background: #0c1524;
+    background: var(--app-surface, #0c1524);
     cursor: pointer;
     padding: 2px;
 }
 
 .color-hex {
     font-size: 12px;
-    color: #64748b;
+    color: var(--app-text-dim, #64748b);
     font-family: monospace;
 }
 
 .s-range {
     flex: 1;
-    accent-color: #3b6ec4;
+    accent-color: var(--app-accent, #3b6ec4);
     cursor: pointer;
 }
 
@@ -1187,16 +1113,16 @@ select.s-input {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
-    background: #1e2b44;
-    border: 1px solid #2d3a56;
+    background: var(--app-surface-high, #1e2b44);
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
 
     &:hover {
         background: #2a3a5a;
-        color: #e2e8f0;
+        color: var(--app-text, #e2e8f0);
     }
 
     &.icon-btn--ok {
@@ -1204,10 +1130,10 @@ select.s-input {
         padding: 0 10px;
         font-size: 12px;
         color: #86efac;
-        border-color: #446b40;
+        border-color: var(--app-save-accent, #446b40);
 
         &:hover {
-            background: #446b40;
+            background: var(--app-save-accent, #446b40);
             color: #e8f5e5;
         }
     }
@@ -1237,16 +1163,6 @@ select.s-input {
     color: #f87171;
 }
 
-.modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    padding: 12px 20px;
-    background: #1e2b44;
-    border-top: 1px solid #2d3a56;
-    flex-shrink: 0;
-}
-
 .btn {
     font-size: 13px;
     font-weight: 500;
@@ -1264,21 +1180,21 @@ select.s-input {
 
 .btn-cancel {
     background: transparent;
-    color: #94a3b8;
-    border: 1px solid #2d3a56;
+    color: var(--app-text-muted, #94a3b8);
+    border: 1px solid var(--app-border, #2d3a56);
 
     &:hover {
         background: #ffffff0e;
-        color: #e2e8f0;
+        color: var(--app-text, #e2e8f0);
     }
 }
 
 .btn-save {
-    background: #446b40;
+    background: var(--app-save-accent, #446b40);
     color: #e8f5e5;
 
     &:hover:not(:disabled) {
-        background: #52804c;
+        background: var(--app-save-accent-hover, #52804c);
     }
 }
 
@@ -1306,7 +1222,7 @@ select.s-input {
     align-items: center;
     gap: 5px;
     font-size: 13px;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     cursor: pointer;
 
     input[type="radio"] {
@@ -1317,7 +1233,7 @@ select.s-input {
 
 .tab-bar {
     display: flex;
-    border-bottom: 1px solid #2d3a56;
+    border-bottom: 1px solid var(--app-border, #2d3a56);
     flex-shrink: 0;
     background: #0f1827;
 }
@@ -1332,15 +1248,15 @@ select.s-input {
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
     cursor: pointer;
     transition: color 0.15s, border-color 0.15s;
 
-    &:hover { color: #94a3b8; }
+    &:hover { color: var(--app-text-muted, #94a3b8); }
 
     &.active {
-        color: #e2e8f0;
-        border-bottom-color: #3b6ec4;
+        color: var(--app-text, #e2e8f0);
+        border-bottom-color: var(--app-accent, #3b6ec4);
     }
 }
 </style>

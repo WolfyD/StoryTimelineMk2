@@ -203,7 +203,7 @@ onMounted(async () => {
 	// Listen for SetTimelineId — sent by C# when the window was pre-warmed
 	// (no ?id in URL, so Vue waited for this push to know which timeline to load)
 	_setIdListener = (e: MessageEvent) => {
-		const msg = JSON.parse(e.data)
+		const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
 		if (msg.action !== 'SetTimelineId') return
 		window.chrome.webview.removeEventListener('message', _setIdListener!)
 		_setIdListener = null
@@ -322,7 +322,7 @@ onBeforeUnmount(() => {
 			<TimelineCanvas
 				ref="timelineCanvasRef"
 				:timeline-items="store.filteredItems"
-				:dimmed-items="store.dimmableItems"
+				:dimmable-items="store.dimmableItems"
 				:timeline-settings="store.settings ?? null"
 				:timeline-info="store.currentProject"
 				:layout-settings="store.layoutSettings ?? null"
@@ -452,7 +452,7 @@ onBeforeUnmount(() => {
 	align-items: stretch;
 	width: 100%;
 	height: 100vh;
-	background-color: #0f172a;
+	background-color: var(--app-bg, #0f172a);
 }
 
 #timeline-layout {

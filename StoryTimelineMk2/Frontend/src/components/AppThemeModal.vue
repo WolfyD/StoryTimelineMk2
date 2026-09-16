@@ -545,7 +545,7 @@ function onColorInput(key: string, e: Event) {
     &--save {
         background: rgba(99, 102, 241, 0.15);
         border: 1px solid rgba(99, 102, 241, 0.4);
-        color: #818cf8;
+        color: var(--app-accent-hover, #818cf8);
         &:hover:not(:disabled) { background: rgba(99, 102, 241, 0.25); border-color: rgba(99, 102, 241, 0.6); color: #a5b4fc; }
     }
 }

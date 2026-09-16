@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import Konva from 'konva';
 import { useTimelineStore } from '@/stores/timelineStore';
+import { canvasColor } from '@/utils/canvasTheme';
 
 const emit = defineEmits<{ jumpToYear: [year: number] }>();
 
@@ -158,7 +159,7 @@ function renderStatic() {
             y: lineY - bh,
             width: Math.ceil(bucketW + 1), // +1 to eliminate inter-column gaps
             height: bh,
-            fill: '#94a3b8',
+            fill: canvasColor('--app-text-muted', '#94a3b8'),
             opacity: 0.3,
             listening: false,
         }));
@@ -167,7 +168,7 @@ function renderStatic() {
     // ── 3. Timeline line ───────────────────────────────────────────────────
     layer.add(new Konva.Line({
         points: [MARGIN, lineY, W - MARGIN, lineY],
-        stroke: '#64748b',
+        stroke: canvasColor('--app-text-dim', '#64748b'),
         strokeWidth: 1.5,
         listening: false,
     }));

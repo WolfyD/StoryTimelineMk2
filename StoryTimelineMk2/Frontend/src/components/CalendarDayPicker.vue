@@ -164,15 +164,15 @@ function nextMonth() { if (viewMonth.value < props.months.length - 1) viewMonth.
 .month-label {
     font-size: 0.83rem;
     font-weight: 600;
-    color: #e2e8f0;
+    color: var(--app-text, #e2e8f0);
     flex: 1;
     text-align: center;
 }
 
 .nav-btn {
     background: transparent;
-    border: 1px solid #2d3a56;
-    color: #94a3b8;
+    border: 1px solid var(--app-border, #2d3a56);
+    color: var(--app-text-muted, #94a3b8);
     border-radius: 3px;
     cursor: pointer;
     padding: 1px 8px;
@@ -181,13 +181,13 @@ function nextMonth() { if (viewMonth.value < props.months.length - 1) viewMonth.
     flex-shrink: 0;
     transition: background 0.12s, color 0.12s;
 
-    &:hover:not(:disabled) { background: #1e2b44; color: #e2e8f0; }
+    &:hover:not(:disabled) { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
     &:disabled { opacity: 0.3; cursor: not-allowed; }
 }
 
 .range-hint {
     font-size: 0.7rem;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
     text-align: center;
     margin-bottom: 4px;
     font-style: italic;
@@ -200,7 +200,7 @@ function nextMonth() { if (viewMonth.value < props.months.length - 1) viewMonth.
     th {
         font-size: 0.68rem;
         font-weight: 600;
-        color: #4a6080;
+        color: var(--app-text-dim, #4a6080);
         text-align: center;
         padding: 2px 1px 4px;
         border-bottom: 1px solid #253048;
@@ -222,12 +222,12 @@ function nextMonth() { if (viewMonth.value < props.months.length - 1) viewMonth.
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     font-size: 0.78rem;
     cursor: pointer;
     transition: background 0.1s, color 0.1s;
 
-    &:hover { background: #1e2b44; color: #e2e8f0; }
+    &:hover { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
 
     &.weekend { color: #5b8ec4; }
 
@@ -260,7 +260,7 @@ function nextMonth() { if (viewMonth.value < props.months.length - 1) viewMonth.
 
 .no-months-note {
     font-size: 0.78rem;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
     font-style: italic;
     text-align: center;
     padding: 6px;

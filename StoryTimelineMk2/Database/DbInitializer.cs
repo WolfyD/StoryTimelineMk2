@@ -474,8 +474,32 @@ namespace StoryTimelineMk2.Database
             if (!settings.Contains("year_calendar_size_x"))      db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_size_x INTEGER DEFAULT 0");
             if (!settings.Contains("year_calendar_size_y"))      db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_size_y INTEGER DEFAULT 0");
 
-            // notes — seed DB has old schema (year/subtick/content) without timeline_id
+            // notes — seed DB has old schema (id INTEGER, year/subtick/content) incompatible with UUID ids
+            // If id column is INTEGER, drop and recreate with the current TEXT-id schema
+            var notesIdType = db.QueryFirstOrDefault<string>(
+                "SELECT type FROM pragma_table_info('notes') WHERE name='id'");
+            if (string.Equals(notesIdType, "INTEGER", StringComparison.OrdinalIgnoreCase))
+            {
+                db.Execute("DROP TABLE notes");
+                db.Execute(@"
+                    CREATE TABLE notes (
+                        id TEXT PRIMARY KEY,
+                        note_contents TEXT,
+                        timeline_id INTEGER,
+                        connected_item_id INTEGER,
+                        nearest_year INTEGER,
+                        absolute_time REAL NOT NULL DEFAULT 0,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (connected_item_id) REFERENCES items(id) ON DELETE CASCADE,
+                        FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE
+                    )");
+                notes = GetColumnSet(db, "notes");
+            }
             if (!notes.Contains("timeline_id"))        db.Execute("ALTER TABLE notes ADD COLUMN timeline_id INTEGER");
+            if (!notes.Contains("note_contents"))      db.Execute("ALTER TABLE notes ADD COLUMN note_contents TEXT");
+            if (!notes.Contains("nearest_year"))       db.Execute("ALTER TABLE notes ADD COLUMN nearest_year INTEGER");
+            if (!notes.Contains("connected_item_id"))  db.Execute("ALTER TABLE notes ADD COLUMN connected_item_id INTEGER");
+            if (!notes.Contains("updated_at"))         db.Execute("ALTER TABLE notes ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP");
 
             // Backfill absolute positions for items that pre-date on-save computation.
             // Only touches rows where absolute_start IS NULL (the ALTER TABLE default);
@@ -749,6 +773,7 @@ namespace StoryTimelineMk2.Database
             AddCol(db, "layout_settings", "timeline_calendar_overlay_month_color",  "TEXT NOT NULL DEFAULT '#ffffff08'");
             AddCol(db, "layout_settings", "timeline_calendar_overlay_week_color",   "TEXT NOT NULL DEFAULT '#ffffff06'");
             AddCol(db, "layout_settings", "timeline_calendar_overlay_day_color",    "TEXT NOT NULL DEFAULT '#ffffff05'");
+            AddCol(db, "layout_settings", "timeline_data_range_width",              "INTEGER NOT NULL DEFAULT 100");
 
             // Fix dark preset data panel colors if they were created with light defaults
             db.Execute(@"

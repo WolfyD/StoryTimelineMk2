@@ -40,8 +40,7 @@ export const BackendAPI = {
 	request<T>(action: string, payload: unknown = null): Promise<T> {
 		return new Promise<T>((resolve, reject) => {
 			if (!window.chrome?.webview) {
-				console.warn(`[Bridge Offline] Cannot request ${action}`);
-				return resolve(null as T);
+				return reject(new Error(`[Bridge Offline] Cannot request '${action}': WebView2 not available`));
 			}
 			const id = ++messageCounter;
 			// Safety net: if the backend never replies (handler crash before the
@@ -433,7 +432,7 @@ if (window.chrome?.webview) {
 				store.loadTimelines();
 			} else if (data.action === 'ItemSaved') {
 				const store = useTimelineStore();
-				store.upsertItem(data.payload.Item);
+				store.upsertItem(data.payload.Item, data.payload.Tags, data.payload.Characters, data.payload.StoryRefs, data.payload.HasPicture);
 			} else if (data.action === 'AchievementUnlocked') {
 				// Lazy import to avoid circular deps at module load time
 				import('@/stores/notificationsStore').then(({ useNotificationsStore }) => {

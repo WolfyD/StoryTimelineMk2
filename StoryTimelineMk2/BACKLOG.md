@@ -82,10 +82,10 @@ The previous application version stored `Subtick` as 0–9 (exactly 10 positions
 
 Store position as direct calendar coordinates:
 
-| Field | Type | Meaning |
-|-------|------|---------|
-| `Year` | int | Calendar year (unchanged) |
-| `DayOfYear` | int | 0-indexed day within the year (0 to yearLength − 1) |
+| Field       | Type | Meaning                                              |
+|-------------|------|------------------------------------------------------|
+| `Year`      | int  | Calendar year (unchanged)                            |
+| `DayOfYear` | int  | 0-indexed day within the year (0 to yearLength - 1)  |
 
 `AbsoluteStart` becomes a computed value: `Year + DayOfYear / yearLength`.
 
@@ -281,7 +281,9 @@ A visual network graph showing characters and their relationships (family, rival
 
 ## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
 
-**Status:** Partially resolved. Several items fixed since the audit. Remaining items noted below.
+**Status:** Substantially resolved. All 10 planned items addressed. Remaining open: bridge
+error-path (timeout + discriminated types), three canvas perf issues (TC-H1/H2/H5), z-index
+scale, and icon convention sweep — these are separate efforts.
 
 ### Data integrity — RESOLVED
 
@@ -291,45 +293,35 @@ A visual network graph showing characters and their relationships (family, rival
 
 ### Bridge / architecture (still pending)
 
-- **`request()` still resolves `null` instead of rejecting** (FC-C1/C2): a 30s timeout was added,
-  but the full fix is status-discriminated response types (`{status:'ok'|'error'}` unions in
-  `models.ts`) so callers must handle failure. Five reply shapes currently contradict their TS
-  generics (CT-M2).
+- **`request()` offline path now rejects** (FC-C1 partial): the `resolve(null)` in the no-WebView2
+  branch is replaced by `reject(Error)`. The deeper fix (status-discriminated response types
+  so backend error payloads also reject) is still pending — callers must still manually check
+  `?.status === 'error'` for production error responses.
 - **All handlers run synchronously on the UI thread** (H1): a big timeline load or media-folder
   move freezes the window. Wants `Task.Run` + marshalled replies for the heavy handlers.
-- **`ShowDialog` inside WebMessageReceived** (H2): nested COM message loop — the exact E_ABORT
-  hazard a code comment warns about; four handlers do it.
-- ~~**`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5)~~ — **Partially fixed.** `CreateBackup` uses `VACUUM INTO` (safe). `MoveDataFolder` still uses `File.Copy` on a live DB — low risk in practice but not atomic.
-- **`GetTimelineStories` name is misleading** (CT-M1): stories are not timeline-scoped — they
-  can appear in multiple timelines, so returning all stories is correct behaviour. Rename
-  the action to `GetAllStories` for clarity.
+- ~~**`ShowDialog` inside WebMessageReceived** (H2)~~ — **Fixed.** All dialog calls wrapped in `BeginInvoke`.
+- ~~**`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5)~~ — **Fixed.** `CreateBackup` uses `VACUUM INTO`; `MoveDataFolder` now uses `ItemRepo.VacuumInto()` instead of `File.Copy`.
+- ~~**`GetTimelineStories` name is misleading** (CT-M1)~~ — **Fixed.** Renamed to `GetAllStories`.
 
 ### Dead weight — RESOLVED
 
 - ~~**`SettingsApp.vue` is broken boilerplate** (PG-C2)~~ — **Deleted.** `SettingsApp.vue`, `settings.ts`, `settings.html` removed; vite entry removed.
 - ~~**Dead layout settings render in the Settings UI but are consumed nowhere** (TC-C2)~~ — **Fixed.** Hover Line group, `TimelineJumpToYearAnimationLength`, `TimelineTickMarkerFontSize`, `TimelineNonYearTicksSmaller` are all wired into the canvas.
-- **Dead backend code**: `SaveItemWithTags` in `Database/ItemRepo.cs` — unused, no bridge caller, has latent bugs. `GetTimelineItems` and `InsertDefaultPreset` already removed.
+- ~~**Dead backend code**: `SaveItemWithTags` in `Database/ItemRepo.cs`~~ — **Deleted.** Method removed entirely. `GetTimelineItems` and `InsertDefaultPreset` already removed.
   Note: `relationship_types`, `timeline_calendars`, and `item_characters` are reserved schema
   for future modules (BL-17 character relations, multi-calendar support, character event links)
   — not dead, do not remove.
 
 ### Custom-calendar correctness (core-feature gaps)
 
-- **`LodDateInput` hardcodes Gregorian month lengths** (MD-H3): day↔(month,day) conversion
-  writes wrong subticks for any non-Gregorian calendar — silent date corruption. Needs
-  `monthLengths`/season props derived from the timeline's calendar.
-- **NotesPanel distance math hardcodes Gregorian** (TC-M13/FC-H4): 12 months, 7-day weeks,
-  365 days, and the static `FormatRegistry` — distances and date labels are wrong on custom
-  calendars while the canvas is right.
+- ~~**`LodDateInput` hardcodes Gregorian month lengths** (MD-H3)~~ — **Fixed.** `MONTH_LENGTHS` and `SEASON_NAMES` constants removed. New props `monthLengths`, `seasonNames`, `weekCount` added. `EditItem.vue` now calls `parseCalendarDef(YearDefinition)` and passes all four values to both date inputs.
+- ~~**NotesPanel distance math hardcodes Gregorian** (TC-M13/FC-H4)~~ — **Fixed.** `formatSpecific` now decomposes via `store.calendarConfig.months` (actual month lengths from `startDay` differences) and `cfg.weekLength`. `formatApproximate` uses `cfg.yearLength`, `cfg.months.length`, `cfg.seasons.length`, and derived weeks-per-year. `formatPoint` now uses `store.activeFormatRegistry` instead of the static module-level `FormatRegistry`.
 
-### Store correctness
+### Store correctness — RESOLVED
 
-- **`loadFilterPreset` resurrects old rules** (FC-H1): saved rules are never deleted before the
-  preset's rules are written (upsert-only), so the next load merges old + new.
-  `FilterRuleRepo.DeleteAllForTimeline` exists but is unreachable — needs a bridge action.
-- **Concurrent `loadTimelineData` calls tear state** (FC-H2): needs a request-sequence token.
-- **Filter data maps go stale after item edits** (FC-H3): `upsertItem` doesn't update
-  tag/character/story maps — edited items filter wrongly until full reload.
+- ~~**`loadFilterPreset` resurrects old rules** (FC-H1)~~ — **Fixed.** DB writes (delete old, save new) now complete before in-memory state is updated, so a failure leaves the store consistent with what's actually in the DB.
+- ~~**Concurrent `loadTimelineData` calls tear state** (FC-H2)~~ — **Fixed.** Sequence token check added after the second `await Promise.all` (filter rules + misc settings), not just after the first bridge call.
+- ~~**Filter data maps go stale after item edits** (FC-H3)~~ — **Fixed.** `upsertItem` now accepts tag/character/story link arrays and `hasPicture` flag; `ItemSaved` push extended in `HandleSaveItem` to include `ItemRepo.GetItemLinksById()` output so all four filter maps stay current after every save.
 
 ### Performance (canvas stack)
 
@@ -342,12 +334,20 @@ A visual network graph showing characters and their relationships (family, rival
 
 ### Styling consolidation (staged plan in AUDIT_FINDINGS §8)
 
-- **No design tokens; three competing accent systems; two surface systems** (ST-H1–H4): ~230
+- ~~**No design tokens; three competing accent systems; two surface systems** (ST-H1–H4): ~230
   colour literals, 9 backdrop darknesses, a z-index ladder with real conflicts, no global
-  font-family (some windows fall back to serif). The audit includes a ready `:root` token
-  proposal and a 5-step remediation order.
-- **`BaseModal` extraction** (MD-H1/H2): ~700 lines of duplicated modal chrome across 11 modals
-  with inconsistent Escape/backdrop/z-index behaviour.
+  font-family (some windows fall back to serif).~~ **DONE** — `:root` token block in `main.scss`
+  (`--app-bg/surface/border/text/accent` family + new `--app-save-accent`, `--app-danger`);
+  `font-family: system-ui` + global scrollbar rule added; 18 component/page `<style>` sections
+  swept; `canvasTheme.ts` created so Konva reads tokens at runtime; `applyAppTheme` clears
+  canvas cache on theme change; `ChromeTheme` (TS + C#) includes save-accent. Remaining bare
+  literals are intentional: DB-stored LayoutSettings defaults (TimelineSettingsModal script),
+  canvas context-menu semantic colours (dark-canvas overlay), and data-driven item colour
+  fallbacks. z-index scale and icon convention sweep deferred — separate effort.
+- ~~**`BaseModal` extraction** (MD-H1/H2): ~700 lines of duplicated modal chrome across 11 modals
+  with inconsistent Escape/backdrop/z-index behaviour.~~ **DONE** — `BaseModal.vue` created; 12 of 13
+  modals converted (backdrop + panel + Escape key + `#header`/`#footer` slots). `TimelineItemViewModal`
+  intentionally skipped (themed viewer, incompatible design).
 - **Icon convention**: 19 of 20 modal/picker files contradict the CLAUDE.md Remix-vs-Phosphor
   rule — at this scale, decide whether to fix the components or change the convention.
 

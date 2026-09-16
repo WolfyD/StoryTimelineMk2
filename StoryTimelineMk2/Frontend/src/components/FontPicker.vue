@@ -99,10 +99,10 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .fp-input {
-    background: #0c1524;
-    border: 1px solid #2d3a56;
+    background: var(--app-surface, #0c1524);
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--app-text, #e2e8f0);
     font-size: 13px;
     padding: 4px 8px;
     outline: none;
@@ -111,7 +111,7 @@ function onKeydown(e: KeyboardEvent) {
     transition: border-color 0.15s;
 
     &:focus {
-        border-color: #3b6ec4;
+        border-color: var(--app-accent, #3b6ec4);
     }
 }
 
@@ -121,26 +121,26 @@ function onKeydown(e: KeyboardEvent) {
     left: 0;
     right: 0;
     z-index: 200;
-    background: #0c1524;
-    border: 1px solid #3b6ec4;
+    background: var(--app-surface, #0c1524);
+    border: 1px solid var(--app-accent, #3b6ec4);
     border-radius: 4px;
     max-height: 200px;
     overflow-y: auto;
     box-shadow: 0 6px 16px #00000099;
 
     &::-webkit-scrollbar { width: 4px; }
-    &::-webkit-scrollbar-thumb { background: #2d3a56; border-radius: 2px; }
+    &::-webkit-scrollbar-thumb { background: var(--app-border, #2d3a56); border-radius: 2px; }
 }
 
 .fp-option {
     padding: 5px 10px;
     font-size: 13px;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     cursor: pointer;
 
     &.is-highlighted {
-        background: #1e2b44;
-        color: #e2e8f0;
+        background: var(--app-surface-high, #1e2b44);
+        color: var(--app-text, #e2e8f0);
     }
 
     &.is-selected {
@@ -149,7 +149,7 @@ function onKeydown(e: KeyboardEvent) {
 
     &:hover {
         background: #1a2640;
-        color: #e2e8f0;
+        color: var(--app-text, #e2e8f0);
     }
 }
 </style>

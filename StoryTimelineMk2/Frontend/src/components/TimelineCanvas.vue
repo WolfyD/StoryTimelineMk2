@@ -6,6 +6,7 @@ import 'splitpanes/dist/splitpanes.css';
 import type { LayoutSettings, TimelineItem, TimelineProject, TimelineSettings } from '@/types/models';
 import type { Stage } from 'konva/lib/Stage';
 import { BackendAPI } from '@/bridge/api';
+import { canvasColor } from '@/utils/canvasTheme';
 
 import {
 	BREAK_TICKS, absoluteToVisual, visualToAbsolute,
@@ -641,8 +642,8 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
             x: nx,
             y: viewport.height / 2,
             radius: 4,
-            fill: '#1e293b',
-            stroke: '#94a3b8',
+            fill: canvasColor('--app-surface-high', '#1e293b'),
+            stroke: canvasColor('--app-text-muted', '#94a3b8'),
             strokeWidth: 1.5,
             listening: false,
         }));
@@ -1044,7 +1045,7 @@ watch(() => store.pulseItemId, (id) => {
             node: target,
             duration: 0.3,
             shadowBlur: 12,
-            shadowColor: '#818cf8',
+            shadowColor: canvasColor('--app-accent-hover', '#818cf8'),
             shadowOpacity: 0.95,
             shadowOffsetX: 0,
             shadowOffsetY: 0,
@@ -1829,7 +1830,7 @@ defineExpose({
         padding: 8px 12px;
         font-size: 0.85rem;
         font-weight: 600;
-        color: #94a3b8;
+        color: var(--app-text-muted, #94a3b8);
         border-bottom: 1px solid #334155;
         margin-bottom: 4px;
     }

@@ -201,6 +201,12 @@ namespace StoryTimelineMk2.Forms
             }
         }
 
+        public override void PropagateTopMost(bool topmost)
+        {
+            base.PropagateTopMost(topmost);
+            _messageRouter?.SendToVue("TopMostChanged", new { isTopmost = topmost });
+        }
+
         private static async Task PrewarmChildWindowsAsync()
         {
             await Task.Delay(400); // let timeline page start rendering first

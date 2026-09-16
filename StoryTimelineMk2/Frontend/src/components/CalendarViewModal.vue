@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { PhX, PhPencilSimple, PhArrowLeft, PhCalendarDots } from '@phosphor-icons/vue'
+import BaseModal from './BaseModal.vue'
 import { BackendAPI } from '@/bridge/api'
 import type { Calendar, LodLevel } from '@/types/models'
 import type { RelativeRule } from '@/utils/relativeRule'
@@ -95,7 +96,6 @@ const effectiveDayLabels = computed(() =>
         : Array.from({ length: weekLength.value }, (_, i) => `D${i + 1}`)
 )
 
-// computed helpers
 const memDayDescribeCtx = computed(() => ({
     seasonNames: seasons.value.map(s => s.name),
     monthNames:  months.value.map(m => m.name),
@@ -121,213 +121,208 @@ function memDayDescription(d: MemDay): string {
 
 <template>
     <Teleport to="body">
-        <div class="modal-backdrop" @click.self="emit('close')">
-            <div class="modal-panel">
-
-                <!-- Header -->
-                <div class="modal-header">
-                    <div class="header-left">
-                        <button class="icon-btn" title="Back to list" @click="emit('close')">
-                            <PhArrowLeft :size="16" />
-                        </button>
-                        <span class="modal-title">{{ loading ? 'Loading…' : (cal?.Name ?? 'Calendar') }}</span>
-                    </div>
-                    <div class="header-right">
-                        <button v-if="!loading && cal && months.length" class="action-btn" title="Show full year calendar" @click="showYearView = true">
-                            <PhCalendarDots :size="15" />
-                            Year View
-                        </button>
-                        <button v-if="!loading && cal" class="action-btn edit" @click="emit('edit', calendarId)">
-                            <PhPencilSimple :size="14" />
-                            Edit
-                        </button>
-                        <button class="icon-btn" title="Close" @click="emit('close')">
-                            <PhX :size="16" />
-                        </button>
-                    </div>
+        <BaseModal width="50vw" max-height="85vh" :z-index="1100" @close="emit('close')">
+            <template #header>
+                <div class="header-left">
+                    <button class="icon-btn" title="Back to list" @click="emit('close')">
+                        <PhArrowLeft :size="16" />
+                    </button>
+                    <span class="modal-title">{{ loading ? 'Loading…' : (cal?.Name ?? 'Calendar') }}</span>
                 </div>
-
-                <!-- Body -->
-                <div class="modal-body">
-                    <div v-if="loading" class="state-msg">Loading…</div>
-                    <div v-else-if="error" class="state-msg error">{{ error }}</div>
-
-                    <template v-else-if="cal">
-
-                        <!-- ── Basic Info ── -->
-                        <section class="view-section">
-                            <h3 class="section-title">Calendar Info</h3>
-                            <div class="info-grid">
-                                <span class="info-label">Name</span>
-                                <span class="info-value">{{ cal.Name }}</span>
-
-                                <template v-if="cal.ShortName">
-                                    <span class="info-label">Short Name</span>
-                                    <span class="info-value">{{ cal.ShortName }}</span>
-                                </template>
-
-                                <template v-if="cal.AlternateName">
-                                    <span class="info-label">Alternate Name</span>
-                                    <span class="info-value">{{ cal.AlternateName }}</span>
-                                </template>
-
-                                <template v-if="cal.NameBefore0 || cal.NameAfter0">
-                                    <span class="info-label">Era Before Year 0</span>
-                                    <span class="info-value">{{ cal.NameBefore0 || '—' }}</span>
-                                    <span class="info-label">Era After Year 0</span>
-                                    <span class="info-value">{{ cal.NameAfter0 || '—' }}</span>
-                                </template>
-                            </div>
-                        </section>
-
-                        <!-- ── Year / Months ── -->
-                        <section class="view-section">
-                            <h3 class="section-title">Year &amp; Months</h3>
-                            <p class="meta-line">
-                                <span class="meta-tag">{{ yearLength }} days / year</span>
-                                <span class="meta-tag">{{ months.length }} months</span>
-                            </p>
-                            <table v-if="months.length" class="view-table">
-                                <colgroup>
-                                    <col style="width:36px" />
-                                    <col />
-                                    <col style="width:80px" />
-                                    <col style="width:50px" />
-                                    <col v-if="hasSeasons" style="width:130px" />
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Name</th>
-                                        <th>Short</th>
-                                        <th>Days</th>
-                                        <th v-if="hasSeasons">Season</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(m, i) in months" :key="i">
-                                        <td class="num">{{ i + 1 }}</td>
-                                        <td>{{ m.name }}</td>
-                                        <td class="muted">{{ m.shortName || '—' }}</td>
-                                        <td class="num">{{ m.length }}</td>
-                                        <td v-if="hasSeasons" class="season-chip-cell">
-                                            <span class="season-chip"
-                                                :style="{ background: SEASON_PALETTE[m.season % SEASON_PALETTE.length] + '33', borderColor: SEASON_PALETTE[m.season % SEASON_PALETTE.length] }">
-                                                {{ seasons[m.season]?.name ?? `S${m.season + 1}` }}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <p v-else class="none-note">No months defined.</p>
-                        </section>
-
-                        <!-- ── Week ── -->
-                        <section v-if="hasWeek" class="view-section">
-                            <h3 class="section-title">Week</h3>
-                            <p class="meta-line">
-                                <span class="meta-tag">{{ weekLength }}-day week</span>
-                                <span v-if="weekendDays.length" class="meta-tag">{{ weekendDays.length }} weekend day(s)</span>
-                            </p>
-                            <div class="day-chips">
-                                <span v-for="(d, i) in dayNames" :key="i"
-                                    class="day-chip"
-                                    :class="{ weekend: weekendDays.includes(i) }">
-                                    {{ d }}
-                                </span>
-                            </div>
-                        </section>
-
-                        <!-- ── Seasons ── -->
-                        <section v-if="hasSeasons" class="view-section">
-                            <h3 class="section-title">Seasons</h3>
-                            <table class="view-table">
-                                <colgroup>
-                                    <col style="width:24px" />
-                                    <col />
-                                    <col style="width:70px" />
-                                    <col style="width:52px" />
-                                    <col style="width:52px" />
-                                    <col style="width:120px" />
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th></th>
-                                        <th>Name</th>
-                                        <th>Short</th>
-                                        <th>Start</th>
-                                        <th>End</th>
-                                        <th>Significance</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(s, i) in seasons" :key="i">
-                                        <td>
-                                            <span class="season-dot" :style="{ background: SEASON_PALETTE[i % SEASON_PALETTE.length] }"></span>
-                                        </td>
-                                        <td>{{ s.name }}</td>
-                                        <td class="muted">{{ s.shortName || '—' }}</td>
-                                        <td class="num">{{ s.start }}</td>
-                                        <td class="num">{{ s.end }}</td>
-                                        <td class="muted">{{ s.significance || '—' }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </section>
-
-                        <!-- ── LOD Profile ── -->
-                        <section class="view-section">
-                            <h3 class="section-title">LOD Profile<span class="section-sub">{{ cal.LodProfile?.Name }}</span></h3>
-                            <table v-if="lodLevels.length" class="view-table">
-                                <colgroup>
-                                    <col style="width:52px" />
-                                    <col style="width:110px" />
-                                    <col />
-                                </colgroup>
-                                <thead>
-                                    <tr><th>Level</th><th>Format Key</th><th>Step Fraction</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(l, i) in lodLevels" :key="i">
-                                        <td class="num">{{ i }}</td>
-                                        <td><span class="key-badge">{{ l.formatKey }}</span></td>
-                                        <td class="step-frac">{{ l.stepFraction }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <p v-else class="none-note">No LOD levels defined.</p>
-                        </section>
-
-                        <!-- ── Memorable Days ── -->
-                        <section v-if="memDays.length" class="view-section">
-                            <h3 class="section-title">Memorable Days</h3>
-                            <table class="view-table">
-                                <colgroup>
-                                    <col />
-                                    <col style="width:72px" />
-                                    <col />
-                                </colgroup>
-                                <thead>
-                                    <tr><th>Name</th><th>Type</th><th>Date / Rule</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="d in memDays" :key="d.id">
-                                        <td>
-                                            <span class="color-dot" :style="{ background: d.color || '#aaa' }"></span>
-                                            {{ d.name }}
-                                        </td>
-                                        <td><span class="type-badge" :class="d.type">{{ d.type }}</span></td>
-                                        <td class="muted small">{{ memDayDescription(d) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </section>
-
-                    </template>
+                <div class="header-right">
+                    <button v-if="!loading && cal && months.length" class="action-btn" title="Show full year calendar" @click="showYearView = true">
+                        <PhCalendarDots :size="15" />
+                        Year View
+                    </button>
+                    <button v-if="!loading && cal" class="action-btn edit" @click="emit('edit', calendarId)">
+                        <PhPencilSimple :size="14" />
+                        Edit
+                    </button>
+                    <button class="icon-btn" title="Close" @click="emit('close')">
+                        <PhX :size="16" />
+                    </button>
                 </div>
+            </template>
 
+            <!-- Body -->
+            <div class="modal-body">
+                <div v-if="loading" class="state-msg">Loading…</div>
+                <div v-else-if="error" class="state-msg error">{{ error }}</div>
+
+                <template v-else-if="cal">
+
+                    <!-- ── Basic Info ── -->
+                    <section class="view-section">
+                        <h3 class="section-title">Calendar Info</h3>
+                        <div class="info-grid">
+                            <span class="info-label">Name</span>
+                            <span class="info-value">{{ cal.Name }}</span>
+
+                            <template v-if="cal.ShortName">
+                                <span class="info-label">Short Name</span>
+                                <span class="info-value">{{ cal.ShortName }}</span>
+                            </template>
+
+                            <template v-if="cal.AlternateName">
+                                <span class="info-label">Alternate Name</span>
+                                <span class="info-value">{{ cal.AlternateName }}</span>
+                            </template>
+
+                            <template v-if="cal.NameBefore0 || cal.NameAfter0">
+                                <span class="info-label">Era Before Year 0</span>
+                                <span class="info-value">{{ cal.NameBefore0 || '—' }}</span>
+                                <span class="info-label">Era After Year 0</span>
+                                <span class="info-value">{{ cal.NameAfter0 || '—' }}</span>
+                            </template>
+                        </div>
+                    </section>
+
+                    <!-- ── Year / Months ── -->
+                    <section class="view-section">
+                        <h3 class="section-title">Year &amp; Months</h3>
+                        <p class="meta-line">
+                            <span class="meta-tag">{{ yearLength }} days / year</span>
+                            <span class="meta-tag">{{ months.length }} months</span>
+                        </p>
+                        <table v-if="months.length" class="view-table">
+                            <colgroup>
+                                <col style="width:36px" />
+                                <col />
+                                <col style="width:80px" />
+                                <col style="width:50px" />
+                                <col v-if="hasSeasons" style="width:130px" />
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Name</th>
+                                    <th>Short</th>
+                                    <th>Days</th>
+                                    <th v-if="hasSeasons">Season</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(m, i) in months" :key="i">
+                                    <td class="num">{{ i + 1 }}</td>
+                                    <td>{{ m.name }}</td>
+                                    <td class="muted">{{ m.shortName || '—' }}</td>
+                                    <td class="num">{{ m.length }}</td>
+                                    <td v-if="hasSeasons" class="season-chip-cell">
+                                        <span class="season-chip"
+                                            :style="{ background: SEASON_PALETTE[m.season % SEASON_PALETTE.length] + '33', borderColor: SEASON_PALETTE[m.season % SEASON_PALETTE.length] }">
+                                            {{ seasons[m.season]?.name ?? `S${m.season + 1}` }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p v-else class="none-note">No months defined.</p>
+                    </section>
+
+                    <!-- ── Week ── -->
+                    <section v-if="hasWeek" class="view-section">
+                        <h3 class="section-title">Week</h3>
+                        <p class="meta-line">
+                            <span class="meta-tag">{{ weekLength }}-day week</span>
+                            <span v-if="weekendDays.length" class="meta-tag">{{ weekendDays.length }} weekend day(s)</span>
+                        </p>
+                        <div class="day-chips">
+                            <span v-for="(d, i) in dayNames" :key="i"
+                                class="day-chip"
+                                :class="{ weekend: weekendDays.includes(i) }">
+                                {{ d }}
+                            </span>
+                        </div>
+                    </section>
+
+                    <!-- ── Seasons ── -->
+                    <section v-if="hasSeasons" class="view-section">
+                        <h3 class="section-title">Seasons</h3>
+                        <table class="view-table">
+                            <colgroup>
+                                <col style="width:24px" />
+                                <col />
+                                <col style="width:70px" />
+                                <col style="width:52px" />
+                                <col style="width:52px" />
+                                <col style="width:120px" />
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Name</th>
+                                    <th>Short</th>
+                                    <th>Start</th>
+                                    <th>End</th>
+                                    <th>Significance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(s, i) in seasons" :key="i">
+                                    <td>
+                                        <span class="season-dot" :style="{ background: SEASON_PALETTE[i % SEASON_PALETTE.length] }"></span>
+                                    </td>
+                                    <td>{{ s.name }}</td>
+                                    <td class="muted">{{ s.shortName || '—' }}</td>
+                                    <td class="num">{{ s.start }}</td>
+                                    <td class="num">{{ s.end }}</td>
+                                    <td class="muted">{{ s.significance || '—' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <!-- ── LOD Profile ── -->
+                    <section class="view-section">
+                        <h3 class="section-title">LOD Profile<span class="section-sub">{{ cal.LodProfile?.Name }}</span></h3>
+                        <table v-if="lodLevels.length" class="view-table">
+                            <colgroup>
+                                <col style="width:52px" />
+                                <col style="width:110px" />
+                                <col />
+                            </colgroup>
+                            <thead>
+                                <tr><th>Level</th><th>Format Key</th><th>Step Fraction</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(l, i) in lodLevels" :key="i">
+                                    <td class="num">{{ i }}</td>
+                                    <td><span class="key-badge">{{ l.formatKey }}</span></td>
+                                    <td class="step-frac">{{ l.stepFraction }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p v-else class="none-note">No LOD levels defined.</p>
+                    </section>
+
+                    <!-- ── Memorable Days ── -->
+                    <section v-if="memDays.length" class="view-section">
+                        <h3 class="section-title">Memorable Days</h3>
+                        <table class="view-table">
+                            <colgroup>
+                                <col />
+                                <col style="width:72px" />
+                                <col />
+                            </colgroup>
+                            <thead>
+                                <tr><th>Name</th><th>Type</th><th>Date / Rule</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="d in memDays" :key="d.id">
+                                    <td>
+                                        <span class="color-dot" :style="{ background: d.color || '#aaa' }"></span>
+                                        {{ d.name }}
+                                    </td>
+                                    <td><span class="type-badge" :class="d.type">{{ d.type }}</span></td>
+                                    <td class="muted small">{{ memDayDescription(d) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
+                </template>
             </div>
-        </div>
+        </BaseModal>
 
         <CalendarYearView
             v-if="showYearView && cal"
@@ -343,39 +338,7 @@ function memDayDescription(d: MemDay): string {
 </template>
 
 <style scoped lang="scss">
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1100;
-}
-
-.modal-panel {
-    width: 50vw;
-    max-height: 85vh;
-    background: var(--app-surface-raised, #141e33);
-    border: 1px solid var(--app-border, #2d3a56);
-    border-radius: var(--app-radius, 8px);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-// ── Header ───────────────────────────────────────────────────────────────────
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--app-border, #2d3a56);
-    background: var(--app-surface, #0c1524);
-    flex-shrink: 0;
-}
+// ── Header slot content ───────────────────────────────────────────────────────
 
 .header-left {
     display: flex;

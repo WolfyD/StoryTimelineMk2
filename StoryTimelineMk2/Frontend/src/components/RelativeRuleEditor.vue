@@ -234,7 +234,7 @@ const ORDINALS = [
 .rule-label {
     font-size: 0.7rem;
     font-weight: 600;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     user-select: none;
@@ -244,7 +244,7 @@ const ORDINALS = [
 
 .rule-hint {
     font-size: 0.72rem;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
     font-style: italic;
 }
 
@@ -252,7 +252,7 @@ const ORDINALS = [
 
 .seg-btns {
     display: flex;
-    border: 1px solid #2d3a56;
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
     overflow: hidden;
 }
@@ -261,16 +261,16 @@ const ORDINALS = [
     padding: 3px 10px;
     font-size: 0.78rem;
     font-weight: 500;
-    background: #0c1524;
-    color: #94a3b8;
+    background: var(--app-surface, #0c1524);
+    color: var(--app-text-muted, #94a3b8);
     border: none;
-    border-right: 1px solid #2d3a56;
+    border-right: 1px solid var(--app-border, #2d3a56);
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
     user-select: none;
 
     &:last-child { border-right: none; }
-    &:hover:not(.active) { background: #1e2b44; color: #e2e8f0; }
+    &:hover:not(.active) { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
     &.active { background: #2c5f8a; color: #e8f0ff; font-weight: 600; }
 }
 
@@ -278,26 +278,26 @@ const ORDINALS = [
 
 .rule-select {
     padding: 3px 6px;
-    border: 1px solid #2d3a56;
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    background: #0c1524;
-    color: #e2e8f0;
+    background: var(--app-surface, #0c1524);
+    color: var(--app-text, #e2e8f0);
     font-size: 0.8rem;
     cursor: pointer;
-    &:focus { outline: 2px solid #3b6ec4; }
+    &:focus { outline: 2px solid var(--app-accent, #3b6ec4); }
 
-    option { background: #0c1524; color: #e2e8f0; }
+    option { background: var(--app-surface, #0c1524); color: var(--app-text, #e2e8f0); }
 }
 
 .rule-num {
     width: 64px;
     padding: 3px 6px;
-    border: 1px solid #2d3a56;
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
-    background: #0c1524;
-    color: #e2e8f0;
+    background: var(--app-surface, #0c1524);
+    color: var(--app-text, #e2e8f0);
     font-size: 0.85rem;
-    &:focus { outline: 2px solid #3b6ec4; }
+    &:focus { outline: 2px solid var(--app-accent, #3b6ec4); }
 }
 
 .toggle-label {
@@ -305,7 +305,7 @@ const ORDINALS = [
     align-items: center;
     gap: 5px;
     font-size: 0.8rem;
-    color: #94a3b8;
+    color: var(--app-text-muted, #94a3b8);
     cursor: pointer;
     user-select: none;
 }

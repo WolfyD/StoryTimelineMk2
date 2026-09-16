@@ -93,6 +93,9 @@ const allCharacters   = ref<CharacterItem[]>([])
 const allStories      = ref<Story[]>([])
 const lodProfile      = ref<LodLevel[]>([])
 const monthNames      = ref<string[]>([])
+const monthLengths    = ref<number[]>([])
+const seasonNames     = ref<string[]>([])
+const weekCount       = ref<number>(52)
 
 // ---------------------------------------------------------------------------
 // UI state
@@ -160,18 +163,39 @@ function findBestSubYearLod(frac: number, profile: LodLevel[]): number {
 }
 
 // Parse month names from the calendar's year_definition JSON
-function extractMonthNames(yearDefinition: string): string[] {
+function parseCalendarDef(yearDefinition: string): {
+  monthNames: string[]
+  monthLengths: number[]
+  seasonNames: string[]
+  weekCount: number
+} {
   try {
     const def = JSON.parse(yearDefinition)
-    const md = def?.month_definition
-    if (!md) return []
-    const names: string[] = []
-    for (let i = 0; i < 12; i++) {
-      names.push(md[String(i)]?.name ?? `Month ${i + 1}`)
+    const yearLength: number = def.length ?? 365
+    const weekLength: number = def.week_definition?.length ?? 7
+
+    const monthNames: string[] = []
+    const monthLengths: number[] = []
+    if (def.month_definition && def.months) {
+      for (let i = 0; i < (def.months as number); i++) {
+        const m = def.month_definition[String(i)]
+        monthNames.push(m?.name ?? `Month ${i + 1}`)
+        monthLengths.push(m?.length ?? 30)
+      }
     }
-    return names
+
+    const seasonNames: string[] = []
+    if (def.season_definition && def.seasons) {
+      for (let i = 0; i < (def.seasons as number); i++) {
+        const s = def.season_definition[String(i)]
+        seasonNames.push(s?.name ?? `Season ${i + 1}`)
+      }
+    }
+
+    const weekCount = weekLength > 0 ? Math.ceil(yearLength / weekLength) : 52
+    return { monthNames, monthLengths, seasonNames, weekCount }
   } catch {
-    return []
+    return { monthNames: [], monthLengths: [], seasonNames: [], weekCount: 52 }
   }
 }
 
@@ -218,6 +242,9 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   images.value             = []
   lodProfile.value         = []
   monthNames.value         = []
+  monthLengths.value       = []
+  seasonNames.value        = []
+  weekCount.value          = 52
   showImagePicker.value    = false
   showCharPicker.value     = false
   showStoryPicker.value    = false
@@ -271,7 +298,11 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
             ? JSON.parse(rawProfile)
             : rawProfile as unknown as LodLevel[]
         }
-        monthNames.value = extractMonthNames(data.Calendar.YearDefinition ?? '')
+        const calDef = parseCalendarDef(data.Calendar.YearDefinition ?? '')
+        monthNames.value   = calDef.monthNames
+        monthLengths.value = calDef.monthLengths
+        seasonNames.value  = calDef.seasonNames
+        weekCount.value    = calDef.weekCount
       }
 
       // For new items: choose the best granularity to represent the canvas position.
@@ -652,6 +683,9 @@ async function removeImage(pictureId: string) {
             :lodIndex="item.CreationGranularity"
             :lodProfile="lodProfile"
             :monthNames="monthNames"
+            :monthLengths="monthLengths"
+            :seasonNames="seasonNames"
+            :weekCount="weekCount"
             :year="startYear"
             :subtick="startSubYear"
             @update:year="startYear = $event"
@@ -666,6 +700,9 @@ async function removeImage(pictureId: string) {
             :lodIndex="item.CreationGranularity"
             :lodProfile="lodProfile"
             :monthNames="monthNames"
+            :monthLengths="monthLengths"
+            :seasonNames="seasonNames"
+            :weekCount="weekCount"
             :year="endYear"
             :subtick="endSubYear"
             @update:year="endYear = $event"

@@ -181,6 +181,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 				BackendAPI.GetMiscSetting('filter_panel_open', tlId),
 				BackendAPI.GetMiscSetting('filter_display_mode', 0),
 			]);
+			if (seq !== _loadSeq) return;
 			filterRules.value = rulesResult?.rules ?? [];
 			filterAndMode.value = andModeResult?.value === '1';
 			filterPanelOpen.value = panelOpenResult?.value === '1';
@@ -210,13 +211,57 @@ export const useTimelineStore = defineStore('timeline', () => {
 		items.value.push(item);
 	}
 
-	function upsertItem(item: TimelineItem) {
+	function upsertItem(
+		item: TimelineItem,
+		tagLinks?: ItemTagLink[],
+		charLinks?: ItemCharacterLink[],
+		storyLinks?: ItemStoryRefLink[],
+		hasPicture?: boolean,
+	) {
 		const idx = items.value.findIndex(i => i.Id === item.Id)
 		if (idx >= 0) {
 			items.value[idx] = item
 		} else {
 			items.value.push(item)
 			items.value.sort((a, b) => a.AbsoluteStart - b.AbsoluteStart)
+		}
+
+		if (tagLinks !== undefined) {
+			const next = new Map(itemTagMap.value)
+			next.set(item.Id, tagLinks)
+			itemTagMap.value = next
+			// Merge any newly-created tags into the filter dropdown list
+			const knownIds = new Set(allTimelineTags.value.map(t => t.TagId))
+			const fresh = tagLinks.filter(t => !knownIds.has(t.TagId)).map(t => ({ TagId: t.TagId, TagName: t.TagName }))
+			if (fresh.length) {
+				allTimelineTags.value = [...allTimelineTags.value, ...fresh].sort((a, b) => a.TagName.localeCompare(b.TagName))
+			}
+		}
+
+		if (charLinks !== undefined) {
+			const next = new Map(itemCharacterMap.value)
+			next.set(item.Id, charLinks)
+			itemCharacterMap.value = next
+		}
+
+		if (storyLinks !== undefined) {
+			const next = new Map(itemStoryMap.value)
+			next.set(item.Id, storyLinks)
+			itemStoryMap.value = next
+		}
+
+		if (hasPicture !== undefined) {
+			const next = new Set(itemPictureSet.value)
+			if (hasPicture) next.add(item.Id)
+			else next.delete(item.Id)
+			itemPictureSet.value = next
+		}
+
+		if (item.Color) {
+			const color = item.Color.toLowerCase().slice(0, 7)
+			if (!allTimelineColors.value.includes(color)) {
+				allTimelineColors.value = [...allTimelineColors.value, color].sort()
+			}
 		}
 	}
 
@@ -361,13 +406,15 @@ export const useTimelineStore = defineStore('timeline', () => {
 			}));
 		} catch { return; }
 		const oldRules = filterRules.value;
-		filterRules.value = rules;
-		filterAndMode.value = preset.AndMode === 1;
+		const andMode = preset.AndMode === 1;
+		// Persist to DB before updating in-memory state so a failure leaves the store consistent
 		await Promise.all(oldRules.map(r => BackendAPI.DeleteFilterRule(r.Id)));
 		await Promise.all([
 			...rules.map(r => BackendAPI.SaveFilterRule(r)),
-			BackendAPI.SetMiscSetting('filter_and_mode', filterAndMode.value ? '1' : '0', tlId),
+			BackendAPI.SetMiscSetting('filter_and_mode', andMode ? '1' : '0', tlId),
 		]);
+		filterRules.value = rules;
+		filterAndMode.value = andMode;
 	}
 
 	async function deleteFilterPreset(id: string) {

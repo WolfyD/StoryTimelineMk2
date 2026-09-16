@@ -27,7 +27,7 @@ vi.mock('@/components/LodDateInput.vue', () => ({
   default: {
     name: 'LodDateInput',
     template: '<div class="lod-date-input-stub"></div>',
-    props: ['label', 'lodIndex', 'lodProfile', 'monthNames', 'year', 'subtick'],
+    props: ['label', 'lodIndex', 'lodProfile', 'monthNames', 'monthLengths', 'seasonNames', 'weekCount', 'year', 'subtick'],
     emits: ['update:year', 'update:subtick'],
   },
 }))

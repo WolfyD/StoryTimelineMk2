@@ -202,15 +202,15 @@ function formatSize(bytes: number) {
 }
 
 .picker-title {
-    font-size: 14px; font-weight: 700; color: #e2e8f0;
+    font-size: 14px; font-weight: 700; color: var(--app-text, #e2e8f0);
     user-select: none;
 }
 
 .close-btn {
     display: flex; align-items: center; justify-content: center;
-    background: transparent; border: none; color: #64748b; cursor: pointer;
+    background: transparent; border: none; color: var(--app-text-dim, #64748b); cursor: pointer;
     padding: 3px; border-radius: 3px;
-    &:hover { background: #334155; color: #e2e8f0; }
+    &:hover { background: #334155; color: var(--app-text, #e2e8f0); }
 }
 
 // ── Toolbar ──
@@ -223,22 +223,22 @@ function formatSize(bytes: number) {
 .search-input {
     flex: 1; padding: 6px 10px;
     border: 1px solid #334155; border-radius: 4px;
-    font-size: 13px; color: #e2e8f0;
-    background: #0f172a;
+    font-size: 13px; color: var(--app-text, #e2e8f0);
+    background: var(--app-bg, #0f172a);
     color-scheme: dark;
     &:focus { outline: 2px solid #4a90d9; border-color: transparent; }
-    &::placeholder { color: #64748b; }
+    &::placeholder { color: var(--app-text-dim, #64748b); }
 }
 
 // ── Body ──
 .picker-body {
     flex: 1; overflow-y: auto; padding: 12px 16px;
-    background: #0f172a;
+    background: var(--app-bg, #0f172a);
 }
 
 .picker-status {
     display: flex; align-items: center; justify-content: center;
-    height: 100%; color: #64748b; font-size: 13px; font-style: italic;
+    height: 100%; color: var(--app-text-dim, #64748b); font-size: 13px; font-style: italic;
 }
 
 .thumb-grid {
@@ -303,12 +303,12 @@ function formatSize(bytes: number) {
 }
 
 .thumb-name {
-    font-size: 11px; color: #e2e8f0; font-weight: 500;
+    font-size: 11px; color: var(--app-text, #e2e8f0); font-weight: 500;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .thumb-meta {
-    font-size: 10px; color: #64748b;
+    font-size: 10px; color: var(--app-text-dim, #64748b);
 }
 
 // ── Footer ──
@@ -319,7 +319,7 @@ function formatSize(bytes: number) {
 }
 
 .selection-hint {
-    font-size: 12px; color: #94a3b8;
+    font-size: 12px; color: var(--app-text-muted, #94a3b8);
     &.muted { color: #4a5568; }
 }
 
@@ -341,8 +341,8 @@ function formatSize(bytes: number) {
 }
 
 .btn-cancel {
-    background: transparent; color: #94a3b8; border: 1px solid #334155;
-    &:hover { background: #334155; color: #e2e8f0; }
+    background: transparent; color: var(--app-text-muted, #94a3b8); border: 1px solid #334155;
+    &:hover { background: #334155; color: var(--app-text, #e2e8f0); }
 }
 
 .btn-primary {

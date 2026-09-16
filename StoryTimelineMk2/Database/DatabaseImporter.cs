@@ -320,17 +320,18 @@ namespace StoryTimelineMk2.Database
                             id, title, description, content, story_id, type_id,
                             year, end_year, absolute_start, absolute_end,
                             book_title, chapter, page, color, creation_granularity, timeline_id,
-                            item_index, show_in_notes, importance
+                            item_index, show_in_notes, importance, lod_visibility_mask
                         ) VALUES (
                             @id, @title, @description, @content, @story_id, @type_id,
                             @year, @end_year, @absolute_start, @absolute_end,
                             @book_title, @chapter, @page, @color, @creation_granularity, @timeline_id,
-                            @item_index, @show_in_notes, @importance
+                            @item_index, @show_in_notes, @importance, @lod_visibility_mask
                         )", new {
                             item.id, item.title, item.description, item.content, item.story_id, item.type_id,
                             item.year, item.end_year, absolute_start = absStart, absolute_end = absEnd,
                             item.book_title, item.chapter, item.page, item.color, item.creation_granularity,
-                            item.timeline_id, item.item_index, item.show_in_notes, item.importance
+                            item.timeline_id, item.item_index, item.show_in_notes, item.importance,
+                            lod_visibility_mask = 248  // bits 3-7: visible at Years and finer (V1 had no LOD data)
                         }, transaction);
                     }
                     catch { }

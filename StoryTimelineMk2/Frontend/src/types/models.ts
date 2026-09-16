@@ -21,6 +21,8 @@ export interface ChromeTheme {
     appTextDim: string
     appAccent: string
     appAccentHover: string
+    appSaveAccent: string
+    appSaveAccentHover: string
     appRadius: string
     appRadiusSm: string
     appRadiusLg: string

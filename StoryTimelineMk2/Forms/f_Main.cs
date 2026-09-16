@@ -27,6 +27,12 @@ namespace StoryTimelineMk2.Forms
             _moveTimer.Tick += MoveTimer_Tick;
         }
 
+        public override void PropagateTopMost(bool topmost)
+        {
+            base.PropagateTopMost(topmost);
+            _messageRouter?.SendToVue("TopMostChanged", new { isTopmost = topmost });
+        }
+
         /// <summary>
         /// Initialises WebView2 and navigates while the form is still hidden.
         /// Fires <see cref="ReadyToShow"/> when the first navigation completes so the

@@ -1,19 +1,5 @@
-import { test, expect, findPageByRole, waitForNewPage } from './fixtures'
-import type { Page, BrowserContext } from '@playwright/test'
-
-async function openTimeline(mainPage: Page, appContext: BrowserContext, pageErrors: string[]) {
-  const existing = findPageByRole(appContext, 'timeline')
-  if (existing) {
-    await existing.evaluate(() => window.close())
-    await new Promise(r => setTimeout(r, 1000))
-  }
-  const firstRow = mainPage.locator('.project-timeline-row-container').first()
-  await expect(firstRow).toBeVisible({ timeout: 8000 })
-  await firstRow.click()
-  const tl = await waitForNewPage(appContext, 'timeline', 10_000, pageErrors)
-  await tl.waitForSelector('#timeline-workspace', { timeout: 10_000 })
-  return tl
-}
+import { test, expect, findPageByRole, openTimelinePage } from './fixtures'
+import type { Page } from '@playwright/test'
 
 /** Return the center point of the main timeline canvas. */
 async function getCanvasCenter(tl: Page): Promise<{ x: number; y: number }> {
@@ -25,7 +11,7 @@ async function getCanvasCenter(tl: Page): Promise<{ x: number; y: number }> {
 
 test.describe('Timeline canvas interactions — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
-    await openTimeline(mainPage, appContext, pageErrors)
+    await openTimelinePage(mainPage, appContext, pageErrors)
   })
 
   // ── Canvas drag to pan ────────────────────────────────────────────────────

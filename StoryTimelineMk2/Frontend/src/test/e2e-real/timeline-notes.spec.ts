@@ -1,5 +1,5 @@
-import { test, expect, findPageByRole, waitForNewPage } from './fixtures'
-import type { Page, BrowserContext } from '@playwright/test'
+import { test, expect, findPageByRole, openTimelinePage } from './fixtures'
+import type { Page } from '@playwright/test'
 
 /**
  * Set the notes textarea value via DOM evaluate so Vue's v-model reactive ref is
@@ -18,23 +18,9 @@ async function setNotesTextarea(tl: Page, text: string) {
   await tl.waitForTimeout(50)
 }
 
-async function openTimeline(mainPage: Page, appContext: BrowserContext, pageErrors: string[]) {
-  const existing = findPageByRole(appContext, 'timeline')
-  if (existing) {
-    await existing.evaluate(() => window.close())
-    await new Promise(r => setTimeout(r, 1000))
-  }
-  const firstRow = mainPage.locator('.project-timeline-row-container').first()
-  await expect(firstRow).toBeVisible({ timeout: 8000 })
-  await firstRow.click()
-  const tl = await waitForNewPage(appContext, 'timeline', 10_000, pageErrors)
-  await tl.waitForSelector('#timeline-workspace', { timeout: 10_000 })
-  return tl
-}
-
 test.describe('Timeline notes panel — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
-    await openTimeline(mainPage, appContext, pageErrors)
+    await openTimelinePage(mainPage, appContext, pageErrors)
   })
 
   // ── Panel structure ───────────────────────────────────────────────────────
@@ -139,20 +125,22 @@ test.describe('Timeline notes panel — real backend', () => {
     // Click the edit button
     await noteEntry.locator('.note-action-btn[title="Edit"]').click()
 
-    // A save button should appear (edit mode activated)
-    await expect(noteEntry.locator('.note-save-btn')).toBeVisible({ timeout: 2000 })
+    // .note-edit-area is v-if'd into the entry when edit mode is active
+    const editArea = panel.locator('.note-edit-area')
+    await expect(editArea).toBeVisible({ timeout: 2000 })
 
     // Update the text and save
-    const editArea = noteEntry.locator('textarea')
-    await editArea.fill(`${noteText} (updated)`)
-    await noteEntry.locator('.note-save-btn').click()
+    await editArea.locator('.note-edit-textarea').fill(`${noteText} (updated)`)
+    await editArea.locator('.note-save-btn').click()
 
-    await expect(noteEntry.locator('.note-save-btn')).not.toBeVisible({ timeout: 2000 })
-    await expect(noteEntry).toContainText('(updated)')
+    // After save the edit area collapses; find the entry by updated text
+    const updatedEntry = panel.locator('.note-entry', { hasText: `${noteText} (updated)` })
+    await expect(updatedEntry).toBeVisible({ timeout: 2000 })
+    await expect(panel.locator('.note-edit-area')).not.toBeVisible({ timeout: 2000 })
 
     // Clean up
-    await noteEntry.locator('.note-action-btn.danger').click()
-    await expect(noteEntry).not.toBeVisible({ timeout: 3000 })
+    await updatedEntry.locator('.note-action-btn.danger').click()
+    await expect(updatedEntry).not.toBeVisible({ timeout: 3000 })
   })
 
   // ── Deleting notes ────────────────────────────────────────────────────────

@@ -61,24 +61,22 @@ export { expect }
 
 type PageRole = 'main' | 'timeline' | 'editItem' | 'calendar'
 
-export function findPageByRole(ctx: BrowserContext, role: PageRole): Page | undefined {
-  const pages = ctx.pages()
+function matchesRole(p: Page, role: PageRole): boolean {
+  const u = p.url()
   switch (role) {
-    case 'main':
-      return pages.find(p => {
-        const u = p.url()
-        return !u.includes('timeline.html') &&
-               !u.includes('editItem.html') &&
-               !u.includes('calendar.html')
-      })
-    case 'timeline':  return pages.find(p => p.url().includes('timeline.html'))
-    case 'editItem':  return pages.find(p => p.url().includes('editItem.html'))
-    case 'calendar':  return pages.find(p => p.url().includes('calendar.html'))
+    case 'main':     return !u.includes('timeline.html') && !u.includes('editItem.html') && !u.includes('calendar.html')
+    case 'timeline': return u.includes('timeline.html')
+    case 'editItem': return u.includes('editItem.html')
+    case 'calendar': return u.includes('calendar.html')
   }
 }
 
+export function findPageByRole(ctx: BrowserContext, role: PageRole): Page | undefined {
+  return ctx.pages().find(p => matchesRole(p, role))
+}
+
 /**
- * Wait for a new page matching the given role to appear in the CDP context.
+ * Wait for a page matching the given role to appear in the CDP context.
  * If it times out, any collected page errors are appended to the thrown message.
  */
 export async function waitForNewPage(
@@ -89,7 +87,7 @@ export async function waitForNewPage(
 ): Promise<Page> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const page = findPageByRole(ctx, role)
+    const page = ctx.pages().find(p => matchesRole(p, role))
     if (page) return page
     await new Promise(r => setTimeout(r, 150))
   }
@@ -97,4 +95,37 @@ export async function waitForNewPage(
     ? `\n\nPage errors collected during wait:\n  ${errors.join('\n  ')}`
     : ''
   throw new Error(`CDP: timed out waiting for ${role} page (${timeoutMs}ms)${errSuffix}`)
+}
+
+/**
+ * Close any open timeline windows via the WinForms bridge, then open the first
+ * timeline in the project list and wait for it to finish loading.
+ *
+ * Uses the WindowClose bridge action (proper WinForms close) instead of
+ * window.close() which is a no-op in WebView2.
+ */
+export async function openTimelinePage(
+  mainPage: Page,
+  ctx: BrowserContext,
+  pageErrors?: string[],
+): Promise<Page> {
+  const existingTimelines = ctx.pages().filter(p => p.url().includes('timeline.html'))
+  for (const page of existingTimelines) {
+    try {
+      await page.evaluate(() => {
+        window.chrome.webview.postMessage({ action: 'WindowClose', payload: null })
+      })
+      await page.waitForEvent('close', { timeout: 3000 }).catch(() => {})
+    } catch {
+      // page may already be closing or detached — ignore
+    }
+  }
+
+  const firstRow = mainPage.locator('.project-timeline-row-container').first()
+  await expect(firstRow).toBeVisible({ timeout: 8000 })
+  await firstRow.click()
+
+  const tl = await waitForNewPage(ctx, 'timeline', 10_000, pageErrors)
+  await tl.waitForSelector('#timeline-workspace', { timeout: 10_000 })
+  return tl
 }

@@ -993,19 +993,19 @@ function toggleWeekend(d: number) {
   height: 100vh;
   font-family: Arial, sans-serif;
   font-size: 14px;
-  color: #e2e8f0;
+  color: var(--app-text, #e2e8f0);
   background: #0d1521;
   overflow: hidden;
 }
 
 .loading-screen {
   display: flex; align-items: center; justify-content: center;
-  height: 100vh; font-size: 1.2rem; color: #4a6080;
+  height: 100vh; font-size: 1.2rem; color: var(--app-text-dim, #4a6080);
 }
 
 .section {
-  background: #141e33;
-  border: 1px solid #2d3a56;
+  background: var(--app-surface-raised, #141e33);
+  border: 1px solid var(--app-border, #2d3a56);
   border-left: 3px solid #253a5e;
   border-radius: 6px;
   padding: 16px 18px;
@@ -1040,9 +1040,9 @@ function toggleWeekend(d: number) {
 .info-btn {
   width: 20px; height: 20px;
   border-radius: 50%;
-  border: 1.5px solid #2d3a56;
+  border: 1.5px solid var(--app-border, #2d3a56);
   background: transparent;
-  color: #4a6080;
+  color: var(--app-text-dim, #4a6080);
   font-size: 11px; font-style: italic; font-weight: 700;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -1051,9 +1051,9 @@ function toggleWeekend(d: number) {
   font-family: Georgia, serif;
 
   &:hover, &.active {
-    border-color: #3b6ec4;
+    border-color: var(--app-accent, #3b6ec4);
     color: #7aa8e8;
-    background: #1e2b44;
+    background: var(--app-surface-high, #1e2b44);
   }
 }
 
@@ -1071,16 +1071,16 @@ function toggleWeekend(d: number) {
 // ---- LOD fraction toggle ----
 .frac-btn {
   font-size: 11px; font-weight: 600;
-  border: 1px solid #2d3a56;
-  background: #0c1524;
+  border: 1px solid var(--app-border, #2d3a56);
+  background: var(--app-surface, #0c1524);
   border-radius: 3px; cursor: pointer;
   padding: 1px 6px; margin-left: 6px;
   vertical-align: middle; line-height: 1.4;
-  color: #94a3b8;
+  color: var(--app-text-muted, #94a3b8);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 
-  &:hover { background: #1e2b44; color: #e2e8f0; }
-  &.active { background: #3b6ec4; border-color: #4a7fd4; color: #fff; }
+  &:hover { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
+  &.active { background: var(--app-accent, #3b6ec4); border-color: var(--app-accent-hover, #4a7fd4); color: #fff; }
 }
 
 .frac-input { font-family: monospace; }
@@ -1092,8 +1092,8 @@ function toggleWeekend(d: number) {
   flex-shrink: 0;
   border-radius: 0 !important;
   border-left: none; border-right: none; border-top: none;
-  background: #1e2b44 !important;
-  border-bottom: 1px solid #2d3a56 !important;
+  background: var(--app-surface-high, #1e2b44) !important;
+  border-bottom: 1px solid var(--app-border, #2d3a56) !important;
 }
 
 .header-row {
@@ -1104,7 +1104,7 @@ function toggleWeekend(d: number) {
 
 .id-label {
   font-size: 0.72rem;
-  color: #4a6080;
+  color: var(--app-text-dim, #4a6080);
   font-family: monospace;
   white-space: nowrap;
   user-select: none;
@@ -1113,12 +1113,12 @@ function toggleWeekend(d: number) {
 .name-input {
   flex: 1;
   padding: 5px 10px;
-  border: 1px solid #2d3a56;
+  border: 1px solid var(--app-border, #2d3a56);
   border-radius: 4px;
   font-size: 1rem; font-weight: 600;
-  background: #0c1524; color: #e2e8f0;
-  &:focus { outline: 2px solid #3b6ec4; border-color: transparent; }
-  &::placeholder { color: #4a6080; }
+  background: var(--app-surface, #0c1524); color: var(--app-text, #e2e8f0);
+  &:focus { outline: 2px solid var(--app-accent, #3b6ec4); border-color: transparent; }
+  &::placeholder { color: var(--app-text-dim, #4a6080); }
 }
 
 .header-actions { display: flex; gap: 8px; flex-shrink: 0; }
@@ -1148,19 +1148,19 @@ function toggleWeekend(d: number) {
   gap: 3px;
 
   label {
-    font-size: 0.73rem; font-weight: 600; color: #4a6080;
+    font-size: 0.73rem; font-weight: 600; color: var(--app-text-dim, #4a6080);
     text-transform: uppercase; letter-spacing: 0.04em; user-select: none;
   }
 
   input[type='text'], input[type='number'] {
     padding: 5px 8px;
-    border: 1px solid #2d3a56;
+    border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
     font-size: 0.9rem;
-    background: #0c1524; color: #e2e8f0;
+    background: var(--app-surface, #0c1524); color: var(--app-text, #e2e8f0);
     width: 100%;
-    &:focus { outline: 2px solid #3b6ec4; border-color: transparent; }
-    &::placeholder { color: #4a6080; }
+    &:focus { outline: 2px solid var(--app-accent, #3b6ec4); border-color: transparent; }
+    &::placeholder { color: var(--app-text-dim, #4a6080); }
   }
 }
 
@@ -1171,7 +1171,7 @@ function toggleWeekend(d: number) {
 }
 
 .field-label {
-  font-size: 0.73rem; font-weight: 600; color: #4a6080;
+  font-size: 0.73rem; font-weight: 600; color: var(--app-text-dim, #4a6080);
   text-transform: uppercase; letter-spacing: 0.04em; user-select: none;
 }
 
@@ -1189,7 +1189,7 @@ function toggleWeekend(d: number) {
   align-items: center;
   gap: 5px;
   font-size: 0.82rem;
-  color: #94a3b8;
+  color: var(--app-text-muted, #94a3b8);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
@@ -1206,9 +1206,9 @@ function toggleWeekend(d: number) {
     text-align: left;
     font-size: 0.72rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.04em;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
     padding: 6px 8px;
-    border-bottom: 1px solid #2d3a56;
+    border-bottom: 1px solid var(--app-border, #2d3a56);
     user-select: none;
   }
 
@@ -1216,14 +1216,14 @@ function toggleWeekend(d: number) {
 
   tbody tr:hover td { background: rgba(44, 95, 138, 0.12); }
   tbody tr.lod-dragging td { opacity: 0.35; background: transparent !important; }
-  tbody tr.lod-drag-over td { background: rgba(59, 110, 196, 0.22) !important; box-shadow: inset 0 2px 0 #3b6ec4; }
+  tbody tr.lod-drag-over td { background: rgba(59, 110, 196, 0.22) !important; box-shadow: inset 0 2px 0 var(--app-accent, #3b6ec4); }
 }
 
 .drag-th { width: 20px; padding: 0 !important; }
 
 .drag-handle {
   cursor: grab;
-  color: #2d3a56;
+  color: var(--app-border, #2d3a56);
   font-size: 1rem;
   user-select: none;
   text-align: center;
@@ -1233,7 +1233,7 @@ function toggleWeekend(d: number) {
   &:active { cursor: grabbing; }
 }
 
-.num-cell { color: #4a6080; font-size: 0.78rem; width: 24px; text-align: right; user-select: none; }
+.num-cell { color: var(--app-text-dim, #4a6080); font-size: 0.78rem; width: 24px; text-align: right; user-select: none; }
 .center-cell { text-align: center; }
 
 .tbl-input {
@@ -1241,13 +1241,13 @@ function toggleWeekend(d: number) {
   border: 1px solid #253048;
   border-radius: 3px;
   font-size: 0.85rem;
-  background: #0c1524; color: #e2e8f0;
+  background: var(--app-surface, #0c1524); color: var(--app-text, #e2e8f0);
   width: 100%;
-  &:focus { outline: 2px solid #3b6ec4; border-color: transparent; }
-  &::placeholder { color: #4a6080; }
+  &:focus { outline: 2px solid var(--app-accent, #3b6ec4); border-color: transparent; }
+  &::placeholder { color: var(--app-text-dim, #4a6080); }
 }
 
-select.tbl-input option { background: #0c1524; color: #e2e8f0; }
+select.tbl-input option { background: var(--app-surface, #0c1524); color: var(--app-text, #e2e8f0); }
 
 .short-input  { width: 70px; }
 .narrow-input { width: 60px; }
@@ -1268,7 +1268,7 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
   border-radius: 5px;
   overflow: hidden;
   margin: 8px 0 10px;
-  border: 1px solid #2d3a56;
+  border: 1px solid var(--app-border, #2d3a56);
 }
 .season-seg {
   display: flex;
@@ -1294,25 +1294,25 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
   display: flex; align-items: center; justify-content: center;
 }
 .doy-panel {
-  background: #141e33; border: 1px solid #2d3a56; border-radius: 8px;
+  background: var(--app-surface-raised, #141e33); border: 1px solid var(--app-border, #2d3a56); border-radius: 8px;
   padding: 20px 24px; max-width: 400px; width: 90%;
   box-shadow: 0 8px 24px #00000066;
 }
-.doy-title { margin: 0 0 8px; font-size: 0.95rem; font-weight: 700; color: #e2e8f0; }
-.doy-desc { font-size: 0.82rem; color: #94a3b8; margin: 0 0 14px; line-height: 1.5; }
+.doy-title { margin: 0 0 8px; font-size: 0.95rem; font-weight: 700; color: var(--app-text, #e2e8f0); }
+.doy-desc { font-size: 0.82rem; color: var(--app-text-muted, #94a3b8); margin: 0 0 14px; line-height: 1.5; }
 .doy-row {
   display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-  label { font-size: 0.8rem; font-weight: 600; color: #4a6080; text-transform: uppercase; letter-spacing: 0.04em; }
+  label { font-size: 0.8rem; font-weight: 600; color: var(--app-text-dim, #4a6080); text-transform: uppercase; letter-spacing: 0.04em; }
   input {
-    padding: 4px 8px; border: 1px solid #2d3a56; border-radius: 4px;
-    font-size: 0.9rem; background: #0c1524; color: #e2e8f0;
-    &:focus { outline: 2px solid #3b6ec4; }
+    padding: 4px 8px; border: 1px solid var(--app-border, #2d3a56); border-radius: 4px;
+    font-size: 0.9rem; background: var(--app-surface, #0c1524); color: var(--app-text, #e2e8f0);
+    &:focus { outline: 2px solid var(--app-accent, #3b6ec4); }
   }
 }
 .doy-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 // ---- Memorable Days ----
-.empty-note { color: #4a6080; font-size: 0.82rem; font-style: italic; margin: 0; }
+.empty-note { color: var(--app-text-dim, #4a6080); font-size: 0.82rem; font-style: italic; margin: 0; }
 
 .mem-day-card {
   border: 1px solid #253048;
@@ -1334,10 +1334,10 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
 .mem-color {
   width: 32px; height: 28px;
   padding: 1px;
-  border: 1px solid #2d3a56;
+  border: 1px solid var(--app-border, #2d3a56);
   border-radius: 4px;
   cursor: pointer;
-  background: #0c1524;
+  background: var(--app-surface, #0c1524);
   flex-shrink: 0;
 }
 
@@ -1361,13 +1361,13 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
 
 .date-label {
   font-size: 0.72rem; font-weight: 600;
-  color: #4a6080;
+  color: var(--app-text-dim, #4a6080);
   text-transform: uppercase; letter-spacing: 0.04em;
   user-select: none;
 }
 
 .date-sep {
-  color: #4a6080;
+  color: var(--app-text-dim, #4a6080);
   font-size: 0.85rem;
   padding: 0 2px;
 }
@@ -1389,7 +1389,7 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
 }
 
 .date-val {
-  color: #e2e8f0;
+  color: var(--app-text, #e2e8f0);
   font-weight: 500;
 }
 
@@ -1401,14 +1401,14 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
   cursor: pointer;
   font-size: 0.9rem; font-weight: 500;
   &:disabled { opacity: 0.55; cursor: not-allowed; }
-  &.btn-primary   { background: #2c5f8a; color: #e2e8f0; &:hover:not(:disabled) { background: #3572a8; } }
-  &.btn-secondary { background: #1e2b44; color: #94a3b8; border: 1px solid #2d3a56; &:hover:not(:disabled) { background: #253252; color: #e2e8f0; } }
+  &.btn-primary   { background: #2c5f8a; color: var(--app-text, #e2e8f0); &:hover:not(:disabled) { background: #3572a8; } }
+  &.btn-secondary { background: var(--app-surface-high, #1e2b44); color: var(--app-text-muted, #94a3b8); border: 1px solid var(--app-border, #2d3a56); &:hover:not(:disabled) { background: #253252; color: var(--app-text, #e2e8f0); } }
   &.btn-sm { padding: 4px 12px; font-size: 0.82rem; }
 }
 
 .btn-icon {
   border: none; background: none; cursor: pointer;
-  font-size: 1.1rem; color: #4a6080;
+  font-size: 1.1rem; color: var(--app-text-dim, #4a6080);
   padding: 0 2px; line-height: 1;
   flex-shrink: 0;
   &:hover { color: #e05555; }
@@ -1430,7 +1430,7 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
 .collapse-chevron {
   display: inline-block;
   font-size: 1rem;
-  color: #4a6080;
+  color: var(--app-text-dim, #4a6080);
   line-height: 1;
   transition: transform 0.18s ease, color 0.15s;
   flex-shrink: 0;
@@ -1456,15 +1456,15 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
   padding: 4px 12px;
   font-size: 0.82rem;
   font-weight: 500;
-  border: 1px dashed #2d3a56;
+  border: 1px dashed var(--app-border, #2d3a56);
   border-radius: 4px;
   background: transparent;
-  color: #4a6080;
+  color: var(--app-text-dim, #4a6080);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 
   &:hover {
-    border-color: #3b6ec4;
+    border-color: var(--app-accent, #3b6ec4);
     color: #7aa8e8;
     background: #1a2744;
   }
@@ -1473,7 +1473,7 @@ select.tbl-input option { background: #0c1524; color: #e2e8f0; }
 // ---- Year length hint ----
 .year-hint {
   font-size: 0.72rem;
-  color: #4a6080;
+  color: var(--app-text-dim, #4a6080);
   font-style: italic;
   margin-top: 3px;
 }

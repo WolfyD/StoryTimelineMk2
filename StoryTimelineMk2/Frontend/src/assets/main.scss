@@ -24,10 +24,16 @@
     --app-text-dim:       #4a6080;
     --app-accent:         #6366f1;
     --app-accent-hover:   #818cf8;
+    --app-save-accent:    #446b40;
+    --app-save-accent-hover: #52804c;
+    --app-danger:         #ef4444;
+    --app-danger-hover:   #f87171;
     --app-radius:         8px;
     --app-radius-sm:      4px;
     --app-radius-lg:      12px;
 }
+
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body, #app {
 	margin: 0;
@@ -35,10 +41,15 @@ html, body, #app {
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
-
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 	background-color: var(--app-bg);
 	color: var(--app-text);
 }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--app-border, #2d3a56); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--app-text-dim, #4a6080); }
 
 .splitpanes__splitter {
 	background: transparent;

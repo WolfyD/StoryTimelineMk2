@@ -44,19 +44,19 @@ function label(i: number): string {
 .day-chip {
     padding: 3px 9px;
     border-radius: 4px;
-    border: 1px solid #2d3a56;
-    background: #0c1524;
-    color: #94a3b8;
+    border: 1px solid var(--app-border, #2d3a56);
+    background: var(--app-surface, #0c1524);
+    color: var(--app-text-muted, #94a3b8);
     font-size: 0.78rem;
     cursor: pointer;
     user-select: none;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
 
-    &:hover:not(.selected) { background: #1e2b44; color: #e2e8f0; border-color: #3b5080; }
+    &:hover:not(.selected) { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); border-color: #3b5080; }
 
     &.selected {
         background: #2c5f8a;
-        border-color: #3b6ec4;
+        border-color: var(--app-accent, #3b6ec4);
         color: #e8f0ff;
         font-weight: 600;
     }
@@ -64,7 +64,7 @@ function label(i: number): string {
 
 .no-week-note {
     font-size: 0.78rem;
-    color: #4a6080;
+    color: var(--app-text-dim, #4a6080);
     font-style: italic;
 }
 </style>

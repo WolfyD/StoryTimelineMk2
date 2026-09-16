@@ -349,6 +349,7 @@ namespace StoryTimelineMk2.Bridge
             // WebView2 WebMessageReceived handler creates a nested COM message loop
             // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
             addEditItemWindow.Show(_parentForm);
+            addEditItemWindow.TopMost = _parentForm.TopMost;
             addEditItemWindow.Activate();
         }
 
@@ -438,7 +439,8 @@ namespace StoryTimelineMk2.Bridge
                 if (_parentForm is f_AddEditItem addEdit && addEdit.NotifyCallback != null)
                 {
                     var savedItem = itemRepo.GetItemById(savedId);
-                    addEdit.NotifyCallback("ItemSaved", new { Item = savedItem });
+                    var links = itemRepo.GetItemLinksById(savedId);
+                    addEdit.NotifyCallback("ItemSaved", new { Item = savedItem, Tags = links.Tags, Characters = links.Characters, StoryRefs = links.StoryRefs, HasPicture = links.HasPicture });
                 }
             }
             catch (Exception ex)
@@ -778,8 +780,23 @@ namespace StoryTimelineMk2.Bridge
             bool topmost = message.Payload.GetProperty("topmost").GetBoolean();
             _parentForm.BeginInvoke((MethodInvoker)(() =>
             {
-                _parentForm.TopMost = topmost;
+                // Windows strips WS_EX_TOPMOST from the owner whenever an owned window
+                // goes non-topmost. Always operate on the root owner so the OS change is
+                // intentional and consistent, then push the new state to every window's Vue.
+                Form root = _parentForm;
+                while (root.Owner is Form owner)
+                    root = owner;
+                root.TopMost = topmost;
+                PropagateTopMostTree(root, topmost);
             }));
+        }
+
+        private static void PropagateTopMostTree(Form form, bool topmost)
+        {
+            if (form is Forms.BorderlessFormBase bf)
+                bf.PropagateTopMost(topmost);
+            foreach (Form owned in form.OwnedForms)
+                PropagateTopMostTree(owned, topmost);
         }
 
         private void HandleSaveLayoutSettings(BridgeMessage message)
@@ -941,6 +958,7 @@ namespace StoryTimelineMk2.Bridge
             var calendarWindow = f_Calendar.TakePrewarmed() ?? new f_Calendar();
             calendarWindow.CalendarId = calendarId;
             calendarWindow.Show(_parentForm);
+            calendarWindow.TopMost = _parentForm.TopMost;
             calendarWindow.Activate();
             // Re-warm for next use
             f_Calendar.BeginPrewarm();
@@ -970,6 +988,7 @@ namespace StoryTimelineMk2.Bridge
             _yearCalendarWindow.CalendarId = calendarId;
             _yearCalendarWindow.FormClosed += (_, _) => _yearCalendarWindow = null;
             _yearCalendarWindow.Show(_parentForm);
+            _yearCalendarWindow.TopMost = _parentForm.TopMost;
             _yearCalendarWindow.Activate();
             // Re-warm for next use
             f_YearCalendar.BeginPrewarm();
@@ -1316,7 +1335,7 @@ namespace StoryTimelineMk2.Bridge
                 string oldMedia = AppConfig.Instance.GetMediaFolder();
 
                 if (File.Exists(oldDb))
-                    File.Copy(oldDb, Path.Combine(newPath, "timeline.sqlite"), overwrite: true);
+                    new ItemRepo().VacuumInto(Path.Combine(newPath, "timeline.sqlite"));
 
                 if (Directory.Exists(oldMedia))
                     CopyDirectory(oldMedia, Path.Combine(newPath, "Media"));

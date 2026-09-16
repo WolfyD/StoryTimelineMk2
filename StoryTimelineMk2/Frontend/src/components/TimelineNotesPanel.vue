@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
-import { FormatRegistry } from '@/utils/timelineLayout';
+;
 import type { TimelineNote, LayoutSettings } from '@/types/models';
 
 const props = defineProps<{
@@ -22,6 +22,7 @@ const inRangeNotes = computed(() => {
     const tickDist = props.layoutSettings.TimelineTickDistance || 100;
     const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
     const halfAbsolute = (props.layoutSettings.TimelineDataRangeWidth / 2 / tickDist) * lodStep;
+    if (!halfAbsolute) return store.notes;
     const center = store.centerAbsoluteTime;
     return store.notes.filter(n =>
         n.AbsoluteTime >= center - halfAbsolute &&
@@ -48,10 +49,12 @@ async function addNote() {
         AbsoluteTime: store.centerAbsoluteTime,
         UpdatedAt: new Date().toISOString(),
     };
-    const result = await BackendAPI.SaveNote(note);
-    if (result?.status === 'ok') {
-        store.addNote({ ...note, Id: result.noteId });
-        newNoteText.value = '';
+    store.addNote(note);
+    newNoteText.value = '';
+    const result = await BackendAPI.SaveNote(note).catch(() => null);
+    if (!result || result.status !== 'ok') {
+        store.removeNote(note.Id);
+        newNoteText.value = text;
     }
 }
 
@@ -88,7 +91,7 @@ function formatPoint(abs: number | null): string {
     if (abs === null) return '—';
     const year = Math.floor(abs);
     const frac = abs - year;
-    const fmt = FormatRegistry[currentFormatKey.value];
+    const fmt = store.activeFormatRegistry[currentFormatKey.value];
     if (!fmt) return String(year);
     const sub = fmt(year, frac);
     if (!sub || sub === String(year)) return String(year);
@@ -105,35 +108,55 @@ const distanceText = computed(() => {
 });
 
 function formatSpecific(dist: number): string {
-    const years = Math.floor(dist);
-    const afterYears = dist - years;
-    const totalMonths = afterYears * 12;
-    const months = Math.floor(totalMonths);
-    const afterMonths = totalMonths - months;
-    const weeks = Math.floor(afterMonths * 4.33);
-    const afterWeeks = afterMonths * 4.33 - weeks;
-    const days = Math.floor(afterWeeks * 7);
+    const cfg = store.calendarConfig
+    const yearLength = cfg.yearLength || 365
+    const weekLength = cfg.weekLength || 7
 
-    const parts: string[] = [];
-    if (years > 0)  parts.push(`${years} year${years !== 1 ? 's' : ''}`);
-    if (months > 0) parts.push(`${months} month${months !== 1 ? 's' : ''}`);
-    if (weeks > 0)  parts.push(`${weeks} week${weeks !== 1 ? 's' : ''}`);
-    if (days > 0 && months === 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
-    return parts.length ? parts.join(', ') : '< 1 day';
+    const years = Math.floor(dist)
+    let remainingDays = Math.round((dist - years) * yearLength)
+
+    // Decompose remaining days into months using actual calendar month lengths
+    const monthLengths = cfg.months.map((m, i) => {
+        const next = cfg.months[i + 1]
+        return next ? next.startDay - m.startDay : yearLength - m.startDay
+    })
+    let months = 0
+    for (const len of monthLengths) {
+        if (remainingDays < len) break
+        months++
+        remainingDays -= len
+    }
+
+    const weeks = Math.floor(remainingDays / weekLength)
+    remainingDays -= weeks * weekLength
+
+    const parts: string[] = []
+    if (years > 0)         parts.push(`${years} year${years !== 1 ? 's' : ''}`)
+    if (months > 0)        parts.push(`${months} month${months !== 1 ? 's' : ''}`)
+    if (weeks > 0)         parts.push(`${weeks} week${weeks !== 1 ? 's' : ''}`)
+    if (remainingDays > 0 && months === 0) parts.push(`${remainingDays} day${remainingDays !== 1 ? 's' : ''}`)
+    return parts.length ? parts.join(', ') : '< 1 day'
 }
 
 function formatApproximate(dist: number): string {
-    const key = currentFormatKey.value;
+    const cfg = store.calendarConfig
+    const yearLength = cfg.yearLength || 365
+    const weekLength = cfg.weekLength || 7
+    const monthCount = cfg.months.length || 12
+    const seasonCount = cfg.seasons.length || 4
+    const weeksPerYear = Math.round(yearLength / weekLength)
+
+    const key = currentFormatKey.value
     switch (key) {
-        case 'MILLENNIA': { const n = Math.floor(dist / 1000); return `${n} millennium${n !== 1 ? 's' : ''}`; }
-        case 'CENTURIES': { const n = Math.floor(dist / 100);  return `${n} centur${n !== 1 ? 'ies' : 'y'}`; }
-        case 'DECADES':   { const n = Math.floor(dist / 10);   return `${n} decade${n !== 1 ? 's' : ''}`; }
-        case 'QUARTERS':  { const n = Math.floor(dist * 4);    return `${n} quarter${n !== 1 ? 's' : ''}`; }
-        case 'SEASONS':   { const n = Math.floor(dist * 4);    return `${n} season${n !== 1 ? 's' : ''}`; }
-        case 'MONTHS':    { const n = Math.floor(dist * 12);   return `${n} month${n !== 1 ? 's' : ''}`; }
-        case 'WEEKS':     { const n = Math.floor(dist * 52);   return `${n} week${n !== 1 ? 's' : ''}`; }
-        case 'DAYS':      { const n = Math.floor(dist * 365);  return `${n} day${n !== 1 ? 's' : ''}`; }
-        default: { const n = Math.floor(dist); return `${n} year${n !== 1 ? 's' : ''}`; }
+        case 'MILLENNIA': { const n = Math.floor(dist / 1000); return `${n} millennium${n !== 1 ? 's' : ''}` }
+        case 'CENTURIES': { const n = Math.floor(dist / 100);  return `${n} centur${n !== 1 ? 'ies' : 'y'}` }
+        case 'DECADES':   { const n = Math.floor(dist / 10);   return `${n} decade${n !== 1 ? 's' : ''}` }
+        case 'QUARTERS':  { const n = Math.floor(dist * 4);    return `${n} quarter${n !== 1 ? 's' : ''}` }
+        case 'SEASONS':   { const n = Math.floor(dist * seasonCount); return `${n} season${n !== 1 ? 's' : ''}` }
+        case 'MONTHS':    { const n = Math.floor(dist * monthCount);  return `${n} month${n !== 1 ? 's' : ''}` }
+        case 'WEEKS':     { const n = Math.floor(dist * weeksPerYear); return `${n} week${n !== 1 ? 's' : ''}` }
+        case 'DAYS':      { const n = Math.floor(dist * yearLength);   return `${n} day${n !== 1 ? 's' : ''}` }
+        default:          { const n = Math.floor(dist); return `${n} year${n !== 1 ? 's' : ''}` }
     }
 }
 </script>

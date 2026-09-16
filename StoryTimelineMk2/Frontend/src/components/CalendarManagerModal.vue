@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { PhX, PhPencilSimple, PhEye, PhPlus, PhArrowsClockwise } from '@phosphor-icons/vue'
+import BaseModal from './BaseModal.vue'
 import { BackendAPI } from '@/bridge/api'
 import CalendarViewModal from './CalendarViewModal.vue'
 
@@ -33,53 +34,49 @@ onMounted(load)
 
 <template>
     <Teleport to="body">
-        <div class="modal-backdrop" @click.self="emit('close')">
-            <div class="modal-panel">
-
-                <div class="modal-header">
-                    <span class="modal-title">Calendars</span>
-                    <div class="modal-header-actions">
-                        <button class="icon-btn" title="Refresh" :disabled="loading" @click="load">
-                            <PhArrowsClockwise :size="15" />
-                        </button>
-                        <button class="icon-btn" title="Close" @click="emit('close')">
-                            <PhX :size="16" />
-                        </button>
-                    </div>
-                </div>
-
-                <div class="modal-body">
-                    <div v-if="loading" class="state-msg">Loading…</div>
-                    <div v-else-if="error" class="state-msg error">{{ error }}</div>
-                    <div v-else-if="calendars.length === 0" class="state-msg empty">
-                        No calendars yet. Create one to get started.
-                    </div>
-                    <ul v-else class="cal-list">
-                        <li v-for="c in calendars" :key="c.Id" class="cal-row">
-                            <span class="cal-name">{{ c.Name }}</span>
-                            <div class="row-actions">
-                                <button class="action-btn" title="View calendar" @click="viewingId = c.Id">
-                                    <PhEye :size="14" />
-                                    View
-                                </button>
-                                <button class="action-btn edit" title="Edit calendar" @click="openEditor(c.Id)">
-                                    <PhPencilSimple :size="14" />
-                                    Edit
-                                </button>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-
-                <div class="modal-footer">
-                    <button class="new-btn" @click="openEditor(null)">
-                        <PhPlus :size="14" />
-                        New Calendar
+        <BaseModal width="80vw" max-height="75vh" @close="emit('close')">
+            <template #header>
+                <span class="modal-title">Calendars</span>
+                <div class="modal-header-actions">
+                    <button class="icon-btn" title="Refresh" :disabled="loading" @click="load">
+                        <PhArrowsClockwise :size="15" />
+                    </button>
+                    <button class="icon-btn" title="Close" @click="emit('close')">
+                        <PhX :size="16" />
                     </button>
                 </div>
+            </template>
 
+            <div class="modal-body">
+                <div v-if="loading" class="state-msg">Loading…</div>
+                <div v-else-if="error" class="state-msg error">{{ error }}</div>
+                <div v-else-if="calendars.length === 0" class="state-msg empty">
+                    No calendars yet. Create one to get started.
+                </div>
+                <ul v-else class="cal-list">
+                    <li v-for="c in calendars" :key="c.Id" class="cal-row">
+                        <span class="cal-name">{{ c.Name }}</span>
+                        <div class="row-actions">
+                            <button class="action-btn" title="View calendar" @click="viewingId = c.Id">
+                                <PhEye :size="14" />
+                                View
+                            </button>
+                            <button class="action-btn edit" title="Edit calendar" @click="openEditor(c.Id)">
+                                <PhPencilSimple :size="14" />
+                                Edit
+                            </button>
+                        </div>
+                    </li>
+                </ul>
             </div>
-        </div>
+
+            <div class="modal-footer">
+                <button class="new-btn" @click="openEditor(null)">
+                    <PhPlus :size="14" />
+                    New Calendar
+                </button>
+            </div>
+        </BaseModal>
 
         <!-- View modal rendered on top -->
         <CalendarViewModal
@@ -92,39 +89,7 @@ onMounted(load)
 </template>
 
 <style scoped lang="scss">
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.modal-panel {
-    width: 80vw;
-    max-height: 75vh;
-    background: var(--app-surface-raised, #141e33);
-    border: 1px solid var(--app-border, #2d3a56);
-    border-radius: var(--app-radius, 8px);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-// ── Header ────────────────────────────────────────────────────────────────────
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--app-border, #2d3a56);
-    background: var(--app-surface, #0c1524);
-    flex-shrink: 0;
-}
+// ── Header slot content ───────────────────────────────────────────────────────
 
 .modal-title {
     font-size: 0.88rem;

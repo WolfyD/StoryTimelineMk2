@@ -1,19 +1,8 @@
-import { test, expect, findPageByRole, waitForNewPage } from './fixtures'
+import { test, expect, findPageByRole, openTimelinePage } from './fixtures'
 
 test.describe('Timeline canvas — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
-    const existing = findPageByRole(appContext, 'timeline')
-    if (existing) {
-      await existing.evaluate(() => window.close())
-      await new Promise(r => setTimeout(r, 1000))
-    }
-
-    const firstRow = mainPage.locator('.project-timeline-row-container').first()
-    await expect(firstRow).toBeVisible({ timeout: 8000 })
-    await firstRow.click()
-
-    const tl = await waitForNewPage(appContext, 'timeline', 10_000, pageErrors)
-    await tl.waitForSelector('#timeline-workspace', { timeout: 10_000 })
+    await openTimelinePage(mainPage, appContext, pageErrors)
   })
 
   test('timeline workspace and header are rendered', async ({ appContext }) => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { PhX, PhWarning } from '@phosphor-icons/vue'
+import { PhWarning } from '@phosphor-icons/vue'
+import BaseModal from './BaseModal.vue'
 import type { ImportPreview } from '@/types/models'
 
 const props = defineProps<{ preview: ImportPreview }>()
@@ -19,79 +20,46 @@ function formatPath(p: string) {
 </script>
 
 <template>
-    <div class="modal-backdrop" @click.self="emit('close')">
-        <div class="modal-panel">
-            <div class="modal-header">
-                <span class="modal-title">Import Database</span>
-                <button class="close-btn" @click="emit('close')"><PhX :size="18" /></button>
+    <BaseModal title="Import Database" width="min(480px, 92vw)" @close="emit('close')">
+        <div class="modal-body">
+            <p class="source-path" :title="preview.sourcePath">{{ formatPath(preview.sourcePath) }}</p>
+
+            <div class="stat-row">
+                <span class="stat-label">Version</span>
+                <span class="stat-value">{{ preview.isV2 ? 'V2 (current)' : 'V1 (legacy)' }}</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Timelines</span>
+                <span class="stat-value">{{ preview.timelineCount }}</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Items</span>
+                <span class="stat-value">{{ preview.itemCount }}</span>
             </div>
 
-            <div class="modal-body">
-                <p class="source-path" :title="preview.sourcePath">{{ formatPath(preview.sourcePath) }}</p>
-
-                <div class="stat-row">
-                    <span class="stat-label">Version</span>
-                    <span class="stat-value">{{ preview.isV2 ? 'V2 (current)' : 'V1 (legacy)' }}</span>
+            <div v-if="preview.conflictingTimelines.length" class="conflict-block">
+                <div class="conflict-header">
+                    <PhWarning :size="15" />
+                    {{ preview.conflictingTimelines.length }} timeline{{ preview.conflictingTimelines.length > 1 ? 's' : '' }} will be replaced
                 </div>
-                <div class="stat-row">
-                    <span class="stat-label">Timelines</span>
-                    <span class="stat-value">{{ preview.timelineCount }}</span>
-                </div>
-                <div class="stat-row">
-                    <span class="stat-label">Items</span>
-                    <span class="stat-value">{{ preview.itemCount }}</span>
-                </div>
-
-                <div v-if="preview.conflictingTimelines.length" class="conflict-block">
-                    <div class="conflict-header">
-                        <PhWarning :size="15" />
-                        {{ preview.conflictingTimelines.length }} timeline{{ preview.conflictingTimelines.length > 1 ? 's' : '' }} will be replaced
-                    </div>
-                    <ul class="conflict-list">
-                        <li v-for="t in preview.conflictingTimelines" :key="t">{{ t }}</li>
-                    </ul>
-                    <p class="conflict-note">Existing data for these timelines (items, characters, settings) will be deleted before the import. Other timelines are not affected.</p>
-                </div>
-
-                <p v-else class="no-conflict">No conflicts detected — all timelines will be added.</p>
+                <ul class="conflict-list">
+                    <li v-for="t in preview.conflictingTimelines" :key="t">{{ t }}</li>
+                </ul>
+                <p class="conflict-note">Existing data for these timelines (items, characters, settings) will be deleted before the import. Other timelines are not affected.</p>
             </div>
 
-            <div class="modal-footer">
-                <button class="btn btn-cancel" :disabled="isWorking" @click="emit('close')">Cancel</button>
-                <button class="btn btn-danger" :disabled="isWorking" @click="confirm">
-                    {{ isWorking ? 'Importing…' : 'Import' }}
-                </button>
-            </div>
+            <p v-else class="no-conflict">No conflicts detected — all timelines will be added.</p>
         </div>
-    </div>
+        <template #footer>
+            <button class="btn btn-cancel" :disabled="isWorking" @click="emit('close')">Cancel</button>
+            <button class="btn btn-danger" :disabled="isWorking" @click="confirm">
+                {{ isWorking ? 'Importing…' : 'Import' }}
+            </button>
+        </template>
+    </BaseModal>
 </template>
 
 <style scoped lang="scss">
-.modal-backdrop {
-    position: fixed; inset: 0; background: #00000088; z-index: 1000;
-    display: flex; align-items: center; justify-content: center;
-}
-.modal-panel {
-    display: flex; flex-direction: column;
-    background: var(--app-surface-raised, #141e33);
-    border: 1px solid var(--app-border, #2d3a56);
-    border-radius: var(--app-radius, 8px);
-    width: min(480px, 92vw); box-shadow: 0 24px 48px #00000066;
-}
-.modal-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px; background: var(--app-surface-high, #1e2b44);
-    border-bottom: 1px solid var(--app-border, #2d3a56);
-    border-radius: var(--app-radius, 8px) var(--app-radius, 8px) 0 0;
-}
-.modal-title { font-size: 15px; font-weight: 600; color: var(--app-text, #e2e8f0); }
-.close-btn {
-    display: flex; align-items: center; justify-content: center;
-    background: transparent; border: none; color: var(--app-text-muted, #64748b);
-    cursor: pointer; padding: 4px; border-radius: 4px;
-    transition: color 0.15s, background 0.15s;
-    &:hover { color: var(--app-text, #e2e8f0); background: rgba(255,255,255,0.07); }
-}
 .modal-body {
     padding: 20px 24px; display: flex; flex-direction: column; gap: 10px;
 }
@@ -124,12 +92,6 @@ function formatPath(p: string) {
 .conflict-note { margin: 0; font-size: 11px; color: #c87171; line-height: 1.5; }
 .no-conflict { margin: 0; font-size: 12px; color: #6fcf97; }
 
-.modal-footer {
-    display: flex; justify-content: flex-end; gap: 10px;
-    padding: 12px 20px; background: var(--app-surface-high, #1e2b44);
-    border-top: 1px solid var(--app-border, #2d3a56);
-    border-radius: 0 0 var(--app-radius, 8px) var(--app-radius, 8px);
-}
 .btn {
     font-size: 13px; font-weight: 500; padding: 6px 16px;
     border-radius: 5px; cursor: pointer; border: none; transition: background 0.15s, opacity 0.15s;

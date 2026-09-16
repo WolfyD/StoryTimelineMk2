@@ -2,14 +2,13 @@
 import { computed } from 'vue'
 import type { LodLevel } from '@/types/models'
 
-// Month lengths for day-of-year ↔ (month, day) conversion (non-leap Gregorian baseline)
-const MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-const SEASON_NAMES = ['Spring', 'Summer', 'Fall', 'Winter']
-
 const props = defineProps<{
   lodIndex: number
   lodProfile: LodLevel[]
-  monthNames: string[]   // 12 names from calendar year_definition; falls back to Gregorian
+  monthNames: string[]    // names from calendar year_definition
+  monthLengths: number[]  // day count per month, same order as monthNames
+  seasonNames: string[]   // season names from calendar year_definition
+  weekCount: number       // total weeks per year (Math.ceil(yearLength / weekLength))
   year: number
   subtick: number
   label: string
@@ -45,27 +44,31 @@ const yearStep    = computed(() => {
 const monthFromSubtick = computed(() => {
   if (!showDays.value) return props.subtick  // subtick IS month index for LOD_MONTHS
   let rem = props.subtick
-  for (let i = 0; i < 12; i++) {
-    if (rem < MONTH_LENGTHS[i]) return i
-    rem -= MONTH_LENGTHS[i]
+  const lengths = props.monthLengths
+  for (let i = 0; i < lengths.length; i++) {
+    const len = lengths[i] ?? 0
+    if (rem < len) return i
+    rem -= len
   }
-  return 11
+  return Math.max(0, lengths.length - 1)
 })
 
 const dayFromSubtick = computed(() => {
   if (!showDays.value) return 1
   let rem = props.subtick
-  for (let i = 0; i < 12; i++) {
-    if (rem < MONTH_LENGTHS[i]) return rem + 1
-    rem -= MONTH_LENGTHS[i]
+  const lengths = props.monthLengths
+  for (let i = 0; i < lengths.length; i++) {
+    const len = lengths[i] ?? 0
+    if (rem < len) return rem + 1
+    rem -= len
   }
   return 1
 })
 
-const daysInSelectedMonth = computed(() => MONTH_LENGTHS[monthFromSubtick.value] ?? 31)
+const daysInSelectedMonth = computed(() => props.monthLengths[monthFromSubtick.value] ?? 31)
 
 const resolvedMonthNames = computed(() =>
-  props.monthNames.length === 12 ? props.monthNames : [
+  props.monthNames.length > 0 ? props.monthNames : [
     'January','February','March','April','May','June',
     'July','August','September','October','November','December'
   ]
@@ -84,8 +87,8 @@ function onMonthChange(e: Event) {
   if (showDays.value) {
     // Recompute day-of-year: keep current day but in new month
     let doy = 0
-    for (let i = 0; i < newMonth; i++) doy += MONTH_LENGTHS[i]
-    const clampedDay = Math.min(dayFromSubtick.value, MONTH_LENGTHS[newMonth])
+    for (let i = 0; i < newMonth; i++) doy += props.monthLengths[i] ?? 0
+    const clampedDay = Math.min(dayFromSubtick.value, props.monthLengths[newMonth] ?? 31)
     emit('update:subtick', doy + clampedDay - 1)
   } else {
     emit('update:subtick', newMonth)
@@ -95,7 +98,7 @@ function onMonthChange(e: Event) {
 function onDayChange(e: Event) {
   const newDay = parseInt((e.target as HTMLInputElement).value) || 1
   let doy = 0
-  for (let i = 0; i < monthFromSubtick.value; i++) doy += MONTH_LENGTHS[i]
+  for (let i = 0; i < monthFromSubtick.value; i++) doy += props.monthLengths[i] ?? 0
   emit('update:subtick', doy + newDay - 1)
 }
 
@@ -122,7 +125,7 @@ function onWeekChange(e: Event) {
       <div v-if="showSeasons" class="lod-field">
         <label>Season</label>
         <select :value="subtick" @change="onSeasonChange">
-          <option v-for="(name, i) in SEASON_NAMES" :key="i" :value="i">{{ name }}</option>
+          <option v-for="(name, i) in seasonNames" :key="i" :value="i">{{ name }}</option>
         </select>
       </div>
 
@@ -150,7 +153,7 @@ function onWeekChange(e: Event) {
           type="number"
           :value="subtick + 1"
           min="1"
-          max="52"
+          :max="weekCount"
           @change="onWeekChange"
         />
       </div>

@@ -1,18 +1,5 @@
-import { test, expect, findPageByRole, waitForNewPage } from './fixtures'
-import type { Page, BrowserContext } from '@playwright/test'
-
-async function openTimeline(mainPage: Page, appContext: BrowserContext, pageErrors: string[]) {
-  const existing = findPageByRole(appContext, 'timeline')
-  if (existing) {
-    await existing.evaluate(() => window.close())
-    await new Promise(r => setTimeout(r, 1000))
-  }
-  const firstRow = mainPage.locator('.project-timeline-row-container').first()
-  await expect(firstRow).toBeVisible({ timeout: 8000 })
-  await firstRow.click()
-  const tl = await waitForNewPage(appContext, 'timeline', 10_000, pageErrors)
-  await tl.waitForSelector('#timeline-workspace', { timeout: 10_000 })
-}
+import { test, expect, findPageByRole, openTimelinePage } from './fixtures'
+import type { Page } from '@playwright/test'
 
 /**
  * Toggle the filter panel open (idempotent — if already open, does nothing).
@@ -70,7 +57,7 @@ async function cleanupRules(tl: Page) {
 
 test.describe('Timeline filter panel — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
-    await openTimeline(mainPage, appContext, pageErrors)
+    await openTimelinePage(mainPage, appContext, pageErrors)
     // filterPanelOpen is persisted to the DB, so it carries across fresh page loads.
     // Ensure the panel starts closed so every test begins from a known state.
     const tl = findPageByRole(appContext, 'timeline')!
