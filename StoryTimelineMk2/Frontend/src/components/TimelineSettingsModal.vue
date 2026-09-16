@@ -6,6 +6,7 @@ import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import FontPicker from './FontPicker.vue'
 import BaseModal from './BaseModal.vue'
+import SettingHint from './SettingHint.vue'
 
 const props = defineProps<{
     settings?: TimelineSettings
@@ -17,8 +18,6 @@ const store = useTimelineStore()
 
 // --- per-timeline settings ---
 const local = reactive({
-    Font: props.settings?.Font ?? 'Arial',
-    FontSizeScale: props.settings?.FontSizeScale ?? 1.0,
     PixelsPerSubtick: props.settings?.PixelsPerSubtick ?? 20,
     ShowGuides: props.settings?.ShowGuides ?? true,
     DisplayRadius: props.settings?.DisplayRadius ?? 10,
@@ -311,8 +310,6 @@ async function save() {
     const [settingsResult, lsResult] = await Promise.all([
         BackendAPI.SaveSettings({
             timelineId: store.currentProject!.Id,
-            font: local.Font,
-            fontSizeScale: local.FontSizeScale,
             pixelsPerSubtick: local.PixelsPerSubtick,
             showGuides: local.ShowGuides,
             displayRadius: local.DisplayRadius,
@@ -328,8 +325,6 @@ async function save() {
 
     if (settingsResult?.status === 'ok' && lsResult?.status === 'ok') {
         if (store.settings) {
-            store.settings.Font = local.Font
-            store.settings.FontSizeScale = local.FontSizeScale
             store.settings.PixelsPerSubtick = local.PixelsPerSubtick
             store.settings.ShowGuides = local.ShowGuides
             store.settings.DisplayRadius = local.DisplayRadius
@@ -376,30 +371,24 @@ async function save() {
                 <!-- GENERAL -->
                 <div class="section-title">General</div>
                 <div class="settings-grid">
-                    <span class="s-label">Font</span>
-                    <FontPicker v-model="local.Font" :fonts="systemFonts" />
-
-                    <span class="s-label">Font Size Scale</span>
-                    <input class="s-input s-input--narrow" type="number" v-model.number="local.FontSizeScale" :step="0.1" min="0.5" max="3" />
-
-                    <span class="s-label">Pixels per Subtick</span>
+                    <span class="s-label">Pixels per Subtick <SettingHint tip="Horizontal pixel distance between the smallest time units at default zoom" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.PixelsPerSubtick" :step="1" min="5" max="200" />
 
-                    <span class="s-label">Display Radius</span>
+                    <span class="s-label">Display Radius <SettingHint tip="How many years around the current view to load and render items" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.DisplayRadius" :step="1" min="1" max="100" />
 
-                    <span class="s-label">Pan Speed</span>
+                    <span class="s-label">Pan Speed <SettingHint tip="Middle-mouse pan speed multiplier. Default 10 = normal feel; lower = slower, higher = faster" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.PanSpeedMultiplier" :step="0.1" min="0.01" max="100" />
 
-                    <span class="s-label">Pan Deadzone (px)</span>
+                    <span class="s-label">Pan Deadzone (px) <SettingHint tip="Width of the neutral zone at screen center where middle-mouse does not pan; cursor shows ↔ but no movement occurs" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.PanDeadzone" :step="1" min="0" max="500" />
 
-                    <span class="s-label">Show Guides</span>
+                    <span class="s-label">Show Guides <SettingHint tip="Toggle guide lines on the canvas (reserved for future use)" /></span>
                     <button class="toggle" :class="{ 'is-on': local.ShowGuides }" type="button" @click="local.ShowGuides = !local.ShowGuides">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Filtered items</span>
+                    <span class="s-label">Filtered items <SettingHint tip="How items excluded by active filters are displayed — hidden removes them; dimmed fades them out" /></span>
                     <div class="radio-group">
                         <label class="radio-opt">
                             <input type="radio" :checked="store.filterDisplayMode === 'hidden'" @change="store.setFilterDisplayMode('hidden')" />
@@ -415,18 +404,18 @@ async function save() {
                 <!-- WINDOW -->
                 <div class="section-title">Window</div>
                 <div class="settings-grid">
-                    <span class="s-label">Fullscreen</span>
+                    <span class="s-label">Fullscreen <SettingHint tip="Run the timeline window in borderless fullscreen mode" /></span>
                     <button class="toggle" :class="{ 'is-on': local.IsFullscreen }" type="button" @click="local.IsFullscreen = !local.IsFullscreen">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Custom Scaling</span>
+                    <span class="s-label">Custom Scaling <SettingHint tip="Override the system DPI scaling for this window" /></span>
                     <button class="toggle" :class="{ 'is-on': local.UseCustomScaling }" type="button" @click="local.UseCustomScaling = !local.UseCustomScaling">
                         <span class="toggle-thumb" />
                     </button>
 
                     <template v-if="local.UseCustomScaling">
-                        <span class="s-label">Scale Factor</span>
+                        <span class="s-label">Scale Factor <SettingHint tip="Zoom factor applied to this window (1.0 = 100%, 2.0 = 200%)" /></span>
                         <input class="s-input s-input--narrow" type="number" v-model.number="local.CustomScale" :step="0.1" min="0.5" max="4" />
                     </template>
                 </div>
@@ -439,7 +428,7 @@ async function save() {
                 <!-- LAYOUT PRESET -->
                 <div class="section-title">Layout Preset</div>
                 <div class="settings-grid">
-                    <span class="s-label">Active Preset</span>
+                    <span class="s-label">Active Preset <SettingHint tip="Visual layout preset applied to this timeline — controls box sizes, colors, and canvas appearance" /></span>
                     <div class="preset-row">
                         <select class="s-input" v-model="local.selectedLayoutId">
                             <option v-if="layoutPresets.length === 0" :value="local.selectedLayoutId">
@@ -453,7 +442,7 @@ async function save() {
                     </div>
 
                     <template v-if="isBuiltinPreset">
-                        <span class="s-label">Reset Preset</span>
+                        <span class="s-label">Reset Preset <SettingHint tip="Restore this built-in preset to its factory values, discarding any changes" /></span>
                         <button
                             class="icon-btn icon-btn--reset"
                             type="button"
@@ -466,7 +455,7 @@ async function save() {
                     </template>
 
                     <template v-if="showNewPreset">
-                        <span class="s-label">New Preset Name</span>
+                        <span class="s-label">New Preset Name <SettingHint tip="Name for the new preset, which starts as a copy of the currently active preset" /></span>
                         <div class="preset-row">
                             <input class="s-input" type="text" v-model="newPresetName" placeholder="My preset…" @keydown.enter="createPreset" @keydown.escape="showNewPreset = false" />
                             <button class="icon-btn icon-btn--ok" type="button" @click="createPreset">Create</button>
@@ -477,69 +466,69 @@ async function save() {
                 <!-- EVENT BOXES -->
                 <div class="section-title">Event Boxes</div>
                 <div class="settings-grid">
-                    <span class="s-label">Box Width</span>
+                    <span class="s-label">Box Width <SettingHint tip="Width in pixels of each event box on the canvas" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEventBoxWidth" :step="10" min="50" />
 
-                    <span class="s-label">Box Height</span>
+                    <span class="s-label">Box Height <SettingHint tip="Height in pixels of each event box on the canvas" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEventBoxHeight" :step="5" min="20" />
 
-                    <span class="s-label">Stem Offset</span>
+                    <span class="s-label">Stem Offset <SettingHint tip="Vertical offset of the stem line connecting the box to the timeline axis" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEventBoxStemOffset" :step="1" />
 
-                    <span class="s-label">Border Color</span>
+                    <span class="s-label">Border Color <SettingHint tip="Color of the event box outline" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineEventBorderColor" />
                         <span class="color-hex">{{ localLayout.TimelineEventBorderColor }}</span>
                     </div>
 
-                    <span class="s-label">Border Width</span>
+                    <span class="s-label">Border Width <SettingHint tip="Thickness of the event box outline in pixels (0 = no border)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEventBorderWidth" :step="1" min="0" />
 
-                    <span class="s-label">Border Radius</span>
+                    <span class="s-label">Border Radius <SettingHint tip="Corner rounding of event boxes in pixels (0 = sharp corners)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEventBorderRadius" :step="1" min="0" />
 
-                    <span class="s-label">Y Margin</span>
+                    <span class="s-label">Y Margin <SettingHint tip="Vertical gap between event boxes when they stack on top of each other" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEventYMargin" :step="1" min="0" />
 
-                    <span class="s-label">Text Color</span>
+                    <span class="s-label">Text Color <SettingHint tip="Color of the title text inside event boxes" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineEventTextColor" />
                         <span class="color-hex">{{ localLayout.TimelineEventTextColor }}</span>
                     </div>
 
-                    <span class="s-label">Background Color</span>
+                    <span class="s-label">Background Color <SettingHint tip="Fill color of event boxes" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineEventBackgroundColor" />
                         <span class="color-hex">{{ localLayout.TimelineEventBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">Font Family</span>
+                    <span class="s-label">Font Family <SettingHint tip="Font used for text inside event boxes" /></span>
                     <FontPicker v-model="localLayout.TimelineEventFontFamily" :fonts="systemFonts" />
 
-                    <span class="s-label">Font Size</span>
+                    <span class="s-label">Font Size <SettingHint tip="Font size for text inside event boxes in pixels" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEventFontSize" :step="1" min="6" max="48" />
 
-                    <span class="s-label">Use Text Ellipsis</span>
+                    <span class="s-label">Use Text Ellipsis <SettingHint tip="Truncate long titles with '…' instead of overflowing the box boundary" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineEventTextUseEllipsis }" type="button" @click="localLayout.TimelineEventTextUseEllipsis = !localLayout.TimelineEventTextUseEllipsis">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Show Item Color</span>
+                    <span class="s-label">Show Item Color <SettingHint tip="Display the item's assigned color as a stripe on the edge of the box" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineEventBoxShowColor }" type="button" @click="localLayout.TimelineEventBoxShowColor = !localLayout.TimelineEventBoxShowColor">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Color on Bottom</span>
+                    <span class="s-label">Color on Bottom <SettingHint tip="Show the item color stripe on the bottom edge instead of the left edge" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineEventBoxShowColorOnBottom }" type="button" @click="localLayout.TimelineEventBoxShowColorOnBottom = !localLayout.TimelineEventBoxShowColorOnBottom">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Hover Highlight</span>
+                    <span class="s-label">Hover Highlight <SettingHint tip="Change the box border color when the mouse hovers over it" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineEventHasHoverHighlight }" type="button" @click="localLayout.TimelineEventHasHoverHighlight = !localLayout.TimelineEventHasHoverHighlight">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Hover Color</span>
+                    <span class="s-label">Hover Color <SettingHint tip="Border color applied to event boxes on mouse hover (requires Hover Highlight enabled)" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineEventHoverColor" />
                         <span class="color-hex">{{ localLayout.TimelineEventHoverColor }}</span>
@@ -549,80 +538,80 @@ async function save() {
                 <!-- PERIODS & AGES -->
                 <div class="section-title">Periods &amp; Ages</div>
                 <div class="settings-grid">
-                    <span class="s-label">Age Height</span>
+                    <span class="s-label">Age Height <SettingHint tip="Height in pixels of age bars spanning the canvas" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineAgeHeight" :step="5" min="10" />
 
-                    <span class="s-label">Age Corner Rounding</span>
+                    <span class="s-label">Age Corner Rounding <SettingHint tip="Corner radius of age bars in pixels (0 = sharp corners)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineAgeCornerRounding" :step="1" min="0" />
 
-                    <span class="s-label">Period Height</span>
+                    <span class="s-label">Period Height <SettingHint tip="Height in pixels of period bars on the canvas" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelinePeriodHeight" :step="2" min="4" />
 
-                    <span class="s-label">Period Corner Rounding</span>
+                    <span class="s-label">Period Corner Rounding <SettingHint tip="Corner radius of period bars in pixels (0 = sharp corners)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelinePeriodCornerRounding" :step="1" min="0" />
 
-                    <span class="s-label">Period Y Margin</span>
+                    <span class="s-label">Period Y Margin <SettingHint tip="Vertical spacing above and below period bars" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelinePeriodYMargin" :step="1" />
 
-                    <span class="s-label">Period Y Offset</span>
+                    <span class="s-label">Period Y Offset <SettingHint tip="Vertical shift applied to all period bars (positive = down)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelinePeriodYOffset" :step="1" />
                 </div>
 
                 <!-- TIMELINE -->
                 <div class="section-title">Timeline</div>
                 <div class="settings-grid">
-                    <span class="s-label">Canvas Background</span>
+                    <span class="s-label">Canvas Background <SettingHint tip="Background fill color of the entire timeline canvas area" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineCanvasBackgroundColor" />
                         <span class="color-hex">{{ localLayout.TimelineCanvasBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">Tick Distance</span>
+                    <span class="s-label">Tick Distance <SettingHint tip="Pixel distance between major time axis ticks at default zoom level" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineTickDistance" :step="5" min="10" />
 
-                    <span class="s-label">Tick Width</span>
+                    <span class="s-label">Tick Width <SettingHint tip="Stroke width of tick marks on the timeline axis in pixels" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineTickWidth" :step="0.5" min="0.5" />
 
-                    <span class="s-label">Smaller Non-Year Ticks</span>
+                    <span class="s-label">Smaller Non-Year Ticks <SettingHint tip="Draw sub-year ticks (months, days) shorter than year-level ticks" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineNonYearTicksSmaller }" type="button" @click="localLayout.TimelineNonYearTicksSmaller = !localLayout.TimelineNonYearTicksSmaller">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Tick Color</span>
+                    <span class="s-label">Tick Color <SettingHint tip="Color of the tick marks drawn on the timeline axis" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineTickColor" />
                         <span class="color-hex">{{ localLayout.TimelineTickColor }}</span>
                     </div>
 
-                    <span class="s-label">Axis Line Color</span>
+                    <span class="s-label">Axis Line Color <SettingHint tip="Color of the horizontal timeline axis line" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineAxisColor" />
                         <span class="color-hex">{{ localLayout.TimelineAxisColor }}</span>
                     </div>
 
-                    <span class="s-label">Edge Margin Width</span>
+                    <span class="s-label">Edge Margin Width <SettingHint tip="Pixel padding at the left and right edges of the canvas before the timeline content starts" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineEdgeMarginWidth" :step="5" min="0" />
                 </div>
 
                 <!-- TICK MARKERS -->
                 <div class="section-title">Tick Markers</div>
                 <div class="settings-grid">
-                    <span class="s-label">Font Family</span>
+                    <span class="s-label">Font Family <SettingHint tip="Font used for date labels on the timeline axis" /></span>
                     <FontPicker v-model="localLayout.TimelineTickMarkerFontFamily" :fonts="systemFonts" />
 
-                    <span class="s-label">Font Style</span>
+                    <span class="s-label">Font Style <SettingHint tip="CSS font style for axis date labels — e.g. 'normal', 'italic', 'bold'" /></span>
                     <input class="s-input" type="text" v-model="localLayout.TimelineTickMarkerFontStyle" placeholder="normal" />
 
-                    <span class="s-label">Font Size</span>
+                    <span class="s-label">Font Size <SettingHint tip="Font size of the date labels on the axis in pixels" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineTickMarkerFontSize" :step="1" min="6" max="48" />
 
-                    <span class="s-label">Text Color</span>
+                    <span class="s-label">Text Color <SettingHint tip="Color of the date labels on the timeline axis" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineTickMarkerTextColor" />
                         <span class="color-hex">{{ localLayout.TimelineTickMarkerTextColor }}</span>
                     </div>
 
-                    <span class="s-label">Always On Top</span>
+                    <span class="s-label">Always On Top <SettingHint tip="Draw axis date labels above all other canvas elements including event boxes" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineTickMarkerTextAlwaysOnTop }" type="button" @click="localLayout.TimelineTickMarkerTextAlwaysOnTop = !localLayout.TimelineTickMarkerTextAlwaysOnTop">
                         <span class="toggle-thumb" />
                     </button>
@@ -631,23 +620,23 @@ async function save() {
                 <!-- NOW LINE -->
                 <div class="section-title">Now Line</div>
                 <div class="settings-grid">
-                    <span class="s-label">Show Now Line</span>
+                    <span class="s-label">Show Now Line <SettingHint tip="Show a vertical marker line at the current 'now' year set for this timeline" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineShowNowLine }" type="button" @click="localLayout.TimelineShowNowLine = !localLayout.TimelineShowNowLine">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Show Text</span>
+                    <span class="s-label">Show Text <SettingHint tip="Display a year label next to the now line" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineShowNowLineText }" type="button" @click="localLayout.TimelineShowNowLineText = !localLayout.TimelineShowNowLineText">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Color</span>
+                    <span class="s-label">Color <SettingHint tip="Color of the now line" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineNowLineColor" />
                         <span class="color-hex">{{ localLayout.TimelineNowLineColor }}</span>
                     </div>
 
-                    <span class="s-label">Style</span>
+                    <span class="s-label">Style <SettingHint tip="Line style of the now line" /></span>
                     <select class="s-input" v-model="localLayout.TimelineNowLineStyle">
                         <option value="solid">Solid</option>
                         <option value="dashed">Dashed</option>
@@ -658,42 +647,42 @@ async function save() {
                 <!-- HOVER LINE -->
                 <div class="section-title">Hover Line</div>
                 <div class="settings-grid">
-                    <span class="s-label">Show Hover Line</span>
+                    <span class="s-label">Show Hover Line <SettingHint tip="Show a vertical line that follows the mouse cursor across the canvas" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineShowHoverLine }" type="button" @click="localLayout.TimelineShowHoverLine = !localLayout.TimelineShowHoverLine">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Color</span>
+                    <span class="s-label">Color <SettingHint tip="Color of the cursor hover line" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.TimelineHoverLineColor" />
                         <span class="color-hex">{{ localLayout.TimelineHoverLineColor }}</span>
                     </div>
 
-                    <span class="s-label">Style</span>
+                    <span class="s-label">Style <SettingHint tip="Line style of the hover line (solid / dashed / dotted)" /></span>
                     <input class="s-input" type="text" v-model="localLayout.TimelineHoverLineStyle" placeholder="dashed" />
 
-                    <span class="s-label">Width</span>
+                    <span class="s-label">Width <SettingHint tip="Stroke width of the hover line in pixels" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineHoverLineWidth" :step="0.5" min="0.5" />
                 </div>
 
                 <!-- DATA RANGE -->
                 <div class="section-title">Data Range</div>
                 <div class="settings-grid">
-                    <span class="s-label">Visible</span>
+                    <span class="s-label">Visible <SettingHint tip="Show the data range bar along the axis indicating where items exist in time" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineIsDataRangeVisible }" type="button" @click="localLayout.TimelineIsDataRangeVisible = !localLayout.TimelineIsDataRangeVisible">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Width</span>
+                    <span class="s-label">Width <SettingHint tip="Height of the data range bar in pixels" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineDataRangeWidth" :step="10" min="20" />
 
-                    <span class="s-label">Color</span>
+                    <span class="s-label">Color <SettingHint tip="Color of the data range bar" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="dataRangeRGB" />
                         <span class="color-hex">{{ localLayout.TimelineDataRangeColor }}</span>
                     </div>
 
-                    <span class="s-label">Opacity</span>
+                    <span class="s-label">Opacity <SettingHint tip="Transparency of the data range bar (0 = invisible, 100 = fully opaque)" /></span>
                     <div class="color-row alpha-row">
                         <input type="range" class="s-range" min="0" max="100" step="1" v-model.number="dataRangeAlpha" />
                         <span class="color-hex">{{ dataRangeAlpha }}%</span>
@@ -703,20 +692,20 @@ async function save() {
                 <!-- ANIMATIONS -->
                 <div class="section-title">Animations</div>
                 <div class="settings-grid">
-                    <span class="s-label">Animate Jump to Year</span>
+                    <span class="s-label">Animate Jump to Year <SettingHint tip="Smoothly scroll the canvas when jumping to a specific year instead of cutting instantly" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineAnimateOnJumpToYear }" type="button" @click="localLayout.TimelineAnimateOnJumpToYear = !localLayout.TimelineAnimateOnJumpToYear">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Jump Duration (ms)</span>
+                    <span class="s-label">Jump Duration (ms) <SettingHint tip="Duration of the jump-to-year scroll animation in milliseconds (0 = instant)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineJumpToYearAnimationLength" :step="50" min="0" />
 
-                    <span class="s-label">Animate LOD Change</span>
+                    <span class="s-label">Animate LOD Change <SettingHint tip="Fade the canvas when the level of detail (zoom scale) changes" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineAnimateLodChange }" type="button" @click="localLayout.TimelineAnimateLodChange = !localLayout.TimelineAnimateLodChange">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">LOD Duration (ms)</span>
+                    <span class="s-label">LOD Duration (ms) <SettingHint tip="Duration of the level-of-detail change animation in milliseconds (0 = instant)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineLodChangeAnimationLength" :step="50" min="0" />
                 </div>
 
@@ -728,56 +717,56 @@ async function save() {
                 <!-- NOTES PANEL -->
                 <div class="section-title">Notes Panel</div>
                 <div class="settings-grid">
-                    <span class="s-label">Background</span>
+                    <span class="s-label">Background <SettingHint tip="Background color of the notes panel area" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.NotesPanelBackgroundColor" />
                         <span class="color-hex">{{ localLayout.NotesPanelBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">Card Background</span>
+                    <span class="s-label">Card Background <SettingHint tip="Background color of individual note cards" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.NotesPanelCardBackgroundColor" />
                         <span class="color-hex">{{ localLayout.NotesPanelCardBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">Text Color</span>
+                    <span class="s-label">Text Color <SettingHint tip="Color of note body text" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.NotesPanelTextColor" />
                         <span class="color-hex">{{ localLayout.NotesPanelTextColor }}</span>
                     </div>
 
-                    <span class="s-label">Heading / Label Color</span>
+                    <span class="s-label">Heading / Label Color <SettingHint tip="Color of headings and field labels within note cards" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.NotesPanelHeadingColor" />
                         <span class="color-hex">{{ localLayout.NotesPanelHeadingColor }}</span>
                     </div>
 
-                    <span class="s-label">Accent Color</span>
+                    <span class="s-label">Accent Color <SettingHint tip="Accent color used for highlights and active states in the notes panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.NotesPanelAccentColor" />
                         <span class="color-hex">{{ localLayout.NotesPanelAccentColor }}</span>
                     </div>
 
-                    <span class="s-label">Font Size</span>
+                    <span class="s-label">Font Size <SettingHint tip="Base font size for text in the notes panel in pixels" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.NotesPanelFontSize" :step="1" min="9" max="24" />
                 </div>
 
                 <!-- GALLERY PANEL -->
                 <div class="section-title">Gallery Panel</div>
                 <div class="settings-grid">
-                    <span class="s-label">Background</span>
+                    <span class="s-label">Background <SettingHint tip="Background color of the image gallery panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.GalleryPanelBackgroundColor" />
                         <span class="color-hex">{{ localLayout.GalleryPanelBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">Borders / Dividers</span>
+                    <span class="s-label">Borders / Dividers <SettingHint tip="Color of borders and dividers between gallery items" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.GalleryPanelBorderColor" />
                         <span class="color-hex">{{ localLayout.GalleryPanelBorderColor }}</span>
                     </div>
 
-                    <span class="s-label">Text / Labels</span>
+                    <span class="s-label">Text / Labels <SettingHint tip="Color of image captions and labels in the gallery panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.GalleryPanelTextColor" />
                         <span class="color-hex">{{ localLayout.GalleryPanelTextColor }}</span>
@@ -787,38 +776,38 @@ async function save() {
                 <!-- CALENDAR PANEL -->
                 <div class="section-title">Calendar Panel</div>
                 <div class="settings-grid">
-                    <span class="s-label">Theme</span>
+                    <span class="s-label">Theme <SettingHint tip="Apply a preset light or dark color scheme to the calendar panel" /></span>
                     <div class="color-row">
                         <button class="s-btn" type="button" @click="applyCalendarPanelLight">☀ Light</button>
                         <button class="s-btn" type="button" @click="applyCalendarPanelDark">☽ Dark</button>
                     </div>
 
-                    <span class="s-label">Background</span>
+                    <span class="s-label">Background <SettingHint tip="Background color of the calendar panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.CalendarPanelBackgroundColor" />
                         <span class="color-hex">{{ localLayout.CalendarPanelBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">Borders / Dividers</span>
+                    <span class="s-label">Borders / Dividers <SettingHint tip="Color of grid lines between days, weeks, and months in the calendar" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.CalendarPanelBorderColor" />
                         <span class="color-hex">{{ localLayout.CalendarPanelBorderColor }}</span>
                     </div>
 
-                    <span class="s-label">Text / Labels</span>
+                    <span class="s-label">Text / Labels <SettingHint tip="Color of day numbers, weekday headers, and month labels" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.CalendarPanelTextColor" />
                         <span class="color-hex">{{ localLayout.CalendarPanelTextColor }}</span>
                     </div>
 
-                    <span class="s-label">Week Highlight</span>
+                    <span class="s-label">Week Highlight <SettingHint tip="Background highlight color for the row containing the current week" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="calWeekHlRGB" />
                         <input class="s-slider" type="range" v-model.number="calWeekHlAlpha" min="0" max="100" />
                         <span class="color-hex">{{ localLayout.CalendarPanelWeekHighlightColor }}</span>
                     </div>
 
-                    <span class="s-label">Day Highlight</span>
+                    <span class="s-label">Day Highlight <SettingHint tip="Background highlight color for the current day cell" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="calDayHlRGB" />
                         <input class="s-slider" type="range" v-model.number="calDayHlAlpha" min="0" max="100" />
@@ -829,33 +818,33 @@ async function save() {
                 <!-- CALENDAR OVERLAY -->
                 <div class="section-title">Calendar Overlay</div>
                 <div class="settings-grid">
-                    <span class="s-label">Enabled</span>
+                    <span class="s-label">Enabled <SettingHint tip="Draw alternating semi-transparent calendar bands over the timeline canvas to show time divisions" /></span>
                     <button class="toggle" :class="{ 'is-on': localLayout.TimelineCalendarOverlayEnabled }" type="button" @click="localLayout.TimelineCalendarOverlayEnabled = !localLayout.TimelineCalendarOverlayEnabled">
                         <span class="toggle-thumb" />
                     </button>
 
-                    <span class="s-label">Season / Year band</span>
+                    <span class="s-label">Season / Year band <SettingHint tip="Color of alternating season or year bands; use low opacity for a subtle effect" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="overlaySeasonRGB" />
                         <input class="s-slider" type="range" v-model.number="overlaySeasonAlpha" min="0" max="100" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlaySeasonColor }}</span>
                     </div>
 
-                    <span class="s-label">Month band</span>
+                    <span class="s-label">Month band <SettingHint tip="Color of alternating month bands drawn over the canvas" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="overlayMonthRGB" />
                         <input class="s-slider" type="range" v-model.number="overlayMonthAlpha" min="0" max="100" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlayMonthColor }}</span>
                     </div>
 
-                    <span class="s-label">Week band</span>
+                    <span class="s-label">Week band <SettingHint tip="Color of alternating week bands drawn over the canvas" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="overlayWeekRGB" />
                         <input class="s-slider" type="range" v-model.number="overlayWeekAlpha" min="0" max="100" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlayWeekColor }}</span>
                     </div>
 
-                    <span class="s-label">Day band</span>
+                    <span class="s-label">Day band <SettingHint tip="Color of alternating day bands drawn over the canvas (only visible at high zoom)" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="overlayDayRGB" />
                         <input class="s-slider" type="range" v-model.number="overlayDayAlpha" min="0" max="100" />
@@ -866,46 +855,46 @@ async function save() {
                 <!-- DATA PANEL -->
                 <div class="section-title">Data Panel</div>
                 <div class="settings-grid">
-                    <span class="s-label">Background</span>
+                    <span class="s-label">Background <SettingHint tip="Background color of the data / export panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.DataPanelBackgroundColor" />
                         <span class="color-hex">{{ localLayout.DataPanelBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">Card Background</span>
+                    <span class="s-label">Card Background <SettingHint tip="Background color of individual item cards in the data panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.DataPanelCardBackgroundColor" />
                         <span class="color-hex">{{ localLayout.DataPanelCardBackgroundColor }}</span>
                     </div>
 
-                    <span class="s-label">H1 — Age Title</span>
+                    <span class="s-label">H1 — Age Title <SettingHint tip="Color of the top-level age headings in the data panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.DataPanelH1Color" />
                         <span class="color-hex">{{ localLayout.DataPanelH1Color }}</span>
                     </div>
 
-                    <span class="s-label">H2 — Period Title</span>
+                    <span class="s-label">H2 — Period Title <SettingHint tip="Color of period-level headings in the data panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.DataPanelH2Color" />
                         <span class="color-hex">{{ localLayout.DataPanelH2Color }}</span>
                     </div>
 
-                    <span class="s-label">H3 — Item Title</span>
+                    <span class="s-label">H3 — Item Title <SettingHint tip="Color of item-level headings in the data panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.DataPanelH3Color" />
                         <span class="color-hex">{{ localLayout.DataPanelH3Color }}</span>
                     </div>
 
-                    <span class="s-label">H4 — Description</span>
+                    <span class="s-label">H4 — Description <SettingHint tip="Color of description / body text in the data panel" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="localLayout.DataPanelH4Color" />
                         <span class="color-hex">{{ localLayout.DataPanelH4Color }}</span>
                     </div>
 
-                    <span class="s-label">Font Family</span>
+                    <span class="s-label">Font Family <SettingHint tip="Font used throughout the data panel" /></span>
                     <FontPicker v-model="localLayout.DataPanelFontFamily" :fonts="systemFonts" />
 
-                    <span class="s-label">Font Size</span>
+                    <span class="s-label">Font Size <SettingHint tip="Base font size for the data panel in pixels" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.DataPanelFontSize" :step="1" min="9" max="24" />
                 </div>
 
@@ -1001,6 +990,10 @@ async function save() {
 }
 
 .s-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
     font-size: 13px;
     color: var(--app-text-muted, #94a3b8);
     padding: 5px 12px 5px 0;

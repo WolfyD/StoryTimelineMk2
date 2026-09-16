@@ -52,11 +52,7 @@ export interface TimelineProject {
 }
 
 export interface TimelineSettings {
-    Font: string;
-    FontSizeScale: number;
     PixelsPerSubtick: number;
-    CustomCss: string;
-    UseCustomCss: boolean;
     IsFullscreen: boolean;
     ShowGuides: boolean;
     WindowSizeX: number;

@@ -37,8 +37,6 @@ public class SettingsRepoTests
         var repo = new SettingsRepo();
         var settings = repo.GetOrCreateSettings(tlId);
 
-        Assert.Equal("Arial", settings.Font);
-        Assert.Equal(1.0f, settings.FontSizeScale);
         Assert.Equal(20, settings.PixelsPerSubtick);
         Assert.Equal(1000, settings.WindowSizeX);
         Assert.Equal(700, settings.WindowSizeY);
@@ -58,7 +56,7 @@ public class SettingsRepoTests
         var second = repo.GetOrCreateSettings(tlId);
 
         Assert.Equal(first.TimelineId, second.TimelineId);
-        Assert.Equal(first.Font, second.Font);
+        Assert.Equal(first.PixelsPerSubtick, second.PixelsPerSubtick);
     }
 
     [Fact]
@@ -90,7 +88,7 @@ public class SettingsRepoTests
         var s2 = repo.GetTimelineSettings(tlId);
 
         Assert.Equal(s1.TimelineId, s2.TimelineId);
-        Assert.Equal(s1.Font, s2.Font);
+        Assert.Equal(s1.PixelsPerSubtick, s2.PixelsPerSubtick);
     }
 
     // ── SaveSettings ──────────────────────────────────────────────────────────
@@ -104,19 +102,11 @@ public class SettingsRepoTests
         var repo = new SettingsRepo();
         var settings = repo.GetOrCreateSettings(tlId);
 
-        settings.Font = "Courier New";
-        settings.FontSizeScale = 1.5f;
         settings.PixelsPerSubtick = 40;
-        settings.UseCustomCss = true;
-        settings.CustomCss = ".my-class { color: red; }";
         repo.SaveSettings(settings);
 
         var retrieved = repo.GetOrCreateSettings(tlId);
-        Assert.Equal("Courier New", retrieved.Font);
-        Assert.Equal(1.5f, retrieved.FontSizeScale);
         Assert.Equal(40, retrieved.PixelsPerSubtick);
-        Assert.True(retrieved.UseCustomCss);
-        Assert.Equal(".my-class { color: red; }", retrieved.CustomCss);
     }
 
     [Fact]

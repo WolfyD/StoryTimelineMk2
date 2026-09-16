@@ -37,11 +37,7 @@ import { BackendAPI } from '@/bridge/api'
 
 function makeSettings(overrides: Partial<TimelineSettings> = {}): TimelineSettings {
   return {
-    Font: 'Arial',
-    FontSizeScale: 1.0,
     PixelsPerSubtick: 20,
-    CustomCss: '',
-    UseCustomCss: false,
     IsFullscreen: false,
     ShowGuides: true,
     WindowSizeX: 1280,

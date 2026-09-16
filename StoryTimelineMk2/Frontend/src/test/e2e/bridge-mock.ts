@@ -69,11 +69,7 @@ export async function injectBridgeMock(page: Page, overrides: Record<string, unk
               },
             },
             Settings: {
-              Font: 'Arial',
-              FontSizeScale: 1,
               PixelsPerSubtick: 100,
-              CustomCss: '',
-              UseCustomCss: false,
               IsFullscreen: false,
               ShowGuides: true,
               WindowSizeX: 1280,
@@ -203,11 +199,7 @@ export async function injectBridgeMock(page: Page, overrides: Record<string, unk
             },
           },
           Settings: {
-            Font: 'Arial',
-            FontSizeScale: 1,
             PixelsPerSubtick: 100,
-            CustomCss: '',
-            UseCustomCss: false,
             IsFullscreen: false,
             ShowGuides: true,
             WindowSizeX: 1280,

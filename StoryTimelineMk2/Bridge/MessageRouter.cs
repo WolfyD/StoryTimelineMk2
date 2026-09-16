@@ -574,8 +574,6 @@ namespace StoryTimelineMk2.Bridge
 
             var settingsRepo = new SettingsRepo();
             var settings = settingsRepo.GetOrCreateSettings(timelineId);
-            if (p.TryGetProperty("font",             out var e1)) settings.Font             = e1.GetString() ?? settings.Font;
-            if (p.TryGetProperty("fontSizeScale",    out var e2)) settings.FontSizeScale    = e2.GetSingle();
             if (p.TryGetProperty("pixelsPerSubtick", out var e3)) settings.PixelsPerSubtick = e3.GetInt32();
             if (p.TryGetProperty("showGuides",       out var e4)) settings.ShowGuides       = e4.GetBoolean();
             if (p.TryGetProperty("displayRadius",    out var e5)) settings.DisplayRadius    = e5.GetInt32();

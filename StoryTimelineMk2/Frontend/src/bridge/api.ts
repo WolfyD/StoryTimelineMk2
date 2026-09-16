@@ -187,8 +187,6 @@ export const BackendAPI = {
 
 	async SaveSettings(payload: {
 		timelineId: number;
-		font: string;
-		fontSizeScale: number;
 		pixelsPerSubtick: number;
 		showGuides: boolean;
 		displayRadius: number;

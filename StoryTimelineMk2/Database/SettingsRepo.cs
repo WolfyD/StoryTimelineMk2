@@ -24,10 +24,7 @@ namespace StoryTimelineMk2.Database
                 settings = new SettingsItem
                 {
                     TimelineId = timelineId,
-                    Font = "Arial",
-                    FontSizeScale = 1.0f,
                     PixelsPerSubtick = 20,
-                    UseCustomCss = false,
                     IsFullscreen = false,
                     ShowGuides = true,
                     WindowSizeX = 1000,
@@ -42,12 +39,12 @@ namespace StoryTimelineMk2.Database
 
                 db.Execute(@"
                     INSERT INTO settings
-                        (timeline_id, font, font_size_scale, pixels_per_subtick, use_custom_css,
+                        (timeline_id, pixels_per_subtick,
                          is_fullscreen, show_guides, window_size_x, window_size_y,
                          window_position_x, window_position_y, use_custom_scaling, custom_scale,
                          display_radius, canvas_settings, pan_speed_multiplier, pan_deadzone, updated_at)
                     VALUES
-                        (@TimelineId, @Font, @FontSizeScale, @PixelsPerSubtick, @UseCustomCss,
+                        (@TimelineId, @PixelsPerSubtick,
                          @IsFullscreen, @ShowGuides, @WindowSizeX, @WindowSizeY,
                          @WindowPositionX, @WindowPositionY, @UseCustomScaling, @CustomScale,
                          @DisplayRadius, @CanvasSettings, @PanSpeedMultiplier, @PanDeadzone, CURRENT_TIMESTAMP);",
@@ -65,11 +62,7 @@ namespace StoryTimelineMk2.Database
             using var db = new SqliteConnection(_connString);
             db.Execute(@"
                 UPDATE settings SET
-                    font                = @Font,
-                    font_size_scale     = @FontSizeScale,
                     pixels_per_subtick  = @PixelsPerSubtick,
-                    custom_css          = @CustomCss,
-                    use_custom_css      = @UseCustomCss,
                     is_fullscreen       = @IsFullscreen,
                     show_guides         = @ShowGuides,
                     window_size_x       = @WindowSizeX,
@@ -128,8 +121,6 @@ namespace StoryTimelineMk2.Database
             {
                 settings = new SettingsItem
                 {
-                    Font = "Arial",
-                    FontSizeScale = 1.0f,
                     PixelsPerSubtick = 20,
                     WindowSizeX = 1000,
                     WindowSizeY = 700,
@@ -142,12 +133,12 @@ namespace StoryTimelineMk2.Database
 
                 db.Execute(@"
                     INSERT INTO settings
-                        (font, font_size_scale, pixels_per_subtick, use_custom_css,
+                        (pixels_per_subtick,
                          is_fullscreen, show_guides, window_size_x, window_size_y,
                          window_position_x, window_position_y, use_custom_scaling, custom_scale,
                          display_radius, canvas_settings, updated_at)
                     VALUES
-                        (@Font, @FontSizeScale, @PixelsPerSubtick, @UseCustomCss,
+                        (@PixelsPerSubtick,
                          @IsFullscreen, @ShowGuides, @WindowSizeX, @WindowSizeY,
                          @WindowPositionX, @WindowPositionY, @UseCustomScaling, @CustomScale,
                          @DisplayRadius, @CanvasSettings, CURRENT_TIMESTAMP);",
