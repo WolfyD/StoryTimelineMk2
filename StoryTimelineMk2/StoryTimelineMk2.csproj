@@ -7,8 +7,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>Misc\app-icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WebView2 WPF shim targets net5.0-windows; WinForms project doesn't use WPF so the conflict is irrelevant -->
     <NoWarn>$(NoWarn);MSB3277</NoWarn>
+    <AssemblyName>StoryTimeline</AssemblyName>
+    <RootNamespace>StoryTimelineMk2</RootNamespace>
+    <Product>Story Timeline</Product>
+    <Version>0.9.0</Version>
+    <AssemblyVersion>0.9.0.0</AssemblyVersion>
+    <FileVersion>0.9.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
