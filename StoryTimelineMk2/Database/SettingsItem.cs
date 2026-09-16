@@ -24,6 +24,8 @@ namespace StoryTimelineMk2.Database
         public int DisplayRadius { get; set; }
         public string CanvasSettings { get; set; } = null!;
         public bool TimelineMinimised { get; set; } = false;
+        public float PanSpeedMultiplier { get; set; } = 10.0f;
+        public int PanDeadzone { get; set; } = 100;
         public int YearCalendarPositionX { get; set; }
         public int YearCalendarPositionY { get; set; }
         public int YearCalendarSizeX { get; set; }

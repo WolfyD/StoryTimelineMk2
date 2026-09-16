@@ -4,6 +4,8 @@ import { useTimelineStore } from '@/stores/timelineStore'
 import { PhGear, PhX, PhFloppyDisk, PhFolderOpen, PhTrash } from '@phosphor-icons/vue'
 import type { FilterRule, FilterState } from '@/types/models'
 
+const props = withDefaults(defineProps<{ flashedRuleId?: string | null }>(), { flashedRuleId: null })
+
 function colorFromRule(rule: FilterRule): string {
     try { return (JSON.parse(rule.ParamsJson) as { hex?: string }).hex ?? '#888888' } catch { return '#888888' }
 }
@@ -75,6 +77,7 @@ onMounted(() => store.loadFilterPresets())
                     :class="{
                         'chip--positive': rule.State === 'positive',
                         'chip--negative': rule.State === 'negative',
+                        'chip--flash': rule.Id === props.flashedRuleId,
                     }"
                 >
                     <!-- Cycle-state area (click cycles neutral→positive→negative→neutral) -->
@@ -169,8 +172,8 @@ onMounted(() => store.loadFilterPresets())
 <style scoped lang="scss">
 .filter-panel {
     flex-shrink: 0;
-    background: #1a221a99;
-    border-bottom: 1px solid #3a4a3a55;
+    background: var(--filter-panel-bg, #111a11);
+    border-bottom: 1px solid var(--filter-panel-border, #2a4a2a);
     overflow: visible;
     position: relative;
     z-index: 10;
@@ -189,7 +192,8 @@ onMounted(() => store.loadFilterPresets())
 .fp-divider {
     width: 1px;
     height: 16px;
-    background: #3a4a3a66;
+    background: var(--filter-panel-border, #2a4a2a);
+    opacity: 0.7;
     flex-shrink: 0;
 }
 
@@ -197,39 +201,50 @@ onMounted(() => store.loadFilterPresets())
 
 .fp-empty {
     font-size: 0.72rem;
-    color: #6b7c6b;
+    color: var(--filter-chip-color, #7a9a7a);
+    opacity: 0.7;
     font-style: italic;
 }
 
 /* ---- chips ---- */
+@keyframes chip-flash {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-tool-active-border, #4ade80) 70%, transparent); }
+    40%  { box-shadow: 0 0 0 5px color-mix(in srgb, var(--app-tool-active-border, #4ade80) 50%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
 .filter-chip {
     display: inline-flex;
     align-items: center;
-    border: 1px solid #4a5c4a;
+    border: 1px solid var(--filter-chip-border, #3a5a3a);
     border-radius: 12px;
     background: transparent;
-    color: #8fa88f;
+    color: var(--filter-chip-color, #7a9a7a);
     font-size: 0.73rem;
     user-select: none;
     white-space: nowrap;
     transition: border-color 0.1s;
 
     &.chip--positive {
-        border-color: #5a9a5a;
-        background: #2a5a2a66;
-        color: #a8e0a8;
-        .chip-state-dot { background: #6aaa6a; }
+        border-color: var(--app-tool-active-border, #4ade80);
+        background: color-mix(in srgb, var(--app-tool-active-border, #4ade80) 14%, var(--app-surface, #0c1524));
+        color: var(--app-tool-active-color, #86efac);
+        .chip-state-dot { background: var(--app-tool-active-border, #4ade80); }
     }
 
     &.chip--negative {
-        border-color: #9a4a4a;
-        background: #5a2a2a66;
-        color: #e0a8a8;
-        .chip-state-dot { background: #cc6666; }
+        border-color: rgba(239, 68, 68, 0.6);
+        background: color-mix(in srgb, #ef4444 12%, var(--app-surface, #0c1524));
+        color: #f87171;
+        .chip-state-dot { background: #ef4444; }
         .chip-label {
             text-decoration: line-through;
-            text-decoration-color: #cc666688;
+            text-decoration-color: rgba(239, 68, 68, 0.5);
         }
+    }
+
+    &.chip--flash {
+        animation: chip-flash 0.8s ease-out forwards;
     }
 }
 
@@ -242,13 +257,13 @@ onMounted(() => store.loadFilterPresets())
     cursor: pointer;
     transition: background 0.1s;
 
-    &:hover { background: rgba(255, 255, 255, 0.06); }
+    &:hover { background: color-mix(in srgb, var(--filter-chip-border, #3a5a3a) 30%, transparent); }
 
     .chip-state-dot {
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #4a5c4a;
+        background: var(--filter-chip-border, #3a5a3a);
         flex-shrink: 0;
         transition: background 0.1s;
     }
@@ -258,7 +273,7 @@ onMounted(() => store.loadFilterPresets())
         height: 9px;
         border-radius: 50%;
         flex-shrink: 0;
-        border: 1px solid rgba(255, 255, 255, 0.25);
+        border: 1px solid var(--filter-chip-border, #3a5a3a);
     }
 
     .chip-label { line-height: 1.4; }
@@ -269,7 +284,7 @@ onMounted(() => store.loadFilterPresets())
     align-items: center;
     background: none;
     border: none;
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 1px solid var(--filter-chip-border, #3a5a3a);
     padding: 2px 5px 2px 4px;
     margin: 0;
     color: inherit;
@@ -281,8 +296,8 @@ onMounted(() => store.loadFilterPresets())
 
     &:hover {
         opacity: 1;
-        color: #e08080;
-        background: rgba(224, 128, 128, 0.12);
+        color: #f87171;
+        background: rgba(239, 68, 68, 0.12);
     }
 }
 
@@ -293,17 +308,17 @@ onMounted(() => store.loadFilterPresets())
     letter-spacing: 0.06em;
     padding: 1px 7px;
     border-radius: 10px;
-    border: 1px solid #4a6a4a;
+    border: 1px solid var(--filter-chip-border, #3a5a3a);
     background: transparent;
-    color: #7a9a7a;
+    color: var(--filter-chip-color, #7a9a7a);
     cursor: pointer;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 
-    &:hover { background: #3a5a3a55; }
+    &:hover { background: color-mix(in srgb, var(--filter-chip-border, #3a5a3a) 30%, transparent); }
     &.and-on {
-        background: #3a6a3a;
-        border-color: #6aaa6a;
-        color: #d0f0d0;
+        background: color-mix(in srgb, var(--app-tool-active-border, #4ade80) 18%, var(--filter-panel-bg, #111a11));
+        border-color: var(--app-tool-active-border, #4ade80);
+        color: var(--app-tool-active-color, #86efac);
     }
 }
 
@@ -313,17 +328,26 @@ onMounted(() => store.loadFilterPresets())
     align-items: center;
     gap: 4px;
     padding: 2px 6px;
-    border: 1px solid #3a4a3a55;
+    border: 1px solid color-mix(in srgb, var(--filter-chip-border, #3a5a3a) 60%, transparent);
     border-radius: 10px;
     background: transparent;
-    color: #7a8a7a;
+    color: var(--filter-chip-color, #7a9a7a);
     font-size: 0.72rem;
     cursor: pointer;
     transition: background 0.1s, color 0.1s;
     flex-shrink: 0;
 
-    &:hover { background: #2a3a2a55; color: #b0c8b0; }
-    &--clear { border-color: #7a4a4a55; color: #b87878; &:hover { background: #7a4a4a33; color: #e09090; } }
+    &:hover {
+        background: color-mix(in srgb, var(--filter-chip-border, #3a5a3a) 25%, transparent);
+        color: var(--filter-chip-color, #7a9a7a);
+        filter: brightness(1.2);
+    }
+
+    &--clear {
+        border-color: rgba(239, 68, 68, 0.3);
+        color: #f87171;
+        &:hover { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
+    }
 }
 
 /* ---- presets ---- */
@@ -333,8 +357,8 @@ onMounted(() => store.loadFilterPresets())
     position: absolute;
     right: 0;
     top: calc(100% + 4px);
-    background: #1e2a1e;
-    border: 1px solid #3a4a3a88;
+    background: var(--filter-panel-bg, #111a11);
+    border: 1px solid var(--filter-panel-border, #2a4a2a);
     border-radius: 6px;
     padding: 8px;
     min-width: 200px;
@@ -351,26 +375,26 @@ onMounted(() => store.loadFilterPresets())
 
 .preset-name-input {
     flex: 1;
-    background: #0f1a0f;
-    border: 1px solid #3a4a3a;
+    background: color-mix(in srgb, var(--filter-panel-border, #2a4a2a) 20%, var(--filter-panel-bg, #111a11));
+    border: 1px solid var(--filter-panel-border, #2a4a2a);
     border-radius: 4px;
-    color: #c0d0c0;
+    color: var(--filter-chip-color, #7a9a7a);
     font-size: 0.75rem;
     padding: 3px 6px;
     outline: none;
-    &:focus { border-color: #5a8a5a; }
+    &:focus { border-color: var(--app-tool-active-border, #4ade80); }
 }
 
 .preset-save-btn {
     padding: 3px 8px;
-    border: 1px solid #4a7a4a;
+    border: 1px solid var(--app-save-accent, #446b40);
     border-radius: 4px;
-    background: #2a4a2a;
-    color: #a0d0a0;
+    background: color-mix(in srgb, var(--app-save-accent, #446b40) 25%, transparent);
+    color: var(--app-tool-active-color, #86efac);
     font-size: 0.75rem;
     cursor: pointer;
     &:disabled { opacity: 0.4; cursor: default; }
-    &:not(:disabled):hover { background: #3a5a3a; }
+    &:not(:disabled):hover { background: var(--app-save-accent, #446b40); color: #e8f5e5; }
 }
 
 .preset-list { display: flex; flex-direction: column; gap: 2px; }
@@ -381,7 +405,7 @@ onMounted(() => store.loadFilterPresets())
     justify-content: space-between;
     border-radius: 4px;
     padding: 2px 4px;
-    &:hover { background: #2a3a2a; }
+    &:hover { background: color-mix(in srgb, var(--filter-chip-border, #3a5a3a) 25%, transparent); }
 }
 
 .preset-name {
@@ -389,24 +413,26 @@ onMounted(() => store.loadFilterPresets())
     align-items: center;
     gap: 5px;
     font-size: 0.75rem;
-    color: #a0c0a0;
+    color: var(--filter-chip-color, #7a9a7a);
     cursor: pointer;
     flex: 1;
-    &:hover { color: #c8e0c8; }
+    &:hover { filter: brightness(1.3); }
 }
 
 .preset-del-btn {
     background: none;
     border: none;
-    color: #8a6060;
+    color: var(--filter-chip-color, #7a9a7a);
+    opacity: 0.6;
     cursor: pointer;
     padding: 1px 3px;
-    &:hover { color: #e09090; }
+    &:hover { color: #f87171; }
 }
 
 .preset-empty {
     font-size: 0.72rem;
-    color: #6b7c6b;
+    color: var(--filter-chip-color, #7a9a7a);
+    opacity: 0.7;
     font-style: italic;
     margin: 0;
 }

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { PhX, PhTrash, PhPlus } from '@phosphor-icons/vue'
+import { ref, computed, watch } from 'vue'
+import { PhX, PhPlus } from '@phosphor-icons/vue'
 import { useTimelineStore } from '@/stores/timelineStore'
 import type { FilterRule } from '@/types/models'
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; 'already-exists': [id: string] }>()
 const store = useTimelineStore()
 
 // ── dimension add forms ──────────────────────────────────────────────────────
@@ -23,9 +23,72 @@ const TYPE_LABELS: Record<number, string> = {
     1: 'Event', 2: 'Period', 3: 'Age', 4: 'Picture', 5: 'Note', 6: 'Bookmark'
 }
 
+// types that EXIST in the timeline's items
 const usedTypeIds = computed(() =>
     [...new Set(store.items.map(i => i.TypeId).filter(t => t in TYPE_LABELS))].sort()
 )
+
+// ── already-in-filters sets ──────────────────────────────────────────────────
+function parseRuleParams<T>(json: string): T | null {
+    try { return JSON.parse(json) as T } catch { return null }
+}
+
+const inFilters = computed(() => {
+    const types = new Set<number>(), tags = new Set<number>()
+    const chars = new Set<string>(), stories = new Set<string>()
+    const bools = new Set<string>(), lods = new Set<number>()
+    for (const r of store.filterRules) {
+        const p = parseRuleParams<Record<string, unknown>>(r.ParamsJson)
+        if (!p) continue
+        switch (r.Dimension) {
+            case 'type':      types.add(p.typeId as number);        break
+            case 'tag':       tags.add(p.tagId as number);          break
+            case 'character': chars.add(p.characterId as string);   break
+            case 'story':     stories.add(p.storyId as string);     break
+            case 'boolean':   bools.add(p.field as string);         break
+            case 'lod_level': lods.add(p.lodIndex as number);       break
+        }
+    }
+    return { types, tags, chars, stories, bools, lods }
+})
+
+const availableTypeIds    = computed(() => usedTypeIds.value.filter(tid => !inFilters.value.types.has(tid)))
+const availableTags       = computed(() => store.allTimelineTags.filter(t => !inFilters.value.tags.has(t.TagId)))
+const availableCharacters = computed(() => store.allTimelineCharacters.filter(c => !inFilters.value.chars.has(c.Id)))
+const availableStories    = computed(() => store.allTimelineStories.filter(s => !inFilters.value.stories.has(s.StoryId)))
+const availableLodLevels  = computed(() => store.lodProfile.filter(l => !inFilters.value.lods.has(l.index)))
+
+const BOOL_FIELDS = [
+    { value: 'has_picture',    label: 'Has picture' },
+    { value: 'has_tags',       label: 'Has tags' },
+    { value: 'show_in_notes',  label: 'Shown in notes' },
+]
+const availableBoolFields = computed(() => BOOL_FIELDS.filter(f => !inFilters.value.bools.has(f.value)))
+
+// auto-reset selects when their current value gets filtered out
+watch(availableTypeIds,   (ids)    => { if (!ids.includes(typeForm.value.typeId))          typeForm.value.typeId    = ids[0] ?? 1 })
+watch(availableLodLevels, (levels) => { if (!levels.find(l => l.index === lodForm.value.lodIndex)) lodForm.value.lodIndex = levels[0]?.index ?? 0 })
+watch(availableBoolFields,(fields) => { if (!fields.find(f => f.value === boolForm.value.field))   boolForm.value.field   = fields[0]?.value ?? '' })
+
+// ── duplicate detection for dynamic rules ────────────────────────────────────
+const duplicateRuleId = ref<string | null>(null)
+let _dupTimer = 0
+
+function findDuplicate(dimension: string, params: Record<string, unknown>): string | null {
+    const match = store.filterRules.find(r => {
+        if (r.Dimension !== dimension) return false
+        const p = parseRuleParams<Record<string, unknown>>(r.ParamsJson)
+        return p ? Object.keys(params).every(k => p[k] === params[k]) : false
+    })
+    return match?.Id ?? null
+}
+
+function alertDuplicate(ruleId: string) {
+    duplicateRuleId.value = ruleId
+    emit('already-exists', ruleId)
+    clearTimeout(_dupTimer)
+    _dupTimer = window.setTimeout(() => { duplicateRuleId.value = null }, 2000)
+}
 
 function makeId() { return 'fr_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12) }
 function nextOrder() { return store.filterRules.length }
@@ -69,12 +132,16 @@ function addStory() {
 function addKeyword() {
     const q = kwForm.value.query.trim()
     if (!q) return
+    const dup = findDuplicate('keyword', { query: q })
+    if (dup) { alertDuplicate(dup); return }
     addRule('keyword', { query: q }, `Keyword: "${q}"`)
     kwForm.value.query = ''
 }
 
 function addImportance() {
     const { op, value } = impForm.value
+    const dup = findDuplicate('importance', { op, value })
+    if (dup) { alertDuplicate(dup); return }
     const opLabel = op === '>' ? '>' : op === '<' ? '<' : '='
     addRule('importance', { op, value }, `Importance ${opLabel} ${value}`)
 }
@@ -82,8 +149,11 @@ function addImportance() {
 function addTimeRange() {
     const { op, year, year2 } = timeForm.value
     const params: any = { op, year }
+    if (op === 'between') params.year2 = year2
+    const dup = findDuplicate('time_range', params)
+    if (dup) { alertDuplicate(dup); return }
     let label = ''
-    if (op === 'between') { params.year2 = year2; label = `Year ${year}–${year2 ?? year}` }
+    if (op === 'between') { label = `Year ${year}–${year2 ?? year}` }
     else label = `Year ${op} ${year}`
     addRule('time_range', params, label)
 }
@@ -100,8 +170,10 @@ function addLod() {
 }
 
 function addColor() {
-    addRule('color', { hex: colorForm.value.hex, tolerance: colorForm.value.tolerance },
-        `Color ±${colorForm.value.tolerance}`)
+    const { hex, tolerance } = colorForm.value
+    const dup = findDuplicate('color', { hex, tolerance })
+    if (dup) { alertDuplicate(dup); return }
+    addRule('color', { hex, tolerance }, `Color ±${tolerance}`)
 }
 
 function selectTagFromList(t: { TagId: number; TagName: string }) {
@@ -119,43 +191,30 @@ function selectColorFromPalette(hex: string) {
 </script>
 
 <template>
-    <Teleport to="body">
-        <div class="fsetup-backdrop" @click.self="emit('close')">
-            <div class="fsetup-modal">
-                <div class="fsetup-header">
-                    <span class="fsetup-title">Filter Setup</span>
-                    <button class="fsetup-close" @click="emit('close')"><PhX :size="16" /></button>
-                </div>
+    <div class="fsetup-panel">
 
-                <!-- ── TOP SECTION: active rules ── -->
-                <div class="fsetup-section">
-                    <div class="fsetup-section-label">Active rules</div>
-                    <div v-if="store.filterRules.length === 0" class="fsetup-empty">
-                        No rules yet — add some below.
-                    </div>
-                    <div class="rules-list">
-                        <div v-for="rule in store.filterRules" :key="rule.Id" class="rule-row">
-                            <span class="rule-label">{{ rule.Label }}</span>
-                            <span class="rule-dim">{{ rule.Dimension }}</span>
-                            <button class="rule-del" title="Delete rule" @click="store.deleteFilterRule(rule.Id)">
-                                <PhTrash :size="13" />
-                            </button>
-                        </div>
-                    </div>
-                </div>
+        <div class="fsetup-topbar">
+            <span class="fsetup-topbar-label">Add filters</span>
+            <button class="fsetup-close" @click="emit('close')"><PhX :size="14" /></button>
+        </div>
 
-                <!-- ── BOTTOM SECTION: add new rules ── -->
+        <div class="dup-msg-anchor">
+            <Transition name="dup-fade">
+                <div v-if="duplicateRuleId" class="dup-msg">Already added — highlighted above</div>
+            </Transition>
+        </div>
+
+                <!-- ── add new rules ── -->
                 <div class="fsetup-section fsetup-section--add">
-                    <div class="fsetup-section-label">Add new rules</div>
 
                     <div class="add-grid">
 
                         <!-- Type -->
-                        <div class="add-block">
+                        <div class="add-block" v-if="availableTypeIds.length > 0">
                             <div class="add-block-title">Item Type</div>
                             <div class="add-row">
                                 <select class="fs-select" v-model.number="typeForm.typeId">
-                                    <option v-for="tid in usedTypeIds" :key="tid" :value="tid">{{ TYPE_LABELS[tid] }}</option>
+                                    <option v-for="tid in availableTypeIds" :key="tid" :value="tid">{{ TYPE_LABELS[tid] }}</option>
                                 </select>
                                 <button class="add-btn" @click="addType"><PhPlus :size="12" /></button>
                             </div>
@@ -164,50 +223,59 @@ function selectColorFromPalette(hex: string) {
                         <!-- Tag -->
                         <div class="add-block">
                             <div class="add-block-title">Tag</div>
-                            <div class="tag-chip-list">
-                                <button
-                                    v-for="t in store.allTimelineTags" :key="t.TagId"
-                                    class="picker-chip"
-                                    :class="{ selected: tagForm.tagId === t.TagId }"
-                                    @click="selectTagFromList(t)"
-                                >{{ t.TagName }}</button>
-                            </div>
-                            <button class="add-btn add-btn--inline" :disabled="!tagForm.tagId" @click="addTag">
-                                <PhPlus :size="12" /> Add "{{ tagForm.tagName || '…' }}"
-                            </button>
+                            <div v-if="availableTags.length === 0" class="all-added-msg">All tags already added</div>
+                            <template v-else>
+                                <div class="tag-chip-list">
+                                    <button
+                                        v-for="t in availableTags" :key="t.TagId"
+                                        class="picker-chip"
+                                        :class="{ selected: tagForm.tagId === t.TagId }"
+                                        @click="selectTagFromList(t)"
+                                    >{{ t.TagName }}</button>
+                                </div>
+                                <button class="add-btn add-btn--inline" :disabled="!tagForm.tagId" @click="addTag">
+                                    <PhPlus :size="12" /> Add "{{ tagForm.tagName || '…' }}"
+                                </button>
+                            </template>
                         </div>
 
                         <!-- Character -->
                         <div class="add-block">
                             <div class="add-block-title">Character</div>
-                            <div class="tag-chip-list">
-                                <button
-                                    v-for="c in store.allTimelineCharacters" :key="c.Id"
-                                    class="picker-chip"
-                                    :class="{ selected: charForm.characterId === c.Id }"
-                                    :style="c.Color ? { borderColor: c.Color } : {}"
-                                    @click="selectCharFromList(c)"
-                                >{{ c.Name }}</button>
-                            </div>
-                            <button class="add-btn add-btn--inline" :disabled="!charForm.characterId" @click="addCharacter">
-                                <PhPlus :size="12" /> Add "{{ charForm.characterName || '…' }}"
-                            </button>
+                            <div v-if="availableCharacters.length === 0" class="all-added-msg">All characters already added</div>
+                            <template v-else>
+                                <div class="tag-chip-list">
+                                    <button
+                                        v-for="c in availableCharacters" :key="c.Id"
+                                        class="picker-chip"
+                                        :class="{ selected: charForm.characterId === c.Id }"
+                                        :style="c.Color ? { borderColor: c.Color } : {}"
+                                        @click="selectCharFromList(c)"
+                                    >{{ c.Name }}</button>
+                                </div>
+                                <button class="add-btn add-btn--inline" :disabled="!charForm.characterId" @click="addCharacter">
+                                    <PhPlus :size="12" /> Add "{{ charForm.characterName || '…' }}"
+                                </button>
+                            </template>
                         </div>
 
                         <!-- Story -->
                         <div class="add-block" v-if="store.allTimelineStories.length > 0">
                             <div class="add-block-title">Story</div>
-                            <div class="tag-chip-list">
-                                <button
-                                    v-for="s in store.allTimelineStories" :key="s.StoryId"
-                                    class="picker-chip"
-                                    :class="{ selected: storyForm.storyId === s.StoryId }"
-                                    @click="selectStoryFromList(s)"
-                                >{{ s.StoryTitle }}</button>
-                            </div>
-                            <button class="add-btn add-btn--inline" :disabled="!storyForm.storyId" @click="addStory">
-                                <PhPlus :size="12" /> Add "{{ storyForm.storyTitle || '…' }}"
-                            </button>
+                            <div v-if="availableStories.length === 0" class="all-added-msg">All stories already added</div>
+                            <template v-else>
+                                <div class="tag-chip-list">
+                                    <button
+                                        v-for="s in availableStories" :key="s.StoryId"
+                                        class="picker-chip"
+                                        :class="{ selected: storyForm.storyId === s.StoryId }"
+                                        @click="selectStoryFromList(s)"
+                                    >{{ s.StoryTitle }}</button>
+                                </div>
+                                <button class="add-btn add-btn--inline" :disabled="!storyForm.storyId" @click="addStory">
+                                    <PhPlus :size="12" /> Add "{{ storyForm.storyTitle || '…' }}"
+                                </button>
+                            </template>
                         </div>
 
                         <!-- Keyword -->
@@ -253,24 +321,22 @@ function selectColorFromPalette(hex: string) {
                         </div>
 
                         <!-- Boolean flags -->
-                        <div class="add-block">
+                        <div class="add-block" v-if="availableBoolFields.length > 0">
                             <div class="add-block-title">Flag</div>
                             <div class="add-row">
                                 <select class="fs-select" v-model="boolForm.field">
-                                    <option value="has_picture">Has picture</option>
-                                    <option value="has_tags">Has tags</option>
-                                    <option value="show_in_notes">Shown in notes</option>
+                                    <option v-for="f in availableBoolFields" :key="f.value" :value="f.value">{{ f.label }}</option>
                                 </select>
                                 <button class="add-btn" @click="addBoolean"><PhPlus :size="12" /></button>
                             </div>
                         </div>
 
                         <!-- LOD visibility -->
-                        <div class="add-block" v-if="store.lodProfile.length > 0">
+                        <div class="add-block" v-if="availableLodLevels.length > 0">
                             <div class="add-block-title">Visible at LOD level</div>
                             <div class="add-row">
                                 <select class="fs-select" v-model.number="lodForm.lodIndex">
-                                    <option v-for="l in store.lodProfile" :key="l.index" :value="l.index">{{ l.formatKey }}</option>
+                                    <option v-for="l in availableLodLevels" :key="l.index" :value="l.index">{{ l.formatKey }}</option>
                                 </select>
                                 <button class="add-btn" @click="addLod"><PhPlus :size="12" /></button>
                             </div>
@@ -302,181 +368,176 @@ function selectColorFromPalette(hex: string) {
                     </div>
                 </div>
 
-            </div>
-        </div>
-    </Teleport>
+    </div>
 </template>
 
 <style scoped lang="scss">
-.fsetup-backdrop {
-    position: fixed;
-    inset: 0;
-    background: #00000088;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding-top: 5vh;
-    z-index: 1000;
+/* ── duplicate message ── */
+.dup-msg-anchor {
+    position: relative;
+    height: 0;
+    overflow: visible;
+    z-index: 10;
 }
 
-.fsetup-modal {
-    width: 90vw;
-    max-height: 88vh;
-    overflow-y: auto;
-    background: #151e15;
-    border: 1px solid #3a4a3a88;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    box-shadow: 0 8px 32px #00000088;
+.dup-msg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 14px;
+    font-size: 0.7rem;
+    color: var(--app-tool-active-color, #86efac);
+    background: color-mix(in srgb, var(--app-tool-active-border, #4ade80) 15%, var(--filter-panel-bg, #111a11));
+    border-top: 1px solid color-mix(in srgb, var(--app-tool-active-border, #4ade80) 30%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--app-tool-active-border, #4ade80) 30%, transparent);
+    pointer-events: none;
 }
 
-.fsetup-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid #2a3a2a;
-    flex-shrink: 0;
-}
+.dup-fade-enter-active, .dup-fade-leave-active { transition: opacity 0.2s; }
+.dup-fade-enter-from, .dup-fade-leave-to { opacity: 0; }
 
-.fsetup-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #c0d0c0;
-}
-
-.fsetup-close {
-    background: none;
-    border: none;
-    color: #8a9a8a;
-    cursor: pointer;
-    padding: 2px;
-    &:hover { color: #e0e0e0; }
-}
-
-.fsetup-section {
-    padding: 12px 16px;
-    border-bottom: 1px solid #1e2e1e;
-
-    &--add {
-        border-bottom: none;
-    }
-}
-
-.fsetup-section-label {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: #6a8a6a;
-    margin-bottom: 10px;
-}
-
-.fsetup-empty {
-    font-size: 0.78rem;
-    color: #5a6a5a;
+/* ── "all already added" placeholder ── */
+.all-added-msg {
+    font-size: 0.68rem;
+    color: var(--filter-chip-color, #7a9a7a);
+    opacity: 0.5;
     font-style: italic;
 }
 
-/* ── active rules list ── */
-.rules-list { display: flex; flex-direction: column; gap: 4px; }
+/* ── panel shell ── */
+.fsetup-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--filter-panel-bg, #111a11);
+    border-bottom: 1px solid var(--filter-panel-border, #2a4a2a);
+    border-left: 1px solid var(--filter-panel-border, #2a4a2a);
+    border-right: 1px solid var(--filter-panel-border, #2a4a2a);
+    border-radius: 0 0 6px 6px;
+    max-height: 56vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 
-.rule-row {
+    &::-webkit-scrollbar { width: 5px; }
+    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar-thumb { background: var(--filter-panel-border, #2a4a2a); border-radius: 3px; }
+}
+
+/* ── top bar: active rules + close ── */
+.fsetup-topbar {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 8px;
-    background: #1e2a1e55;
-    border-radius: 4px;
-    border: 1px solid #2a3a2a55;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--filter-panel-border, #2a4a2a);
+    flex-shrink: 0;
+    flex-wrap: wrap;
 }
 
-.rule-label { flex: 1; font-size: 0.8rem; color: #b0c8b0; }
-
-.rule-dim {
+.fsetup-topbar-label {
     font-size: 0.68rem;
-    color: #5a7a5a;
-    background: #1a2a1a;
-    border-radius: 3px;
-    padding: 1px 5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--filter-chip-color, #7a9a7a);
+    opacity: 0.7;
+    flex-shrink: 0;
 }
 
-.rule-del {
+
+.fsetup-close {
+    margin-left: auto;
+    flex-shrink: 0;
     background: none;
     border: none;
-    color: #8a6060;
+    color: var(--filter-chip-color, #7a9a7a);
+    opacity: 0.6;
     cursor: pointer;
-    padding: 2px;
-    &:hover { color: #e09090; }
+    padding: 3px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    transition: opacity 0.1s;
+    &:hover { opacity: 1; }
+}
+
+.fsetup-section {
+    padding: 10px 14px;
+    &--add { border-top: none; }
 }
 
 /* ── add grid ── */
 .add-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
 }
 
 .add-block {
-    background: #1a261a66;
-    border: 1px solid #2a3a2a55;
-    border-radius: 6px;
-    padding: 10px 12px;
+    background: color-mix(in srgb, var(--filter-panel-border, #2a4a2a) 20%, var(--filter-panel-bg, #111a11));
+    border: 1px solid color-mix(in srgb, var(--filter-panel-border, #2a4a2a) 60%, transparent);
+    border-radius: 5px;
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 7px;
 }
 
 .add-block-title {
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: #7a9a7a;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--filter-chip-color, #7a9a7a);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
 }
 
 .add-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     flex-wrap: wrap;
 }
 
-.range-sep { color: #6a8a6a; font-size: 0.8rem; }
+.range-sep {
+    color: var(--filter-chip-color, #7a9a7a);
+    font-size: 0.8rem;
+    opacity: 0.6;
+}
 
 .fs-select {
     flex: 1;
-    background: #0f1a0f;
-    border: 1px solid #3a4a3a;
+    background: color-mix(in srgb, var(--filter-panel-border, #2a4a2a) 12%, var(--filter-panel-bg, #111a11));
+    border: 1px solid var(--filter-chip-border, #3a5a3a);
     border-radius: 4px;
-    color: #c0d0c0;
-    font-size: 0.78rem;
-    padding: 3px 6px;
+    color: var(--filter-chip-color, #7a9a7a);
+    font-size: 0.76rem;
+    padding: 3px 5px;
     outline: none;
-    &:focus { border-color: #5a8a5a; }
+    &:focus { border-color: var(--app-tool-active-border, #4ade80); }
     &--narrow { flex: 0 0 auto; max-width: 140px; }
 }
 
 .fs-input {
     flex: 1;
-    background: #0f1a0f;
-    border: 1px solid #3a4a3a;
+    background: color-mix(in srgb, var(--filter-panel-border, #2a4a2a) 12%, var(--filter-panel-bg, #111a11));
+    border: 1px solid var(--filter-chip-border, #3a5a3a);
     border-radius: 4px;
-    color: #c0d0c0;
-    font-size: 0.78rem;
-    padding: 3px 6px;
+    color: var(--filter-chip-color, #7a9a7a);
+    font-size: 0.76rem;
+    padding: 3px 5px;
     outline: none;
     min-width: 0;
-    &:focus { border-color: #5a8a5a; }
+    &:focus { border-color: var(--app-tool-active-border, #4ade80); }
     &--narrow { flex: 0 0 70px; width: 70px; }
 }
 
 .fs-color {
-    width: 32px;
-    height: 24px;
-    border: 1px solid #3a4a3a;
+    width: 30px;
+    height: 22px;
+    border: 1px solid var(--filter-chip-border, #3a5a3a);
     border-radius: 3px;
     background: none;
     cursor: pointer;
@@ -484,48 +545,55 @@ function selectColorFromPalette(hex: string) {
 }
 
 .color-hex {
-    font-size: 0.72rem;
-    color: #8a9a8a;
+    font-size: 0.7rem;
+    color: var(--filter-chip-color, #7a9a7a);
+    opacity: 0.7;
     font-family: monospace;
 }
 
 .add-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    border: 1px solid #4a7a4a;
+    gap: 3px;
+    padding: 2px 8px;
+    border: 1px solid var(--app-save-accent, #446b40);
     border-radius: 4px;
-    background: #2a4a2a;
-    color: #a0d0a0;
-    font-size: 0.75rem;
+    background: color-mix(in srgb, var(--app-save-accent, #446b40) 25%, transparent);
+    color: var(--app-tool-active-color, #86efac);
+    font-size: 0.73rem;
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
-    &:disabled { opacity: 0.4; cursor: default; }
-    &:not(:disabled):hover { background: #3a5a3a; }
+    transition: background 0.12s;
+    &:disabled { opacity: 0.35; cursor: default; }
+    &:not(:disabled):hover { background: var(--app-save-accent, #446b40); color: #e8f5e5; }
     &--inline { align-self: flex-start; }
 }
 
-/* ── chip pickers ── */
+/* ── chip pickers (tag / char / story) ── */
 .tag-chip-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    max-height: 80px;
+    gap: 3px;
+    max-height: 72px;
     overflow-y: auto;
 }
 
 .picker-chip {
-    padding: 2px 8px;
-    border: 1px solid #4a5c4a;
+    padding: 1px 7px;
+    border: 1px solid var(--filter-chip-border, #3a5a3a);
     border-radius: 10px;
     background: transparent;
-    color: #8fa88f;
-    font-size: 0.72rem;
+    color: var(--filter-chip-color, #7a9a7a);
+    font-size: 0.7rem;
     cursor: pointer;
-    &:hover { background: #2a3a2a66; color: #c8d8c8; }
-    &.selected { background: #2a5a2a; border-color: #5a9a5a; color: #c0f0c0; }
+    transition: background 0.1s;
+    &:hover { background: color-mix(in srgb, var(--filter-chip-border, #3a5a3a) 30%, transparent); }
+    &.selected {
+        background: color-mix(in srgb, var(--app-tool-active-border, #4ade80) 16%, transparent);
+        border-color: var(--app-tool-active-border, #4ade80);
+        color: var(--app-tool-active-color, #86efac);
+    }
 }
 
 /* ── color palette ── */
@@ -537,12 +605,13 @@ function selectColorFromPalette(hex: string) {
 }
 
 .palette-swatch {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     border-radius: 3px;
     border: 2px solid transparent;
     cursor: pointer;
-    &.selected { border-color: #ffffffaa; }
-    &:hover { transform: scale(1.15); }
+    transition: transform 0.1s;
+    &.selected { border-color: rgba(255, 255, 255, 0.7); }
+    &:hover { transform: scale(1.18); }
 }
 </style>

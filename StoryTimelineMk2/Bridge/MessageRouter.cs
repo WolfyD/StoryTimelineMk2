@@ -580,8 +580,10 @@ namespace StoryTimelineMk2.Bridge
             if (p.TryGetProperty("showGuides",       out var e4)) settings.ShowGuides       = e4.GetBoolean();
             if (p.TryGetProperty("displayRadius",    out var e5)) settings.DisplayRadius    = e5.GetInt32();
             if (p.TryGetProperty("isFullscreen",     out var e6)) settings.IsFullscreen     = e6.GetBoolean();
-            if (p.TryGetProperty("useCustomScaling", out var e7)) settings.UseCustomScaling = e7.GetBoolean();
-            if (p.TryGetProperty("customScale",      out var e8)) settings.CustomScale      = e8.GetSingle();
+            if (p.TryGetProperty("useCustomScaling",    out var e7)) settings.UseCustomScaling    = e7.GetBoolean();
+            if (p.TryGetProperty("customScale",          out var e8)) settings.CustomScale          = e8.GetSingle();
+            if (p.TryGetProperty("panSpeedMultiplier",   out var e9)) settings.PanSpeedMultiplier   = e9.GetSingle();
+            if (p.TryGetProperty("panDeadzone",          out var ea)) settings.PanDeadzone          = ea.GetInt32();
 
             settingsRepo.SaveSettings(settings);
             new TimelineRepo().SetLayoutPreset(timelineId, layoutPresetId);
@@ -986,7 +988,7 @@ namespace StoryTimelineMk2.Bridge
             _yearCalendarWindow = f_YearCalendar.TakePrewarmed() ?? new f_YearCalendar();
             _yearCalendarWindow.TimelineId = timelineId;
             _yearCalendarWindow.CalendarId = calendarId;
-            _yearCalendarWindow.FormClosed += (_, _) => _yearCalendarWindow = null;
+            _yearCalendarWindow.FormClosed += (_, _) => { _yearCalendarWindow = null; SendToVue("YearCalendarClosed", new { }); };
             _yearCalendarWindow.Show(_parentForm);
             _yearCalendarWindow.TopMost = _parentForm.TopMost;
             _yearCalendarWindow.Activate();
@@ -1199,6 +1201,18 @@ namespace StoryTimelineMk2.Bridge
         // App-level settings handlers
         // -----------------------------------------------------------------------
 
+        private static bool OsPrefersDark()
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                // AppsUseLightTheme: 0 = dark, 1 = light (absent = dark)
+                return key?.GetValue("AppsUseLightTheme") is int v ? v == 0 : true;
+            }
+            catch { return true; }
+        }
+
         private void HandleGetAppConfig(BridgeMessage message)
         {
             var cfg = AppConfig.Instance;
@@ -1209,6 +1223,7 @@ namespace StoryTimelineMk2.Bridge
                 MediaFolder            = cfg.GetMediaFolder(),
                 chromeTheme            = cfg.ChromeTheme,
                 themeInitialized       = cfg.ThemeInitialized,
+                systemPrefersDark      = OsPrefersDark(),
                 performantPanning      = cfg.PerformantPanning,
                 showAchievementPopups  = cfg.ShowAchievementPopups,
                 achievementSound       = cfg.AchievementSound,

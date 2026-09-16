@@ -178,22 +178,22 @@ const navItems = [
         );
     }
 
-    // Tool active (filter on) — semantic green kept intentionally
+    // Tool active (filter on / calendar open)
     &--tool-active {
-        color: #86efac;
-        border-left-color: #4ade80;
+        color: var(--app-tool-active-color, #86efac);
+        border-left-color: var(--app-tool-active-border, #4ade80);
         background: linear-gradient(
             90deg,
-            rgba(74, 222, 128, 0.14) 0%,
-            rgba(74, 222, 128, 0.03) 100%
+            color-mix(in srgb, var(--app-tool-active-border, #4ade80) 14%, transparent) 0%,
+            color-mix(in srgb, var(--app-tool-active-border, #4ade80) 3%, transparent) 100%
         );
 
         &:hover {
-            color: #bbf7d0;
+            color: var(--app-tool-active-color, #86efac);
             background: linear-gradient(
                 90deg,
-                rgba(74, 222, 128, 0.22) 0%,
-                rgba(74, 222, 128, 0.06) 100%
+                color-mix(in srgb, var(--app-tool-active-border, #4ade80) 22%, transparent) 0%,
+                color-mix(in srgb, var(--app-tool-active-border, #4ade80) 6%, transparent) 100%
             );
         }
     }

@@ -29,6 +29,13 @@ const waitingForId = ref<boolean>(false)
 const timelineCanvasRef = ref();
 const showSettings = ref(false);
 const showFilterSetup = ref(false);
+const flashedRuleId = ref<string | null>(null);
+let _flashTimer = 0;
+function onAlreadyExists(id: string) {
+    flashedRuleId.value = id
+    clearTimeout(_flashTimer)
+    _flashTimer = window.setTimeout(() => { flashedRuleId.value = null }, 900)
+}
 const viewItemId = ref<string | null>(null);
 const lightboxUrl = ref<string | null>(null);
 
@@ -43,9 +50,17 @@ async function toggleYearCalendar() {
     yearCalendarOpen.value = res?.status === 'opened'
 }
 
+function onYearCalendarClosePush(e: MessageEvent) {
+    let msg: any
+    try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data } catch { return }
+    if (msg?.action === 'YearCalendarClosed') yearCalendarOpen.value = false
+}
+
 // Debounced year sender — fires SetCalendarYear when centerAbsoluteTime crosses a year boundary
 let _yearSendTimer = 0
 let _lastSentYear = -Infinity
+watch(() => store.filterPanelOpen, (open) => { if (!open) showFilterSetup.value = false })
+
 watch(() => store.centerAbsoluteTime, (t) => {
     const year = Math.floor(t)
     if (year === _lastSentYear) return
@@ -227,11 +242,13 @@ onMounted(async () => {
 
 	window.addEventListener('resize', handleResizeEvent)
     window.addEventListener('keydown', onHotkey)
+    window.chrome?.webview?.addEventListener('message', onYearCalendarClosePush)
 })
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', handleResizeEvent)
     window.removeEventListener('keydown', onHotkey)
+    window.chrome?.webview?.removeEventListener('message', onYearCalendarClosePush)
     if (_setIdListener) {
         window.chrome.webview.removeEventListener('message', _setIdListener)
         _setIdListener = null
@@ -289,15 +306,14 @@ onBeforeUnmount(() => {
         @close="showSettings = false"
     />
 
-    <TimelineFilterPanel
-        v-if="store.filterPanelOpen"
-        @open-setup="showFilterSetup = true"
-    />
-
-    <TimelineFilterSetupModal
-        v-if="showFilterSetup"
-        @close="showFilterSetup = false"
-    />
+    <div v-if="store.filterPanelOpen" class="filter-area">
+        <TimelineFilterPanel :flashed-rule-id="flashedRuleId" @open-setup="showFilterSetup = !showFilterSetup" />
+        <TimelineFilterSetupModal
+            v-if="showFilterSetup"
+            @close="showFilterSetup = false"
+            @already-exists="onAlreadyExists"
+        />
+    </div>
 
     <!-- Normal mode: full horizontal splitpanes -->
     <template v-if="!isMinimised">
@@ -502,6 +518,12 @@ onBeforeUnmount(() => {
 	height: 100%;
 }
 
+.filter-area {
+    position: relative;
+    flex-shrink: 0;
+    z-index: 50;
+}
+
 #timeline-header {
 	position: relative;
 	display: flex;
@@ -675,11 +697,11 @@ onBeforeUnmount(() => {
 	gap: 4px;
 
 	input {
-		height: 20px;
-		align-items: center;
+		height: 28px;
 		align-self: center;
 		width: 100px;
 		font-size: 1.6em;
+		padding: 0 4px;
 	}
 }
 

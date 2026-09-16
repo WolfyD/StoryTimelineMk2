@@ -196,6 +196,8 @@ export const BackendAPI = {
 		useCustomScaling: boolean;
 		customScale: number;
 		layoutPresetId: string;
+		panSpeedMultiplier: number;
+		panDeadzone: number;
 	}) {
 		return await this.request<{ status: string }>('SaveSettings', payload);
 	},

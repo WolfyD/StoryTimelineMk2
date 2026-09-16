@@ -19,6 +19,25 @@ const colorFields: Partial<Record<keyof ChromeTheme, string>> = {
     appTextDim:       'Text (dim)',
     appAccent:        'Accent',
     appAccentHover:   'Accent (hover)',
+    appSaveAccent:      'Save accent',
+    appSaveAccentHover: 'Save accent (hover)',
+    appToolActiveColor:  'Active tool highlight',
+    appToolActiveBorder: 'Active tool border',
+}
+
+const filterColorFields: Partial<Record<keyof ChromeTheme, string>> = {
+    filterPanelBg:     'Panel background',
+    filterPanelBorder: 'Panel border',
+    filterChipColor:   'Chip text',
+    filterChipBorder:  'Chip border',
+}
+
+// Extract a #rrggbb hex from any CSS color string (for rgba fields)
+function toPickerHex(color: string): string {
+    const m = color.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/)
+    if (m) return `#${[m[1],m[2],m[3]].map(n => parseInt(n).toString(16).padStart(2,'0')).join('')}`
+    if (/^#[0-9a-f]{6}/i.test(color)) return color.slice(0, 7)
+    return '#000000'
 }
 
 const theme = reactive<ChromeTheme>({ ...DARK_PRESET })
@@ -27,7 +46,8 @@ const feedback = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 
 onMounted(async () => {
     const cfg = await BackendAPI.GetAppConfig()
-    if (cfg?.chromeTheme) Object.assign(theme, cfg.chromeTheme)
+    // Merge saved theme over the preset so new optional fields always have a default
+    if (cfg?.chromeTheme) Object.assign(theme, { ...DARK_PRESET, ...cfg.chromeTheme })
 })
 
 // Live-preview as values change
@@ -115,7 +135,12 @@ function onColorInput(key: string, e: Event) {
 
                         <div class="color-row">
                             <label>Border</label>
-                            <input class="color-text color-text--wide" type="text" v-model="theme.tbBorderColor" placeholder="rgba(…)" />
+                            <div class="color-pick-wrap">
+                                <div class="color-swatch" :style="{ background: toPickerHex(theme.tbBorderColor) }">
+                                    <input type="color" :value="toPickerHex(theme.tbBorderColor)" @input="onColorInput('tbBorderColor', $event)" />
+                                </div>
+                                <input class="color-text" type="text" v-model="theme.tbBorderColor" placeholder="rgba(…)" />
+                            </div>
                         </div>
 
                         <div class="color-row">
@@ -179,7 +204,12 @@ function onColorInput(key: string, e: Event) {
 
                         <div class="color-row">
                             <label>Button hover bg</label>
-                            <input class="color-text color-text--wide" type="text" v-model="theme.tbBtnHoverBg" placeholder="rgba(…)" />
+                            <div class="color-pick-wrap">
+                                <div class="color-swatch" :style="{ background: toPickerHex(theme.tbBtnHoverBg) }">
+                                    <input type="color" :value="toPickerHex(theme.tbBtnHoverBg)" @input="onColorInput('tbBtnHoverBg', $event)" />
+                                </div>
+                                <input class="color-text" type="text" v-model="theme.tbBtnHoverBg" placeholder="rgba(…)" />
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -190,6 +220,24 @@ function onColorInput(key: string, e: Event) {
 
                     <div class="field-grid">
                         <div v-for="(label, key) in colorFields" :key="key" class="color-row">
+                            <label>{{ label }}</label>
+                            <div class="color-pick-wrap">
+                                <div class="color-swatch" :style="{ background: theme[key] as string }">
+                                    <input type="color" :value="theme[key] as string" @input="onColorInput(key, $event)" />
+                                </div>
+                                <input class="color-text" type="text" :value="theme[key] as string"
+                                    @input="e => (theme as any)[key] = (e.target as HTMLInputElement).value" />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ── Filter Panel ────────────────────────────────────── -->
+                <section class="atm-section">
+                    <h4 class="atm-section-label">Filter Panel</h4>
+
+                    <div class="field-grid">
+                        <div v-for="(label, key) in filterColorFields" :key="key" class="color-row">
                             <label>{{ label }}</label>
                             <div class="color-pick-wrap">
                                 <div class="color-swatch" :style="{ background: theme[key] as string }">

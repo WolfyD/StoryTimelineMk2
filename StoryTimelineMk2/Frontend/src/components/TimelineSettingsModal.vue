@@ -25,6 +25,8 @@ const local = reactive({
     IsFullscreen: props.settings?.IsFullscreen ?? false,
     UseCustomScaling: props.settings?.UseCustomScaling ?? false,
     CustomScale: props.settings?.CustomScale ?? 1.0,
+    PanSpeedMultiplier: props.settings?.PanSpeedMultiplier ?? 10.0,
+    PanDeadzone: props.settings?.PanDeadzone ?? 100,
     selectedLayoutId: props.layoutSettings?.Id ?? 'ls_default',
 })
 
@@ -318,6 +320,8 @@ async function save() {
             useCustomScaling: local.UseCustomScaling,
             customScale: local.CustomScale,
             layoutPresetId: local.selectedLayoutId,
+            panSpeedMultiplier: local.PanSpeedMultiplier,
+            panDeadzone: local.PanDeadzone,
         }),
         BackendAPI.SaveLayoutSettings(localLayout),
     ])
@@ -332,6 +336,8 @@ async function save() {
             store.settings.IsFullscreen = local.IsFullscreen
             store.settings.UseCustomScaling = local.UseCustomScaling
             store.settings.CustomScale = local.CustomScale
+            store.settings.PanSpeedMultiplier = local.PanSpeedMultiplier
+            store.settings.PanDeadzone = local.PanDeadzone
         }
         if (lsResult.layoutSettings) store.setLayoutSettings(lsResult.layoutSettings)
         emit('close')
@@ -381,6 +387,12 @@ async function save() {
 
                     <span class="s-label">Display Radius</span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.DisplayRadius" :step="1" min="1" max="100" />
+
+                    <span class="s-label">Pan Speed</span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="local.PanSpeedMultiplier" :step="0.1" min="0.01" max="100" />
+
+                    <span class="s-label">Pan Deadzone (px)</span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="local.PanDeadzone" :step="1" min="0" max="500" />
 
                     <span class="s-label">Show Guides</span>
                     <button class="toggle" :class="{ 'is-on': local.ShowGuides }" type="button" @click="local.ShowGuides = !local.ShowGuides">
@@ -915,7 +927,7 @@ async function save() {
 <style scoped lang="scss">
 .search-bar {
     padding: 8px 20px;
-    background: #1a2438;
+    background: var(--app-surface-raised, #141e33);
     border-bottom: 1px solid var(--app-border, #2d3a56);
     flex-shrink: 0;
 }
@@ -969,14 +981,14 @@ async function save() {
     }
 
     &.search-hl {
-        color: #60a5fa;
-        &::after { background: #2563eb; }
+        color: var(--app-accent-hover, #818cf8);
+        &::after { background: var(--app-accent, #6366f1); }
     }
 }
 
 .s-label.search-hl {
-    color: #bfdbfe;
-    background: #172554;
+    color: var(--app-accent-hover, #818cf8);
+    background: color-mix(in srgb, var(--app-accent, #6366f1) 18%, transparent);
     border-radius: 3px;
     padding-left: 8px;
 }
@@ -1022,7 +1034,7 @@ select.s-input {
 }
 
 .s-btn {
-    background: #1a2740;
+    background: var(--app-surface-raised, #141e33);
     border: 1px solid var(--app-border, #2d3a56);
     border-radius: 4px;
     color: var(--app-text-muted, #94a3b8);
@@ -1032,7 +1044,7 @@ select.s-input {
     transition: background 0.15s, color 0.15s;
 
     &:hover {
-        background: #233152;
+        background: var(--app-surface-high, #1e2b44);
         color: var(--app-text, #e2e8f0);
     }
 }
@@ -1092,7 +1104,8 @@ select.s-input {
     font-family: monospace;
 }
 
-.s-range {
+.s-range,
+.s-slider {
     flex: 1;
     accent-color: var(--app-accent, #3b6ec4);
     cursor: pointer;
@@ -1121,7 +1134,7 @@ select.s-input {
     transition: background 0.15s, color 0.15s;
 
     &:hover {
-        background: #2a3a5a;
+        background: var(--app-surface-high, #1e2b44);
         color: var(--app-text, #e2e8f0);
     }
 
@@ -1235,7 +1248,7 @@ select.s-input {
     display: flex;
     border-bottom: 1px solid var(--app-border, #2d3a56);
     flex-shrink: 0;
-    background: #0f1827;
+    background: var(--app-surface, #0c1524);
 }
 
 .tab-btn {

@@ -30,6 +30,12 @@ namespace StoryTimelineMk2
         [JsonPropertyName("appAccentHover")]     public string AppAccentHover     { get; set; } = "#818cf8";
         [JsonPropertyName("appSaveAccent")]      public string AppSaveAccent      { get; set; } = "#446b40";
         [JsonPropertyName("appSaveAccentHover")] public string AppSaveAccentHover { get; set; } = "#52804c";
+        [JsonPropertyName("appToolActiveColor")]  public string AppToolActiveColor  { get; set; } = "#86efac";
+        [JsonPropertyName("appToolActiveBorder")] public string AppToolActiveBorder { get; set; } = "#4ade80";
+        [JsonPropertyName("filterPanelBg")]     public string FilterPanelBg     { get; set; } = "#111a11";
+        [JsonPropertyName("filterPanelBorder")] public string FilterPanelBorder { get; set; } = "#2a4a2a";
+        [JsonPropertyName("filterChipColor")]   public string FilterChipColor   { get; set; } = "#7a9a7a";
+        [JsonPropertyName("filterChipBorder")]  public string FilterChipBorder  { get; set; } = "#3a5a3a";
 
         // ── Sizes ────────────────────────────────────────────────────────────
         [JsonPropertyName("appRadius")]   public string AppRadius   { get; set; } = "8px";
@@ -68,6 +74,14 @@ namespace StoryTimelineMk2
             AppTextDim      = "#8b7ab8",
             AppAccent       = "#6366f1",
             AppAccentHover  = "#4f46e5",
+            AppSaveAccent      = "#3a7a36",
+            AppSaveAccentHover = "#4a9445",
+            AppToolActiveColor  = "#166534",
+            AppToolActiveBorder = "#16a34a",
+            FilterPanelBg     = "#e8f5e8",
+            FilterPanelBorder = "#a8d5a8",
+            FilterChipColor   = "#2d6b2d",
+            FilterChipBorder  = "#7ab87a",
             AppRadius       = "8px",
             AppRadiusSm     = "4px",
             AppRadiusLg     = "12px",

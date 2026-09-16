@@ -1480,11 +1480,17 @@ onMounted(() => {
             const rect = stage.container().getBoundingClientRect();
             const canvasX = midMouseClientX - rect.left;
             const halfWidth = viewport.width / 2;
-            const normalised = (canvasX - halfWidth) / halfWidth; // -1 … +1
-            const maxPx = store.layoutSettings.TimelineTickDistance * 3.5;
-            const deltaX = -normalised * maxPx;
-            if (Math.abs(deltaX) > 0.5) applyPan(deltaX);
-            const cur = normalised > 0.05 ? MID_CURSOR_RIGHT : normalised < -0.05 ? MID_CURSOR_LEFT : MID_CURSOR_CENTER;
+            const offset = canvasX - halfWidth; // signed px from center
+            const deadzoneHalf = (store.settings?.PanDeadzone ?? 100) / 2;
+            const speedMult = store.settings?.PanSpeedMultiplier ?? 10.0;
+            const inDeadzone = Math.abs(offset) <= deadzoneHalf;
+            if (!inDeadzone) {
+                const normalised = offset / halfWidth; // -1 … +1
+                const maxPx = store.layoutSettings.TimelineTickDistance * 0.35; // divided by 10 so default×10 = original speed
+                const deltaX = -normalised * maxPx * speedMult;
+                if (Math.abs(deltaX) > 0.5) applyPan(deltaX);
+            }
+            const cur = offset > deadzoneHalf ? MID_CURSOR_RIGHT : offset < -deadzoneHalf ? MID_CURSOR_LEFT : MID_CURSOR_CENTER;
             document.body.style.cursor = cur;
             _midMouseRafId = requestAnimationFrame(loop);
         };

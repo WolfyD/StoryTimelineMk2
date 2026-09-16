@@ -23,6 +23,12 @@ export interface ChromeTheme {
     appAccentHover: string
     appSaveAccent: string
     appSaveAccentHover: string
+    appToolActiveColor?: string
+    appToolActiveBorder?: string
+    filterPanelBg?: string
+    filterPanelBorder?: string
+    filterChipColor?: string
+    filterChipBorder?: string
     appRadius: string
     appRadiusSm: string
     appRadiusLg: string
@@ -62,6 +68,8 @@ export interface TimelineSettings {
     DisplayRadius: number;
     CanvasSettings: CanvasSettingsObject;
     TimelineMinimised: boolean;
+    PanSpeedMultiplier: number;
+    PanDeadzone: number;
 }
 
 export interface CanvasSettingsObject {

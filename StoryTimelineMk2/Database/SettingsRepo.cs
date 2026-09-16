@@ -45,12 +45,12 @@ namespace StoryTimelineMk2.Database
                         (timeline_id, font, font_size_scale, pixels_per_subtick, use_custom_css,
                          is_fullscreen, show_guides, window_size_x, window_size_y,
                          window_position_x, window_position_y, use_custom_scaling, custom_scale,
-                         display_radius, canvas_settings, updated_at)
+                         display_radius, canvas_settings, pan_speed_multiplier, pan_deadzone, updated_at)
                     VALUES
                         (@TimelineId, @Font, @FontSizeScale, @PixelsPerSubtick, @UseCustomCss,
                          @IsFullscreen, @ShowGuides, @WindowSizeX, @WindowSizeY,
                          @WindowPositionX, @WindowPositionY, @UseCustomScaling, @CustomScale,
-                         @DisplayRadius, @CanvasSettings, CURRENT_TIMESTAMP);",
+                         @DisplayRadius, @CanvasSettings, @PanSpeedMultiplier, @PanDeadzone, CURRENT_TIMESTAMP);",
                     settings);
             }
 
@@ -79,9 +79,11 @@ namespace StoryTimelineMk2.Database
                     use_custom_scaling  = @UseCustomScaling,
                     custom_scale        = @CustomScale,
                     display_radius      = @DisplayRadius,
-                    canvas_settings     = @CanvasSettings,
-                    timeline_minimised  = @TimelineMinimised,
-                    updated_at          = CURRENT_TIMESTAMP
+                    canvas_settings      = @CanvasSettings,
+                    timeline_minimised   = @TimelineMinimised,
+                    pan_speed_multiplier = @PanSpeedMultiplier,
+                    pan_deadzone         = @PanDeadzone,
+                    updated_at           = CURRENT_TIMESTAMP
                 WHERE timeline_id = @TimelineId;",
                 settings);
         }

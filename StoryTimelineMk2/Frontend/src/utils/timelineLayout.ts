@@ -49,13 +49,23 @@ export type FormatRegistryType = Record<string, (year: number, fraction: number)
 export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryType {
     const { yearLength, weekLength, months, seasons } = cfg
 
-    // Bucket classification uses Math.floor throughout: a fraction belongs to the
-    // bucket it falls INSIDE. Math.round pushed values past the boundary — f=0.5
-    // in a 365-day year labelled "Day 184" instead of 183, f→1 produced "Day 366",
-    // and day 365 fell outside every season and wrapped back to the first one.
+    // stepFraction is stored as a rounded float, so f * yearLength drifts slightly
+    // from a true integer at large year values.  Math.round absorbs the drift.
+    // toDayIndex is used for calendar lookups (month/season search) and clamps to
+    // yearLength-1 so the array access is always in-bounds.
+    // toDayRaw is used for display labels — NOT clamped, so callers can detect
+    // when f has drifted past the year boundary (raw >= yearLength) and show the
+    // next-year number instead of duplicating the last-day/month/season label.
+    function toDayIndex(f: number): number {
+        return Math.min(Math.round(f * yearLength), yearLength - 1)
+    }
+    function toDayRaw(f: number): number {
+        return Math.round(f * yearLength)
+    }
+
     function monthLabel(f: number): string {
-        if (months.length === 0) return `M${Math.floor(f * 12) + 1}`
-        const day = Math.floor(f * yearLength)
+        if (months.length === 0) return `M${Math.min(Math.round(f * 12), 11) + 1}`
+        const day = toDayIndex(f)
         for (let i = 0; i < months.length - 1; i++) {
             if (day < months[i + 1]!.startDay) return months[i]!.shortName
         }
@@ -63,8 +73,8 @@ export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryTy
     }
 
     function seasonLabel(f: number): string {
-        if (seasons.length === 0) return `Q${Math.floor(f * 4) + 1}`
-        const day = Math.floor(f * yearLength)
+        if (seasons.length === 0) return `Q${Math.min(Math.round(f * 4), 3) + 1}`
+        const day = toDayIndex(f)
         for (const s of seasons) {
             if (s.start <= s.end ? (day >= s.start && day <= s.end) : (day >= s.start || day <= s.end))
                 return s.name
@@ -72,16 +82,18 @@ export function buildFormatRegistry(cfg: CalendarFormatConfig): FormatRegistryTy
         return seasons[0]!.name
     }
 
+    const nextYear = (y: number) => `${Math.floor(y) + 1}`
+
     return {
         'MILLENNIA': (y)    => `${Math.floor(y)}s`,
         'CENTURIES': (y)    => `${Math.floor(y)}`,
         'DECADES':   (y)    => `${Math.floor(y)}`,
         'YEARS':     (y)    => `${Math.floor(y)}`,
-        'QUARTERS':  (y, f) => f === 0 ? `${Math.floor(y)}` : `Q${Math.floor(f / 0.25) + 1}`,
-        'SEASONS':   (y, f) => f === 0 ? `${Math.floor(y)}` : seasonLabel(f),
-        'MONTHS':    (y, f) => f === 0 ? `${Math.floor(y)}` : monthLabel(f),
-        'WEEKS':     (y, f) => f === 0 ? `${Math.floor(y)}` : `W${Math.floor(Math.floor(f * yearLength) / weekLength) + 1}`,
-        'DAYS':      (y, f) => f === 0 ? `${Math.floor(y)}` : `Day ${Math.floor(f * yearLength) + 1}`,
+        'QUARTERS':  (y, f) => { if (f === 0) return `${Math.floor(y)}`; const q = Math.floor(f / 0.25); return q >= 4 ? nextYear(y) : `Q${q + 1}` },
+        'SEASONS':   (y, f) => { if (f === 0) return `${Math.floor(y)}`; const d = toDayRaw(f); return d >= yearLength ? nextYear(y) : seasonLabel(f) },
+        'MONTHS':    (y, f) => { if (f === 0) return `${Math.floor(y)}`; const d = toDayRaw(f); return d >= yearLength ? nextYear(y) : monthLabel(f) },
+        'WEEKS':     (y, f) => { if (f === 0) return `${Math.floor(y)}`; const d = toDayRaw(f); return d >= yearLength ? nextYear(y) : `W${Math.floor(d / weekLength) + 1}` },
+        'DAYS':      (y, f) => { if (f === 0) return `${Math.floor(y)}`; const d = toDayRaw(f); return d >= yearLength ? nextYear(y) : `Day ${d + 1}` },
     }
 }
 

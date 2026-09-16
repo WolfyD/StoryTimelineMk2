@@ -26,6 +26,12 @@ export const DARK_PRESET: ChromeTheme = {
     appAccentHover:   '#818cf8',
     appSaveAccent:    '#446b40',
     appSaveAccentHover: '#52804c',
+    appToolActiveColor:  '#86efac',
+    appToolActiveBorder: '#4ade80',
+    filterPanelBg:     '#111a11',
+    filterPanelBorder: '#2a4a2a',
+    filterChipColor:   '#7a9a7a',
+    filterChipBorder:  '#3a5a3a',
     appRadius:   '8px',
     appRadiusSm: '4px',
     appRadiusLg: '12px',
@@ -54,6 +60,12 @@ export const LIGHT_PRESET: ChromeTheme = {
     appAccentHover:   '#4f46e5',
     appSaveAccent:    '#3a7a36',
     appSaveAccentHover: '#4a9445',
+    appToolActiveColor:  '#166534',
+    appToolActiveBorder: '#16a34a',
+    filterPanelBg:     '#e8f5e8',
+    filterPanelBorder: '#a8d5a8',
+    filterChipColor:   '#2d6b2d',
+    filterChipBorder:  '#7ab87a',
     appRadius:   '8px',
     appRadiusSm: '4px',
     appRadiusLg: '12px',
@@ -84,6 +96,12 @@ export function applyAppTheme(theme: ChromeTheme) {
     r.style.setProperty('--app-accent-hover',      theme.appAccentHover)
     r.style.setProperty('--app-save-accent',       theme.appSaveAccent)
     r.style.setProperty('--app-save-accent-hover', theme.appSaveAccentHover)
+    r.style.setProperty('--app-tool-active-color',  theme.appToolActiveColor  ?? '#86efac')
+    r.style.setProperty('--app-tool-active-border', theme.appToolActiveBorder ?? '#4ade80')
+    r.style.setProperty('--filter-panel-bg',     theme.filterPanelBg     ?? '#111a11')
+    r.style.setProperty('--filter-panel-border', theme.filterPanelBorder ?? '#2a4a2a')
+    r.style.setProperty('--filter-chip-color',   theme.filterChipColor   ?? '#7a9a7a')
+    r.style.setProperty('--filter-chip-border',  theme.filterChipBorder  ?? '#3a5a3a')
     r.style.setProperty('--app-radius',            theme.appRadius)
     r.style.setProperty('--app-radius-sm',      theme.appRadiusSm)
     r.style.setProperty('--app-radius-lg',      theme.appRadiusLg)
@@ -93,7 +111,9 @@ export function useAppTheme() {
     onMounted(async () => {
         const cfg = await BackendAPI.GetAppConfig()
         if (!cfg?.themeInitialized) {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+            // Use the OS registry value (passed from C#) — more reliable than
+            // window.matchMedia inside WebView2, which doesn't always match the OS.
+            const prefersDark = cfg?.systemPrefersDark ?? window.matchMedia('(prefers-color-scheme: dark)').matches
             const preset = prefersDark ? DARK_PRESET : LIGHT_PRESET
             applyAppTheme(preset)
             await BackendAPI.SaveChromeTheme(preset)
