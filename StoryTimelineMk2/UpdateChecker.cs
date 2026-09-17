@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Reflection;
 using System.Text.Json;
 
 namespace StoryTimelineMk2;
@@ -7,9 +8,14 @@ public record UpdateInfo(string Version, string Url, string? Notes);
 
 public static class UpdateChecker
 {
-    private const string GitHubOwner    = "WolfyD";
-    private const string GitHubRepo     = "StoryTimelineMk2";
-    public  const string CurrentVersion = "1.0.0";
+    private const string GitHubOwner = "WolfyD";
+    private const string GitHubRepo  = "StoryTimelineMk2";
+
+    public static string CurrentVersion { get; } =
+        Assembly.GetExecutingAssembly().GetName().Version is { } v
+            ? $"{v.Major}.{v.Minor}.{v.Build}"
+            : "0.0.0";
+
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
 
     private static readonly HttpClient _http = new()
