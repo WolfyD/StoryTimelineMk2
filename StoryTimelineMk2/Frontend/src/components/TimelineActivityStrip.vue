@@ -11,7 +11,10 @@ import {
     PhArrowsIn,
     PhArrowsOut,
     PhCalendarDots,
+    PhBookOpen,
+    PhInfo,
 } from '@phosphor-icons/vue'
+import { ref } from 'vue'
 
 defineProps<{
     filterActive: boolean
@@ -23,9 +26,12 @@ const emit = defineEmits<{
     'toggle-filter': []
     'open-settings': []
     'open-about': []
+    'open-help': []
     'toggle-mini': []
     'toggle-year-calendar': []
 }>()
+
+const helpMenuOpen = ref(false)
 
 const navItems = [
     { id: 'timeline', icon: PhRuler,            label: 'Timeline',            active: true,  available: true  },
@@ -99,14 +105,31 @@ const navItems = [
         <!-- ── big spacer ────────────────────────────────────────── -->
         <div class="strip-spacer" />
 
-        <!-- ── About ─────────────────────────────────────────────── -->
-        <button
-            class="strip-btn strip-btn--about"
-            title="About"
-            @click="emit('open-about')"
-        >
-            <PhQuestion :size="20" />
-        </button>
+        <!-- ── Help / About flyout ──────────────────────────────── -->
+        <div class="strip-help-wrap">
+            <button
+                class="strip-btn strip-btn--about"
+                :class="{ 'strip-btn--tool-active': helpMenuOpen }"
+                title="Help / About"
+                @click="helpMenuOpen = !helpMenuOpen"
+            >
+                <PhQuestion :size="20" />
+            </button>
+            <Transition name="flyout">
+                <div v-if="helpMenuOpen" class="help-flyout">
+                    <button class="flyout-item" @click="emit('open-help'); helpMenuOpen = false">
+                        <PhBookOpen :size="15" /> Help
+                    </button>
+                    <button class="flyout-item" @click="emit('open-about'); helpMenuOpen = false">
+                        <PhInfo :size="15" /> About
+                    </button>
+                </div>
+            </Transition>
+        </div>
+
+        <Teleport to="body">
+            <div v-if="helpMenuOpen" class="help-backdrop" @click="helpMenuOpen = false" />
+        </Teleport>
 
         <!-- ── Gear — alone at bottom ────────────────────────────── -->
         <button
@@ -216,5 +239,63 @@ const navItems = [
         cursor: default;
         pointer-events: none;
     }
+}
+
+// ── Help / About flyout ───────────────────────────────────────────────────────
+
+.strip-help-wrap {
+    position: relative;
+}
+
+.help-flyout {
+    position: absolute;
+    left: 52px;
+    bottom: 0;
+    background: var(--app-surface-raised, #141e33);
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: 7px;
+    box-shadow: 0 8px 28px #00000060;
+    overflow: hidden;
+    z-index: 200;
+    white-space: nowrap;
+}
+
+.flyout-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 16px;
+    background: none;
+    border: none;
+    color: var(--app-text-muted, #94a3b8);
+    font-size: 0.82em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.13s, background 0.13s;
+
+    &:hover {
+        color: var(--app-text, #e2e8f0);
+        background: #ffffff0e;
+    }
+
+    & + & {
+        border-top: 1px solid color-mix(in srgb, var(--app-border, #2d3a56) 50%, transparent);
+    }
+}
+
+.help-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+}
+
+// flyout transition
+.flyout-enter-active, .flyout-leave-active {
+    transition: opacity 0.13s ease, transform 0.13s ease;
+}
+.flyout-enter-from, .flyout-leave-to {
+    opacity: 0;
+    transform: translateX(-6px);
 }
 </style>
