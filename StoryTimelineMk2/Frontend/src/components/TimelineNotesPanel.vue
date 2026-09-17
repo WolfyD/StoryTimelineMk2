@@ -185,6 +185,11 @@ function formatApproximate(dist: number): string {
                 @click="store.setNotesDistanceTab('distance')"
             >
                 <i class="ri-ruler-line"></i> Distance
+                <i v-if="store.distanceFrom !== null || store.distanceTo !== null"
+                   class="ri-close-line dist-tab-clear"
+                   title="Clear both points"
+                   @click.stop="store.setDistanceFrom(null); store.setDistanceTo(null)"
+                ></i>
             </button>
         </div>
 
@@ -298,6 +303,11 @@ function formatApproximate(dist: number): string {
                 <div v-else class="dist-hint">
                     Right-click items or the canvas to set From / To
                 </div>
+
+                <label class="dist-show-toggle">
+                    <input type="checkbox" :checked="store.showMeasureInTimeline" @change="store.setShowMeasureInTimeline(($event.target as HTMLInputElement).checked)" />
+                    <span>Show in timeline</span>
+                </label>
             </div>
         </template>
 
@@ -357,6 +367,19 @@ function formatApproximate(dist: number): string {
     &.active {
         color: var(--np-text);
         border-bottom-color: var(--np-accent);
+    }
+}
+
+.dist-tab-clear {
+    margin-left: 2px;
+    font-size: 1em;
+    opacity: 0.55;
+    border-radius: 3px;
+    transition: opacity 0.15s, color 0.15s;
+
+    &:hover {
+        opacity: 1;
+        color: #ef4444;
     }
 }
 
@@ -664,6 +687,28 @@ function formatApproximate(dist: number): string {
     font-size: 0.82em;
     font-style: italic;
     padding: 20px;
+}
+
+.dist-show-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78em;
+    color: var(--np-heading);
+    cursor: pointer;
+    user-select: none;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid color-mix(in srgb, var(--np-text) 15%, transparent);
+
+    input[type="checkbox"] {
+        accent-color: var(--np-accent);
+        width: 14px;
+        height: 14px;
+        cursor: pointer;
+    }
+
+    &:hover { color: var(--np-text); }
 }
 
 // ── View modal ───────────────────────────────────────────────────────────────

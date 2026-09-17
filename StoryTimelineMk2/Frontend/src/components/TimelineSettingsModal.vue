@@ -117,6 +117,7 @@ function initLayout(ls: LayoutSettings | null | undefined): LayoutSettings {
         TimelineCalendarOverlayDayColor:    d.TimelineCalendarOverlayDayColor    ?? '#ffffff05',
         TimelineBreakFillColor:   d.TimelineBreakFillColor   ?? '#b4c8ff0d',
         TimelineBreakBorderColor: d.TimelineBreakBorderColor ?? '#78a0dc88',
+        MeasureLineColor:         d.MeasureLineColor         ?? '#0077aa',
     }
 }
 
@@ -884,6 +885,16 @@ async function save() {
                         <input class="s-color" type="color" v-model="breakBorderRGB" />
                         <input class="s-slider" type="range" v-model.number="breakBorderAlpha" min="0" max="100" />
                         <span class="color-hex">{{ localLayout.TimelineBreakBorderColor }}</span>
+                    </div>
+                </div>
+
+                <!-- MEASUREMENT OVERLAY -->
+                <div class="section-title">Measurement Overlay</div>
+                <div class="settings-grid">
+                    <span class="s-label">Line color <SettingHint tip="Color of the dotted bracket shown when measurement points are set" /></span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="localLayout.MeasureLineColor" />
+                        <span class="color-hex">{{ localLayout.MeasureLineColor }}</span>
                     </div>
                 </div>
 

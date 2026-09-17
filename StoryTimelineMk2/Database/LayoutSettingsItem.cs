@@ -115,5 +115,8 @@
         // Time break strips
         public string TimelineBreakFillColor { get; set; } = string.Empty;
         public string TimelineBreakBorderColor { get; set; } = string.Empty;
+
+        // Measurement overlay
+        public string MeasureLineColor { get; set; } = string.Empty;
     }
 }

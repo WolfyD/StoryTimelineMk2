@@ -145,7 +145,9 @@ namespace StoryTimelineMk2.Database
                     timeline_calendar_overlay_day_color,
 
                     timeline_break_fill_color,
-                    timeline_break_border_color
+                    timeline_break_border_color,
+
+                    timeline_measure_line_color
                 )
                 VALUES (
                     @Id,
@@ -249,7 +251,9 @@ namespace StoryTimelineMk2.Database
                     @TimelineCalendarOverlayDayColor,
 
                     @TimelineBreakFillColor,
-                    @TimelineBreakBorderColor
+                    @TimelineBreakBorderColor,
+
+                    @MeasureLineColor
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
@@ -352,7 +356,9 @@ namespace StoryTimelineMk2.Database
                     timeline_calendar_overlay_day_color = excluded.timeline_calendar_overlay_day_color,
 
                     timeline_break_fill_color = excluded.timeline_break_fill_color,
-                    timeline_break_border_color = excluded.timeline_break_border_color;";
+                    timeline_break_border_color = excluded.timeline_break_border_color,
+
+                    timeline_measure_line_color = excluded.timeline_measure_line_color;";
 
             db.Execute(sql, settings);
         }

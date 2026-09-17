@@ -147,6 +147,20 @@ const contextMenu = reactive({
     itemAbsoluteEnd: 0,
 });
 
+// --- MEASUREMENT OVERLAY ---
+const measureFromX = computed(() => {
+    if (store.distanceFrom === null || !props.layoutSettings) return null;
+    return getXFromTime(store.distanceFrom, viewport.centerTime, viewport.lodStepFraction, viewport.width, props.layoutSettings, store.hiddenRanges);
+});
+const measureToX = computed(() => {
+    if (store.distanceTo === null || !props.layoutSettings) return null;
+    return getXFromTime(store.distanceTo, viewport.centerTime, viewport.lodStepFraction, viewport.width, props.layoutSettings, store.hiddenRanges);
+});
+const measureColor = computed(() => props.layoutSettings?.MeasureLineColor || '#0077aa');
+const showMeasureOverlay = computed(() =>
+    store.showMeasureInTimeline && (measureFromX.value !== null || measureToX.value !== null)
+);
+
 function setCanvasDistancePoint(which: 'from' | 'to') {
     if (which === 'from') store.setDistanceFrom(contextMenu.absoluteTime);
     else store.setDistanceTo(contextMenu.absoluteTime);
@@ -1709,6 +1723,24 @@ defineExpose({
              :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
             {{ tooltip.text }}
         </div>
+
+        <!-- Measurement overlay — dotted bracket between distanceFrom and distanceTo -->
+        <svg v-if="showMeasureOverlay"
+             style="position:absolute;inset:0;pointer-events:none;overflow:hidden;"
+             :width="viewport.width" :height="viewport.height">
+            <line v-if="measureFromX !== null"
+                  :x1="measureFromX" :y1="viewport.height / 2"
+                  :x2="measureFromX" y2="8"
+                  :stroke="measureColor" stroke-dasharray="6 4" stroke-width="2" stroke-linecap="round" />
+            <line v-if="measureToX !== null"
+                  :x1="measureToX" :y1="viewport.height / 2"
+                  :x2="measureToX" y2="8"
+                  :stroke="measureColor" stroke-dasharray="6 4" stroke-width="2" stroke-linecap="round" />
+            <line v-if="measureFromX !== null && measureToX !== null"
+                  :x1="measureFromX" y1="8"
+                  :x2="measureToX" y2="8"
+                  :stroke="measureColor" stroke-dasharray="6 4" stroke-width="2" stroke-linecap="round" />
+        </svg>
     </div>
 
     <!-- Context menu teleported to body so it escapes canvas overflow/z-index -->

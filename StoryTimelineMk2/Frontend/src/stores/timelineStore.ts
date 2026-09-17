@@ -57,6 +57,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const distanceFrom = ref<number | null>(null);
 	const distanceTo = ref<number | null>(null);
 	const notesDistanceTab = ref<'notes' | 'distance'>('notes');
+	const showMeasureInTimeline = ref<boolean>(localStorage.getItem('showMeasureInTimeline') !== 'false');
 	const viewportWidthPx = ref<number>(0); // pixel width of the main timeline canvas, used by minimap
 	const pulseItemId = ref<string | null>(null);
 	const performantPanning = ref<boolean>(true);
@@ -293,6 +294,11 @@ export const useTimelineStore = defineStore('timeline', () => {
 		notesDistanceTab.value = tab;
 	}
 
+	function setShowMeasureInTimeline(val: boolean) {
+		showMeasureInTimeline.value = val;
+		localStorage.setItem('showMeasureInTimeline', String(val));
+	}
+
 	function setHiddenRanges(ranges: HiddenRange[]) {
 		hiddenRanges.value = ranges;
 	}
@@ -511,7 +517,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		// variables
 		items, currentNowYear, centerAbsoluteTime, viewportWidthPx, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex,
 		pastItems, futureItems, filteredItems, dimmableItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle, hiddenRanges,
-		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab, activeFormatRegistry, calendarConfig,
+		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab, showMeasureInTimeline, activeFormatRegistry, calendarConfig,
 		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
@@ -519,7 +525,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
-		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setHiddenRanges, setLayoutSettings,
+		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setShowMeasureInTimeline, setHiddenRanges, setLayoutSettings,
 		pulseItem,
 		addNote, updateNote, removeNote,
 		setLastDeleted, clearLastDeleted, setPerformantPanning,

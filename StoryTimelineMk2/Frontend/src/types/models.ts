@@ -425,6 +425,8 @@ export interface LayoutSettings {
 	// Time break strips
 	TimelineBreakFillColor: string;
 	TimelineBreakBorderColor: string;
+	// Measurement overlay
+	MeasureLineColor: string;
 }
 
 export interface ImportPreview {

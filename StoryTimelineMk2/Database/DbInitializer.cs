@@ -303,7 +303,8 @@ namespace StoryTimelineMk2.Database
                     timeline_calendar_overlay_day_color TEXT NOT NULL DEFAULT '#ffffff05',
 
                     timeline_break_fill_color TEXT NOT NULL DEFAULT '#1a2a3c12',
-                    timeline_break_border_color TEXT NOT NULL DEFAULT '#1a2a3c7d'
+                    timeline_break_border_color TEXT NOT NULL DEFAULT '#1a2a3c7d',
+                    timeline_measure_line_color TEXT NOT NULL DEFAULT '#0077aa'
                 );
 
                 -- Character-to-character relationships (ported from v1, kept separate from relationship_types lookup)
@@ -675,7 +676,8 @@ namespace StoryTimelineMk2.Database
                             timeline_calendar_overlay_week_color,
                             timeline_calendar_overlay_day_color,
                             timeline_break_fill_color,
-                            timeline_break_border_color
+                            timeline_break_border_color,
+                            timeline_measure_line_color
                         ) VALUES (
                             'ls_default',
                             'Default layout settings',
@@ -736,7 +738,8 @@ namespace StoryTimelineMk2.Database
                             '#ffffff06',
                             '#ffffff05',
                             '#1a2a3c12',
-                            '#1a2a3c7d'
+                            '#1a2a3c7d',
+                            '#0077aa'
                         );";
 
             db.Execute(insertSql);
@@ -784,6 +787,7 @@ namespace StoryTimelineMk2.Database
             AddCol(db, "layout_settings", "timeline_calendar_overlay_day_color",    "TEXT NOT NULL DEFAULT '#ffffff05'");
             AddCol(db, "layout_settings", "timeline_break_fill_color",              "TEXT NOT NULL DEFAULT '#1a2a3c12'");
             AddCol(db, "layout_settings", "timeline_break_border_color",            "TEXT NOT NULL DEFAULT '#1a2a3c7d'");
+            AddCol(db, "layout_settings", "timeline_measure_line_color",            "TEXT NOT NULL DEFAULT '#0077aa'");
             AddCol(db, "layout_settings", "timeline_data_range_width",              "INTEGER NOT NULL DEFAULT 100");
 
             // Fix dark preset data panel colors if they were created with light defaults
@@ -907,7 +911,8 @@ namespace StoryTimelineMk2.Database
                     timeline_calendar_overlay_enabled,
                     timeline_calendar_overlay_season_color, timeline_calendar_overlay_month_color,
                     timeline_calendar_overlay_week_color, timeline_calendar_overlay_day_color,
-                    timeline_break_fill_color, timeline_break_border_color
+                    timeline_break_fill_color, timeline_break_border_color,
+                    timeline_measure_line_color
                 ) VALUES (
                     'ls_dark', 'Dark Mode',
                     130, 30, 10,
@@ -948,7 +953,8 @@ namespace StoryTimelineMk2.Database
                     0,
                     '#ffffff10', '#ffffff0c',
                     '#ffffff08', '#ffffff06',
-                    '#b4c8ff0d', '#78a0dc88'
+                    '#b4c8ff0d', '#78a0dc88',
+                    '#00d4ff'
                 );");
         }
 
@@ -997,7 +1003,8 @@ namespace StoryTimelineMk2.Database
                     timeline_calendar_overlay_enabled = 0,
                     timeline_calendar_overlay_season_color = '#ffffff0a', timeline_calendar_overlay_month_color = '#ffffff08',
                     timeline_calendar_overlay_week_color = '#ffffff06', timeline_calendar_overlay_day_color = '#ffffff05',
-                    timeline_break_fill_color = '#1a2a3c12', timeline_break_border_color = '#1a2a3c7d'
+                    timeline_break_fill_color = '#1a2a3c12', timeline_break_border_color = '#1a2a3c7d',
+                    timeline_measure_line_color = '#0077aa'
                 WHERE id = 'ls_default';");
         }
 
@@ -1046,7 +1053,8 @@ namespace StoryTimelineMk2.Database
                     timeline_calendar_overlay_enabled = 0,
                     timeline_calendar_overlay_season_color = '#ffffff10', timeline_calendar_overlay_month_color = '#ffffff0c',
                     timeline_calendar_overlay_week_color = '#ffffff08', timeline_calendar_overlay_day_color = '#ffffff06',
-                    timeline_break_fill_color = '#b4c8ff1a', timeline_break_border_color = '#78a0dc88'
+                    timeline_break_fill_color = '#b4c8ff0d', timeline_break_border_color = '#78a0dc88',
+                    timeline_measure_line_color = '#00d4ff'
                 WHERE id = 'ls_dark';");
         }
     }
