@@ -422,6 +422,9 @@ export interface LayoutSettings {
 	TimelineCalendarOverlayMonthColor: string;
 	TimelineCalendarOverlayWeekColor: string;
 	TimelineCalendarOverlayDayColor: string;
+	// Time break strips
+	TimelineBreakFillColor: string;
+	TimelineBreakBorderColor: string;
 }
 
 export interface ImportPreview {

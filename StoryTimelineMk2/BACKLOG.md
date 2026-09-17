@@ -872,7 +872,7 @@ and scrolls to the right section.
 
 ## [BL-35] Proper versioning
 
-**Status:** Pending.
+**Status:** Done. `<Version>`, `<AssemblyVersion>`, `<FileVersion>` set to `0.9.0` in `.csproj`. Frontend `package.json` version bumped to `0.9.0`.
 
 Establish a single version source of truth for the application. Currently no version number
 is defined anywhere — the csproj has no `<Version>` and the frontend has no version field.
@@ -894,7 +894,7 @@ is defined anywhere — the csproj has no `<Version>` and the frontend has no ve
 
 ## [BL-36] Rename output executable
 
-**Status:** Pending.
+**Status:** Done. `<AssemblyName>StoryTimeline</AssemblyName>` set in `.csproj`; `<RootNamespace>StoryTimelineMk2</RootNamespace>` preserved so existing C# namespaces are unchanged. Output exe is now `StoryTimeline.exe`.
 
 The published executable is currently named `StoryTimelineMk2.exe` — a development codename,
 not a user-facing product name. Rename to something presentable (e.g. `StoryTimeline.exe`).
@@ -914,7 +914,7 @@ not a user-facing product name. Rename to something presentable (e.g. `StoryTime
 
 ## [BL-37] Application manifest — product identity
 
-**Status:** Pending.
+**Status:** Done. `app.manifest` created with Per-Monitor V2 DPI awareness, `asInvoker` UAC, and Windows 10 compatibility GUID. `<Product>Story Timeline</Product>` set in `.csproj`. Remaining optional fields (`Company`, `Copyright`, `Description`, `NeutralLanguage`) not yet set.
 
 Set up the Windows application manifest and assembly attributes so the app presents with a
 proper product name, company/creator, copyright notice, and description in all the standard

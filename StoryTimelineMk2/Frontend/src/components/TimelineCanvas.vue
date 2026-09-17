@@ -415,89 +415,129 @@ function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSetting
     const cfg = store.calendarConfig;
     const step = viewport.lodStepFraction;
     const ranges = getActiveRanges();
-    const yrLen = cfg.yearLength || 365;
-    const wkLen = cfg.weekLength || 7;
-    const numSeasons = cfg.seasons.length || 4;
-    const numMonths  = cfg.months.length  || 12;
+    const yrLen  = cfg.yearLength || 365;
+    const wkLen  = cfg.weekLength || 7;
 
-    // Thresholds derived from the calendar config — no hardcoded format-key strings
-    const seasonStep = 1 / numSeasons;
-    const monthStep  = 1 / numMonths;
-    const weekStep   = wkLen / yrLen;
+    const hasSeasons = cfg.seasons.length > 0;
+    const hasMonths  = cfg.months.length  > 0;
+    const hasWeeks   = cfg.weekLength > 1;
+
+    // Format key is the definitive signal for the current LOD — more reliable than
+    // comparing step fractions against calendar-derived thresholds.
+    const formatKey = store.lodProfile?.[store.currentLodIndex]?.formatKey ?? '';
 
     type DivType = 'season' | 'month' | 'week' | 'day';
-    let divType: DivType;
-    let color: string;
+    let primaryType: DivType;
+    let primaryColor: string;
 
-    if (step >= 1.0) {
-        divType = 'season'; color = layoutSettings.TimelineCalendarOverlaySeasonColor;
-    } else if (step >= seasonStep) {
-        if (cfg.months.length > 0) { divType = 'month'; color = layoutSettings.TimelineCalendarOverlayMonthColor; }
-        else if (cfg.weekLength > 1) { divType = 'week'; color = layoutSettings.TimelineCalendarOverlayWeekColor; }
-        else { divType = 'day'; color = layoutSettings.TimelineCalendarOverlayDayColor; }
-    } else if (step >= monthStep) {
-        if (cfg.weekLength > 1) { divType = 'week'; color = layoutSettings.TimelineCalendarOverlayWeekColor; }
-        else { divType = 'day'; color = layoutSettings.TimelineCalendarOverlayDayColor; }
-    } else if (step >= weekStep) {
-        divType = 'day'; color = layoutSettings.TimelineCalendarOverlayDayColor;
-    } else {
-        return; // finer than a day — nothing to overlay
+    switch (formatKey) {
+        case 'MONTHS':
+            if (hasSeasons && hasMonths) {
+                primaryType = 'season'; primaryColor = layoutSettings.TimelineCalendarOverlaySeasonColor;
+            } else if (hasWeeks) {
+                primaryType = 'week'; primaryColor = layoutSettings.TimelineCalendarOverlayWeekColor;
+            } else {
+                primaryType = 'day'; primaryColor = layoutSettings.TimelineCalendarOverlayDayColor;
+            }
+            break;
+        case 'DAYS':
+            if (hasWeeks) {
+                primaryType = 'week'; primaryColor = layoutSettings.TimelineCalendarOverlayWeekColor;
+            } else {
+                return;
+            }
+            break;
+        case 'SEASONS':
+            if (hasMonths) {
+                primaryType = 'month'; primaryColor = layoutSettings.TimelineCalendarOverlayMonthColor;
+            } else {
+                return;
+            }
+            break;
+        case 'WEEKS':
+            primaryType = 'day'; primaryColor = layoutSettings.TimelineCalendarOverlayDayColor;
+            break;
+        default:
+            // YEARS, QUARTERS, DECADES, etc. — seasons as coarse reference bands
+            if (hasSeasons) {
+                primaryType = 'season'; primaryColor = layoutSettings.TimelineCalendarOverlaySeasonColor;
+            } else {
+                return;
+            }
+            break;
     }
 
     // Visible absolute time range (with a margin for the overlay)
-    const halfAbs = ((viewport.width / 2 + GRID_EXTRA_PX) / layoutSettings.TimelineTickDistance) * step;
+    const halfAbs  = ((viewport.width / 2 + GRID_EXTRA_PX) / layoutSettings.TimelineTickDistance) * step;
     const leftAbs  = viewport.centerTime - halfAbs;
     const rightAbs = viewport.centerTime + halfAbs;
     const startYear = Math.floor(leftAbs) - 1;
     const endYear   = Math.ceil(rightAbs)  + 1;
 
-    // Build sorted division-start absolute times
-    const starts: number[] = [];
-    for (let y = startYear; y <= endYear; y++) {
-        if (divType === 'season') {
-            if (cfg.seasons.length > 0) {
-                for (const s of cfg.seasons) starts.push(y + s.start / yrLen);
-            } else {
-                for (let q = 0; q < 4; q++) starts.push(y + q * 0.25);
+    // Each entry carries a globally-stable index so band parity doesn't flip while panning.
+    // (Array-position parity shifts whenever startYear changes; global idx never does.)
+    type BandStart = { abs: number; idx: number };
+
+    function buildStarts(divType: DivType): BandStart[] {
+        const items: BandStart[] = [];
+
+        if (divType === 'week') {
+            // Weeks are global — they cross year boundaries, so don't reset per year.
+            // anchor = start of the week that contains t=0 (year 0, day 1), derived from yearStartDow.
+            const wFrac   = wkLen / yrLen;
+            const anchor  = -(cfg.yearStartDow ?? 0) / yrLen;
+            const firstWk = Math.floor((startYear - anchor) / wFrac) - 1;
+            const lastWk  = Math.ceil((endYear + 1 - anchor) / wFrac) + 1;
+            for (let w = firstWk; w <= lastWk; w++) {
+                items.push({ abs: anchor + w * wFrac, idx: w });
             }
-        } else if (divType === 'month') {
-            for (const m of cfg.months) starts.push(y + m.startDay / yrLen);
-        } else if (divType === 'week') {
-            const wFrac = wkLen / yrLen;
-            const numWeeks = Math.ceil(yrLen / wkLen);
-            for (let w = 0; w < numWeeks; w++) starts.push(y + w * wFrac);
         } else {
-            const dFrac = 1 / yrLen;
-            for (let d = 0; d < yrLen; d++) starts.push(y + d * dFrac);
+            for (let y = startYear; y <= endYear; y++) {
+                if (divType === 'season') {
+                    if (hasSeasons) {
+                        cfg.seasons.forEach((s, si) => items.push({ abs: y + s.start / yrLen, idx: y * cfg.seasons.length + si }));
+                    } else {
+                        for (let q = 0; q < 4; q++) items.push({ abs: y + q * 0.25, idx: y * 4 + q });
+                    }
+                } else if (divType === 'month') {
+                    cfg.months.forEach((m, mi) => items.push({ abs: y + m.startDay / yrLen, idx: y * cfg.months.length + mi }));
+                } else {
+                    for (let d = 0; d < yrLen; d++) items.push({ abs: y + d / yrLen, idx: y * yrLen + d });
+                }
+            }
         }
+
+        items.sort((a, b) => a.abs - b.abs);
+        items.push({ abs: endYear + 2, idx: 0 }); // sentinel — closes the last band
+        return items;
     }
-    starts.push(endYear + 2); // sentinel — closes the last band
-    starts.sort((a, b) => a - b);
 
-    if (starts.length < 2) return;
+    function paintBands(items: BandStart[], color: string): boolean {
+        if (items.length < 2) return false;
+        const px0 = getXFromTime(items[0].abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const px1 = getXFromTime(items[1].abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        if (Math.abs(px1 - px0) < 2) return false;
 
-    // Early bail: if the first two divisions are sub-pixel there is nothing to render
-    const px0 = getXFromTime(starts[0], viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-    const px1 = getXFromTime(starts[1], viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-    if (Math.abs(px1 - px0) < 2) return;
+        for (let i = 0; i < items.length - 1; i++) {
+            if (items[i].idx % 2 !== 0) continue; // global idx keeps parity stable while panning
+            const absStart = items[i].abs;
+            const absEnd   = items[i + 1].abs;
+            if (absEnd < leftAbs || absStart > rightAbs) continue;
 
-    // Render every other band (even indices) as a filled rect
-    for (let i = 0; i < starts.length - 1; i++) {
-        if (i % 2 !== 0) continue;
-        const absStart = starts[i];
-        const absEnd   = starts[i + 1];
-        if (absEnd < leftAbs || absStart > rightAbs) continue;
+            const xS = getXFromTime(absStart, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+            const xE = getXFromTime(absEnd,   viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+            if (xE <= -GRID_EXTRA_PX || xS >= viewport.width + GRID_EXTRA_PX) continue;
 
-        const xS = getXFromTime(absStart, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-        const xE = getXFromTime(absEnd,   viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-        if (xE <= -GRID_EXTRA_PX || xS >= viewport.width + GRID_EXTRA_PX) continue;
+            const cx = Math.max(xS, -GRID_EXTRA_PX);
+            const cw = Math.min(xE, viewport.width + GRID_EXTRA_PX) - cx;
+            if (cw <= 0) continue;
 
-        const cx = Math.max(xS, -GRID_EXTRA_PX);
-        const cw = Math.min(xE, viewport.width + GRID_EXTRA_PX) - cx;
-        if (cw <= 0) continue;
-
-        layer.add(new Konva.Rect({ x: cx, y: 0, width: cw, height: viewport.height, fill: color, listening: false }));
+            layer.add(new Konva.Rect({ x: cx, y: 0, width: cw, height: viewport.height, fill: color, listening: false }));
+        }
+        return true;
     }
+
+    paintBands(buildStarts(primaryType), primaryColor);
 }
 
 const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
@@ -575,9 +615,9 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         const xStart = getXFromTime(r.StartYear, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
         if (xStart + stripPx < 0 || xStart > viewport.width) continue;
 
-        layer.add(new Konva.Rect({ x: xStart, y: 0, width: stripPx, height: viewport.height, fill: '#00000066', listening: false }));
-        layer.add(new Konva.Rect({ x: xStart, y: 0, width: 2, height: viewport.height, fill: '#ffffff44', listening: false }));
-        layer.add(new Konva.Rect({ x: xStart + stripPx - 2, y: 0, width: 2, height: viewport.height, fill: '#ffffff44', listening: false }));
+        layer.add(new Konva.Rect({ x: xStart, y: 0, width: stripPx, height: viewport.height, fill: layoutSettings.TimelineBreakFillColor, listening: false }));
+        layer.add(new Konva.Rect({ x: xStart, y: 0, width: 2, height: viewport.height, fill: layoutSettings.TimelineBreakBorderColor, listening: false }));
+        layer.add(new Konva.Rect({ x: xStart + stripPx - 2, y: 0, width: 2, height: viewport.height, fill: layoutSettings.TimelineBreakBorderColor, listening: false }));
 
         const label = r.Label || `${r.StartYear} – ${r.EndYear}`;
         layer.add(new Konva.Text({ x: xStart, y: viewport.height / 2 + 18, text: label, fill: '#ffffffaa', fontSize: 10, width: stripPx, align: 'center', fontStyle: 'italic', listening: false }));
@@ -599,11 +639,12 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         if (xRight < 0 || xLeft > viewport.width) continue;
 
         const zoneWidth = Math.max(xRight - xLeft, 0);
-        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: zoneWidth, height: viewport.height, fill: '#0000000a', listening: false }));
+        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: zoneWidth, height: viewport.height, fill: layoutSettings.TimelineBreakFillColor, listening: false }));
 
-        // Faint diagonal stripe pattern across the whole zone
-        const clampedLeft  = Math.max(xLeft, 0);
-        const clampedRight = Math.min(xRight, viewport.width);
+        // Diagonal stripe pattern — extend GRID_EXTRA_PX beyond viewport so stripes
+        // don't clip abruptly while panning over the break boundary.
+        const clampedLeft  = Math.max(xLeft,  -GRID_EXTRA_PX);
+        const clampedRight = Math.min(xRight, viewport.width + GRID_EXTRA_PX);
         const clampedW = clampedRight - clampedLeft;
         if (clampedW > 0) {
             const stripeGroup = new Konva.Group({
@@ -613,20 +654,20 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
             for (let sx = -viewport.height; sx < clampedW + viewport.height; sx += 24) {
                 stripeGroup.add(new Konva.Line({
                     points: [sx, 0, sx + viewport.height, viewport.height],
-                    stroke: '#00000018', strokeWidth: 1, listening: false,
+                    stroke: layoutSettings.TimelineBreakBorderColor, strokeWidth: 1, listening: false,
                 }));
             }
             layer.add(stripeGroup);
         }
 
-        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: 2, height: viewport.height, fill: '#00000044', listening: false }));
-        layer.add(new Konva.Rect({ x: xRight - 2, y: 0, width: 2, height: viewport.height, fill: '#00000044', listening: false }));
+        layer.add(new Konva.Rect({ x: xLeft, y: 0, width: 2, height: viewport.height, fill: layoutSettings.TimelineBreakBorderColor, listening: false }));
+        layer.add(new Konva.Rect({ x: xRight - 2, y: 0, width: 2, height: viewport.height, fill: layoutSettings.TimelineBreakBorderColor, listening: false }));
 
         // Collapse button — centered within the visible portion of the zone
         const visLeft  = Math.max(xLeft,  0);
         const visRight = Math.min(xRight, viewport.width);
         const collapseBtn = new Konva.Group({ x: (visLeft + visRight) / 2, y: 14 });
-        collapseBtn.add(new Konva.Rect({ x: -32, y: -8, width: 64, height: 16, fill: '#00000088', cornerRadius: 8, stroke: '#00000033', strokeWidth: 1 }));
+        collapseBtn.add(new Konva.Rect({ x: -32, y: -8, width: 64, height: 16, fill: layoutSettings.TimelineBreakBorderColor, cornerRadius: 8, stroke: layoutSettings.TimelineBreakFillColor, strokeWidth: 1 }));
         collapseBtn.add(new Konva.Text({ x: -28, y: -6, text: '⟨ collapse ⟩', fill: '#ffffff', fontSize: 10 }));
         collapseBtn.on('click', () => toggleRange(r.Id));
         collapseBtn.on('mouseenter', () => { document.body.style.cursor = 'pointer'; });

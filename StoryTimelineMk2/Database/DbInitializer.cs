@@ -300,7 +300,10 @@ namespace StoryTimelineMk2.Database
                     timeline_calendar_overlay_season_color TEXT NOT NULL DEFAULT '#ffffff0a',
                     timeline_calendar_overlay_month_color TEXT NOT NULL DEFAULT '#ffffff08',
                     timeline_calendar_overlay_week_color TEXT NOT NULL DEFAULT '#ffffff06',
-                    timeline_calendar_overlay_day_color TEXT NOT NULL DEFAULT '#ffffff05'
+                    timeline_calendar_overlay_day_color TEXT NOT NULL DEFAULT '#ffffff05',
+
+                    timeline_break_fill_color TEXT NOT NULL DEFAULT '#1a2a3c12',
+                    timeline_break_border_color TEXT NOT NULL DEFAULT '#1a2a3c7d'
                 );
 
                 -- Character-to-character relationships (ported from v1, kept separate from relationship_types lookup)
@@ -670,7 +673,9 @@ namespace StoryTimelineMk2.Database
                             timeline_calendar_overlay_season_color,
                             timeline_calendar_overlay_month_color,
                             timeline_calendar_overlay_week_color,
-                            timeline_calendar_overlay_day_color
+                            timeline_calendar_overlay_day_color,
+                            timeline_break_fill_color,
+                            timeline_break_border_color
                         ) VALUES (
                             'ls_default',
                             'Default layout settings',
@@ -729,7 +734,9 @@ namespace StoryTimelineMk2.Database
                             '#ffffff0a',
                             '#ffffff08',
                             '#ffffff06',
-                            '#ffffff05'
+                            '#ffffff05',
+                            '#1a2a3c12',
+                            '#1a2a3c7d'
                         );";
 
             db.Execute(insertSql);
@@ -775,6 +782,8 @@ namespace StoryTimelineMk2.Database
             AddCol(db, "layout_settings", "timeline_calendar_overlay_month_color",  "TEXT NOT NULL DEFAULT '#ffffff08'");
             AddCol(db, "layout_settings", "timeline_calendar_overlay_week_color",   "TEXT NOT NULL DEFAULT '#ffffff06'");
             AddCol(db, "layout_settings", "timeline_calendar_overlay_day_color",    "TEXT NOT NULL DEFAULT '#ffffff05'");
+            AddCol(db, "layout_settings", "timeline_break_fill_color",              "TEXT NOT NULL DEFAULT '#1a2a3c12'");
+            AddCol(db, "layout_settings", "timeline_break_border_color",            "TEXT NOT NULL DEFAULT '#1a2a3c7d'");
             AddCol(db, "layout_settings", "timeline_data_range_width",              "INTEGER NOT NULL DEFAULT 100");
 
             // Fix dark preset data panel colors if they were created with light defaults
@@ -897,7 +906,8 @@ namespace StoryTimelineMk2.Database
                     calendar_panel_week_highlight_color, calendar_panel_day_highlight_color,
                     timeline_calendar_overlay_enabled,
                     timeline_calendar_overlay_season_color, timeline_calendar_overlay_month_color,
-                    timeline_calendar_overlay_week_color, timeline_calendar_overlay_day_color
+                    timeline_calendar_overlay_week_color, timeline_calendar_overlay_day_color,
+                    timeline_break_fill_color, timeline_break_border_color
                 ) VALUES (
                     'ls_dark', 'Dark Mode',
                     130, 30, 10,
@@ -937,7 +947,8 @@ namespace StoryTimelineMk2.Database
                     '#818cf818', '#818cf835',
                     0,
                     '#ffffff10', '#ffffff0c',
-                    '#ffffff08', '#ffffff06'
+                    '#ffffff08', '#ffffff06',
+                    '#b4c8ff0d', '#78a0dc88'
                 );");
         }
 
@@ -985,7 +996,8 @@ namespace StoryTimelineMk2.Database
                     calendar_panel_week_highlight_color = '#6366f118', calendar_panel_day_highlight_color = '#6366f135',
                     timeline_calendar_overlay_enabled = 0,
                     timeline_calendar_overlay_season_color = '#ffffff0a', timeline_calendar_overlay_month_color = '#ffffff08',
-                    timeline_calendar_overlay_week_color = '#ffffff06', timeline_calendar_overlay_day_color = '#ffffff05'
+                    timeline_calendar_overlay_week_color = '#ffffff06', timeline_calendar_overlay_day_color = '#ffffff05',
+                    timeline_break_fill_color = '#1a2a3c12', timeline_break_border_color = '#1a2a3c7d'
                 WHERE id = 'ls_default';");
         }
 
@@ -1033,7 +1045,8 @@ namespace StoryTimelineMk2.Database
                     calendar_panel_week_highlight_color = '#818cf818', calendar_panel_day_highlight_color = '#818cf835',
                     timeline_calendar_overlay_enabled = 0,
                     timeline_calendar_overlay_season_color = '#ffffff10', timeline_calendar_overlay_month_color = '#ffffff0c',
-                    timeline_calendar_overlay_week_color = '#ffffff08', timeline_calendar_overlay_day_color = '#ffffff06'
+                    timeline_calendar_overlay_week_color = '#ffffff08', timeline_calendar_overlay_day_color = '#ffffff06',
+                    timeline_break_fill_color = '#b4c8ff1a', timeline_break_border_color = '#78a0dc88'
                 WHERE id = 'ls_dark';");
         }
     }

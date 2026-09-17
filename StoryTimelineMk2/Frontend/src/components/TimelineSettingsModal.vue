@@ -115,6 +115,8 @@ function initLayout(ls: LayoutSettings | null | undefined): LayoutSettings {
         TimelineCalendarOverlayMonthColor:  d.TimelineCalendarOverlayMonthColor  ?? '#ffffff08',
         TimelineCalendarOverlayWeekColor:   d.TimelineCalendarOverlayWeekColor   ?? '#ffffff06',
         TimelineCalendarOverlayDayColor:    d.TimelineCalendarOverlayDayColor    ?? '#ffffff05',
+        TimelineBreakFillColor:   d.TimelineBreakFillColor   ?? '#b4c8ff0d',
+        TimelineBreakBorderColor: d.TimelineBreakBorderColor ?? '#78a0dc88',
     }
 }
 
@@ -242,6 +244,21 @@ const overlayDayRGB   = ref(_initOD.rgb);
 const overlayDayAlpha = ref(_initOD.alpha);
 watch([overlayDayRGB, overlayDayAlpha], ([rgb, alpha]) => {
     localLayout.TimelineCalendarOverlayDayColor = buildHexAlpha(rgb, alpha);
+});
+
+// --- time break strip colors ---
+const _initBF = parseHexAlpha(localLayout.TimelineBreakFillColor);
+const breakFillRGB   = ref(_initBF.rgb);
+const breakFillAlpha = ref(_initBF.alpha);
+watch([breakFillRGB, breakFillAlpha], ([rgb, alpha]) => {
+    localLayout.TimelineBreakFillColor = buildHexAlpha(rgb, alpha);
+});
+
+const _initBB = parseHexAlpha(localLayout.TimelineBreakBorderColor);
+const breakBorderRGB   = ref(_initBB.rgb);
+const breakBorderAlpha = ref(_initBB.alpha);
+watch([breakBorderRGB, breakBorderAlpha], ([rgb, alpha]) => {
+    localLayout.TimelineBreakBorderColor = buildHexAlpha(rgb, alpha);
 });
 
 // --- calendar panel week/day highlight colors ---
@@ -849,6 +866,24 @@ async function save() {
                         <input class="s-color" type="color" v-model="overlayDayRGB" />
                         <input class="s-slider" type="range" v-model.number="overlayDayAlpha" min="0" max="100" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlayDayColor }}</span>
+                    </div>
+                </div>
+
+                <!-- TIME BREAKS -->
+                <div class="section-title">Time Breaks</div>
+                <div class="settings-grid">
+                    <span class="s-label">Break fill <SettingHint tip="Background fill color of collapsed time-break strips" /></span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="breakFillRGB" />
+                        <input class="s-slider" type="range" v-model.number="breakFillAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.TimelineBreakFillColor }}</span>
+                    </div>
+
+                    <span class="s-label">Break border <SettingHint tip="Color of the left and right border lines on collapsed time-break strips" /></span>
+                    <div class="color-row">
+                        <input class="s-color" type="color" v-model="breakBorderRGB" />
+                        <input class="s-slider" type="range" v-model.number="breakBorderAlpha" min="0" max="100" />
+                        <span class="color-hex">{{ localLayout.TimelineBreakBorderColor }}</span>
                     </div>
                 </div>
 

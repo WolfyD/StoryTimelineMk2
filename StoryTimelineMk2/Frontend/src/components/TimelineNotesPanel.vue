@@ -232,7 +232,7 @@ function formatApproximate(dist: number): string {
                     </div>
                 </div>
             </div>
-            <div v-else class="notes-empty">No notes in range</div>
+            <div v-else  style="user-select: none;" class="notes-empty">No notes in range</div>
         </template>
 
         <!-- ═══ DISTANCE TAB ════════════════════════════════════════════════ -->

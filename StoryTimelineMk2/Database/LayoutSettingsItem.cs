@@ -111,5 +111,9 @@
         public string TimelineCalendarOverlayMonthColor { get; set; } = string.Empty;
         public string TimelineCalendarOverlayWeekColor { get; set; } = string.Empty;
         public string TimelineCalendarOverlayDayColor { get; set; } = string.Empty;
+
+        // Time break strips
+        public string TimelineBreakFillColor { get; set; } = string.Empty;
+        public string TimelineBreakBorderColor { get; set; } = string.Empty;
     }
 }

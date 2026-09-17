@@ -119,7 +119,7 @@ const cascadeOrder = computed(() => {
 
         <!-- Image gallery modes -->
         <template v-else>
-        <div v-if="entries.length === 0" class="gallery-empty">No images in range</div>
+        <div v-if="entries.length === 0"  style="user-select: none;" class="gallery-empty">No images in range</div>
 
         <!-- Grid mode -->
         <div v-else-if="mode === 'grid'" class="gallery-grid">

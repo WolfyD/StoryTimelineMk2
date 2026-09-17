@@ -7,6 +7,7 @@ import {
     PhChartBar,
     PhFunnel,
     PhGear,
+    PhQuestion,
     PhArrowsIn,
     PhArrowsOut,
     PhCalendarDots,
@@ -21,6 +22,7 @@ defineProps<{
 const emit = defineEmits<{
     'toggle-filter': []
     'open-settings': []
+    'open-about': []
     'toggle-mini': []
     'toggle-year-calendar': []
 }>()
@@ -96,6 +98,15 @@ const navItems = [
 
         <!-- ── big spacer ────────────────────────────────────────── -->
         <div class="strip-spacer" />
+
+        <!-- ── About ─────────────────────────────────────────────── -->
+        <button
+            class="strip-btn strip-btn--about"
+            title="About"
+            @click="emit('open-about')"
+        >
+            <PhQuestion :size="20" />
+        </button>
 
         <!-- ── Gear — alone at bottom ────────────────────────────── -->
         <button

@@ -175,7 +175,7 @@ const leadingEmpties = computed(() =>
         <!-- ── Calendar display (top) ──────────────────────────────────────── -->
         <div class="cal-section">
 
-            <div v-if="calLod === 'year'" class="no-cal-lod">
+            <div v-if="calLod === 'year'"  style="user-select: none;" class="no-cal-lod">
                 <i class="ri-calendar-2-line" />
                 <span>No calendar at this LOD</span>
             </div>

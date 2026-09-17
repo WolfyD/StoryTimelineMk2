@@ -659,8 +659,11 @@ async function removeImage(pictureId: string) {
               </option>
             </select>
           </div>
+        </div>
 
-          <div class="field flex-1">
+        <!-- Row 2: LOD visibility -->
+        <div class="row">
+          <div class="field" style="flex: 1;">
             <label>Visible at LOD levels</label>
             <div class="lod-toggle-row">
               <button
@@ -1560,7 +1563,7 @@ async function removeImage(pictureId: string) {
 // ---- LOD visibility toggles ----
 .lod-toggle-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
 }
 

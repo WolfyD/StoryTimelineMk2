@@ -13,6 +13,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { TimelineItem } from '@/types/models';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
+import AboutModal from "@/components/AboutModal.vue";
 import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
 import TimelineDataPanel from "@/components/TimelineDataPanel.vue";
 import TimelineGalleryPanel from "@/components/TimelineGalleryPanel.vue";
@@ -28,6 +29,7 @@ const loadError = ref<boolean>(false)
 const waitingForId = ref<boolean>(false)
 const timelineCanvasRef = ref();
 const showSettings = ref(false);
+const showAbout = ref(false);
 const showFilterSetup = ref(false);
 const flashedRuleId = ref<string | null>(null);
 let _flashTimer = 0;
@@ -279,6 +281,7 @@ onBeforeUnmount(() => {
                 @toggle-filter="store.setFilterPanelOpen(!store.filterPanelOpen)"
                 @toggle-mini="toggleMiniMode"
                 @open-settings="showSettings = true"
+                @open-about="showAbout = true"
                 @toggle-year-calendar="toggleYearCalendar"
             >
                 <template #actions>
@@ -287,7 +290,7 @@ onBeforeUnmount(() => {
             </TimelineActivityStrip>
 
             <div id="timeline-workspace">
-    <div id="timeline-header">
+    <div id="timeline-header" style="user-select: none;">
         <div id="timeline-header-info-container">
             <h1>{{ store.title }}</h1>
             <h2>{{ store.author }}</h2>
@@ -305,6 +308,8 @@ onBeforeUnmount(() => {
         :layout-settings="store.layoutSettings"
         @close="showSettings = false"
     />
+
+    <AboutModal v-if="showAbout" @close="showAbout = false" />
 
     <div v-if="store.filterPanelOpen" class="filter-area">
         <TimelineFilterPanel :flashed-rule-id="flashedRuleId" @open-setup="showFilterSetup = !showFilterSetup" />

@@ -46,6 +46,7 @@
 		const result = await BackendAPI.ExecuteImportDB(path)
 		dbImportPreview.value = null
 		if (result?.status === 'ok') {
+			dbMenuOpen.value = false
 			await HandleGetTimelines()
 		} else {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
