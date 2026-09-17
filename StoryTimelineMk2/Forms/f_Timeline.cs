@@ -134,6 +134,7 @@ namespace StoryTimelineMk2.Forms
 
                 _messageRouter = new MessageRouter(coreWV, this);
                 coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
+                _ = FireUpdateCheckAsync();
 
                 string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
 
@@ -299,6 +300,28 @@ namespace StoryTimelineMk2.Forms
             else
             {
                 Application.Exit();
+            }
+        }
+
+        private async Task FireUpdateCheckAsync()
+        {
+            try
+            {
+                // Small delay so WebView2 navigation finishes before we push a banner
+                await Task.Delay(3000);
+                var info = await UpdateChecker.CheckAsync();
+                if (info == null) return;
+
+                BeginInvoke((MethodInvoker)(() =>
+                    _messageRouter?.SendToVue("UpdateAvailable", new
+                    {
+                        version = info.Version,
+                        url     = info.Url,
+                    })));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("f_Timeline/UpdateCheck", ex.Message);
             }
         }
     }

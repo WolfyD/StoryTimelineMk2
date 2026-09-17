@@ -124,6 +124,15 @@ namespace StoryTimelineMk2
         [JsonPropertyName("achievementSound")]
         public bool AchievementSound { get; set; } = true;
 
+        [JsonPropertyName("autoCheckUpdates")]
+        public bool AutoCheckUpdates { get; set; } = true;
+
+        [JsonPropertyName("lastUpdateCheck")]
+        public DateTime? LastUpdateCheck { get; set; } = null;
+
+        [JsonPropertyName("skippedVersion")]
+        public string? SkippedVersion { get; set; } = null;
+
         public static string DefaultDataRoot => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "StoryTimelineMk2_Data");

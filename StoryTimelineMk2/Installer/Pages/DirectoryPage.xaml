@@ -1,0 +1,47 @@
+<UserControl x:Class="StoryTimelineInstaller.Pages.DirectoryPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Loaded="UserControl_Loaded"
+             Background="{DynamicResource AppBackground}">
+  <StackPanel Margin="36,28,36,0">
+
+    <TextBlock Style="{StaticResource PageTitle}"
+               Text="Installation Location"/>
+
+    <TextBlock Style="{StaticResource PageSubtitle}"
+               Text="Choose where Story Timeline will be installed."/>
+
+    <TextBlock Style="{StaticResource FieldLabel}"
+               Text="INSTALL DIRECTORY"/>
+
+    <Grid Margin="0,0,0,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+
+      <TextBox x:Name="DirBox"
+               Grid.Column="0"
+               Style="{StaticResource AppTextBox}"
+               Margin="0,0,8,0"
+               TextChanged="DirBox_TextChanged"/>
+
+      <Button Grid.Column="1"
+              Style="{StaticResource SecondaryButton}"
+              Content="Browse..."
+              Padding="16,8"
+              Click="Browse_Click"/>
+    </Grid>
+
+    <TextBlock x:Name="DiskInfo"
+               Foreground="{DynamicResource TextMutedBrush}"
+               FontSize="12"
+               Margin="0,0,0,8"/>
+
+    <TextBlock x:Name="ValidationMsg"
+               Foreground="{DynamicResource DangerBrush}"
+               FontSize="12"
+               Visibility="Collapsed"/>
+
+  </StackPanel>
+</UserControl>

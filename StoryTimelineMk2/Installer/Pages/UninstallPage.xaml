@@ -1,0 +1,50 @@
+<UserControl x:Class="StoryTimelineInstaller.Pages.UninstallPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Loaded="UserControl_Loaded"
+             Background="{DynamicResource AppBackground}">
+  <StackPanel Margin="36,28,36,0">
+
+    <TextBlock Style="{StaticResource PageTitle}"
+               Text="Uninstall Story Timeline"/>
+
+    <TextBlock x:Name="SubtitleBlock"
+               Style="{StaticResource PageSubtitle}"
+               Text="Loading installed version information..."/>
+
+    <!-- Warning box -->
+    <Border CornerRadius="8"
+            Background="{DynamicResource SurfaceBrush}"
+            BorderBrush="{DynamicResource DangerBrush}"
+            BorderThickness="1"
+            Padding="16"
+            Margin="0,0,0,20">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="&#x26A0;" FontSize="18"
+                   Foreground="{DynamicResource DangerBrush}"
+                   Margin="0,0,12,0"
+                   VerticalAlignment="Top"/>
+        <TextBlock Text="This will remove Story Timeline from your computer. This action cannot be undone."
+                   Foreground="{DynamicResource TextBrush}"
+                   FontSize="13"
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <CheckBox x:Name="KeepDataCb"
+              Style="{StaticResource AppCheckBox}"
+              Content="Keep my timeline data and settings"
+              IsChecked="True"
+              Margin="0,0,0,8"
+              Checked="KeepDataCb_Checked"
+              Unchecked="KeepDataCb_Unchecked"/>
+
+    <TextBlock x:Name="DataNote"
+               Foreground="{DynamicResource TextMutedBrush}"
+               FontSize="11"
+               TextWrapping="Wrap"
+               Margin="26,0,0,0"
+               Text="Your story database at %LocalAppData%\StoryTimelineMk2_Data will be preserved."/>
+
+  </StackPanel>
+</UserControl>

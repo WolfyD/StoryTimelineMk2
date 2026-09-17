@@ -13,9 +13,9 @@
     <AssemblyName>StoryTimeline</AssemblyName>
     <RootNamespace>StoryTimelineMk2</RootNamespace>
     <Product>Story Timeline</Product>
-    <Version>0.9.0</Version>
-    <AssemblyVersion>0.9.0.0</AssemblyVersion>
-    <FileVersion>0.9.0.0</FileVersion>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -61,6 +61,11 @@
     <Compile Remove="StoryTimelineMk2.Tests\**" />
     <EmbeddedResource Remove="StoryTimelineMk2.Tests\**" />
     <None Remove="StoryTimelineMk2.Tests\**" />
+    <Content Remove="Installer\**" />
+    <Compile Remove="Installer\**" />
+    <EmbeddedResource Remove="Installer\**" />
+    <None Remove="Installer\**" />
+    <Page Remove="Installer\**" />
   </ItemGroup>
 
   <ItemGroup>

@@ -218,6 +218,11 @@ namespace StoryTimelineMk2.Bridge
                 case "TriggerRandomMilestone":   HandleTriggerRandom(message, "milestone"); break;
                 case "ListAchievementKeys":      HandleListAchievementKeys(message); break;
 
+                // Update checker
+                case "CheckForUpdates":  HandleCheckForUpdates(message); break;
+                case "SkipVersion":      HandleSkipVersion(message); break;
+                case "OpenExternalUrl":  HandleOpenExternalUrl(message); break;
+
                 default:
                     // Reply so a request() for a typo'd action fails visibly instead of
                     // hanging its Promise forever. Console.WriteLine goes nowhere in WinForms.
@@ -1668,6 +1673,68 @@ namespace StoryTimelineMk2.Bridge
             {
                 System.Diagnostics.Debug.WriteLine($"[HandleSetMiscSetting] {ex}");
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Update checker handlers
+        // -----------------------------------------------------------------------
+
+        private void HandleCheckForUpdates(BridgeMessage message)
+        {
+            Task.Run(async () =>
+            {
+                UpdateInfo? info = null;
+                string? error   = null;
+                try   { info  = await UpdateChecker.CheckAsync(forceCheck: true); }
+                catch (Exception ex) { error = ex.Message; }
+
+                _parentForm!.BeginInvoke((MethodInvoker)(() =>
+                {
+                    if (error != null)
+                        ReplyToVue(message.MessageId, new { status = "error", message = error });
+                    else if (info == null)
+                        ReplyToVue(message.MessageId, new { status = "ok", updateAvailable = false });
+                    else
+                        ReplyToVue(message.MessageId, new
+                        {
+                            status          = "ok",
+                            updateAvailable = true,
+                            version         = info.Version,
+                            url             = info.Url,
+                            notes           = info.Notes,
+                        });
+                }));
+            });
+        }
+
+        private void HandleSkipVersion(BridgeMessage message)
+        {
+            try
+            {
+                var version = message.Payload.GetProperty("version").GetString()!;
+                UpdateChecker.SkipVersion(version);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleOpenExternalUrl(BridgeMessage message)
+        {
+            try
+            {
+                var url = message.Payload.GetProperty("url").GetString()!;
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn("Bridge/OpenExternalUrl", ex.Message);
             }
         }
     }

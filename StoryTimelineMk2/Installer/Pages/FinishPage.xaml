@@ -1,0 +1,41 @@
+<UserControl x:Class="StoryTimelineInstaller.Pages.FinishPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Loaded="UserControl_Loaded"
+             Background="{DynamicResource AppBackground}">
+  <StackPanel Margin="36,28,36,0">
+
+    <!-- Success checkmark circle -->
+    <Grid Width="64" Height="64" Margin="0,0,0,20" HorizontalAlignment="Left">
+      <Ellipse>
+        <Ellipse.Fill>
+          <SolidColorBrush Color="{DynamicResource SuccessColor}" Opacity="0.15"/>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Path Data="M16,32 L26,42 L48,20"
+            Stroke="{DynamicResource SuccessBrush}"
+            StrokeThickness="3.5"
+            StrokeStartLineCap="Round"
+            StrokeEndLineCap="Round"
+            StrokeLineJoin="Round"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"/>
+    </Grid>
+
+    <TextBlock x:Name="FinishTitle"
+               Style="{StaticResource PageTitle}"
+               Text="Installation Complete!"/>
+
+    <TextBlock x:Name="FinishSubtitle"
+               Style="{StaticResource PageSubtitle}"
+               Text="Story Timeline has been installed successfully."/>
+
+    <CheckBox x:Name="LaunchCb"
+              Style="{StaticResource AppCheckBox}"
+              Content="Launch Story Timeline"
+              IsChecked="True"
+              Checked="LaunchCb_Checked"
+              Unchecked="LaunchCb_Unchecked"/>
+
+  </StackPanel>
+</UserControl>

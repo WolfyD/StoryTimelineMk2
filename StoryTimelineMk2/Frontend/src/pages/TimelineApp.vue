@@ -47,6 +47,22 @@ const isMinimised = ref(false)
 const miniHoverState = ref<{ item: TimelineItem; x: number; y: number } | null>(null)
 const yearCalendarOpen = ref(false)
 
+const updateBanner = ref<{ version: string; url: string } | null>(null)
+
+function onUpdatePush(e: MessageEvent) {
+    let msg: any
+    try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data } catch { return }
+    if (msg?.action === 'UpdateAvailable') updateBanner.value = { version: msg.payload.version, url: msg.payload.url }
+}
+async function dismissUpdate() { updateBanner.value = null }
+async function skipUpdate() {
+    if (updateBanner.value) await BackendAPI.SkipVersion(updateBanner.value.version)
+    updateBanner.value = null
+}
+function openUpdateUrl() {
+    if (updateBanner.value) BackendAPI.OpenExternalUrl(updateBanner.value.url)
+}
+
 async function toggleYearCalendar() {
     const calendarId = store.calendar?.Id ?? ''
     const timelineId = store.currentProject?.Id ?? 0
@@ -247,12 +263,14 @@ onMounted(async () => {
 	window.addEventListener('resize', handleResizeEvent)
     window.addEventListener('keydown', onHotkey)
     window.chrome?.webview?.addEventListener('message', onYearCalendarClosePush)
+    window.chrome?.webview?.addEventListener('message', onUpdatePush)
 })
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', handleResizeEvent)
     window.removeEventListener('keydown', onHotkey)
     window.chrome?.webview?.removeEventListener('message', onYearCalendarClosePush)
+    window.chrome?.webview?.removeEventListener('message', onUpdatePush)
     if (_setIdListener) {
         window.chrome.webview.removeEventListener('message', _setIdListener)
         _setIdListener = null
@@ -293,6 +311,17 @@ onBeforeUnmount(() => {
             </TimelineActivityStrip>
 
             <div id="timeline-workspace">
+    <div v-if="updateBanner" class="update-banner">
+        <span class="update-banner-text">
+            <i class="ri-arrow-up-circle-line"></i>
+            Story Timeline <strong>{{ updateBanner.version }}</strong> is available.
+        </span>
+        <div class="update-banner-actions">
+            <button class="update-banner-btn primary" @click="openUpdateUrl">Download</button>
+            <button class="update-banner-btn" @click="skipUpdate">Skip this version</button>
+            <button class="update-banner-close" @click="dismissUpdate" title="Dismiss"><i class="ri-close-line"></i></button>
+        </div>
+    </div>
     <div id="timeline-header" style="user-select: none;">
         <div id="timeline-header-info-container">
             <h1>{{ store.title }}</h1>
@@ -470,6 +499,63 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="scss">
+.update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 16px;
+    background: color-mix(in srgb, var(--app-accent, #6366f1) 15%, var(--app-surface, #0c1524));
+    border-bottom: 1px solid color-mix(in srgb, var(--app-accent, #6366f1) 35%, transparent);
+    font-size: 13px;
+    color: var(--app-text, #e2e8f0);
+
+    .update-banner-text {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        i { color: var(--app-accent, #6366f1); font-size: 15px; }
+    }
+
+    .update-banner-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .update-banner-btn {
+        padding: 3px 10px;
+        border-radius: 4px;
+        border: 1px solid var(--app-border, #2d3a56);
+        background: transparent;
+        color: var(--app-text-muted, #94a3b8);
+        font-size: 12px;
+        cursor: pointer;
+        transition: background 0.15s;
+        &:hover { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
+        &.primary {
+            background: var(--app-accent, #6366f1);
+            border-color: var(--app-accent, #6366f1);
+            color: #fff;
+            &:hover { background: var(--app-accent-hover, #818cf8); }
+        }
+    }
+
+    .update-banner-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px; height: 22px;
+        border: none;
+        background: transparent;
+        color: var(--app-text-muted, #94a3b8);
+        font-size: 16px;
+        cursor: pointer;
+        border-radius: 3px;
+        &:hover { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
+    }
+}
+
 #timeline-center {
 	display: flex;
 	position: relative;

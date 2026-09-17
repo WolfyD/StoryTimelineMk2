@@ -415,6 +415,20 @@ export const BackendAPI = {
 		return await this.request<{ isTopmost: boolean }>('WindowGetTopMost', {});
 	},
 	WindowSetTopMost(topmost: boolean) { this.send('WindowSetTopMost', { topmost }) },
+
+	async CheckForUpdates() {
+		return await this.request<{
+			status: string;
+			updateAvailable: boolean;
+			version?: string;
+			url?: string;
+			notes?: string;
+		}>('CheckForUpdates', {});
+	},
+	async SkipVersion(version: string) {
+		return await this.request<{ status: string }>('SkipVersion', { version });
+	},
+	OpenExternalUrl(url: string) { this.send('OpenExternalUrl', { url }) },
 };
 
 // Listen for replies and unprompted pushes from C#
