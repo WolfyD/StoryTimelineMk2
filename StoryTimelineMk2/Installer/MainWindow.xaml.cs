@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SubtitleBlock.Text = $"v{InstallerContext.AppVersion} — Setup" + (InstallerContext.IsTestBuild ? "  [TEST BUILD]" : "");
         BuildPages();
         NavigateTo(0);
     }
@@ -50,6 +51,7 @@ public partial class MainWindow : Window
             _pages.Add(new ModePage());
             _licPage = new LicensePage();
             _pages.Add(_licPage);
+            if (ctx.NeedsDotnetRuntime) _pages.Add(new RuntimePage());
             _pages.Add(new DirectoryPage());
             _pages.Add(new OptionsPage());
             _progressPage = new ProgressPage();
@@ -64,6 +66,7 @@ public partial class MainWindow : Window
             _pages.Add(new WelcomePage());
             _licPage = new LicensePage();
             _pages.Add(_licPage);
+            if (ctx.NeedsDotnetRuntime) _pages.Add(new RuntimePage());
             _pages.Add(new DirectoryPage());
             _pages.Add(new OptionsPage());
             _progressPage = new ProgressPage();
@@ -132,8 +135,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private static int GetDotIndex(int pageIdx) =>
-        InstallerPageFlow.GetDotIndex(pageIdx, InstallerContext.Current.Mode);
+    private int GetDotIndex(int pageIdx) =>
+        InstallerPageFlow.GetDotIndex(pageIdx, InstallerContext.Current.Mode, _pages.Any(p => p is RuntimePage));
 
     private void Header_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {

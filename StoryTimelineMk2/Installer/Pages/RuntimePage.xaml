@@ -1,0 +1,61 @@
+<UserControl x:Class="StoryTimelineInstaller.Pages.RuntimePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource AppBackground}">
+  <StackPanel Margin="36,20,36,12">
+
+    <TextBlock Style="{StaticResource PageTitle}"
+               Text=".NET 10 Desktop Runtime Required"/>
+
+    <TextBlock Style="{StaticResource PageSubtitle}"
+               Margin="0,0,0,16"
+               Text="Story Timeline needs the .NET 10 Desktop Runtime, which was not found on this computer. Choose how to proceed:"/>
+
+    <RadioButton x:Name="DownloadRadio"
+                 Style="{StaticResource OptionRadioButton}"
+                 GroupName="RuntimeGroup"
+                 IsChecked="True"
+                 Checked="Radio_Checked">
+      <StackPanel>
+        <TextBlock FontFamily="Segoe UI"
+                   FontSize="14"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextBrush}"
+                   Text="Download and install it now (recommended)"
+                   Margin="0,0,0,4"/>
+        <TextBlock FontFamily="Segoe UI"
+                   FontSize="12"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   Text="About 60 MB is downloaded from Microsoft and installed silently. The runtime is shared by all .NET apps and only needs to be installed once."
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </RadioButton>
+
+    <RadioButton x:Name="SkipRadio"
+                 Style="{StaticResource OptionRadioButton}"
+                 GroupName="RuntimeGroup"
+                 Checked="Radio_Checked">
+      <StackPanel>
+        <TextBlock FontFamily="Segoe UI"
+                   FontSize="14"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextBrush}"
+                   Text="Skip — I'll install it myself"
+                   Margin="0,0,0,4"/>
+        <TextBlock FontFamily="Segoe UI"
+                   FontSize="12"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   Text="Story Timeline is installed but will not start until the runtime is present."
+                   TextWrapping="Wrap"/>
+      </StackPanel>
+    </RadioButton>
+
+    <TextBlock Style="{StaticResource PageSubtitle}" Margin="0,4,0,0">
+      <Run Text="Manual download: "/><Hyperlink NavigateUri="https://dotnet.microsoft.com/download/dotnet/10.0"
+                                               RequestNavigate="Link_RequestNavigate"
+                                               Foreground="{DynamicResource AccentBrush}">dotnet.microsoft.com/download/dotnet/10.0</Hyperlink>
+      <LineBreak/><Run Text="To cancel the installation, close this window."/>
+    </TextBlock>
+
+  </StackPanel>
+</UserControl>

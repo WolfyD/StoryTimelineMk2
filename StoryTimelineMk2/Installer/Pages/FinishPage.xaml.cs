@@ -26,6 +26,11 @@ public partial class FinishPage : UserControl
             FinishSubtitle.Text = "Story Timeline has been installed successfully.";
             LaunchCb.Visibility = Visibility.Visible;
             LaunchCb.IsChecked  = ctx.LaunchOnFinish;
+            if (ctx.NeedsDotnetRuntime && !ctx.InstallDotnetRuntime)
+            {
+                FinishSubtitle.Text = "Story Timeline has been installed. Install the .NET 10 Desktop Runtime before running it.";
+                LaunchCb.IsChecked  = false;
+            }
         }
     }
 

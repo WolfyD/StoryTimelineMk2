@@ -20,6 +20,7 @@
                Text="Please read the following license agreement before installing Story Timeline."/>
 
     <Border Grid.Row="2"
+            MaxHeight="200"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1"
             CornerRadius="6"

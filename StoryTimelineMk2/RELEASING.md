@@ -5,6 +5,7 @@
 | Tool | Purpose | Where to get |
 | ---- | ------- | ------------ |
 | .NET 10 SDK | Build & publish C# | <https://dotnet.microsoft.com> |
+| .NET Framework 4.8 targeting pack | Build the installer (comes with Visual Studio; the SDK also pulls reference assemblies via NuGet) | <https://dotnet.microsoft.com/download/dotnet-framework/net48> |
 | Node.js 20+ | Build Vue frontend | <https://nodejs.org> |
 | GitHub CLI (`gh`) | Create GitHub releases | <https://cli.github.com> |
 
@@ -52,14 +53,23 @@ Everything downstream reads from these:
 
 # Pre-release (shown as pre-release on GitHub, NOT picked up by update checker)
 .\release.ps1 -Version 1.1.0-beta -CreateRelease -PreRelease
+
+# Test build: forces the .NET runtime page + writes log.txt next to the installer,
+# artifacts are suffixed -test. Pass the current version to avoid touching source files.
+.\release.ps1 -Version 1.1.0 -TestRelease
+
+# Full parameter help
+.\release.ps1 -Help
 ```
 
 Artifacts land in `release/v<version>/`:
 
 ```text
 release/v1.1.0/
-  StoryTimeline-v1.1.0-setup.exe      <- single-file installer
-  StoryTimeline-v1.1.0-portable.zip   <- app files only, no installer
+  StoryTimeline-v1.1.0-setup.exe              <- installer, ~5 MB   (default download)
+  StoryTimeline-v1.1.0-setup-offline.exe      <- installer, ~50 MB  (bundles the .NET runtime)
+  StoryTimeline-v1.1.0-portable.zip           <- app only, ~5 MB    (needs .NET 10 Desktop Runtime)
+  StoryTimeline-v1.1.0-portable-offline.zip   <- app only, ~50 MB   (self-contained)
 ```
 
 The `release/` directory is gitignored.
@@ -68,28 +78,36 @@ The `release/` directory is gitignored.
 
 ## What's in each artifact
 
-### `StoryTimeline-vX.Y.Z-setup.exe` - for most users
+### `-setup.exe` / `-setup-offline.exe` - for most users
 
 A single `.exe` - download and run. No extraction step needed.
 
-The installer has the app files embedded inside it as a zip resource. At install
-time it extracts them directly to the chosen install directory. It also:
+The installer targets .NET Framework 4.8, which ships with Windows 10/11, so it runs
+without any runtime download. The app files are embedded inside it as a zip resource
+and extracted to the chosen install directory. It also:
 
 - Lets the user pick an install directory
 - Creates Start Menu / Desktop shortcuts
 - Writes an Uninstall entry to Add/Remove Programs
 - Copies itself to the install directory as the uninstaller
-- Can install WebView2 if not present
+- Installs WebView2 if not present
+- **`-setup.exe` only:** if the .NET 10 Desktop Runtime is missing, shows a page where the
+  user chooses between letting the installer download it (~60 MB from Microsoft) or
+  skipping and installing it themselves. The runtime is shared machine-wide, so later updates are
+  ~5 MB each. `-setup-offline.exe` embeds a self-contained app and never downloads it.
 
-### `StoryTimeline-vX.Y.Z-portable.zip` - no installation required
+### `-portable.zip` / `-portable-offline.zip` - no installation required
 
 Extract anywhere, run `StoryTimeline.exe` directly. No registry entries, no
 shortcuts. Suitable for USB drives or systems where the user cannot install software.
 
+`-portable.zip` needs the .NET 10 Desktop Runtime on the machine (Windows shows a
+download prompt if it's missing). `-portable-offline.zip` is self-contained.
+
 Contents:
 
 ```text
-StoryTimeline.exe       <- the app (single-file, self-contained .NET exe)
+StoryTimeline.exe       <- the app (single-file .NET exe)
 Frontend/
   dist/                 <- Vue UI assets (must stay next to the exe)
 ```
@@ -118,12 +136,13 @@ To trigger the checker: publish a release on GitHub with a tag higher than the c
 ## Manual release checklist (if not using the script)
 
 1. Bump all four version locations listed above
-2. `cd Frontend && npm install && npm run build`
-3. `Compress-Archive -Path bin\...\publish\* -DestinationPath Installer\AppFiles.zip`
-4. `dotnet publish StoryTimelineMk2.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`
-5. `dotnet publish Installer\StoryTimelineInstaller.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`
-6. `git tag v1.x.x && git push origin v1.x.x`
-7. Create GitHub release on that tag, upload `setup.exe` and `portable.zip`
+2. `cd Frontend && npm install`
+3. For each flavour (`online`: `--self-contained false`, `offline`: `--self-contained true -p:EnableCompressionInSingleFile=true`):
+   1. `dotnet publish StoryTimelineMk2.csproj -c Release -r win-x64 -o bin\publish\<flavour> --self-contained <...> -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true`
+   2. `Compress-Archive -Path bin\publish\<flavour>\* -DestinationPath Installer\AppFiles.zip` (this is also the portable zip)
+   3. `dotnet publish Installer\StoryTimelineInstaller.csproj -c Release -o Installer\bin\publish\<flavour> -p:OfflinePayload=<true|false>`
+4. `git tag v1.x.x && git push origin v1.x.x`
+5. Create GitHub release on that tag, upload all four artifacts
 
 ---
 

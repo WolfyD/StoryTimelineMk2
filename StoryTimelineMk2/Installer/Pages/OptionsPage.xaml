@@ -23,17 +23,9 @@
               Style="{StaticResource AppCheckBox}"
               Content="Create a Start Menu shortcut"
               IsChecked="True"
-              Margin="0,0,0,14"
+              Margin="0,0,0,24"
               Checked="StartMenuCb_Checked"
               Unchecked="StartMenuCb_Unchecked"/>
-
-    <CheckBox x:Name="LaunchCb"
-              Style="{StaticResource AppCheckBox}"
-              Content="Launch Story Timeline after installation"
-              IsChecked="True"
-              Margin="0,0,0,24"
-              Checked="LaunchCb_Checked"
-              Unchecked="LaunchCb_Unchecked"/>
 
     <TextBlock Style="{StaticResource FieldLabel}"
                Text="INSTALLATION SUMMARY"/>

@@ -24,58 +24,16 @@ public static class WebView2Service
             using var key = root.OpenSubKey(path);
             if (key == null) return false;
             var pv = key.GetValue("pv") as string;
+            InstallerLog.Write($"[webview2] {path}: pv={pv ?? "(null)"}");
             return !string.IsNullOrEmpty(pv) && pv != "0.0.0.0";
         }
         catch { return false; }
     }
 
-    public static async Task DownloadAndInstallAsync(
+    public static Task DownloadAndInstallAsync(
         IProgress<(int percent, string message)> progress,
         CancellationToken ct)
-    {
-        var tempFile = Path.Combine(Path.GetTempPath(), "MicrosoftEdgeWebview2Setup.exe");
-
-        progress.Report((10, "Downloading WebView2 bootstrapper..."));
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("User-Agent", "StoryTimeline-Installer/1.0");
-
-        using var response = await httpClient.GetAsync(
-            BootstrapperUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
-
-        var total = response.Content.Headers.ContentLength ?? -1L;
-        await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        await using var fileStream = new FileStream(
-            tempFile, FileMode.Create, FileAccess.Write, FileShare.None);
-
-        var buffer = new byte[81920];
-        long downloaded = 0;
-        int read;
-        while ((read = await stream.ReadAsync(buffer, ct)) > 0)
-        {
-            await fileStream.WriteAsync(buffer.AsMemory(0, read), ct);
-            downloaded += read;
-            if (total > 0)
-            {
-                int pct = 10 + (int)(downloaded * 50.0 / total);
-                progress.Report((pct, $"Downloading WebView2... {downloaded / 1024:N0} KB"));
-            }
-        }
-        fileStream.Close();
-
-        progress.Report((60, "Installing WebView2 runtime..."));
-        var proc = System.Diagnostics.Process.Start(
-            new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = tempFile,
-                Arguments = "/install",
-                UseShellExecute = true,
-                Verb = "runas"
-            });
-        if (proc != null)
-            await proc.WaitForExitAsync(ct);
-
-        progress.Report((100, "WebView2 installed."));
-        try { File.Delete(tempFile); } catch { }
-    }
+        => Bootstrapper.DownloadAndRunAsync(
+            BootstrapperUrl, "MicrosoftEdgeWebview2Setup.exe", "/install",
+            "WebView2 runtime", progress, ct);
 }

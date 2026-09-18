@@ -60,7 +60,6 @@ public partial class DirectoryPage : UserControl
         {
             Description            = "Select installation folder",
             SelectedPath           = DirBox.Text,
-            UseDescriptionForTitle = true,
             ShowNewFolderButton    = true
         };
         if (dialog.ShowDialog() == DialogResult.OK)

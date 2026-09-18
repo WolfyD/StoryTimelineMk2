@@ -16,6 +16,13 @@ public partial class App : Application
         ThemeService.Apply(this);
         InstallerContext.Current.CheckExistingInstall();
 
+        var ctx = InstallerContext.Current;
+        InstallerLog.Write($"==== Story Timeline installer v{InstallerContext.AppVersion} " +
+            $"(testBuild={InstallerContext.IsTestBuild}, selfContained={InstallerContext.PayloadIsSelfContained}) ====");
+        InstallerLog.Write($"[app] args=[{string.Join(" ", e.Args)}] os={Environment.OSVersion} x64proc={Environment.Is64BitProcess} " +
+            $"exe={System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName}");
+        InstallerLog.Write($"[app] existing install: version={ctx.InstalledVersion ?? "(none)"} dir={ctx.InstalledDir ?? "(none)"}");
+
         bool isUninstall = e.Args.Contains("/uninstall", StringComparer.OrdinalIgnoreCase);
         bool isQuiet     = e.Args.Contains("/quiet",     StringComparer.OrdinalIgnoreCase);
 
@@ -41,6 +48,7 @@ public partial class App : Application
 
     private void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
+        InstallerLog.Write($"[fatal] {e.Exception}");
         var msg = $"An unexpected error occurred and the installer must close.\n\n" +
                   $"{e.Exception.GetType().Name}: {e.Exception.Message}\n\n" +
                   $"{e.Exception.StackTrace}";

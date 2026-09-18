@@ -26,6 +26,20 @@ public class InstallerPageFlowTests
     public void GetDotIndex_Install_MapsPageToDotCorrectly(int pageIdx, int expectedDot)
         => Assert.Equal(expectedDot, InstallerPageFlow.GetDotIndex(pageIdx, InstallerMode.Install));
 
+    // With the optional RuntimePage inserted after License:
+    // Pages: 0=Welcome/Mode  1=License  2=Runtime  3=Directory  4=Options  5=Progress  6=Finish
+    // Dots:  0                1           1          1            2          3            3
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(2, 1)]
+    [InlineData(3, 1)]
+    [InlineData(4, 2)]
+    [InlineData(5, 3)]
+    [InlineData(6, 3)]
+    public void GetDotIndex_InstallWithRuntimePage_MapsPageToDotCorrectly(int pageIdx, int expectedDot)
+        => Assert.Equal(expectedDot, InstallerPageFlow.GetDotIndex(pageIdx, InstallerMode.Install, hasRuntimePage: true));
+
     [Fact]
     public void GetDotIndex_Install_OutOfRangePageReturnsDotZero()
         => Assert.Equal(0, InstallerPageFlow.GetDotIndex(99, InstallerMode.Install));

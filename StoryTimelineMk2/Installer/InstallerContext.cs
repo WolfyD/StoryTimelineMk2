@@ -19,6 +19,12 @@ public sealed class InstallerContext
     public bool LaunchOnFinish { get; set; } = true;
     public bool KeepUserData { get; set; } = true;
 
+    // Framework-dependent payload + runtime missing => RuntimePage is shown and the user picks.
+    private bool? _needsDotnetRuntime;
+    public bool NeedsDotnetRuntime =>
+        _needsDotnetRuntime ??= !PayloadIsSelfContained && !Services.DotnetRuntimeService.IsInstalled();
+    public bool InstallDotnetRuntime { get; set; } = true;
+
     public string? InstalledVersion { get; private set; }
     public string? InstalledDir { get; private set; }
 
@@ -32,6 +38,21 @@ public sealed class InstallerContext
     public const string RegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\StoryTimeline";
     public const string DataDir = "StoryTimelineMk2_Data";
     public const string CacheDir = "StoryTimelineMk2_Cache";
+
+    // True when AppFiles.zip holds the self-contained app (offline installer);
+    // false when it holds the framework-dependent app and the .NET runtime must be present.
+#if OFFLINE_PAYLOAD
+    public const bool PayloadIsSelfContained = true;
+#else
+    public const bool PayloadIsSelfContained = false;
+#endif
+
+    // release.ps1 -TestRelease: forces the .NET runtime download and writes log.txt (see InstallerLog).
+#if TEST_BUILD
+    public const bool IsTestBuild = true;
+#else
+    public const bool IsTestBuild = false;
+#endif
 
     public void CheckExistingInstall()
     {

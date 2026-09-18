@@ -4,7 +4,7 @@ internal static class InstallerPageFlow
 {
     internal static int GetDotCount(InstallerMode mode) => mode == InstallerMode.Uninstall ? 2 : 4;
 
-    internal static int GetDotIndex(int pageIdx, InstallerMode mode)
+    internal static int GetDotIndex(int pageIdx, InstallerMode mode, bool hasRuntimePage = false)
     {
         if (mode == InstallerMode.Uninstall)
         {
@@ -13,8 +13,9 @@ internal static class InstallerPageFlow
             return pageIdx <= 0 ? 0 : 1;
         }
 
-        // Pages: 0=Welcome/Mode  1=License  2=Directory  3=Options  4=Progress  5=Finish
-        // Dots:  0                1           1            2          3            3
+        // Pages: 0=Welcome/Mode  1=License  [2=Runtime]  2=Directory  3=Options  4=Progress  5=Finish
+        // Dots:  0                1           [1]          1            2          3            3
+        if (hasRuntimePage && pageIdx >= 2) pageIdx--;
         return pageIdx switch { 0 => 0, 1 => 1, 2 => 1, 3 => 2, 4 => 3, 5 => 3, _ => 0 };
     }
 

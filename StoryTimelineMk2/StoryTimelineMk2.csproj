@@ -51,7 +51,7 @@
       <FrontendDistFiles Include="$(MSBuildProjectDirectory)\Frontend\dist\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(FrontendDistFiles)" DestinationFiles="@(FrontendDistFiles->'$(PublishDir)Frontend\dist\%(RecursiveDir)%(Filename)%(Extension)')" />
-    <Message Text="[PublishFrontend] Copied dist ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ $(PublishDir)Frontend\dist\" Importance="high" />
+    <Message Text="[PublishFrontend] Copied dist -> $(PublishDir)Frontend\dist\" Importance="high" />
   </Target>
 
   <ItemGroup>

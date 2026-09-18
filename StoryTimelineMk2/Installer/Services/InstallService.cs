@@ -2,7 +2,6 @@ using Microsoft.Win32;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 
 namespace StoryTimelineInstaller.Services;
 
@@ -27,6 +26,7 @@ public static class InstallService
 
         var entries = zip.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToArray();
         int total = entries.Length;
+        InstallerLog.Write($"[install] resource {resourceName}: {total} files -> {destDir}");
 
         Directory.CreateDirectory(destDir);
 
@@ -43,14 +43,15 @@ public static class InstallService
         }
 
         progress.Report((72, "Copying installer..."));
-        var installerSrc = Environment.ProcessPath
-            ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+        var installerSrc = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? string.Empty;
         var installerDst = Path.Combine(destDir, "StoryTimelineInstaller.exe");
+        InstallerLog.Write($"[install] uninstaller copy: {installerSrc} -> {installerDst}");
         if (File.Exists(installerSrc))
             File.Copy(installerSrc, installerDst, overwrite: true);
         await Task.Yield();
 
         progress.Report((80, "Writing registry entries..."));
+        InstallerLog.Write($"[install] registry HKLM\\{InstallerContext.RegistryKey}");
         WriteRegistry(destDir, installerDst);
         await Task.Yield();
 
@@ -103,8 +104,9 @@ public static class InstallService
 
     private static void CreateShortcut(string linkPath, string targetPath, string workDir)
     {
+        InstallerLog.Write($"[install] shortcut {linkPath} -> {targetPath}");
         var shellType = Type.GetTypeFromProgID("WScript.Shell");
-        if (shellType == null) return;
+        if (shellType == null) { InstallerLog.Write("[install] WScript.Shell ProgID not found, shortcut skipped"); return; }
 
         dynamic? shell = null;
         dynamic? shortcut = null;
@@ -131,6 +133,7 @@ public static class InstallService
     {
         ct.ThrowIfCancellationRequested();
 
+        InstallerLog.Write($"[uninstall] dir={installDir} keepUserData={InstallerContext.Current.KeepUserData}");
         progress.Report((10, "Removing shortcuts..."));
         RemoveShortcuts();
         await Task.Yield();
@@ -177,7 +180,6 @@ public static class InstallService
 
     // Win32: schedule a file/dir for deletion on next reboot (for locked files)
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    [SupportedOSPlatform("windows")]
     private static extern bool MoveFileEx(string lpExistingFileName, string? lpNewFileName, int dwFlags);
     private const int MOVEFILE_DELAY_UNTIL_REBOOT = 4;
 
@@ -192,6 +194,7 @@ public static class InstallService
             try { File.Delete(file); }
             catch
             {
+                InstallerLog.Write($"[uninstall] locked, delete on reboot: {file}");
                 try { MoveFileEx(file, null, MOVEFILE_DELAY_UNTIL_REBOOT); } catch { }
             }
         }

@@ -50,7 +50,7 @@ The ready-to-run output is in `publish/`.
 dotnet publish StoryTimelineMk2.csproj -c Release -r win-x64 --self-contained true -o publish
 ```
 
-Output is ~100 MB larger but runs on any Windows machine without a .NET 10 installation.
+Output is ~100 MB larger (~50 MB with `-p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true`) but runs on any Windows machine without a .NET 10 installation.
 
 ---
 

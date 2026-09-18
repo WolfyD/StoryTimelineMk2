@@ -1,20 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- .NET Framework 4.8 ships with Windows 10/11, so the installer runs without any
+         runtime download. The app itself targets .NET 10; the installer fetches that
+         runtime when the payload is framework-dependent (see DotnetRuntimeService). -->
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- release.ps1 passes -p:OfflinePayload=true when AppFiles.zip holds the self-contained app -->
+    <DefineConstants Condition="'$(OfflinePayload)' == 'true'">$(DefineConstants);OFFLINE_PAYLOAD</DefineConstants>
+    <!-- release.ps1 -TestRelease passes -p:TestBuild=true -->
+    <DefineConstants Condition="'$(TestBuild)' == 'true'">$(DefineConstants);TEST_BUILD</DefineConstants>
     <AssemblyName>StoryTimelineInstaller</AssemblyName>
     <RootNamespace>StoryTimelineInstaller</RootNamespace>
     <Product>Story Timeline Installer</Product>
     <Version>1.0.0</Version>
-    <ApplicationIcon>..\Misc\app-icon.ico</ApplicationIcon>
+    <ApplicationIcon>..\app-icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Suppress WinForms DPI warning — DPI is configured via WPF manifest (correct for WPF apps) -->
-    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
