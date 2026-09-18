@@ -90,6 +90,26 @@ const bookmarkNodeCache = new Map<string, { group: Konva.Group; line: Konva.Line
 const pictureImageCache = new Map<string, HTMLImageElement>();
 const pictureLoadingSet = new Set<string>();
 const lockedLanes = new Map<string, LaneLock>();
+// Item object last rendered per id — upsertItem replaces the object, which is the signal to rebuild that node
+const renderedItem = new Map<string, TimelineItem>();
+
+// Drops every cached node/image for an item so the next render rebuilds it
+function evictNode(itemId: string) {
+    const els = nodeCache.get(itemId);
+    if (els) {
+        els.box?.destroy();
+        els.label?.destroy();
+        els.stem?.destroy();
+        els.colorStrip?.destroy();
+        nodeCache.delete(itemId);
+    }
+    const bm = bookmarkNodeCache.get(itemId);
+    if (bm) { bm.group.destroy(); bookmarkNodeCache.delete(itemId); }
+    const mini = miniNodeCache.get(itemId);
+    if (mini) { (mini.kind === 'pin' ? mini.group : mini.rect).destroy(); miniNodeCache.delete(itemId); }
+    pictureImageCache.delete(itemId);
+    renderedItem.delete(itemId);
+}
 
 const expandedRangeIds = new Set<number>();
 const getActiveRanges = () => store.hiddenRanges.filter(r => !expandedRangeIds.has(r.Id));
@@ -288,16 +308,7 @@ const deleteItem = async (itemId: string) => {
     const result = await BackendAPI.DeleteItem(itemId);
     if (result?.status === 'ok') {
         store.removeItem(itemId);
-        const bm = bookmarkNodeCache.get(itemId);
-        if (bm) { bm.group.destroy(); bookmarkNodeCache.delete(itemId); }
-        const cached = nodeCache.get(itemId);
-        if (cached) {
-            cached.box?.destroy();
-            cached.label?.destroy();
-            cached.stem?.destroy();
-            cached.colorStrip?.destroy();
-            nodeCache.delete(itemId);
-        }
+        evictNode(itemId);
         if (props.layoutSettings) {
             lockedLanes.clear();
             renderGrid(gridLayer, props.layoutSettings);
@@ -356,8 +367,10 @@ watch(() => store.items, (items) => {
     }
 }, { deep: false });
 
-// Re-render when the visible item set changes (lane positions may change)
-watch(() => props.timelineItems, () => {
+// Re-render when the visible item set changes (lane positions may change).
+// Spread so element replacements fire too: with no filters active the store hands back the
+// same array instance, and upsertItem swaps items in place inside it.
+watch(() => [...(props.timelineItems ?? [])], () => {
     if (!stage || !props.layoutSettings) return;
     lockedLanes.clear();
     renderWithDimming(props.layoutSettings);
@@ -783,6 +796,12 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         const itemIdStr = getId(item);
         const typeName = getTypeName(item);
 
+        // upsertItem replaces the item object — rebuild its node so title/colour/picture edits show without a reload
+        if (renderedItem.get(itemIdStr) !== item) {
+            evictNode(itemIdStr);
+            renderedItem.set(itemIdStr, item);
+        }
+
         if (!(getLodMask(item) & (1 << currentLodIndex))) continue;
 
         const absoluteStart = getAbsoluteStart(item);
@@ -1088,6 +1107,11 @@ watch(() => store.items.length, (newLen, oldLen) => {
     }
 });
 
+// Note dots are drawn by renderGrid — redraw when notes are added/deleted
+watch(() => store.notes.length, () => {
+    if (stage && props.layoutSettings) renderGrid(gridLayer, props.layoutSettings);
+});
+
 // Pulse-highlight a specific item node (triggered from the data panel focus button)
 watch(() => store.pulseItemId, (id) => {
     if (!id) return;
@@ -1213,7 +1237,7 @@ function loadPictureImage(itemId: string) {
     // typeId 4 = Picture — ensures the backend includes the Pictures relation
     BackendAPI.GetItemForEdit(props.timelineInfo.Id, itemId, 4).then(result => {
         pictureLoadingSet.delete(itemId);
-        const filePath = result?.Pictures?.[0]?.FilePath;
+        const filePath = result?.Pictures?.[0]?.ThumbPath;
         if (!filePath) return;
         const url = `https://media.app/${filePath}`;
         // Use Konva's own image loader so WebView2 URL resolution is handled correctly
@@ -1299,6 +1323,8 @@ function animateJumpToYear(targetYear: number, durationMs: number = 600) {
 
         renderGrid(gridLayer, props.layoutSettings);
         renderWithDimming(props.layoutSettings!);
+        // Keeps the minimap/data panels following the animated viewport (throttled; forced on the last frame)
+        updateCurrentYearInStore(progress >= 1);
 
         if (progress < 1) {
             _jumpRafId = requestAnimationFrame(step);
@@ -1537,7 +1563,7 @@ onMounted(() => {
             const halfWidth = viewport.width / 2;
             const offset = canvasX - halfWidth; // signed px from center
             const deadzoneHalf = (store.settings?.PanDeadzone ?? 100) / 2;
-            const speedMult = store.settings?.PanSpeedMultiplier ?? 10.0;
+            const speedMult = store.settings?.PanSpeedMultiplier ?? 5.0;
             const inDeadzone = Math.abs(offset) <= deadzoneHalf;
             if (!inDeadzone) {
                 const normalised = offset / halfWidth; // -1 … +1
@@ -1673,6 +1699,7 @@ onBeforeUnmount(() => {
     bookmarkNodeCache.clear();
     pictureImageCache.clear();
     pictureLoadingSet.clear();
+    renderedItem.clear();
 });
 
 function refreshItems() {

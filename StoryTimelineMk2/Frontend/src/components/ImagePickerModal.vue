@@ -138,7 +138,7 @@ function formatSize(bytes: number) {
                     >
                         <div class="thumb-img-wrap">
                             <img
-                                :src="`https://media.app/${pic.FilePath}`"
+                                :src="`https://media.app/${pic.ThumbPath}`"
                                 :alt="pic.Title || pic.FileName"
                                 @error="($event.target as HTMLImageElement).src = ''"
                             />

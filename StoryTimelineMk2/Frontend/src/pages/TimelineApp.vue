@@ -21,7 +21,7 @@ import TimelineGalleryPanel from "@/components/TimelineGalleryPanel.vue";
 import TimelineMinimap from "@/components/TimelineMinimap.vue";
 import TimelineItemViewModal from "@/components/TimelineItemViewModal.vue";
 import { BackendAPI } from '@/bridge/api';
-import { useAppTheme } from '@/utils/useAppTheme';
+import { useAppTheme, applyAppTheme } from '@/utils/useAppTheme';
 
 const store = useTimelineStore()
 useAppTheme()
@@ -245,9 +245,12 @@ onMounted(async () => {
 		waitingForId.value = false
 		const id = msg.payload?.id
 		if (id > 0) {
+			history.replaceState(null, '', '?id=' + id) // pre-warmed URL has no ?id; F5 must still work
 			store.loadTimelineData(id)
 			BackendAPI.GetAppConfig().then(cfg => {
 				if (cfg) store.setPerformantPanning(cfg.performantPanning ?? true)
+				// Pre-warmed at app start: the theme applied on mount may have been changed since
+				if (cfg?.chromeTheme) applyAppTheme(cfg.chromeTheme)
 			})
 		}
 	}

@@ -276,6 +276,7 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
         item.value.TimelineId = tId
         item.value.TypeId = dtype
         item.value.CreationGranularity = gran
+        if (data.Item?.Color) item.value.Color = data.Item.Color
         if (absTime) {
           item.value.Year          = Math.floor(absTime)
           item.value.EndYear       = item.value.Year
@@ -366,13 +367,28 @@ function handlePushMessage(event: MessageEvent) {
   )
 }
 
+// ---- Colour helpers ----
+const COLOR_PALETTE = [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#14b8a6',
+  '#06b6d4', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#64748b',
+]
+const paletteOpen = ref(false)
+function randomColor() {
+  item.value.Color = '#' + Math.floor(Math.random() * 0x1000000).toString(16).padStart(6, '0')
+}
+function closePaletteOutside(e: MouseEvent) {
+  if (!(e.target as HTMLElement).closest('.color-palette-wrap')) paletteOpen.value = false
+}
+
 onMounted(() => {
   loadData(timelineId, itemId, defaultType, defaultAbsoluteTime, defaultGranularity)
   window.chrome?.webview?.addEventListener('message', handlePushMessage)
+  document.addEventListener('mousedown', closePaletteOutside)
 })
 
 onBeforeUnmount(() => {
   window.chrome?.webview?.removeEventListener('message', handlePushMessage)
+  document.removeEventListener('mousedown', closePaletteOutside)
 })
 
 // ---------------------------------------------------------------------------
@@ -630,7 +646,19 @@ async function removeImage(pictureId: string) {
         </div>
         <div class="field color-field">
           <label>Color</label>
-          <input type="color" v-model="item.Color" />
+          <div class="color-row">
+            <input type="color" v-model="item.Color" />
+            <button type="button" class="color-tool" title="Random" @click="randomColor"><i class="ri-shuffle-line" /></button>
+            <div class="color-palette-wrap">
+              <button type="button" class="color-tool" :class="{ open: paletteOpen }" title="Palette" @click="paletteOpen = !paletteOpen"><i class="ri-arrow-down-s-line" /></button>
+              <div v-if="paletteOpen" class="color-palette">
+                <button
+                  v-for="c in COLOR_PALETTE" :key="c" type="button" class="color-swatch"
+                  :class="{ active: item.Color?.toLowerCase() === c }" :style="{ background: c }" :title="c"
+                  @click="item.Color = c; paletteOpen = false" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -780,7 +808,7 @@ async function removeImage(pictureId: string) {
         <div class="image-grid" v-if="images.length">
           <div class="image-thumb" v-for="img in images" :key="img.Id">
             <img
-              :src="`https://media.app/${img.FilePath}`"
+              :src="`https://media.app/${img.ThumbPath}`"
               :alt="img.Title || img.FileName"
               @error="($event.target as HTMLImageElement).src = ''"
               class="image-thumb-img"
@@ -1166,6 +1194,65 @@ async function removeImage(pictureId: string) {
 .spaced-field { margin-top: 16px; }
 
 .color-field { flex-shrink: 0; }
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-tool {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--app-border, #334155);
+  background: var(--app-bg, #0f172a);
+  color: var(--app-text-muted, #94a3b8);
+  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  &:hover, &.open { border-color: var(--app-accent, #4a90d9); color: var(--app-text, #e2e8f0); }
+  &.open { background: var(--app-accent, #4a90d9); color: #fff; }
+}
+
+.color-palette-wrap { position: relative; }
+
+.color-palette {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(6, 22px);
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border, #334155);
+  background: var(--app-surface-raised, #1e293b);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  transform-origin: top right;
+  animation: palette-pop 0.12s ease-out;
+}
+
+@keyframes palette-pop {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s, border-color 0.1s;
+  &:hover { transform: scale(1.15); }
+  &.active { border-color: #fff; }
+}
 
 .checkbox-field {
   label {

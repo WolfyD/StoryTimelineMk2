@@ -200,7 +200,7 @@ async function onEdited() {
 }
 
 .row-action-buttons.visible {
-	width: 175px;
+	width: 140px;
 	background-color: rgba(121, 135, 107, 0.1);
 }
 

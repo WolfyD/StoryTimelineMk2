@@ -2,6 +2,8 @@
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Text;
 
 namespace StoryTimelineMk2.Database
@@ -10,13 +12,14 @@ namespace StoryTimelineMk2.Database
     {
         private readonly string _connString;
         private readonly string _mediaFolder;
+        private const int ThumbSize = 256;
 
         public MediaRepo()
         {
             _connString = DbInitializer.GetConnectionString();
 
             _mediaFolder = AppConfig.Instance.GetMediaFolder();
-            Directory.CreateDirectory(_mediaFolder);
+            Directory.CreateDirectory(Path.Combine(_mediaFolder, "thumbs"));
 
             DefaultTypeMap.MatchNamesWithUnderscores = true;
         }
@@ -24,7 +27,63 @@ namespace StoryTimelineMk2.Database
         public IEnumerable<MediaItem> GetAllMedia()
         {
             using var db = new SqliteConnection(_connString);
-            return db.Query<MediaItem>("SELECT * FROM pictures ORDER BY created_at DESC");
+            return WithThumbs(db.Query<MediaItem>("SELECT * FROM pictures ORDER BY created_at DESC"));
+        }
+
+        private List<MediaItem> WithThumbs(IEnumerable<MediaItem> items)
+        {
+            var list = items.AsList();
+            foreach (var m in list) EnsureThumb(m);
+            return list;
+        }
+
+        /// <summary>
+        /// Points ThumbPath at thumbs/{id}.png, generating it on first use (covers images imported
+        /// before thumbnails existed). Falls back to the original when it cannot be decoded.
+        /// </summary>
+        private void EnsureThumb(MediaItem m)
+        {
+            string rel = $"thumbs/{m.Id}.png";
+            string thumbPath = Path.Combine(_mediaFolder, rel);
+            m.ThumbPath = m.FilePath;
+            // GDI+ has no WebP decoder; the browser renders the original fine
+            if (m.FileType.Equals("webp", StringComparison.OrdinalIgnoreCase)) return;
+            try
+            {
+                if (!File.Exists(thumbPath)) WriteThumb(GetFullPath(m.FilePath), thumbPath);
+                m.ThumbPath = rel;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("MediaRepo.EnsureThumb", new InvalidOperationException($"Thumbnail for '{m.FilePath}' failed; using the original", ex));
+            }
+        }
+
+        private static void WriteThumb(string sourcePath, string thumbPath)
+        {
+            using var src = Image.FromFile(sourcePath);
+            // Honour EXIF orientation so the thumb matches what the browser shows for the original
+            if (Array.IndexOf(src.PropertyIdList, 0x112) >= 0)
+            {
+                src.RotateFlip(src.GetPropertyItem(0x112)?.Value?[0] switch
+                {
+                    3 => RotateFlipType.Rotate180FlipNone,
+                    6 => RotateFlipType.Rotate90FlipNone,
+                    8 => RotateFlipType.Rotate270FlipNone,
+                    _ => RotateFlipType.RotateNoneFlipNone,
+                });
+            }
+            double scale = Math.Min(1.0, (double)ThumbSize / Math.Max(src.Width, src.Height));
+            int w = Math.Max(1, (int)Math.Round(src.Width * scale));
+            int h = Math.Max(1, (int)Math.Round(src.Height * scale));
+            using var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+            using var g = Graphics.FromImage(bmp);
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            using var attrs = new ImageAttributes();
+            attrs.SetWrapMode(WrapMode.TileFlipXY); // stops bicubic sampling bleeding transparent edges
+            g.DrawImage(src, new Rectangle(0, 0, w, h), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, attrs);
+            bmp.Save(thumbPath, ImageFormat.Png);
         }
 
         public MediaItem ImportAndSaveMedia(string sourceFilePath, string title, string description)
@@ -59,17 +118,18 @@ namespace StoryTimelineMk2.Database
                 VALUES (@Id, @FilePath, @FileName, @FileSize, @FileType, @Width, @Height, @Title, @Description)";
             db.Execute(sql, mediaItem);
 
+            EnsureThumb(mediaItem);
             return mediaItem; // Return to Vue so it can render the image immediately
         }
 
         public IEnumerable<MediaItem> GetItemPictures(string itemId)
         {
             using var db = new SqliteConnection(_connString);
-            return db.Query<MediaItem>(@"
+            return WithThumbs(db.Query<MediaItem>(@"
                 SELECT p.* FROM pictures p
                 INNER JOIN item_pictures ip ON ip.picture_id = p.id
                 WHERE ip.item_id = @ItemId
-                ORDER BY p.created_at", new { ItemId = itemId });
+                ORDER BY p.created_at", new { ItemId = itemId }));
         }
 
         public void LinkPictureToItem(string pictureId, string itemId)
@@ -113,6 +173,8 @@ namespace StoryTimelineMk2.Database
             {
                 File.Delete(filePath);
             }
+            string thumbPath = Path.Combine(_mediaFolder, "thumbs", $"{id}.png");
+            if (File.Exists(thumbPath)) File.Delete(thumbPath);
         }
     }
 }

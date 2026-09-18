@@ -61,7 +61,6 @@ namespace StoryTimelineMk2.Forms
             try
             {
                 var form = new f_AddEditItem();
-                form.ShowInTaskbar = false;
                 _ = form.Handle; // force HWND without Show()
                 var env = await WebView2EnvironmentFactory.GetAsync("edit");
                 await form.wv_AddEditItem.EnsureCoreWebView2Async(env);

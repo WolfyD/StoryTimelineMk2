@@ -196,6 +196,7 @@ export const BackendAPI = {
 		layoutPresetId: string;
 		panSpeedMultiplier: number;
 		panDeadzone: number;
+		defaultItemColor: string;
 	}) {
 		return await this.request<{ status: string }>('SaveSettings', payload);
 	},

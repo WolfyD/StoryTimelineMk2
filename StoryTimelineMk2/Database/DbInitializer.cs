@@ -477,8 +477,9 @@ namespace StoryTimelineMk2.Database
             if (!settings.Contains("year_calendar_position_y"))  db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_position_y INTEGER DEFAULT 0");
             if (!settings.Contains("year_calendar_size_x"))      db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_size_x INTEGER DEFAULT 0");
             if (!settings.Contains("year_calendar_size_y"))      db.Execute("ALTER TABLE settings ADD COLUMN year_calendar_size_y INTEGER DEFAULT 0");
-            if (!settings.Contains("pan_speed_multiplier"))      db.Execute("ALTER TABLE settings ADD COLUMN pan_speed_multiplier REAL DEFAULT 10.0");
+            if (!settings.Contains("pan_speed_multiplier"))      db.Execute("ALTER TABLE settings ADD COLUMN pan_speed_multiplier REAL DEFAULT 5.0");
             if (!settings.Contains("pan_deadzone"))               db.Execute("ALTER TABLE settings ADD COLUMN pan_deadzone INTEGER DEFAULT 100");
+            if (!settings.Contains("default_item_color"))         db.Execute("ALTER TABLE settings ADD COLUMN default_item_color TEXT DEFAULT '#000000'");
 
             // notes — seed DB has old schema (id INTEGER, year/subtick/content) incompatible with UUID ids
             // If id column is INTEGER, drop and recreate with the current TEXT-id schema

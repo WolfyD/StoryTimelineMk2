@@ -18,6 +18,7 @@ let resizeObserver: ResizeObserver | null = null;
 
 // Stored by renderStatic so renderDynamic can reposition the overlay without a full rebuild
 let _toX: ((t: number) => number) | null = null;
+let _fromX: ((x: number) => number) | null = null;
 let _H = 0;
 
 // Layout constants
@@ -137,6 +138,7 @@ function renderStatic() {
 
     // Store for renderDynamic so it doesn't need to recompute the range
     _toX = toX;
+    _fromX = (x: number) => rangeStart + ((x - MARGIN) / (W - 2 * MARGIN)) * (rangeEnd - rangeStart);
     _H   = H;
 
     // ── 2. Density histogram ───────────────────────────────────────────────
@@ -288,7 +290,8 @@ function renderStatic() {
             tooltipLabel!.hide();
             tooltipLayer!.batchDraw();
         });
-        group.on('click', () => {
+        group.on('click', (e) => {
+            e.cancelBubble = true; // stage click handler would jump to the raw pointer position
             emit('jumpToYear', item.AbsoluteStart);
         });
 
@@ -323,6 +326,12 @@ onMounted(() => {
     dynamicLayer = new Konva.Layer();
     tooltipLayer = new Konva.Layer();
     stage.add(layer, dynamicLayer, tooltipLayer);
+
+    stage.on('click', () => {
+        const x = stage?.getPointerPosition()?.x;
+        if (x == null || !_fromX) return;
+        emit('jumpToYear', Math.round(_fromX(x)));
+    });
 
     resizeObserver = new ResizeObserver(() => {
         if (!stage || !containerRef.value) return;

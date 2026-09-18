@@ -82,6 +82,29 @@ namespace StoryTimelineMk2.Forms
             ApplyRoundedRegion();
         }
 
+        // Pre-warmed forms are constructed long before they are shown and the user may
+        // have switched theme in between, so the rim colour is re-read on every show.
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (Visible) ApplyChromeColor();
+        }
+
+        /// <summary>
+        /// Paints the resize rim with the current theme's title-bar start colour so it
+        /// blends with the Vue chrome. Called on show and when the theme is saved.
+        /// </summary>
+        public void ApplyChromeColor()
+        {
+            var hex = AppConfig.Instance.ChromeTheme.TbBgFrom;
+            try { BackColor = ColorTranslator.FromHtml(hex); }
+            catch (Exception ex)
+            {
+                // The theme editor accepts free text; an unparsable colour keeps the previous rim
+                Logger.Error("BorderlessFormBase.ApplyChromeColor", new FormatException($"tbBgFrom '{hex}'", ex));
+            }
+        }
+
         protected override void OnSizeChanged(EventArgs e)
         {
             base.OnSizeChanged(e);

@@ -200,7 +200,9 @@
 					/>
 				</div>
 
-				<div id="new-project-setup">
+				<!-- inert: when WebView2 gets focus on first show, Chromium focuses the first focusable element
+				     (this hidden input) and scrolls the overflow:hidden container, pushing the + button out of view -->
+				<div id="new-project-setup" :inert="!newProjectOpen">
 					<input id="new-project-title" type="text" placeholder="Project name..." v-model="newProjectTitle" />
 
 					<div id="checkbox-div">

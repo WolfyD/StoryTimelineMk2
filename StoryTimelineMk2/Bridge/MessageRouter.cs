@@ -389,7 +389,7 @@ namespace StoryTimelineMk2.Bridge
             }
             else
             {
-                item = new TimelineItem { TimelineId = timelineId, TypeId = typeId };
+                item = new TimelineItem { TimelineId = timelineId, TypeId = typeId, Color = new SettingsRepo().GetOrCreateSettings(timelineId).DefaultItemColor };
             }
 
             var timeline = timelineRepo.GetTimelineById(timelineId);
@@ -587,6 +587,7 @@ namespace StoryTimelineMk2.Bridge
             if (p.TryGetProperty("customScale",          out var e8)) settings.CustomScale          = e8.GetSingle();
             if (p.TryGetProperty("panSpeedMultiplier",   out var e9)) settings.PanSpeedMultiplier   = e9.GetSingle();
             if (p.TryGetProperty("panDeadzone",          out var ea)) settings.PanDeadzone          = ea.GetInt32();
+            if (p.TryGetProperty("defaultItemColor",     out var eb)) settings.DefaultItemColor     = eb.GetString() ?? "#000000";
 
             settingsRepo.SaveSettings(settings);
             new TimelineRepo().SetLayoutPreset(timelineId, layoutPresetId);
@@ -1292,6 +1293,8 @@ namespace StoryTimelineMk2.Bridge
             AppConfig.Instance.ChromeTheme = theme;
             AppConfig.Instance.ThemeInitialized = true;
             AppConfig.Instance.Save();
+            foreach (Form f in Application.OpenForms)
+                (f as BorderlessFormBase)?.ApplyChromeColor();
             ReplyToVue(message.MessageId, new { status = "ok" });
         }
 

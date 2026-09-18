@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
-;
+import BaseModal from '@/components/BaseModal.vue';
 import type { TimelineNote, LayoutSettings } from '@/types/models';
 
 const props = defineProps<{
@@ -16,6 +16,35 @@ const newNoteText = ref('');
 const editingId = ref<string | null>(null);
 const editingText = ref('');
 const viewingNote = ref<TimelineNote | null>(null);
+
+// ── Height modes ─────────────────────────────────────────────────────────────
+// tall: input above the list (original) · short: list left, textarea right · tiny: one button → modal
+const NOTES_SHORT_HEIGHT = 260; // px, below this the side-by-side layout is used
+const NOTES_TINY_HEIGHT  = 120; // px, below this only the modal button fits
+const panelRef = ref<HTMLElement | null>(null);
+const panelHeight = ref(Infinity);
+const notesMode = computed(() =>
+    panelHeight.value < NOTES_TINY_HEIGHT ? 'tiny' : panelHeight.value < NOTES_SHORT_HEIGHT ? 'short' : 'tall');
+const notesModalOpen = ref(false);
+watch(notesMode, m => { if (m !== 'tiny') notesModalOpen.value = false; });
+
+let resizeObserver: ResizeObserver | null = null;
+onMounted(() => {
+    if (!panelRef.value) return;
+    resizeObserver = new ResizeObserver(entries => { panelHeight.value = entries[0]?.contentRect.height ?? Infinity; });
+    resizeObserver.observe(panelRef.value);
+});
+onBeforeUnmount(() => resizeObserver?.disconnect());
+
+// Shared by the panel and the teleported modals (CSS vars don't cross a Teleport to body)
+const npVars = computed(() => ({
+    '--np-bg':      props.layoutSettings?.NotesPanelBackgroundColor     || 'var(--app-bg)',
+    '--np-card':    props.layoutSettings?.NotesPanelCardBackgroundColor  || 'var(--app-surface)',
+    '--np-text':    props.layoutSettings?.NotesPanelTextColor            || 'var(--app-text)',
+    '--np-heading': props.layoutSettings?.NotesPanelHeadingColor         || 'var(--app-text-muted)',
+    '--np-accent':  props.layoutSettings?.NotesPanelAccentColor          || 'var(--app-accent)',
+    '--np-fs':      (props.layoutSettings?.NotesPanelFontSize ?? 13) + 'px',
+}));
 
 const inRangeNotes = computed(() => {
     if (!props.layoutSettings) return store.notes;
@@ -162,14 +191,7 @@ function formatApproximate(dist: number): string {
 </script>
 
 <template>
-    <div class="notes-panel" :style="{
-        '--np-bg':      props.layoutSettings?.NotesPanelBackgroundColor     || 'var(--app-bg)',
-        '--np-card':    props.layoutSettings?.NotesPanelCardBackgroundColor  || 'var(--app-surface)',
-        '--np-text':    props.layoutSettings?.NotesPanelTextColor            || 'var(--app-text)',
-        '--np-heading': props.layoutSettings?.NotesPanelHeadingColor         || 'var(--app-text-muted)',
-        '--np-accent':  props.layoutSettings?.NotesPanelAccentColor          || 'var(--app-accent)',
-        '--np-fs':      (props.layoutSettings?.NotesPanelFontSize ?? 13) + 'px',
-    }">
+    <div ref="panelRef" class="notes-panel" :style="npVars">
         <!-- Tab bar -->
         <div class="tab-bar">
             <button
@@ -195,14 +217,27 @@ function formatApproximate(dist: number): string {
 
         <!-- ═══ NOTES TAB ═══════════════════════════════════════════════════ -->
         <template v-if="store.notesDistanceTab === 'notes'">
+            <button v-if="notesMode === 'tiny'" class="notes-open-btn" @click="notesModalOpen = true">
+                <i class="ri-sticky-note-fill"></i> Notes ({{ inRangeNotes.length }} in range)
+            </button>
+            <Teleport to="body">
+                <BaseModal v-if="notesModalOpen" title="Notes" width="min(640px, 92vw)" @close="notesModalOpen = false">
+                    <div id="notes-modal-body" class="notes-modal-body" :style="npVars" />
+                </BaseModal>
+            </Teleport>
+
+            <!-- One copy of the notes UI; in tiny mode it is teleported into the modal above.
+                 :key remounts the Teleport so the target is resolved after the modal exists (Vue caches it per mount) -->
+            <Teleport :key="String(notesModalOpen)" to="#notes-modal-body" :disabled="!notesModalOpen">
+            <div v-show="notesMode !== 'tiny' || notesModalOpen" class="notes-tab" :class="notesMode === 'short' ? 'mode-short' : 'mode-tall'">
             <div class="notes-input-row">
                 <textarea
                     v-model="newNoteText"
                     class="notes-textarea"
-                    placeholder="Write a note for this moment…"
+                    :placeholder="notesMode === 'short' ? 'Write a note for this moment… Ctrl+Enter to send' : 'Write a note for this moment…'"
                     @keydown.ctrl.enter="addNote"
                 />
-                <div class="notes-input-meta">
+                <div v-if="notesMode !== 'short'" class="notes-input-meta">
                     <div class="notes-current-year-label">Current Year</div>
                     <div class="notes-current-year-value">{{ Math.floor(store.currentNowYear) }}</div>
                     <button class="notes-add-btn" @click="addNote">Add Note</button>
@@ -238,6 +273,8 @@ function formatApproximate(dist: number): string {
                 </div>
             </div>
             <div v-else  style="user-select: none;" class="notes-empty">No notes in range</div>
+            </div>
+            </Teleport>
         </template>
 
         <!-- ═══ DISTANCE TAB ════════════════════════════════════════════════ -->
@@ -313,7 +350,7 @@ function formatApproximate(dist: number): string {
 
         <!-- View modal (shared) -->
         <Teleport to="body">
-            <div v-if="viewingNote" class="note-view-backdrop" @click="viewingNote = null">
+            <div v-if="viewingNote" class="note-view-backdrop" :style="npVars" @click="viewingNote = null">
                 <div class="note-view-modal" @click.stop>
                     <div class="note-view-year">{{ formatYear(viewingNote.AbsoluteTime) }}</div>
                     <div class="note-view-content">{{ viewingNote.NoteContents }}</div>
@@ -384,6 +421,48 @@ function formatApproximate(dist: number): string {
 }
 
 // ── Notes tab ────────────────────────────────────────────────────────────────
+.notes-tab {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+// Short panel: list on the left, textarea on the right (DOM order is kept, row-reverse flips it)
+.mode-short {
+    flex-direction: row-reverse;
+    .notes-input-row { flex: 1 1 50%; min-width: 0; }
+    .notes-textarea  { min-height: 0; }
+    .notes-divider   { width: 1px; height: auto; margin: 10px 0; }
+    .notes-list, .notes-empty { flex: 1 1 50%; min-width: 0; padding-bottom: 10px; }
+}
+
+.notes-open-btn {
+    margin: 10px;
+    padding: 6px 10px;
+    background: var(--np-card);
+    border: 1px solid color-mix(in srgb, var(--np-heading) 40%, transparent);
+    border-radius: 4px;
+    color: var(--np-text);
+    font-size: 0.85em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    i { color: var(--np-accent); }
+    &:hover { border-color: var(--np-accent); }
+}
+
+.notes-modal-body {
+    height: min(70vh, 520px);
+    display: flex;
+    flex-direction: column;
+    background: var(--np-bg);
+    color: var(--np-text);
+    font-size: var(--np-fs);
+}
+
 .notes-input-row {
     display: flex;
     gap: 10px;

@@ -24,8 +24,9 @@ const local = reactive({
     IsFullscreen: props.settings?.IsFullscreen ?? false,
     UseCustomScaling: props.settings?.UseCustomScaling ?? false,
     CustomScale: props.settings?.CustomScale ?? 1.0,
-    PanSpeedMultiplier: props.settings?.PanSpeedMultiplier ?? 10.0,
+    PanSpeedMultiplier: props.settings?.PanSpeedMultiplier ?? 5.0,
     PanDeadzone: props.settings?.PanDeadzone ?? 100,
+    DefaultItemColor: props.settings?.DefaultItemColor ?? '#000000',
     selectedLayoutId: props.layoutSettings?.Id ?? 'ls_default',
 })
 
@@ -337,6 +338,7 @@ async function save() {
             layoutPresetId: local.selectedLayoutId,
             panSpeedMultiplier: local.PanSpeedMultiplier,
             panDeadzone: local.PanDeadzone,
+            defaultItemColor: local.DefaultItemColor,
         }),
         BackendAPI.SaveLayoutSettings(localLayout),
     ])
@@ -351,6 +353,7 @@ async function save() {
             store.settings.CustomScale = local.CustomScale
             store.settings.PanSpeedMultiplier = local.PanSpeedMultiplier
             store.settings.PanDeadzone = local.PanDeadzone
+            store.settings.DefaultItemColor = local.DefaultItemColor
         }
         if (lsResult.layoutSettings) store.setLayoutSettings(lsResult.layoutSettings)
         emit('close')
@@ -395,11 +398,14 @@ async function save() {
                     <span class="s-label">Display Radius <SettingHint tip="How many years around the current view to load and render items" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.DisplayRadius" :step="1" min="1" max="100" />
 
-                    <span class="s-label">Pan Speed <SettingHint tip="Middle-mouse pan speed multiplier. Default 10 = normal feel; lower = slower, higher = faster" /></span>
+                    <span class="s-label">Pan Speed <SettingHint tip="Middle-mouse pan speed multiplier. Default 5 = normal feel; lower = slower, higher = faster" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.PanSpeedMultiplier" :step="0.1" min="0.01" max="100" />
 
                     <span class="s-label">Pan Deadzone (px) <SettingHint tip="Width of the neutral zone at screen center where middle-mouse does not pan; cursor shows ↔ but no movement occurs" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.PanDeadzone" :step="1" min="0" max="500" />
+
+                    <span class="s-label">Default Item Color <SettingHint tip="Colour pre-filled for every new item on this timeline" /></span>
+                    <input class="s-color" type="color" v-model="local.DefaultItemColor" />
 
                     <span class="s-label">Show Guides <SettingHint tip="Toggle guide lines on the canvas (reserved for future use)" /></span>
                     <button class="toggle" :class="{ 'is-on': local.ShowGuides }" type="button" @click="local.ShowGuides = !local.ShowGuides">

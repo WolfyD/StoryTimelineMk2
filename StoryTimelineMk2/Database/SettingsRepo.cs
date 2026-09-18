@@ -42,12 +42,12 @@ namespace StoryTimelineMk2.Database
                         (timeline_id, pixels_per_subtick,
                          is_fullscreen, show_guides, window_size_x, window_size_y,
                          window_position_x, window_position_y, use_custom_scaling, custom_scale,
-                         display_radius, canvas_settings, pan_speed_multiplier, pan_deadzone, updated_at)
+                         display_radius, canvas_settings, pan_speed_multiplier, pan_deadzone, default_item_color, updated_at)
                     VALUES
                         (@TimelineId, @PixelsPerSubtick,
                          @IsFullscreen, @ShowGuides, @WindowSizeX, @WindowSizeY,
                          @WindowPositionX, @WindowPositionY, @UseCustomScaling, @CustomScale,
-                         @DisplayRadius, @CanvasSettings, @PanSpeedMultiplier, @PanDeadzone, CURRENT_TIMESTAMP);",
+                         @DisplayRadius, @CanvasSettings, @PanSpeedMultiplier, @PanDeadzone, @DefaultItemColor, CURRENT_TIMESTAMP);",
                     settings);
             }
 
@@ -76,6 +76,7 @@ namespace StoryTimelineMk2.Database
                     timeline_minimised   = @TimelineMinimised,
                     pan_speed_multiplier = @PanSpeedMultiplier,
                     pan_deadzone         = @PanDeadzone,
+                    default_item_color   = @DefaultItemColor,
                     updated_at           = CURRENT_TIMESTAMP
                 WHERE timeline_id = @TimelineId;",
                 settings);

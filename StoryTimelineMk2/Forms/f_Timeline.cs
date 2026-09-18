@@ -11,7 +11,7 @@ namespace StoryTimelineMk2.Forms
 {
     public partial class f_Timeline : BorderlessFormBase
     {
-        private MessageRouter _messageRouter = null!;
+        private MessageRouter? _messageRouter;
         private Database.SettingsItem _savedSettings = null!;
         private bool _preNavComplete = false;
         private bool _didPreNavigate = false;
@@ -50,7 +50,6 @@ namespace StoryTimelineMk2.Forms
             try
             {
                 var form = new f_Timeline();
-                form.ShowInTaskbar = false;
                 _ = form.Handle; // force HWND without Show()
                 Logger.Info("f_Timeline.Prewarm", "EnsureCoreWebView2Async starting");
                 var env = await WebView2EnvironmentFactory.GetAsync("timeline");
@@ -67,6 +66,8 @@ namespace StoryTimelineMk2.Forms
                     System.IO.Directory.CreateDirectory(mediaFolder);
                     coreWV.SetVirtualHostNameToFolderMapping("media.app", mediaFolder, CoreWebView2HostResourceAccessKind.Allow);
                     coreWV.SetVirtualHostNameToFolderMapping("app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
+                    // Router must exist before Navigate: Vue fires WindowGetMaximized/GetAppConfig on mount
+                    form._messageRouter = new MessageRouter(coreWV, form);
                     coreWV.NavigationCompleted += (_, _) =>
                     {
                         form._preNavComplete = true;
@@ -132,7 +133,7 @@ namespace StoryTimelineMk2.Forms
                 Directory.CreateDirectory(mediaFolder);
                 coreWV.SetVirtualHostNameToFolderMapping("media.app", mediaFolder, CoreWebView2HostResourceAccessKind.Allow);
 
-                _messageRouter = new MessageRouter(coreWV, this);
+                _messageRouter ??= new MessageRouter(coreWV, this);
                 coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
                 _ = FireUpdateCheckAsync();
 

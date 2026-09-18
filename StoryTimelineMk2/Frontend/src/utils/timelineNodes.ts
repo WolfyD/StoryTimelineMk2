@@ -183,8 +183,10 @@ export const updateAbsolutePositions = (
         const size = boxWidth;
         elements.box.width(size);
         elements.box.height(size);
-        elements.box.position({ x: anchorX - size / 2, y: targetY });
-        const stemEndY = targetY < stageCenterY ? targetY + size : targetY;
+        // Lane Y is the box top sized for TimelineEventBoxHeight; below the line a taller picture would run off the bottom edge
+        const y = targetY < stageCenterY ? targetY : targetY - (size - layoutSettings.TimelineEventBoxHeight);
+        elements.box.position({ x: anchorX - size / 2, y });
+        const stemEndY = targetY < stageCenterY ? y + size : y;
         elements.stem.points([anchorX, stageCenterY, anchorX, stemEndY]);
     } else {
         // Calculate the absolute X position for the box

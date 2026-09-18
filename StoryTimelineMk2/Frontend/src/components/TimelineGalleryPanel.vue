@@ -17,7 +17,7 @@ type GalleryMode = 'grid' | 'cascade' | 'calendar';
 const mode = ref<GalleryMode>('grid');
 
 // { url, title, itemTitle }
-interface GalleryEntry { url: string; title: string; itemTitle: string; }
+interface GalleryEntry { url: string; thumbUrl: string; title: string; itemTitle: string; }
 
 const entries = ref<GalleryEntry[]>([]);
 const cascadeIndex = ref(0);
@@ -56,6 +56,7 @@ watch(inRangeItemIds, (items) => {
                 for (const pic of data?.Pictures ?? []) {
                     fetched.push({
                         url: `https://media.app/${pic.FilePath}`,
+                        thumbUrl: `https://media.app/${pic.ThumbPath}`,
                         title: pic.Title || pic.FileName,
                         itemTitle: title,
                     });
@@ -130,7 +131,7 @@ const cascadeOrder = computed(() => {
                 :title="entry.itemTitle + (entry.title ? ' – ' + entry.title : '')"
                 @click="openLightbox($event, entry.url, entries.map(e => e.url))"
             >
-                <img :src="entry.url" :alt="entry.title" />
+                <img :src="entry.thumbUrl" :alt="entry.title" />
             </div>
         </div>
 
@@ -148,7 +149,7 @@ const cascadeOrder = computed(() => {
                     }"
                     @click="pos === cascadeOrder.length - 1 ? openLightbox($event, entries[idx].url, entries.map(e => e.url)) : null"
                 >
-                    <img :src="entries[idx].url" :alt="entries[idx].title" />
+                    <img :src="entries[idx].thumbUrl" :alt="entries[idx].title" />
                 </div>
             </div>
             <div class="gallery-cascade-controls">

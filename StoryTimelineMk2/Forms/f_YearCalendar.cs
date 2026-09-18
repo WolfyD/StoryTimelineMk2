@@ -48,7 +48,6 @@ namespace StoryTimelineMk2.Forms
             try
             {
                 var form = new f_YearCalendar();
-                form.ShowInTaskbar = false;
                 _ = form.Handle; // force HWND without Show()
                 var env = await WebView2EnvironmentFactory.GetAsync("yearCalendar");
                 await form.wv_YearCalendar.EnsureCoreWebView2Async(env);

@@ -66,6 +66,7 @@ export interface TimelineSettings {
     TimelineMinimised: boolean;
     PanSpeedMultiplier: number;
     PanDeadzone: number;
+    DefaultItemColor: string;
 }
 
 export interface CanvasSettingsObject {
@@ -295,6 +296,8 @@ export interface ItemStoryRef {
 export interface MediaItem {
 	Id: string;
 	FilePath: string;
+	/** 256px PNG under thumbs/ for small displays; falls back to FilePath when no thumb could be made */
+	ThumbPath: string;
 	FileName: string;
 	FileSize: number;
 	FileType: string;

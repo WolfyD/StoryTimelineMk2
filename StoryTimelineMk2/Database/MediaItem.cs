@@ -8,6 +8,8 @@ namespace StoryTimelineMk2.Database
     {
         public string Id { get; set; } = null!;
         public string FilePath { get; set; } = string.Empty;
+        /// <summary>Not a DB column — set by MediaRepo.EnsureThumb: "thumbs/{Id}.png", or FilePath when no thumb could be made.</summary>
+        public string ThumbPath { get; set; } = string.Empty;
         public string FileName { get; set; } = string.Empty;
         public int FileSize { get; set; }
         public string FileType { get; set; } = string.Empty;

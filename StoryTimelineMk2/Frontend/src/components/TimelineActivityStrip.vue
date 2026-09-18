@@ -88,7 +88,7 @@ const navItems = [
 
         <!-- ── Navigation icons ──────────────────────────────────── -->
         <button
-            v-for="item in navItems"
+            v-for="item in navItems.filter(i => i.available)"
             :key="item.id"
             class="strip-btn"
             :class="{

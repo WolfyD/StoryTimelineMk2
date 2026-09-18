@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, reactive } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
 import type { LayoutSettings, TimelineItem, MediaItem } from '@/types/models';
@@ -14,7 +14,8 @@ const props = defineProps<{
 const store = useTimelineStore();
 
 // Cache: itemId → first picture URL (null = no picture, undefined = not yet fetched)
-const pictureCache = ref<Map<string, string | null>>(new Map());
+// Keyed by item object: upsertItem replaces the object, so a saved item refetches its picture automatically
+const pictureCache = reactive(new WeakMap<TimelineItem, string | null>());
 
 const { lightboxSrc, lightboxCollection, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext, onLbBeforeEnter, onLbEnter, onLbBeforeLeave, onLbLeave } = useLightbox()
 
@@ -53,7 +54,7 @@ function inRange(item: TimelineItem): boolean {
     return item.AbsoluteStart >= rangeStart && item.AbsoluteStart <= rangeEnd;
 }
 
-const inRangeItems = computed(() => store.filteredItems.filter(inRange));
+const inRangeItems = computed(() => store.filteredItems.filter(i => i.ShowInNotes !== false && inRange(i)));
 
 const ages = computed(() =>
     inRangeItems.value
@@ -80,21 +81,21 @@ watch(inRangeItems, (items) => {
     _fetchTimer = setTimeout(async () => {
         _fetchTimer = null;
         for (const item of items) {
-            if (pictureCache.value.has(item.Id)) continue;
-            pictureCache.value.set(item.Id, undefined as any);
+            if (pictureCache.has(item)) continue;
+            pictureCache.set(item, undefined as any);
             try {
                 const data = await BackendAPI.GetItemForEdit(item.TimelineId, item.Id);
                 const first = data?.Pictures?.[0];
-                pictureCache.value.set(item.Id, first ? `https://media.app/${first.FilePath}` : null);
+                pictureCache.set(item, first ? `https://media.app/${first.ThumbPath}` : null);
             } catch {
-                pictureCache.value.set(item.Id, null);
+                pictureCache.set(item, null);
             }
         }
     }, 300);
 }, { immediate: true });
 
-function picUrl(itemId: string): string | null {
-    const v = pictureCache.value.get(itemId);
+function picUrl(item: TimelineItem): string | null {
+    const v = pictureCache.get(item);
     return v === undefined ? null : v;
 }
 </script>
@@ -158,11 +159,11 @@ function picUrl(itemId: string): string | null {
                         <div v-if="item.Content" class="data-item-content">{{ item.Content }}</div>
                     </div>
                     <div
-                        v-if="picUrl(item.Id)"
+                        v-if="picUrl(item)"
                         class="data-item-image"
-                        @click="openLightbox($event, picUrl(item.Id)!)"
+                        @click="openLightbox($event, picUrl(item)!)"
                     >
-                        <img :src="picUrl(item.Id)!" alt="" />
+                        <img :src="picUrl(item)!" alt="" />
                     </div>
                 </div>
             </template>
