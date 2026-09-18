@@ -1,67 +1,63 @@
-<#
-.SYNOPSIS
-    Bump version, build artifacts, and optionally publish a GitHub release.
-
-.PARAMETER Version
-    SemVer string, e.g. "1.1.0"
-
-.PARAMETER CreateRelease
-    If set, tags the commit and creates a GitHub release via `gh`.
-
-.PARAMETER PreRelease
-    Marks the GitHub release as a pre-release.
-
-.PARAMETER Notes
-    Optional release notes. If omitted and -CreateRelease is set,
-    GitHub auto-generates notes from merged PRs.
-
-.PARAMETER TestRelease
-    Builds test installers (artifact names end in -test). A test installer
-    always treats the .NET runtime as missing (so the download path runs) and
-    writes a detailed log.txt next to the installer exe. Cannot be combined
-    with -CreateRelease. The version bump still happens - pass the current
-    version to leave the source files untouched.
-
-.PARAMETER Help
-    Show this help and exit.
-
-.EXAMPLE
-    # Build artifacts only (no GitHub push)
-    .\release.ps1 -Version 1.1.0
-
-.EXAMPLE
-    # Full release with auto-generated notes
-    .\release.ps1 -Version 1.1.0 -CreateRelease
-
-.EXAMPLE
-    # Full release with custom notes
-    .\release.ps1 -Version 1.1.0 -CreateRelease -Notes "Bug fixes and performance improvements."
-
-.EXAMPLE
-    # Test installers: forced runtime download + log.txt, nothing pushed
-    .\release.ps1 -Version 1.1.0 -TestRelease
-#>
-
 #Requires -Version 5.1
-[CmdletBinding()]
+# Story Timeline release script - run .\release.ps1 -Help for usage.
+[CmdletBinding(DefaultParameterSetName = 'Build')]
 param(
+    # Bare .\release.ps1 prompts for this (Mandatory); -Help is its own set so it never prompts.
+    [Parameter(ParameterSetName = 'Build', Mandatory, Position = 0)]
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version,
 
-    [switch]$CreateRelease,
-    [switch]$PreRelease,
-    [string]$Notes = "",
-    [switch]$TestRelease,
-    [Alias("h")][switch]$Help
+    [Parameter(ParameterSetName = 'Build')] [switch]$CreateRelease,
+    [Parameter(ParameterSetName = 'Build')] [switch]$PreRelease,
+    [Parameter(ParameterSetName = 'Build')] [string]$Notes = "",
+    [Parameter(ParameterSetName = 'Build')] [switch]$TestRelease,
+
+    [Parameter(ParameterSetName = 'Help', Mandatory)] [Alias("h")] [switch]$Help
 )
 
-if ($Help -or -not $Version) {
-    Get-Help $PSCommandPath -Detailed
+if ($Help) {
+    Write-Host @'
+
+  Story Timeline release script
+
+  USAGE
+    .\release.ps1                       prompts for the version, then builds everything
+    .\release.ps1 1.2.0                 same, version given up front
+    .\release.ps1 1.2.0 -CreateRelease  build everything, then tag + push + publish to GitHub
+    .\release.ps1 1.2.0 -TestRelease    build test installers (see below), never publishes
+    .\release.ps1 -Help                 this text
+
+  WHAT A BUILD DOES
+    1. Writes the version into StoryTimelineMk2.csproj, app.manifest,
+       Frontend/package.json and Installer/InstallerContext.cs
+    2. Builds all four artifacts into release\v<version>\
+         StoryTimeline-v<x>-setup.exe              installer, ~5 MB, fetches .NET 10 runtime if missing
+         StoryTimeline-v<x>-setup-offline.exe      installer, ~50 MB, runtime bundled
+         StoryTimeline-v<x>-portable.zip           app only, ~5 MB, needs .NET 10 runtime
+         StoryTimeline-v<x>-portable-offline.zip   app only, ~50 MB, self-contained
+    Nothing leaves your machine unless you pass -CreateRelease.
+
+  FLAGS
+    -CreateRelease   git tag v<x>, push the tag, create the GitHub release with all four files
+    -PreRelease      mark that GitHub release as a pre-release (the in-app update checker
+                     ignores pre-releases). Only meaningful with -CreateRelease.
+    -Notes "..."     release notes for the GitHub release. Default: GitHub auto-generates
+                     them from merged PRs. Only meaningful with -CreateRelease.
+    -TestRelease     artifacts get a -test suffix; the installer always shows the .NET
+                     runtime page and downloads the runtime even if it is installed, and
+                     writes log.txt next to the installer exe. Cannot combine with
+                     -CreateRelease. Pass the current version to leave source files unchanged.
+    -Help, -h        this text
+
+'@
     exit 0
 }
 if ($TestRelease -and $CreateRelease) {
     Write-Host "  ERROR: -TestRelease cannot be combined with -CreateRelease" -ForegroundColor Red
     exit 1
+}
+if (-not $CreateRelease -and ($PreRelease -or $Notes)) {
+    Write-Host "  NOTE: -PreRelease / -Notes only apply together with -CreateRelease (ignored)" -ForegroundColor Yellow
 }
 
 $ErrorActionPreference = "Stop"

@@ -42,23 +42,26 @@ Everything downstream reads from these:
 ## Running the release script
 
 ```powershell
-# Build artifacts only (no GitHub push) - good for testing the build
-.\release.ps1 -Version 1.1.0
+# Default: prompts for the version, bumps it everywhere, builds all four artifacts.
+# Nothing is pushed or published.
+.\release.ps1
+.\release.ps1 1.1.0            # same, version given up front
 
-# Full release with auto-generated GitHub release notes (from merged PRs)
-.\release.ps1 -Version 1.1.0 -CreateRelease
+# Build, then tag + push + create the GitHub release (notes auto-generated from merged PRs)
+.\release.ps1 1.1.0 -CreateRelease
 
-# Full release with custom notes
-.\release.ps1 -Version 1.1.0 -CreateRelease -Notes "Bug fixes."
+# ...with custom notes
+.\release.ps1 1.1.0 -CreateRelease -Notes "Bug fixes."
 
-# Pre-release (shown as pre-release on GitHub, NOT picked up by update checker)
-.\release.ps1 -Version 1.1.0-beta -CreateRelease -PreRelease
+# ...as a pre-release (NOT picked up by the in-app update checker).
+# The version itself must stay plain x.y.z - no "-beta" suffix.
+.\release.ps1 1.1.0 -CreateRelease -PreRelease
 
-# Test build: forces the .NET runtime page + writes log.txt next to the installer,
-# artifacts are suffixed -test. Pass the current version to avoid touching source files.
-.\release.ps1 -Version 1.1.0 -TestRelease
+# Test installers: -test suffix, the installer always shows the .NET runtime page and
+# writes log.txt next to its exe. Pass the current version to leave source files unchanged.
+.\release.ps1 1.0.0 -TestRelease
 
-# Full parameter help
+# Usage text
 .\release.ps1 -Help
 ```
 
