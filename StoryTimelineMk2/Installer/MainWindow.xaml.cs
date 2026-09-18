@@ -13,7 +13,8 @@ public partial class MainWindow : Window
     private bool _installDone = false;
 
     private ProgressPage? _progressPage;
-    private FinishPage? _finishPage;
+    private FinishPage?   _finishPage;
+    private LicensePage?  _licPage;
     private int _totalDots = 4;
 
     public MainWindow()
@@ -26,10 +27,29 @@ public partial class MainWindow : Window
     private void BuildPages()
     {
         _pages.Clear();
+        _licPage = null;
 
-        if (InstallerContext.Current.Mode == InstallerMode.Install)
+        var ctx = InstallerContext.Current;
+
+        if (ctx.Mode == InstallerMode.Uninstall)
         {
-            _pages.Add(new WelcomePage());
+            // Direct uninstall (/uninstall arg from Add/Remove Programs)
+            _pages.Add(new UninstallPage());
+            _progressPage = new ProgressPage();
+            _pages.Add(_progressPage);
+            _finishPage = new FinishPage();
+            _pages.Add(_finishPage);
+            _totalDots = 2;
+        }
+        else if (ctx.IsAlreadyInstalled)
+        {
+            // Already installed — show mode selection, then license + install flow
+            if (ctx.InstalledDir != null)
+                ctx.InstallDir = ctx.InstalledDir;
+
+            _pages.Add(new ModePage());
+            _licPage = new LicensePage();
+            _pages.Add(_licPage);
             _pages.Add(new DirectoryPage());
             _pages.Add(new OptionsPage());
             _progressPage = new ProgressPage();
@@ -40,12 +60,17 @@ public partial class MainWindow : Window
         }
         else
         {
-            _pages.Add(new UninstallPage());
+            // Fresh install
+            _pages.Add(new WelcomePage());
+            _licPage = new LicensePage();
+            _pages.Add(_licPage);
+            _pages.Add(new DirectoryPage());
+            _pages.Add(new OptionsPage());
             _progressPage = new ProgressPage();
             _pages.Add(_progressPage);
             _finishPage = new FinishPage();
             _pages.Add(_finishPage);
-            _totalDots = 3;
+            _totalDots = 4;
         }
     }
 
@@ -67,6 +92,7 @@ public partial class MainWindow : Window
         {
             NextButton.Content = "Finish";
             NextButton.Visibility = Visibility.Visible;
+            NextButton.IsEnabled = true;
         }
         else if (IsProgressPage)
         {
@@ -76,6 +102,8 @@ public partial class MainWindow : Window
         {
             NextButton.Content = "Next →";
             NextButton.Visibility = Visibility.Visible;
+            // Disable Next on LicensePage until the user accepts the terms
+            NextButton.IsEnabled = !(_pages[_currentIdx] is LicensePage lp && !lp.IsAccepted);
         }
 
         // Rebuild step dots
@@ -104,27 +132,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private int GetDotIndex(int pageIdx)
-    {
-        if (InstallerContext.Current.Mode == InstallerMode.Install)
-        {
-            // Pages: 0=Welcome 1=Directory 2=Options 3=Progress 4=Finish
-            // Dots:  0         1           2          3           3
-            return pageIdx switch
-            {
-                0 => 0, 1 => 1, 2 => 2, 3 => 3, 4 => 3, _ => 0
-            };
-        }
-        else
-        {
-            // Pages: 0=Uninstall 1=Progress 2=Finish
-            // Dots:  0            1          2
-            return pageIdx switch
-            {
-                0 => 0, 1 => 1, 2 => 2, _ => 0
-            };
-        }
-    }
+    private static int GetDotIndex(int pageIdx) =>
+        InstallerPageFlow.GetDotIndex(pageIdx, InstallerContext.Current.Mode);
 
     private void Header_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
@@ -167,11 +176,24 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Block advance from DirectoryPage if path is invalid or unwritable
+        // ModePage: switch to uninstall flow if user chose Uninstall
+        if (_pages[_currentIdx] is ModePage mp && mp.WantsUninstall)
+        {
+            InstallerContext.Current.Mode = InstallerMode.Uninstall;
+            BuildPages();
+            NavigateTo(0);
+            return;
+        }
+
+        // LicensePage: safety gate (button should already be disabled, but guard anyway)
+        if (_pages[_currentIdx] is LicensePage lp2 && !lp2.IsAccepted)
+            return;
+
+        // DirectoryPage: block advance if path is invalid or unwritable
         if (_pages[_currentIdx] is DirectoryPage dp && !dp.IsValid)
             return;
 
-        // Transition to progress from Options or Uninstall page
+        // Transition to progress from Options or UninstallPage
         if (_pages[_currentIdx] is OptionsPage || _pages[_currentIdx] is UninstallPage)
         {
             var progressIdx = _pages.IndexOf(_progressPage!);

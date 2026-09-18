@@ -29,40 +29,41 @@
         private void InitializeComponent()
         {
             pictureBox1 = new PictureBox();
-            label1 = new Label();
+            lbl_Title = new Label();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
             SuspendLayout();
             // 
             // pictureBox1
             // 
-            pictureBox1.BackColor = Color.Transparent;
-            pictureBox1.Image = Properties.Resources.title;
-            pictureBox1.Location = new Point(8, 12);
+            pictureBox1.Image = Properties.Resources.splash_smol;
+            pictureBox1.Location = new Point(-202, -75);
             pictureBox1.Name = "pictureBox1";
-            pictureBox1.Size = new Size(480, 115);
-            pictureBox1.SizeMode = PictureBoxSizeMode.AutoSize;
+            pictureBox1.Size = new Size(705, 819);
+            pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
             pictureBox1.TabIndex = 0;
             pictureBox1.TabStop = false;
             // 
-            // label1
+            // lbl_Title
             // 
-            label1.AutoSize = true;
-            label1.BackColor = Color.Transparent;
-            label1.Font = new Font("Segoe UI", 48F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            label1.ForeColor = Color.White;
-            label1.Location = new Point(394, 93);
-            label1.Name = "label1";
-            label1.Size = new Size(103, 86);
-            label1.TabIndex = 1;
-            label1.Text = "v2";
+            lbl_Title.AutoSize = true;
+            lbl_Title.BackColor = Color.Transparent;
+            lbl_Title.FlatStyle = FlatStyle.Flat;
+            lbl_Title.ForeColor = SystemColors.ActiveCaption;
+            lbl_Title.ImageAlign = ContentAlignment.TopLeft;
+            lbl_Title.Location = new Point(357, 584);
+            lbl_Title.Name = "lbl_Title";
+            lbl_Title.Size = new Size(146, 15);
+            lbl_Title.TabIndex = 1;
+            lbl_Title.Text = "Art by: Dergderg Dorgness";
             // 
             // f_splash
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.FromArgb(15, 23, 42);
+            BackgroundImageLayout = ImageLayout.Zoom;
             ClientSize = new Size(500, 600);
-            Controls.Add(label1);
+            Controls.Add(lbl_Title);
             Controls.Add(pictureBox1);
             FormBorderStyle = FormBorderStyle.None;
             Name = "f_splash";
@@ -76,6 +77,6 @@
         #endregion
 
         private PictureBox pictureBox1;
-        private Label label1;
+        private Label lbl_Title;
     }
 }

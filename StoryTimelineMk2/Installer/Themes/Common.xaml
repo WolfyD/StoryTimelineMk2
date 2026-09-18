@@ -259,4 +259,48 @@
     <Setter Property="Margin" Value="0,0,0,6"/>
   </Style>
 
+  <!-- ===== OptionRadioButton — card-style radio for mode selection ===== -->
+  <Style x:Key="OptionRadioButton" TargetType="RadioButton">
+    <Setter Property="FontFamily" Value="Segoe UI"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Margin" Value="0,0,0,10"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Border x:Name="Card"
+                  Background="{DynamicResource SurfaceBrush}"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1.5"
+                  CornerRadius="8"
+                  Padding="16,13">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="20"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Grid Grid.Column="0" Width="18" Height="18" VerticalAlignment="Top" Margin="0,1,0,0">
+                <Ellipse x:Name="OuterRing" Stroke="{DynamicResource BorderBrush}" StrokeThickness="1.5" Fill="Transparent"/>
+                <Ellipse x:Name="InnerDot" Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed"/>
+              </Grid>
+              <ContentPresenter Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top"/>
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Card"     Property="BorderBrush"  Value="{DynamicResource AccentBrush}"/>
+              <Setter TargetName="Card"     Property="Background"   Value="{DynamicResource SurfaceHoverBrush}"/>
+              <Setter TargetName="OuterRing" Property="Stroke"      Value="{DynamicResource AccentBrush}"/>
+              <Setter TargetName="InnerDot" Property="Visibility"   Value="Visible"/>
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Card" Property="Background" Value="{DynamicResource SurfaceHoverBrush}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
 </ResourceDictionary>

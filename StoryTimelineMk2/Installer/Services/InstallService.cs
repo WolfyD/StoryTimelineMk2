@@ -1,35 +1,44 @@
 using Microsoft.Win32;
+using System.IO.Compression;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace StoryTimelineInstaller.Services;
 
 public static class InstallService
 {
     public static async Task InstallAsync(
-        string sourceDir,
         string destDir,
         IProgress<(int percent, string message)> progress,
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
-        var allFiles = Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories)
-            .Where(f => !Path.GetFileName(f).Equals("StoryTimelineInstaller.exe",
-                StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourceName = assembly.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("AppFiles.zip", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException(
+                "AppFiles.zip was not found in the installer resources.\n" +
+                "The installer must be built via release.ps1, not directly via dotnet build.");
+
+        using var resourceStream = assembly.GetManifestResourceStream(resourceName)!;
+        using var zip = new ZipArchive(resourceStream, ZipArchiveMode.Read);
+
+        var entries = zip.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToArray();
+        int total = entries.Length;
 
         Directory.CreateDirectory(destDir);
 
-        for (int i = 0; i < allFiles.Length; i++)
+        for (int i = 0; i < entries.Length; i++)
         {
             ct.ThrowIfCancellationRequested();
-            var srcFile = allFiles[i];
-            var relative = Path.GetRelativePath(sourceDir, srcFile);
-            var dstFile = Path.Combine(destDir, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(dstFile)!);
-            File.Copy(srcFile, dstFile, overwrite: true);
-            int pct = (int)((i + 1.0) / allFiles.Length * 70);
-            progress.Report((pct, $"Copying {Path.GetFileName(srcFile)}..."));
+            var entry = entries[i];
+            var destPath = Path.Combine(destDir, entry.FullName.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+            entry.ExtractToFile(destPath, overwrite: true);
+            int pct = (int)((i + 1.0) / total * 70);
+            progress.Report((pct, $"Installing {entry.Name}..."));
             await Task.Yield();
         }
 
@@ -77,8 +86,10 @@ public static class InstallService
         key.SetValue("Publisher", InstallerContext.GitHubOwner);
         key.SetValue("InstallLocation", installDir);
         key.SetValue("DisplayIcon", Path.Combine(installDir, "StoryTimeline.exe"));
-        key.SetValue("UninstallString", $"\"{installerDst}\" /uninstall");
-        key.SetValue("NoModify", 1, RegistryValueKind.DWord);
+        key.SetValue("UninstallString",      $"\"{installerDst}\" /uninstall");
+        key.SetValue("QuietUninstallString", $"\"{installerDst}\" /uninstall /quiet");
+        key.SetValue("NoModify",  1, RegistryValueKind.DWord);
+        key.SetValue("NoRepair",  1, RegistryValueKind.DWord);
         key.SetValue("URLInfoAbout",
             $"https://github.com/{InstallerContext.GitHubOwner}/{InstallerContext.GitHubRepo}");
         try
@@ -137,8 +148,8 @@ public static class InstallService
         }
         await Task.Yield();
 
-        progress.Report((80, "Scheduling removal of installation directory..."));
-        ScheduleSelfDelete(installDir);
+        progress.Report((80, "Removing installation files..."));
+        CleanupInstallDir(installDir);
         await Task.Yield();
 
         progress.Report((100, "Uninstall complete!"));
@@ -164,30 +175,78 @@ public static class InstallService
         try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); } catch { }
     }
 
-    private static void ScheduleSelfDelete(string installDir)
+    // Win32: schedule a file/dir for deletion on next reboot (for locked files)
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [SupportedOSPlatform("windows")]
+    private static extern bool MoveFileEx(string lpExistingFileName, string? lpNewFileName, int dwFlags);
+    private const int MOVEFILE_DELAY_UNTIL_REBOOT = 4;
+
+    private static void CleanupInstallDir(string installDir)
+    {
+        if (!Directory.Exists(installDir)) return;
+
+        // Delete all files immediately; anything locked (e.g. running installer exe)
+        // gets scheduled for deletion on next reboot via MoveFileEx.
+        foreach (var file in Directory.GetFiles(installDir, "*", SearchOption.AllDirectories))
+        {
+            try { File.Delete(file); }
+            catch
+            {
+                try { MoveFileEx(file, null, MOVEFILE_DELAY_UNTIL_REBOOT); } catch { }
+            }
+        }
+
+        // Remove subdirectories deepest-first
+        foreach (var dir in Directory.GetDirectories(installDir, "*", SearchOption.AllDirectories)
+                                      .OrderByDescending(d => d.Length))
+        {
+            try { Directory.Delete(dir); } catch { }
+        }
+
+        // Try to remove the root install dir — succeeds when all files were deleted above
+        try { Directory.Delete(installDir); }
+        catch
+        {
+            // Dir still contains the locked running installer exe.
+            // Launch a small bat that retries after the process exits.
+            ScheduleDirDelete(installDir);
+            // Belt-and-suspenders: also mark it for reboot cleanup
+            try { MoveFileEx(installDir, null, MOVEFILE_DELAY_UNTIL_REBOOT); } catch { }
+        }
+    }
+
+    private static void ScheduleDirDelete(string installDir)
     {
         try
         {
             var tempBat = Path.Combine(Path.GetTempPath(), "st_uninstall.cmd");
-            var escaped = installDir.Replace("\"", "\"\"");
-            var lines = new[]
-            {
+            // Escape any embedded quotes and strip trailing slashes so rd works correctly
+            var escaped = installDir.TrimEnd('\\', '/').Replace("\"", "\"\"");
+            string[] lines =
+            [
                 "@echo off",
+                "set /a TRIES=0",
                 ":loop",
                 $"rd /s /q \"{escaped}\" 2>nul",
-                $"if exist \"{escaped}\" (",
-                "  timeout /t 1 >nul",
-                "  goto loop",
+                // Use trailing backslash in if-exist so cmd tests for a DIRECTORY, not a file
+                $"if exist \"{escaped}\\\" (",
+                "  set /a TRIES+=1",
+                "  if %TRIES% lss 30 (",
+                "    timeout /t 1 /nobreak >nul 2>&1",
+                "    goto loop",
+                "  )",
                 ")",
                 "del \"%~f0\""
-            };
-            File.WriteAllLines(tempBat, lines);
+            ];
+            File.WriteAllLines(tempBat, lines, System.Text.Encoding.ASCII);
+            // Use cmd.exe /c explicitly — more reliable than shell-executing .cmd when elevated
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = tempBat,
-                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
-                CreateNoWindow = true,
-                UseShellExecute = true
+                FileName        = "cmd.exe",
+                Arguments       = $"/c \"{tempBat}\"",
+                WindowStyle     = System.Diagnostics.ProcessWindowStyle.Hidden,
+                CreateNoWindow  = true,
+                UseShellExecute = false
             });
         }
         catch { }

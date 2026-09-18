@@ -354,7 +354,7 @@ namespace StoryTimelineMk2.Bridge
             // WebView2 WebMessageReceived handler creates a nested COM message loop
             // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
             addEditItemWindow.Show(_parentForm);
-            addEditItemWindow.TopMost = _parentForm.TopMost;
+            addEditItemWindow.TopMost = _parentForm?.TopMost ?? false;
             addEditItemWindow.Activate();
         }
 
@@ -963,7 +963,7 @@ namespace StoryTimelineMk2.Bridge
             var calendarWindow = f_Calendar.TakePrewarmed() ?? new f_Calendar();
             calendarWindow.CalendarId = calendarId;
             calendarWindow.Show(_parentForm);
-            calendarWindow.TopMost = _parentForm.TopMost;
+            calendarWindow.TopMost = _parentForm?.TopMost ?? false;
             calendarWindow.Activate();
             // Re-warm for next use
             f_Calendar.BeginPrewarm();
@@ -993,7 +993,7 @@ namespace StoryTimelineMk2.Bridge
             _yearCalendarWindow.CalendarId = calendarId;
             _yearCalendarWindow.FormClosed += (_, _) => { _yearCalendarWindow = null; SendToVue("YearCalendarClosed", new { }); };
             _yearCalendarWindow.Show(_parentForm);
-            _yearCalendarWindow.TopMost = _parentForm.TopMost;
+            _yearCalendarWindow.TopMost = _parentForm?.TopMost ?? false;
             _yearCalendarWindow.Activate();
             // Re-warm for next use
             f_YearCalendar.BeginPrewarm();

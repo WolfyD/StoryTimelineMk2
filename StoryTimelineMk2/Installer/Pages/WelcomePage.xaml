@@ -50,10 +50,5 @@
       </StackPanel>
     </Border>
 
-    <TextBlock Text="By proceeding you agree to use this software for personal creative projects."
-               Foreground="{DynamicResource TextDimBrush}"
-               FontSize="11"
-               TextWrapping="Wrap"/>
-
   </StackPanel>
 </UserControl>

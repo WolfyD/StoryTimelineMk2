@@ -35,6 +35,7 @@ public partial class UninstallPage : UserControl
 
     private void UpdateDataNote(bool keeping)
     {
+        if (DataNote is null) return;  // Can fire during InitializeComponent before DataNote is assigned
         DataNote.Text = keeping
             ? @"Your story database at %LocalAppData%\StoryTimelineMk2_Data will be preserved."
             : @"Your story database at %LocalAppData%\StoryTimelineMk2_Data will be deleted.";

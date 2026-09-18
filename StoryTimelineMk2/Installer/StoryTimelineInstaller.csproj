@@ -15,4 +15,16 @@
     <!-- Suppress WinForms DPI warning — DPI is configured via WPF manifest (correct for WPF apps) -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>StoryTimelineInstaller.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- AppFiles.zip is created by release.ps1 before building the installer.
+       The Condition prevents dev builds from failing when the zip isn't present. -->
+  <ItemGroup Condition="Exists('AppFiles.zip')">
+    <EmbeddedResource Include="AppFiles.zip" />
+  </ItemGroup>
 </Project>

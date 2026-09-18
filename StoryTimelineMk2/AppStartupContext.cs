@@ -26,8 +26,9 @@ namespace StoryTimelineMk2
             _splash.BeginInvoke(_main.StartLoading);
         }
 
-        private void OnMainReady()
+        private async void OnMainReady()
         {
+            await _splash.FadeOutAsync();
             _splash.Close();
             _main.Show();
             _main.Activate();

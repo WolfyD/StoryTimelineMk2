@@ -52,9 +52,8 @@ public partial class ProgressPage : UserControl
                     Dispatcher.Invoke(() => LogBox.AppendText("WebView2 installed successfully.\n"));
                 }
 
-                var sourceDir = AppContext.BaseDirectory;
-                var destDir   = InstallerContext.Current.InstallDir;
-                await InstallService.InstallAsync(sourceDir, destDir, progress, CancellationToken.None);
+                var destDir = InstallerContext.Current.InstallDir;
+                await InstallService.InstallAsync(destDir, progress, CancellationToken.None);
             }
             else
             {

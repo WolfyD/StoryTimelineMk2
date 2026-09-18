@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -10,6 +10,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WebView2 WPF shim targets net5.0-windows; WinForms project doesn't use WPF so the conflict is irrelevant -->
     <NoWarn>$(NoWarn);MSB3277</NoWarn>
+    <!-- DPI awareness is declared in app.manifest (needed alongside UAC settings); suppress the redundancy warning -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <AssemblyName>StoryTimeline</AssemblyName>
     <RootNamespace>StoryTimelineMk2</RootNamespace>
     <Product>Story Timeline</Product>
@@ -49,7 +51,7 @@
       <FrontendDistFiles Include="$(MSBuildProjectDirectory)\Frontend\dist\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(FrontendDistFiles)" DestinationFiles="@(FrontendDistFiles->'$(PublishDir)Frontend\dist\%(RecursiveDir)%(Filename)%(Extension)')" />
-    <Message Text="[PublishFrontend] Copied dist → $(PublishDir)Frontend\dist\" Importance="high" />
+    <Message Text="[PublishFrontend] Copied dist ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ $(PublishDir)Frontend\dist\" Importance="high" />
   </Target>
 
   <ItemGroup>
@@ -66,6 +68,10 @@
     <EmbeddedResource Remove="Installer\**" />
     <None Remove="Installer\**" />
     <Page Remove="Installer\**" />
+    <Content Remove="StoryTimelineInstaller.Tests\**" />
+    <Compile Remove="StoryTimelineInstaller.Tests\**" />
+    <EmbeddedResource Remove="StoryTimelineInstaller.Tests\**" />
+    <None Remove="StoryTimelineInstaller.Tests\**" />
   </ItemGroup>
 
   <ItemGroup>
