@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>Misc\app-icon.ico</ApplicationIcon>
+    <ApplicationIcon>app-icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WebView2 WPF shim targets net5.0-windows; WinForms project doesn't use WPF so the conflict is irrelevant -->
     <NoWarn>$(NoWarn);MSB3277</NoWarn>

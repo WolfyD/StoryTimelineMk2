@@ -366,3 +366,16 @@ FodyWeavers.xsd
 # Release artifacts
 StoryTimelineMk2/release/
 StoryTimelineMk2/Installer/AppFiles.zip
+
+# Databases and user data
+*.db
+*.sqlite
+
+# Test artifacts
+test-report.md
+StoryTimelineMk2/Frontend/.vitest/
+
+# Internal docs (not for public repo)
+AUDIT_FINDINGS.md
+REVIEW.md
+CHANGES.md
