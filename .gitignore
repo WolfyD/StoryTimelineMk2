@@ -363,8 +363,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-# Release artifacts
+# Release artifacts (release notes in StoryTimelineMk2/releases/ are tracked)
 StoryTimelineMk2/release/
+!StoryTimelineMk2/releases/
 StoryTimelineMk2/Installer/AppFiles.zip
 
 # Databases and user data

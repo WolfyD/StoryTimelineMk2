@@ -47,10 +47,11 @@ Everything downstream reads from these:
 .\release.ps1
 .\release.ps1 1.1.0            # same, version given up front
 
-# Build, then tag + push + create the GitHub release (notes auto-generated from merged PRs)
+# Build, then tag + push + create the GitHub release. The release body is
+# releases/<version>.md if it exists, otherwise GitHub auto-generates it from merged PRs.
 .\release.ps1 1.1.0 -CreateRelease
 
-# ...with custom notes
+# ...with notes given inline instead
 .\release.ps1 1.1.0 -CreateRelease -Notes "Bug fixes."
 
 # ...as a pre-release (NOT picked up by the in-app update checker).
@@ -76,6 +77,15 @@ release/v1.1.0/
 ```
 
 The `release/` directory is gitignored.
+
+---
+
+## Release notes
+
+`releases/<version>.md` is the GitHub release body for that version - plain markdown, `##`
+sections per area (Calendars, Items, Tags, ...), one bullet per user-visible change. The file
+is started when the version is bumped and appended to as work lands, so at release time it is
+already written. `release.ps1 -CreateRelease` picks it up automatically; `-Notes` overrides it.
 
 ---
 
@@ -145,7 +155,7 @@ To trigger the checker: publish a release on GitHub with a tag higher than the c
    2. `Compress-Archive -Path bin\publish\<flavour>\* -DestinationPath Installer\AppFiles.zip` (this is also the portable zip)
    3. `dotnet publish Installer\StoryTimelineInstaller.csproj -c Release -o Installer\bin\publish\<flavour> -p:OfflinePayload=<true|false>`
 4. `git tag v1.x.x && git push origin v1.x.x`
-5. Create GitHub release on that tag, upload all four artifacts
+5. Create GitHub release on that tag with `releases/<version>.md` as the body, upload all four artifacts
 
 ---
 

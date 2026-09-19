@@ -101,3 +101,5 @@ SQLite database lives at `%LOCALAPPDATA%\StoryTimelineMk2_Data\timeline.sqlite`.
 ## Workflow
 
 Whenever a backlog item (BL-xx) is fully or partially completed, read `BACKLOG.md` and update the relevant item's **Status** field to accurately reflect what was done. Do not wait to be asked.
+
+Whenever a user-visible feature or fix lands, add a bullet to `releases/<version>.md` for the version currently in `StoryTimelineMk2.csproj` (create the file if the version was just bumped). It is the GitHub release body — write it for users, not developers. Do not wait to be asked.

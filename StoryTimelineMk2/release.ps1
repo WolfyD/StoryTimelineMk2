@@ -41,8 +41,9 @@ if ($Help) {
     -CreateRelease   git tag v<x>, push the tag, create the GitHub release with all four files
     -PreRelease      mark that GitHub release as a pre-release (the in-app update checker
                      ignores pre-releases). Only meaningful with -CreateRelease.
-    -Notes "..."     release notes for the GitHub release. Default: GitHub auto-generates
-                     them from merged PRs. Only meaningful with -CreateRelease.
+    -Notes "..."     release notes for the GitHub release. Default: releases\<version>.md
+                     if it exists, otherwise GitHub auto-generates them from merged PRs.
+                     Only meaningful with -CreateRelease.
     -TestRelease     artifacts get a -test suffix; the installer always shows the .NET
                      runtime page and downloads the runtime even if it is installed, and
                      writes log.txt next to the installer exe. Cannot combine with
@@ -223,9 +224,14 @@ $ghArgs = @("release", "create", $tag) + $Artifacts + @(
     "--title", "Story Timeline $tag"
 )
 
+$notesFile = Join-Path $Root "releases\$Version.md"
 if ($Notes) {
     $ghArgs += "--notes"
     $ghArgs += $Notes
+} elseif (Test-Path $notesFile) {
+    Log "Release notes from releases\$Version.md"
+    $ghArgs += "--notes-file"
+    $ghArgs += $notesFile
 } else {
     $ghArgs += "--generate-notes"
 }
