@@ -1,4 +1,4 @@
-import { test, expect, findPageByRole, openTimelinePage } from './fixtures'
+import { test, expect, findPageByRole, openTimelinePage, waitForNewPage } from './fixtures'
 
 test.describe('Timeline items — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
@@ -158,5 +158,52 @@ test.describe('Timeline items — real backend', () => {
 
     // Test passes even if no edit window opened
     await expect(tl.locator('#timeline-workspace')).toBeVisible()
+  })
+
+  test('edit window: Save precedes Cancel, Escape on a dirty form asks before closing', async ({ appContext, pageErrors }) => {
+    const tl = findPageByRole(appContext, 'timeline')!
+    await tl.evaluate(() => {
+      type Root = { __vue_app__: { config: { globalProperties: { $pinia: { _s: Map<string, { currentProject: { Id: number } }> } } } } }
+      const store = (document.getElementById('app') as unknown as Root).__vue_app__.config.globalProperties.$pinia._s.get('timeline')!
+      window.chrome.webview.postMessage({ action: 'OpenAddEditItemWindow', payload: { timelineId: store.currentProject.Id, typeId: 1 } })
+    })
+    const editPage = await waitForNewPage(appContext, 'editItem', 10_000, pageErrors)
+    const editRoot = editPage.locator('.edit-item-root')
+    await expect(editRoot).toBeVisible({ timeout: 10_000 })
+
+    const headerButtons = editRoot.locator('.header-actions .btn')
+    await expect(headerButtons.nth(0)).toContainText('Save')
+    await expect(headerButtons.nth(1)).toContainText('Cancel')
+
+    await editRoot.locator('input[placeholder="Item title"]').fill('E2E dirty item')
+    await editPage.keyboard.press('Escape')
+    await expect(editPage.locator('.bm-panel')).toContainText('Discard changes?')
+
+    await editPage.locator('.bm-footer .btn-secondary').click()          // Keep editing
+    await expect(editPage.locator('.bm-panel')).toHaveCount(0)
+    await expect(editRoot.locator('input[placeholder="Item title"]')).toHaveValue('E2E dirty item')
+
+    await editRoot.locator('.header-actions .btn-secondary').click()     // Cancel → asks again
+    await editPage.locator('.bm-footer .btn-danger').click()             // Discard → WinForms hides the window
+    await expect(editPage.locator('.bm-panel')).toHaveCount(0)
+    await expect(tl.locator('#timeline-workspace')).toBeVisible()
+  })
+})
+
+test.describe('Tags manager — real backend', () => {
+  test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
+    await openTimelinePage(mainPage, appContext, pageErrors)
+  })
+
+  test('strip button opens the Tags modal and Escape closes it', async ({ appContext }) => {
+    const tl = findPageByRole(appContext, 'timeline')!
+    await tl.locator('.strip-btn--tags').click()
+    const panel = tl.locator('.bm-panel')
+    await expect(panel.locator('.modal-title')).toHaveText('Tags')
+    await expect(panel.locator('.search-input')).toBeVisible()
+    await expect(panel.locator('.state-msg.error')).toHaveCount(0)
+    await expect(panel.locator('.tag-row, .state-msg.empty').first()).toBeVisible()
+    await tl.keyboard.press('Escape')
+    await expect(panel).toHaveCount(0)
   })
 })

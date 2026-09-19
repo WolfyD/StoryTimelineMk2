@@ -838,7 +838,8 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         let endX = itemX;
 
         if (isAgeOrPeriod) {
-            const absEnd = absoluteEnd || (absoluteStart + activeStep);
+            // `> start` not truthiness: an end of exactly 0.0 (period ending on year 0) is a valid end.
+            const absEnd = absoluteEnd > absoluteStart ? absoluteEnd : absoluteStart + activeStep;
             endX = getXFromTime(absEnd, viewport.centerTime, activeStep, viewport.width, ls, ranges);
             if (Math.max(itemX, endX) < -screenBuffer || Math.min(itemX, endX) > viewport.width + screenBuffer) {
                 lockedLanes.delete(itemIdStr);
@@ -1001,7 +1002,9 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         if (typeName === "Age") {
             targetY = stageCenterY - ls.TimelineAgeHeight / 2;
         } else {
-            const isAboveLine = getItemIndex(item) % 2 !== 0;
+            // Persisted side (backend balances new items against their neighbours); parity only for
+            // rows that predate the placement column.
+            const isAboveLine = item.Placement ? item.Placement === 1 : getItemIndex(item) % 2 !== 0;
             targetY = stageCenterY + getAssignedLane(
                 itemIdStr, itemX, boxWidth, isAboveLine, isAgeOrPeriod,
                 absoluteStart, absoluteEnd, viewport.centerTime, activeStep,

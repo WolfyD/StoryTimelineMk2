@@ -79,6 +79,12 @@ but **exempt from `PruneOldBackups`** (prefix `BackupService.PreMigrationPrefix`
 idempotent on purpose: every existing install is at version 0 and replays it once; a brand-new file
 runs it as its first step. The same applies to `StatsDbMigrations` step 1.
 
+### Step 2 — item placement (1.0.2)
+
+`V2_ItemPlacement` adds `items.placement` and backfills it with the side the canvas used to derive
+from `item_index` parity (alternating by start order per timeline, periods on their own cycle,
+full-width types left at 0). See `docs/02-database.md` → `items.placement`.
+
 ## Adding a migration
 
 1. Append a step to the relevant `Steps` array with the **next** number:

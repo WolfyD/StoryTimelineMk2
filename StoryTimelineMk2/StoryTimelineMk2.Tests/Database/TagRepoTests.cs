@@ -25,6 +25,16 @@ public class TagRepoTests
         return id;
     }
 
+    private static void Link(DbTestContext ctx, string itemId, string tagName)
+    {
+        new TagRepo().EnsureTagExists(tagName);
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO item_tags (item_id, tag_id) SELECT @ItemId, id FROM tags WHERE name = @Name",
+            new { ItemId = itemId, Name = tagName });
+    }
+
+    private static IEnumerable<string> TagNames(string itemId) => new ItemRepo().GetItemTags(itemId).Select(t => t.Name);
+
     // ── GetAllTags ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -236,5 +246,73 @@ public class TagRepoTests
 
         var keepCount = db.QuerySingle<int>("SELECT COUNT(*) FROM tags WHERE name = 'keep-this'");
         Assert.Equal(1, keepCount);
+    }
+
+    [Fact]
+    public void DeleteTag_UnlinksItems_AndReturnsCount()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        string a = InsertItem(ctx, tlId), b = InsertItem(ctx, tlId);
+
+        var repo = new TagRepo();
+        Link(ctx, a, "shared"); Link(ctx, a, "only-a");
+        Link(ctx, b, "shared");
+        int sharedId = repo.GetAllWithUsage().Single(t => t.Name == "shared").Id;
+
+        int unlinked = repo.DeleteTag(sharedId);
+
+        Assert.Equal(2, unlinked);
+        Assert.Equal(["only-a"], TagNames(a));
+        Assert.Empty(TagNames(b));
+    }
+
+    // ── GetAllWithUsage / RenameTag ───────────────────────────────────────────
+
+    [Fact]
+    public void GetAllWithUsage_CountsLinkedItems_SortedByName()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        string a = InsertItem(ctx, tlId), b = InsertItem(ctx, tlId);
+
+        var repo = new TagRepo();
+        repo.EnsureTagExists("zzz-unused");
+        Link(ctx, a, "beta"); Link(ctx, a, "alpha");
+        Link(ctx, b, "beta");
+
+        var rows = repo.GetAllWithUsage().Select(t => (t.Name, t.UsageCount)).ToList();
+
+        Assert.Equal([("alpha", 1), ("beta", 2), ("zzz-unused", 0)], rows);
+    }
+
+    [Fact]
+    public void RenameTag_NormalisesName_AndKeepsLinks()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        string a = InsertItem(ctx, tlId);
+
+        var repo = new TagRepo();
+        Link(ctx, a, "old");
+        int id = repo.GetAllWithUsage().Single().Id;
+
+        repo.RenameTag(id, "  New Name ");
+
+        Assert.Equal(["new name"], TagNames(a));
+    }
+
+    [Fact]
+    public void RenameTag_RejectsEmpty_AndCollision()
+    {
+        using var ctx = new DbTestContext();
+        var repo = new TagRepo();
+        repo.EnsureTagExists("one");
+        repo.EnsureTagExists("two");
+        int oneId = repo.GetAllWithUsage().Single(t => t.Name == "one").Id;
+
+        Assert.Throws<ArgumentException>(() => repo.RenameTag(oneId, "   "));
+        Assert.Throws<InvalidOperationException>(() => repo.RenameTag(oneId, "TWO"));
+        Assert.Equal(["one", "two"], repo.GetAllWithUsage().Select(t => t.Name));
     }
 }

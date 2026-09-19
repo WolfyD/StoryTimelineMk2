@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { PhArrowsClockwise } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
 import { BackendAPI } from '@/bridge/api'
@@ -32,7 +32,8 @@ function createNew() {
 	BackendAPI.send('OpenCalendarEditorWindow', { calendarId: null })
 }
 
-onMounted(() => loadCalendars())
+onMounted(() => { loadCalendars(); window.addEventListener('calendars-changed', refresh) })
+onUnmounted(() => window.removeEventListener('calendars-changed', refresh))
 </script>
 
 <template>

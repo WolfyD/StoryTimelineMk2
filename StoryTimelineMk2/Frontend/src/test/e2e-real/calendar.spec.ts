@@ -657,3 +657,39 @@ test.describe('Calendar Editor (new calendar) — real backend', () => {
     expect(hasIt).toBeFalsy()
   })
 })
+
+// ── Calendar deletion ─────────────────────────────────────────────────────────
+
+test.describe('Calendar deletion — real backend', () => {
+  test.beforeEach(async ({ mainPage, appContext }) => {
+    await closeAny(mainPage, appContext)
+  })
+
+  test.afterAll(async ({ mainPage, appContext }) => {
+    await closeAny(mainPage, appContext)
+  })
+
+  test('default calendar has no Delete button', async ({ mainPage }) => {
+    const modal = await openManagerModal(mainPage)
+    const row = modal.locator('.cal-row').filter({ hasText: 'Gregorian' }).first()
+    await expect(row).toBeVisible({ timeout: 5000 })
+    await expect(row.locator('.action-btn.delete')).toHaveCount(0)
+  })
+
+  test('deleting the E2E calendar removes it after confirmation', async ({ mainPage }) => {
+    // Row left behind by the "save the new calendar" test above.
+    const modal = await openManagerModal(mainPage)
+    const rows = modal.locator('.cal-row').filter({ hasText: 'E2E Test Calendar' })
+    await expect(rows.first()).toBeVisible({ timeout: 5000 })
+    const before = await rows.count()
+
+    await rows.first().locator('.action-btn.delete').click()
+    // Confirm modal is a second BaseModal nested inside the manager — target its danger button directly.
+    const confirmBtn = mainPage.locator('.btn-danger')
+    await expect(confirmBtn).toBeVisible({ timeout: 3000 })
+    await confirmBtn.click()
+
+    await expect(rows).toHaveCount(before - 1, { timeout: 8000 })
+    await expect(modal.locator('.state-msg.error')).toHaveCount(0)
+  })
+})

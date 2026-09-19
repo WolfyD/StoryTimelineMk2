@@ -15,6 +15,7 @@ namespace StoryTimelineMk2.Database.Migrations
         public static readonly IReadOnlyList<Migration> Steps = new Migration[]
         {
             new(1, "1.0.1 baseline", "1.0.1", V1_Baseline),
+            new(2, "item placement", "1.0.2", V2_ItemPlacement),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -968,6 +969,28 @@ namespace StoryTimelineMk2.Database.Migrations
                     '#b4c8ff0d', '#78a0dc88',
                     '#00d4ff'
                 );");
+        }
+
+        // ── 2: items.placement ────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Which side of the axis an item sits on: 0 = unassigned (canvas falls back to item_index parity),
+        /// 1 = above, 2 = below. Existing items are frozen on the side the canvas already showed them:
+        /// it alternated by position in (absolute_start, item_index) order, periods counted separately
+        /// from everything else, and never placed ages, bookmarks, characters or boundaries.
+        /// </summary>
+        private static void V2_ItemPlacement(MigrationDb db)
+        {
+            db.Execute("ALTER TABLE items ADD COLUMN placement INTEGER NOT NULL DEFAULT 0");
+            db.Execute(@"
+                UPDATE items SET placement = (
+                    SELECT CASE WHEN o.rn % 2 = 1 THEN 1 ELSE 2 END
+                    FROM (SELECT id, ROW_NUMBER() OVER (
+                              PARTITION BY timeline_id, type_id = 2
+                              ORDER BY absolute_start, item_index, rowid) AS rn
+                          FROM items WHERE type_id NOT IN (3, 6, 7, 8, 9)) AS o
+                    WHERE o.id = items.id)
+                WHERE type_id NOT IN (3, 6, 7, 8, 9)");
         }
     }
 }

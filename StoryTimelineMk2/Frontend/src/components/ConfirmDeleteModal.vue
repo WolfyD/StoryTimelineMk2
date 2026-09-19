@@ -2,16 +2,19 @@
 import { PhWarning } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
 
-const props = defineProps<{ title: string }>()
+withDefaults(defineProps<{ title: string; heading?: string; sub?: string }>(), {
+    heading: 'Delete Timeline',
+    sub: 'All items, characters, and notes inside it will be permanently removed.',
+})
 const emit = defineEmits<{ close: []; confirm: [] }>()
 </script>
 
 <template>
-    <BaseModal title="Delete Timeline" width="min(440px, 92vw)" @close="emit('close')">
+    <BaseModal :title="heading" width="min(440px, 92vw)" @close="emit('close')">
         <div class="modal-body">
             <PhWarning :size="40" class="warning-icon" />
             <p>Are you sure you want to delete <strong>{{ title }}</strong>?</p>
-            <p class="sub">All items, characters, and notes inside it will be permanently removed.</p>
+            <p class="sub">{{ sub }}</p>
         </div>
         <template #footer>
             <button class="btn btn-cancel" @click="emit('close')">Cancel</button>

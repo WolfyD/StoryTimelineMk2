@@ -8,6 +8,7 @@ import LightboxOverlay from '@/components/LightboxOverlay.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import LodDateInput from '@/components/LodDateInput.vue'
 import ImagePickerModal from '@/components/ImagePickerModal.vue'
+import BaseModal from '@/components/BaseModal.vue'
 import type {
   TimelineItem,
   MediaItem,
@@ -348,15 +349,58 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   } catch (err) {
     console.error('[EditItem] loadData error:', err)
   } finally {
+    cleanSnapshot = snapshot()
     isLoading.value = false
   }
 }
 
-// Receives LoadItem push messages from C# when the window is reused without page reload.
+// ---------------------------------------------------------------------------
+// Dirty tracking / close confirmation
+// ---------------------------------------------------------------------------
+let cleanSnapshot = ''
+const showDiscard = ref(false)
+
+function snapshot() {
+  return JSON.stringify([
+    item.value, startYear.value, startSubYear.value, endYear.value, endSubYear.value,
+    tags.value.map(t => t.Name), characterAppearances.value, storyRefs.value, chapterRefs.value,
+  ])
+}
+
+const isDirty = () => snapshot() !== cleanSnapshot
+
+// Cancel, the window's X and Escape all land here; C# only closes once we send WindowClose.
+function requestClose() {
+  if (isDirty()) showDiscard.value = true
+  else BackendAPI.WindowClose()
+}
+
+// The form is hidden, not destroyed, so leave no stale modal behind for the next LoadItem.
+function discard() {
+  showDiscard.value = false
+  BackendAPI.WindowClose()
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.ctrlKey && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    if (!isSaving.value) save()
+  } else if (e.key === 'Escape' && !showDiscard.value && !lightboxSrc.value) {
+    if (showImagePicker.value || showCharPicker.value || showStoryPicker.value) {
+      showImagePicker.value = showCharPicker.value = showStoryPicker.value = false
+    } else {
+      requestClose()
+    }
+  }
+}
+
+// Receives push messages from C# when the window is reused without page reload.
 function handlePushMessage(event: MessageEvent) {
   let data: any
   try { data = JSON.parse(event.data) } catch { return }
+  if (data.action === 'CloseRequested') { requestClose(); return }
   if (data.action !== 'LoadItem') return
+  showDiscard.value = false
   const p = data.payload ?? {}
   loadData(
     p.timelineId ?? timelineId,
@@ -384,11 +428,13 @@ onMounted(() => {
   loadData(timelineId, itemId, defaultType, defaultAbsoluteTime, defaultGranularity)
   window.chrome?.webview?.addEventListener('message', handlePushMessage)
   document.addEventListener('mousedown', closePaletteOutside)
+  window.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   window.chrome?.webview?.removeEventListener('message', handlePushMessage)
   document.removeEventListener('mousedown', closePaletteOutside)
+  window.removeEventListener('keydown', onKeydown)
 })
 
 // ---------------------------------------------------------------------------
@@ -567,6 +613,7 @@ async function save(closeOnSuccess = true) {
     if (result?.status === 'ok') {
       isNew.value = false
       item.value.Id = result.itemId
+      cleanSnapshot = snapshot()
       if (closeOnSuccess) window.close()
     } else {
       saveError.value = (result as { message?: string })?.message ?? 'Save failed'
@@ -579,7 +626,7 @@ async function save(closeOnSuccess = true) {
 }
 
 function cancel() {
-  BackendAPI.WindowClose()
+  requestClose()
 }
 
 // ---------------------------------------------------------------------------
@@ -625,9 +672,13 @@ async function removeImage(pictureId: string) {
           {{ ITEM_TYPES.find(t => t.id === item.TypeId)?.name ?? 'Item' }}
         </span>
         <div class="header-actions">
-          <button class="btn btn-secondary" @click="cancel">Cancel</button>
           <button class="btn btn-primary" :disabled="isSaving" @click="save()">
             {{ isSaving ? 'Saving…' : 'Save' }}
+            <small class="btn-hint">Ctrl+S</small>
+          </button>
+          <button class="btn btn-secondary" @click="cancel">
+            Cancel
+            <small class="btn-hint">Esc</small>
           </button>
         </div>
         <span class="item-id-label">{{ isNew ? '' : item.Id.slice(0, 8) }}</span>
@@ -1011,6 +1062,13 @@ async function removeImage(pictureId: string) {
   </div>
 
   <div v-else class="loading-screen">Loading…</div>
+  <BaseModal v-if="showDiscard" title="Discard changes?" width="min(400px, 92vw)" @close="showDiscard = false">
+    <p class="discard-msg">This item has unsaved changes.</p>
+    <template #footer>
+      <button class="btn btn-secondary" @click="showDiscard = false">Keep editing</button>
+      <button class="btn btn-danger" @click="discard">Discard</button>
+    </template>
+  </BaseModal>
   <NotificationContainer />
 </template>
 
@@ -1116,6 +1174,27 @@ async function removeImage(pictureId: string) {
 .header-actions {
   display: flex;
   gap: 8px;
+
+  .btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 16px;
+    line-height: 1.2;
+  }
+}
+
+.btn-hint {
+  font-size: 0.62rem;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.discard-msg {
+  margin: 0;
+  padding: 16px;
+  font-size: 0.88rem;
+  color: var(--app-text-muted, #94a3b8);
 }
 
 .save-error {
@@ -1580,6 +1659,7 @@ async function removeImage(pictureId: string) {
   &.btn-primary { background: var(--app-accent, #4a90d9); color: #fff; &:hover:not(:disabled) { background: var(--app-accent-hover, #3578c5); } }
   &.btn-secondary { background: var(--app-surface-high, #334155); color: var(--app-text-muted, #cbd5e1); &:hover:not(:disabled) { background: color-mix(in srgb, var(--app-surface-high, #334155) 80%, var(--app-text, #fff)); } }
   &.btn-sm { padding: 4px 12px; font-size: 0.82rem; }
+  &.btn-danger { background: #7f1d1d; color: #fecaca; &:hover:not(:disabled) { background: #991b1b; } }
 }
 
 .btn-icon {

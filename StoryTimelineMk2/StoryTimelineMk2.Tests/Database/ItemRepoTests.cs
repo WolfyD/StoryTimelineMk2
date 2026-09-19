@@ -518,4 +518,64 @@ public class ItemRepoTests
         }
         SqliteConnection.ClearAllPools(); // let DbTestContext delete the temp folder
     }
+
+    // ── Placement (side of the line) ──────────────────────────────────────────
+
+    [Fact]
+    public void SaveItemFull_AssignsPlacement_AlternatingAroundNeighbours()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var placements = new List<int>();
+        for (int i = 0; i < 4; i++)
+        {
+            var item = MakeItem(tlId);
+            item.Year = 1500 + i; item.EndYear = item.Year;
+            item.AbsoluteStart = item.AbsoluteEnd = item.Year;
+            repo.SaveItemFull(item, [], [], [], []);
+            placements.Add(repo.GetItemById(item.Id).Placement);
+        }
+
+        Assert.Equal([1, 2, 1, 2], placements);
+    }
+
+    [Fact]
+    public void SaveItemFull_KeepsPlacement_OnUpdate_AndHonoursExplicitSide()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var first = MakeItem(tlId);
+        repo.SaveItemFull(first, [], [], [], []);
+        Assert.Equal(1, repo.GetItemById(first.Id).Placement);
+
+        // Re-saving with Placement 0 (frontend never sends it back) keeps the stored side.
+        var again = MakeItem(tlId, first.Id);
+        again.Title = "Renamed";
+        repo.SaveItemFull(again, [], [], [], []);
+        Assert.Equal(1, repo.GetItemById(first.Id).Placement);
+
+        // An explicit side wins over auto-assignment.
+        var forced = MakeItem(tlId);
+        forced.Placement = 1;
+        repo.SaveItemFull(forced, [], [], [], []);
+        Assert.Equal(1, repo.GetItemById(forced.Id).Placement);
+    }
+
+    [Fact]
+    public void SaveItemFull_LeavesPlacementZero_ForFullWidthTypes()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var age = MakeItem(tlId);
+        age.TypeId = 3;
+        repo.SaveItemFull(age, [], [], [], []);
+
+        Assert.Equal(0, repo.GetItemById(age.Id).Placement);
+    }
 }

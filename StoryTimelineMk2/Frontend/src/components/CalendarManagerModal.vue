@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { PhX, PhPencilSimple, PhEye, PhPlus, PhArrowsClockwise } from '@phosphor-icons/vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { PhX, PhPencilSimple, PhEye, PhPlus, PhArrowsClockwise, PhTrash } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
 import { BackendAPI } from '@/bridge/api'
+import { useTimelineStore } from '@/stores/timelineStore'
 import CalendarViewModal from './CalendarViewModal.vue'
+import ConfirmDeleteModal from './ConfirmDeleteModal.vue'
 
 const emit = defineEmits<{ close: [] }>()
 
-const calendars = ref<{ Id: string; Name: string }[]>([])
+const DEFAULT_CALENDAR_ID = 'cal_default_gregorian'
+
+type CalendarRow = { Id: string; Name: string; UsageCount: number }
+const calendars = ref<CalendarRow[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const viewingId = ref<string | null>(null)
+const deleteTarget = ref<CalendarRow | null>(null)
 
 async function load() {
     loading.value = true
@@ -29,7 +35,35 @@ function openEditor(calendarId: string | null) {
     BackendAPI.send('OpenCalendarEditorWindow', { calendarId })
 }
 
-onMounted(load)
+function usageText(n: number) {
+    return n === 1 ? 'Used in 1 timeline' : `Used in ${n} timelines`
+}
+
+function deleteSub(c: CalendarRow) {
+    return c.UsageCount > 0
+        ? `${usageText(c.UsageCount)} — those timelines will switch to the default Gregorian calendar.`
+        : 'This cannot be undone.'
+}
+
+async function confirmDelete() {
+    const target = deleteTarget.value
+    if (!target) return
+    deleteTarget.value = null
+    error.value = null
+    try {
+        const result = await BackendAPI.DeleteCalendar(target.Id)
+        if (result?.status !== 'ok') throw new Error(result?.message ?? 'Delete failed')
+        // Reassigned timelines carry a stale CalendarId in the project list until reloaded.
+        if (result.reassigned) useTimelineStore().loadTimelines()
+        await load()
+    } catch (e) {
+        console.error('[CalendarManagerModal] delete failed:', e)
+        error.value = `Failed to delete calendar: ${e instanceof Error ? e.message : String(e)}`
+    }
+}
+
+onMounted(() => { load(); window.addEventListener('calendars-changed', load) })
+onUnmounted(() => window.removeEventListener('calendars-changed', load))
 </script>
 
 <template>
@@ -54,8 +88,9 @@ onMounted(load)
                     No calendars yet. Create one to get started.
                 </div>
                 <ul v-else class="cal-list">
-                    <li v-for="c in calendars" :key="c.Id" class="cal-row">
+                    <li v-for="c in calendars" :key="c.Id" class="cal-row" :class="{ 'in-use': c.UsageCount > 0 }">
                         <span class="cal-name">{{ c.Name }}</span>
+                        <span v-if="c.UsageCount > 0" class="usage-badge" :title="usageText(c.UsageCount)">{{ c.UsageCount }}</span>
                         <div class="row-actions">
                             <button class="action-btn" title="View calendar" @click="viewingId = c.Id">
                                 <PhEye :size="14" />
@@ -64,6 +99,12 @@ onMounted(load)
                             <button class="action-btn edit" title="Edit calendar" @click="openEditor(c.Id)">
                                 <PhPencilSimple :size="14" />
                                 Edit
+                            </button>
+                            <button
+                                v-if="c.Id !== DEFAULT_CALENDAR_ID"
+                                class="action-btn delete" title="Delete calendar" @click="deleteTarget = c">
+                                <PhTrash :size="14" />
+                                Delete
                             </button>
                         </div>
                     </li>
@@ -77,6 +118,15 @@ onMounted(load)
                 </button>
             </div>
         </BaseModal>
+
+        <ConfirmDeleteModal
+            v-if="deleteTarget"
+            heading="Delete Calendar"
+            :title="deleteTarget.Name"
+            :sub="deleteSub(deleteTarget)"
+            @close="deleteTarget = null"
+            @confirm="confirmDelete"
+        />
 
         <!-- View modal rendered on top -->
         <CalendarViewModal
@@ -154,10 +204,27 @@ onMounted(load)
 
     &:last-child { border-bottom: none; }
     &:hover { background: color-mix(in srgb, var(--app-surface-raised, #141e33) 70%, var(--app-accent, #6366f1)); }
+    &.in-use { box-shadow: inset 3px 0 0 var(--app-accent, #6366f1); }
+}
+
+.usage-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--app-accent, #6366f1) 22%, transparent);
+    color: var(--app-accent-hover, #818cf8);
+    font-size: 0.68rem;
+    font-weight: 600;
+    cursor: default;
 }
 
 .cal-name {
-    flex: 1;
+    flex: 0 1 auto;
     font-size: 0.88rem;
     color: var(--app-text, #e2e8f0);
     overflow: hidden;
@@ -169,6 +236,7 @@ onMounted(load)
     display: flex;
     gap: 6px;
     flex-shrink: 0;
+    margin-left: auto;
 }
 
 .action-btn {
@@ -193,6 +261,11 @@ onMounted(load)
     &.edit:hover {
         border-color: #5ba55b;
         color: #8ecf8e;
+    }
+
+    &.delete:hover {
+        border-color: #a55b5b;
+        color: #e87a7a;
     }
 }
 

@@ -244,4 +244,37 @@ public class CalendarRepoTests
         var cal2Count = db.QuerySingle<int>("SELECT COUNT(*) FROM calendars WHERE id = 'cal-shared-2'");
         Assert.Equal(1, cal2Count);
     }
+
+    [Fact]
+    public void DeleteCalendar_ReassignsTimelinesToDefault_AndDropsOwnLod()
+    {
+        using var ctx = new DbTestContext();
+
+        var lod = MakeLod("lod-own");
+        new LodRepo().SaveLodProfile(lod);
+        var repo = new CalendarRepo();
+        repo.SaveCalendar(MakeCalendar(lod.Id, "cal-in-use"));
+        var timelines = new TimelineRepo();
+        int usedId   = timelines.CreateTimeline("Uses it", calendarId: "cal-in-use");
+        int otherId  = timelines.CreateTimeline("Default");
+
+        Assert.Equal(1, repo.GetUsageCounts()["cal-in-use"]);
+        int reassigned = repo.DeleteCalendar("cal-in-use");
+
+        Assert.Equal(1, reassigned);
+        Assert.Equal(CalendarRepo.DefaultCalendarId, timelines.GetTimelineById(usedId).CalendarId);
+        Assert.Equal(CalendarRepo.DefaultCalendarId, timelines.GetTimelineById(otherId).CalendarId);
+        using var db = ctx.OpenConnection();
+        Assert.Equal(0, db.QuerySingle<int>("SELECT COUNT(*) FROM lod_profiles WHERE id = 'lod-own'"));
+        Assert.False(repo.GetUsageCounts().ContainsKey("cal-in-use"));
+    }
+
+    [Fact]
+    public void DeleteCalendar_RefusesDefaultCalendar()
+    {
+        using var ctx = new DbTestContext();
+
+        Assert.Throws<InvalidOperationException>(() => new CalendarRepo().DeleteCalendar(CalendarRepo.DefaultCalendarId));
+        Assert.NotNull(new CalendarRepo().GetCalendarById(CalendarRepo.DefaultCalendarId));
+    }
 }

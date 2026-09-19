@@ -11,6 +11,7 @@ import {
     PhArrowsIn,
     PhArrowsOut,
     PhCalendarDots,
+    PhTag,
     PhBookOpen,
     PhInfo,
 } from '@phosphor-icons/vue'
@@ -29,6 +30,7 @@ const emit = defineEmits<{
     'open-help': []
     'toggle-mini': []
     'toggle-year-calendar': []
+    'open-tags': []
 }>()
 
 const helpMenuOpen = ref(false)
@@ -80,6 +82,11 @@ const navItems = [
             @click="emit('toggle-year-calendar')"
         >
             <PhCalendarDots :size="20" :weight="yearCalendarOpen ? 'fill' : 'regular'" />
+        </button>
+
+        <!-- ── Tags ───────────────────────────────────────────────── -->
+        <button class="strip-btn strip-btn--tags" title="Tags" @click="emit('open-tags')">
+            <PhTag :size="20" />
         </button>
 
         <!-- ── gap + separator ───────────────────────────────────── -->

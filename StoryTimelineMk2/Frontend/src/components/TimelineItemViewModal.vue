@@ -74,7 +74,7 @@ const panelStyle = computed(() => ({
                             <span class="vm-label">Date</span>
                             <span class="vm-value">
                                 Year {{ data.Item.Year }}
-                                <template v-if="data.Item.EndYear && data.Item.EndYear !== data.Item.Year">
+                                <template v-if="data.Item.EndYear !== data.Item.Year">
                                     – {{ data.Item.EndYear }}
                                 </template>
                             </span>

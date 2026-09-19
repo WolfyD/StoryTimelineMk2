@@ -20,10 +20,7 @@ const calendars = ref<{ Id: string; Name: string }[]>([])
 const isSaving = ref(false)
 const error = ref('')
 
-let calEditorWasOpened = false
-
 function openCalendarEditor(calendarId: string | null) {
-    calEditorWasOpened = true
     BackendAPI.send('OpenCalendarEditorWindow', { calendarId })
 }
 
@@ -37,21 +34,14 @@ async function refreshCalendars() {
     }
 }
 
-function onWindowFocus() {
-    if (calEditorWasOpened) {
-        calEditorWasOpened = false
-        refreshCalendars()
-    }
-}
-
 onMounted(async () => {
     const list = await BackendAPI.GetCalendarList()
     if (list) calendars.value = list
-    window.addEventListener('focus', onWindowFocus)
+    window.addEventListener('calendars-changed', refreshCalendars)
 })
 
 onUnmounted(() => {
-    window.removeEventListener('focus', onWindowFocus)
+    window.removeEventListener('calendars-changed', refreshCalendars)
 })
 
 async function save() {

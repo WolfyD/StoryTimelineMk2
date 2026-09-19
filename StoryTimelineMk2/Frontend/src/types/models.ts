@@ -214,6 +214,8 @@ export interface TimelineItem {
 	CreationGranularity: number;
 	TimelineId: number;
 	ItemIndex: number;
+	/** Side of the line: 0 = not assigned yet (backend picks on save), 1 = above, 2 = below. */
+	Placement?: number;
 	ShowInNotes: boolean;
 	Importance: number;
 	MinLodLevel: number;

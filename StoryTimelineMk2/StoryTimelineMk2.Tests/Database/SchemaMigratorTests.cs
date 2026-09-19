@@ -219,6 +219,36 @@ public class SchemaMigratorTests
     }
 
     /// <summary>
+    /// V2 backfills items.placement with what the canvas used to derive client-side: alternate by start
+    /// order, periods on their own cycle, full-width types (age/bookmark/character/bounds) left at 0.
+    /// </summary>
+    [Fact]
+    public void MainV0Fixture_BackfillsPlacement_AlternatingPerTimeline()
+    {
+        using var ctx = new DbTestContext();
+        string oldDb = Path.Combine(ctx.TempDir, "v0.sqlite");
+        BuildFromFixture(oldDb, "main_schema_v0_1.0.1.sql");
+        using (var db = Open(oldDb))
+        {
+            db.Execute("INSERT INTO timelines (id, title, author, description, start_year) VALUES (1, 'A', '', '', 0), (2, 'B', '', '', 0)");
+            db.Execute(@"INSERT INTO items (id, title, type_id, year, end_year, timeline_id, absolute_start, absolute_end) VALUES
+                ('e1', 'e', 1, 10, 10, 1, 10, 10), ('e2', 'e', 1, 20, 20, 1, 20, 20), ('e3', 'e', 1, 30, 30, 1, 30, 30),
+                ('p1', 'p', 2, 15, 25, 1, 15, 25), ('p2', 'p', 2, 35, 45, 1, 35, 45),
+                ('age', 'a', 3, 0, 99, 1, 0, 99),
+                ('other', 'e', 1, 5, 5, 2, 5, 5)");
+        }
+
+        DbInitializer.Initialize(oldDb, backupFirst: false);
+
+        using var verify = Open(oldDb);
+        var placement = verify.Query<(string id, int p)>("SELECT id, placement FROM items").ToDictionary(r => r.id, r => r.p);
+        Assert.Equal(1, placement["e1"]); Assert.Equal(2, placement["e2"]); Assert.Equal(1, placement["e3"]);
+        Assert.Equal(1, placement["p1"]); Assert.Equal(2, placement["p2"]);
+        Assert.Equal(0, placement["age"]);
+        Assert.Equal(1, placement["other"]);
+    }
+
+    /// <summary>
     /// Databases older than 1.0.0 (dev builds): subtick columns, INTEGER note ids, columns that were added
     /// one by one. The baseline's column probing has to bring those up too. Every released build created
     /// items/characters with created_at/updated_at inline, so those are present here as well — the

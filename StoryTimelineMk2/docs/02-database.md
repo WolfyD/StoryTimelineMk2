@@ -152,6 +152,7 @@ Seeded rows (`MainDbMigrations.cs`): 1=Event, 2=Period, 3=Age, 4=Picture, 5=Note
 | `importance` | INTEGER | DEFAULT 5 |
 | `min_lod_level` | INTEGER | DEFAULT 3 — legacy threshold, superseded by mask |
 | `lod_visibility_mask` | INTEGER | DEFAULT 255 — bit *i* set = visible at LOD index *i* |
+| `placement` | INTEGER | DEFAULT 0 — side of the line: `0` unassigned, `1` above, `2` below (migration 2). `SaveItemFull` picks a side on first save (`PickSide`: balance against the 6 nearest neighbours of the same kind, periods and non-periods separately; tie → opposite of the nearest) and keeps it afterwards. Full-width types (3, 6, 7, 8, 9) stay `0`. Migration 2 backfills existing rows with the parity the canvas used to compute. |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
@@ -551,7 +552,9 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `GetAllTags` | `IEnumerable<TagItem> GetAllTags()` | Ordered by name (`TagRepo.cs:18-22`). |
 | `EnsureTagExists` | `void EnsureTagExists(string tagName)` | `INSERT OR IGNORE`, lower-cases the name (`TagRepo.cs:24-29`). |
 | `SearchTags` | `IEnumerable<TagItem> SearchTags(string query)` | `LIKE %query%` (lower-cased), LIMIT 10 (`TagRepo.cs:31-36`). |
-| `DeleteTag` | `void DeleteTag(int id)` | DELETE; `item_tags` rows cascade (`TagRepo.cs:38-42`). |
+| `GetAllWithUsage` | `IEnumerable<(int Id, string Name, int UsageCount)> GetAllWithUsage()` | All tags with their `item_tags` count, ordered by name. Backs the Tags manager. |
+| `RenameTag` | `void RenameTag(int id, string name)` | Lower-cases and trims; `ArgumentException` when empty, `InvalidOperationException` when another tag already has the name. |
+| `DeleteTag` | `int DeleteTag(int id)` | Transactional: deletes `item_tags` rows explicitly (FKs are off in the app, nothing cascades), then the tag. Returns how many items were unlinked. |
 
 ### `StoryRepo` — `Database/StoryRepo.cs`
 
@@ -578,7 +581,8 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `SaveCalendar` | `void SaveCalendar(CalendarItem calendar)` | Upsert of all calendar fields (`CalendarRepo.cs:25-40`). |
 | `SaveCalendarWithLod` | `void SaveCalendarWithLod(CalendarItem calendar)` | Saves the nested `LodProfile` first, syncs `LodProfileId`, then saves the calendar. Not transactional across the two saves (`CalendarRepo.cs:42-47`). |
 | `GetAll` | `IEnumerable<CalendarItem> GetAll()` | Ordered by name; LOD profiles **not** loaded (`CalendarRepo.cs:49-53`). |
-| `DeleteCalendar` | `void DeleteCalendar(string id)` | Plain DELETE (no cascade defined; timelines referencing it would violate FK) (`CalendarRepo.cs:55-59`). |
+| `GetUsageCounts` | `Dictionary<string, int> GetUsageCounts()` | Timeline count per `calendar_id`; unused calendars are absent. |
+| `DeleteCalendar` | `int DeleteCalendar(string id)` | Refuses `DefaultCalendarId` (`cal_default_gregorian`). Transactional: timelines using the calendar are moved to the default, the calendar is deleted, and its LOD profile goes too unless another calendar still shares it. Returns the number of reassigned timelines. |
 
 ### `LodRepo` — `Database/LodRepo.cs`
 

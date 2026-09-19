@@ -23,6 +23,8 @@ namespace StoryTimelineMk2.Database
         public int CreationGranularity { get; set; }
         public int TimelineId { get; set; }
         public int ItemIndex { get; set; }
+        /// <summary>0 = unassigned, 1 = above the axis, 2 = below. Picked on first save, then sticky.</summary>
+        public int Placement { get; set; }
         public bool ShowInNotes { get; set; } = true;
         public int MinLodLevel { get; set; }
         public int LodVisibilityMask { get; set; } = 255;

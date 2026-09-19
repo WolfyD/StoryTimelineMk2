@@ -149,6 +149,18 @@ export const BackendAPI = {
 		return await this.request<Tag[]>('SearchTags', { query });
 	},
 
+	async GetTagList() {
+		return await this.request<{ Id: number; Name: string; UsageCount: number }[]>('GetTagList', {});
+	},
+
+	async RenameTag(id: number, name: string) {
+		return await this.request<{ status: string; message?: string }>('RenameTag', { id, name });
+	},
+
+	async DeleteTag(id: number) {
+		return await this.request<{ status: string; unlinked?: number; message?: string }>('DeleteTag', { id });
+	},
+
 	async GetTimelineCharacters(timelineId: number) {
 		return await this.request<CharacterItem[]>('GetTimelineCharacters', { timelineId });
 	},
@@ -206,7 +218,7 @@ export const BackendAPI = {
 	},
 
 	async GetCalendarList() {
-		return await this.request<{ Id: string; Name: string }[]>('GetCalendarList', {});
+		return await this.request<{ Id: string; Name: string; UsageCount: number }[]>('GetCalendarList', {});
 	},
 
 	async GetCalendarById(id: string) {
@@ -222,7 +234,7 @@ export const BackendAPI = {
 	},
 
 	async DeleteCalendar(id: string) {
-		return await this.request<{ status: string }>('DeleteCalendar', { id });
+		return await this.request<{ status: string; reassigned?: number; message?: string }>('DeleteCalendar', { id });
 	},
 
 	async GetAppConfig() {
@@ -448,6 +460,9 @@ if (window.chrome?.webview) {
 			} else if (data.action === 'ItemSaved') {
 				const store = useTimelineStore();
 				store.upsertItem(data.payload.Item, data.payload.Tags, data.payload.Characters, data.payload.StoryRefs, data.payload.HasPicture);
+			} else if (data.action === 'CalendarsChanged') {
+				// Calendar editor window closed — any open calendar list reloads itself.
+				window.dispatchEvent(new Event('calendars-changed'));
 			} else if (data.action === 'AchievementUnlocked') {
 				// Lazy import to avoid circular deps at module load time
 				import('@/stores/notificationsStore').then(({ useNotificationsStore }) => {

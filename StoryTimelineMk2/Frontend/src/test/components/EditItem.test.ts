@@ -341,4 +341,65 @@ describe('EditItem page', () => {
     expect((colorInput.element as HTMLInputElement).value).toBe('#00ff00')
     wrapper.unmount()
   })
+
+  // ── Close confirmation / hotkeys ──────────────────────────────────────────
+
+  it('Save comes before Cancel in the header', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    const buttons = wrapper.findAll('.header-actions button')
+    expect(buttons.map(b => b.text())).toEqual([expect.stringContaining('Save'), expect.stringContaining('Cancel')])
+    expect(buttons.map(b => b.find('.btn-hint').text())).toEqual(['Ctrl+S', 'Esc'])
+    wrapper.unmount()
+  })
+
+  it('Ctrl+S saves', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    ;(BackendAPI.SaveItem as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok', itemId: 'new-id' })
+    const windowClose = vi.spyOn(window, 'close').mockImplementation(() => {})
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))
+    await flushPromises()
+
+    expect(BackendAPI.SaveItem).toHaveBeenCalledOnce()
+    windowClose.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('Cancel on a dirty form asks first; Discard then closes the window', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] }, attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="Item title"]').setValue('Changed')
+    await wrapper.findAll('button').find(b => b.text().includes('Cancel'))!.trigger('click')
+    await flushPromises()
+
+    expect(BackendAPI.WindowClose).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Discard changes?')
+
+    await wrapper.findAll('button').find(b => b.text() === 'Discard')!.trigger('click')
+    expect(BackendAPI.WindowClose).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('Escape and a CloseRequested push close a clean form without asking', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    const addListener = window.chrome!.webview!.addEventListener as unknown as ReturnType<typeof vi.fn>
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(BackendAPI.WindowClose).toHaveBeenCalledTimes(1)
+
+    const push = new MessageEvent('message', { data: JSON.stringify({ action: 'CloseRequested' }) })
+    addListener.mock.calls.filter(c => c[0] === 'message').forEach(c => (c[1] as (e: MessageEvent) => void)(push))
+    expect(BackendAPI.WindowClose).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('Discard changes?')
+    wrapper.unmount()
+  })
 })

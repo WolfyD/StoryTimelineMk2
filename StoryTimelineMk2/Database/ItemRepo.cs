@@ -125,6 +125,23 @@ namespace StoryTimelineMk2.Database
                 WHERE ic.item_id = @ItemId ORDER BY b.title, ch.number", new { ItemId = itemId });
         }
 
+        /// <summary>
+        /// Side for a new item: whichever of above/below is emptier among its nearest neighbours, so items
+        /// added later still interleave with what is already there. Periods and non-periods balance separately
+        /// because they stack in different bands.
+        /// </summary>
+        private static int PickSide(SqliteConnection db, SqliteTransaction tx, TimelineItem item)
+        {
+            // ponytail: nearest 6 by start; make it overlap-aware if long periods pile up on one side.
+            var sides = db.Query<int>(@"
+                SELECT placement FROM items
+                WHERE timeline_id = @TimelineId AND id <> @Id AND placement IN (1, 2) AND (type_id = 2) = (@TypeId = 2)
+                ORDER BY ABS(absolute_start - @AbsoluteStart) LIMIT 6", item, tx).ToList();
+            int above = sides.Count(s => s == 1), below = sides.Count - above;
+            if (above != below) return above < below ? 1 : 2;
+            return sides.Count == 0 || sides[0] == 2 ? 1 : 2;   // tie: opposite of the nearest neighbour
+        }
+
         public class CharacterAppearanceInput
         {
             public string CharacterId { get; set; } = null!;
@@ -141,20 +158,25 @@ namespace StoryTimelineMk2.Database
 
             try
             {
+                // Side is chosen once, on insert; an existing row keeps whatever it already has.
+                if (item.Placement == 0 && item.TypeId is not (3 or 6 or 7 or 8 or 9))
+                    item.Placement = db.ExecuteScalar<int?>("SELECT placement FROM items WHERE id = @Id", new { item.Id }, tx)
+                                     ?? PickSide(db, tx, item);
+
                 string sql = @"
                     INSERT INTO items (
                         id, title, description, content, story_id, type_id,
                         year, end_year,
                         absolute_start, absolute_end,
                         book_title, chapter, page, color, creation_granularity,
-                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask
+                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement
                     )
                     VALUES (
                         @Id, @Title, @Description, @Content, @StoryId, @TypeId,
                         @Year, @EndYear,
                         @AbsoluteStart, @AbsoluteEnd,
                         @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
-                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask
+                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask, @Placement
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title, description = excluded.description, content = excluded.content,
@@ -165,7 +187,7 @@ namespace StoryTimelineMk2.Database
                         color = excluded.color, creation_granularity = excluded.creation_granularity,
                         item_index = excluded.item_index, show_in_notes = excluded.show_in_notes,
                         importance = excluded.importance, min_lod_level = excluded.min_lod_level,
-                        lod_visibility_mask = excluded.lod_visibility_mask,
+                        lod_visibility_mask = excluded.lod_visibility_mask, placement = excluded.placement,
                         updated_at = CURRENT_TIMESTAMP;";
 
                 db.Execute(sql, item, tx);

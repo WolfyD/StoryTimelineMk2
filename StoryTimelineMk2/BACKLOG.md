@@ -1012,3 +1012,114 @@ the mouse for routine operations.
   semi-transparent overlay listing all shortcuts, dismissed by any key.
 
 ---
+
+## [BL-40] Force item side (above / below the timeline)
+
+**Status:** Partially done (2026-09-19) — `items.placement` exists (migration 2, `0` unassigned /
+`1` above / `2` below), `ItemRepo.SaveItemFull` assigns a side on first save by balancing the
+nearest neighbours and keeps it sticky afterwards, and `renderItems` honours `Placement` before the
+parity fallback. Remaining: the Edit Item three-way toggle (Auto / Above / Below) so the user can
+override the assigned side.
+
+Originally an item's side was `ItemIndex % 2` (`TimelineCanvas.vue` → `isAboveLine`), i.e. creation
+order decided it and the user had no say. Add a per-item placement setting: **Auto** (current
+behaviour), **Above**, **Below**.
+
+- ~~New `items.placement` column (schema migration, `0 = auto, 1 = above, 2 = below`), exposed on
+  `TimelineItem`~~ — done; still to do: the Edit Item window control (small three-way toggle next
+  to Importance). Note `0` now means "not assigned yet" rather than "auto forever": the backend
+  fills it on the next save, so "Auto" in the UI should send `0` and let the backend pick again.
+- ~~`renderItems` reads it before the parity fallback~~ — done; lane packing (`getAssignedLane`) is
+  unchanged — the forced side just fixes `isAboveLine`.
+- Mini mode ignores it (pins have no side).
+
+---
+
+## [BL-41] Dual year labels (year offset)
+
+**Status:** Pending.
+
+Let a timeline show a second year numbering: below the axis the native years (0, 1, 2 …) and
+above it the same ticks with a configurable offset (e.g. 1450, 1451, 1452 …), so writers can
+work in an in-world era while keeping a real-world (or second calendar) reference.
+
+- Per-timeline setting: `year_offset` (integer) + `year_offset_label` (optional short prefix /
+  suffix such as "AD" or "AE"), edited in Timeline Settings.
+- `renderGrid` draws the offset label mirrored above the axis for YEARS-and-coarser ticks;
+  sub-year LODs keep a single label row (the offset only changes the year part).
+- Cursor label and jump-to-year input keep working in native years; the offset is display-only.
+- Related to the reserved `timeline_calendars` table (multi-calendar) — a full second calendar
+  is out of scope here, this is a pure numeric offset.
+
+---
+
+## [BL-42] Data panel and image panel — display options and pop-out windows
+
+**Status:** Pending. Needs design discussion before implementation.
+
+The data panel (`TimelineDataPanel.vue`) and gallery panel (`TimelineGalleryPanel.vue`) are
+locked into the splitpanes layout and always show the same row / tile layout. Investigate:
+
+- Custom display logic: user-selectable row density (compact / normal / cards), column choice,
+  sort key, and which item types are listed; gallery tile size and grouping (by item, by year).
+- Pop-out: open either panel in its own borderless WinForms window (same pattern as
+  `f_YearCalendar` — own HTML entry point, `OpenXWindow` bridge action, position persisted in
+  `settings`), kept in sync with the timeline viewport via push messages.
+- Decide whether the popped-out panel replaces or duplicates the in-window one.
+
+---
+
+## [BL-43] Shrink / hide the timeline title header
+
+**Status:** Pending.
+
+`#timeline-header` (`TimelineApp.vue`) takes a fixed strip at the top of the timeline window for
+the title, author and colour strip. Add a compact mode (single line, smaller type) and a way to
+hide it entirely, persisted per timeline in `settings` like `timeline_minimised` (BL-32). A
+hidden header should still expose the title somewhere (window title bar already has it).
+
+---
+
+## [BL-44] Integer time model for ticks, labels and item positions
+
+**Status:** Pending. Agreed design; separate effort from the per-LOD label fixes.
+
+Tick labels are derived by rounding a floating-point year fraction back to a calendar unit
+(`toDayRaw = Math.round(f * yearLength)` in `buildFormatRegistry`, `timelineLayout.ts`), and each
+LOD carries a free-form `stepFraction` (`1/seasons.length`, `weekLength/yearLength`, user-typed
+values like `1/525600`). Any fraction that does not divide the calendar evenly produces wrong or
+useless labels — a 3-season calendar's SEASONS LOD only ever shows the first season, a minutes LOD
+labels nothing meaningful.
+
+Replace the fraction-first model with an integer one:
+
+- Canonical sub-year unit is integer **day-of-year** (0-based) derived from the calendar
+  (`YearDefinition`). Every LOD is a list of *boundary days* computed from the calendar rather than
+  a fraction: MONTHS → each month's start day, SEASONS → each season's start day, WEEKS →
+  `k * weekLength`, DAYS → every day. `stepFraction` survives only as the zoom scale that decides
+  which LOD is active.
+- `renderGrid` (`TimelineCanvas.vue`) iterates whole years, then that LOD's boundary days within
+  each visible year, instead of stepping `i * targetStep` and rounding.
+- Label formatters take `(year, day)` — no rounding path.
+- `EditItem.vue` / `LodDateInput.vue` store day-of-year; `AbsoluteStart = year + day / yearLength`
+  (same for end). Items saved at MONTHS/SEASONS granularity under the old model
+  (`Year + monthIndex / 12`) need a one-time re-snap migration to the nearest boundary day.
+- Sub-day LODs (hours/minutes) are out of scope; the model should not prevent adding a
+  `dayFraction` later.
+
+---
+
+## [BL-45] Mass add items
+
+**Status:** Pending. Idea stage — spec below may change.
+
+New side-panel entry opening a small **"Mass add items"** modal. Left side: title, type and a
+Year / from–to input. Each *Add* pushes the item onto a list on the right; the user keeps adding
+until they press *Finished*, at which point all listed items are saved to the timeline in one go.
+
+- Type persists between adds; changing it is remembered for the next item.
+- Start year persists when a **Remember year** checkbox is on, with a `[-] [ YEAR ] [+]` stepper for
+  quick adjustment.
+- Items in the right-hand list should be removable before finishing.
+
+---

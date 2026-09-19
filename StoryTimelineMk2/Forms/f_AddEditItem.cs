@@ -32,6 +32,7 @@ namespace StoryTimelineMk2.Forms
         public Action<string, object>? NotifyCallback { get; set; }
 
         private bool _isForceClosing = false;
+        private bool _closeConfirmed = false; // the page has checked for unsaved edits — see OnFormClosing
         private bool _isPageReady = false; // true once the first navigation has completed
 
         public f_AddEditItem()
@@ -109,6 +110,13 @@ namespace StoryTimelineMk2.Forms
             Close();
         }
 
+        /// <summary>Close requested by the page itself, which has already dealt with unsaved edits.</summary>
+        public void ConfirmedClose()
+        {
+            _closeConfirmed = true;
+            Close();
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             // Allow system-initiated closes and owner-closing through.
@@ -119,6 +127,13 @@ namespace StoryTimelineMk2.Forms
                 && e.CloseReason != CloseReason.FormOwnerClosing)
             {
                 e.Cancel = true;
+                // Title-bar X / Alt+F4: the page checks for unsaved edits and answers with WindowClose.
+                if (!_closeConfirmed && _isPageReady)
+                {
+                    _messageRouter.SendToVue("CloseRequested", new { });
+                    return;
+                }
+                _closeConfirmed = false;
                 Hide();
                 return;
             }
@@ -194,7 +209,7 @@ namespace StoryTimelineMk2.Forms
 
                 wv_AddEditItem.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
 
-                coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
+                coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)ConfirmedClose);
 
                 string mediaFolder = AppConfig.Instance.GetMediaFolder();
                 Directory.CreateDirectory(mediaFolder);

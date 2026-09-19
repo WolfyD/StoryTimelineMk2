@@ -87,6 +87,8 @@ message event →
 |-------------|-----------|---------|-----------------|
 | `InitReload` | `Forms/f_Timeline.cs` (line ~135): when the timeline window closes/returns, it calls `mainForm._messageRouter.SendToVue("InitReload")` on the **main window's** router | none (`payload: null`) | `timelineStore.loadTimelines()` — refreshes the project list |
 | `ItemSaved` | `HandleSaveItem` in the **edit window's** router, relayed through `f_AddEditItem.NotifyCallback` — a delegate wired in `HandleOpenAddEditItemWindow` as `(action, payload) => SendToVue(action, payload)` so the push lands in the **opener's** (timeline's) WebView2 | `{ Item: TimelineItem }` (PascalCase — C# serialization) | `timelineStore.upsertItem(payload.Item)` — updates the canvas without a full reload |
+| `CalendarsChanged` | `HandleOpenCalendarEditorWindow`: the opener's router sends it when the `f_Calendar` editor closes | `{}` | `api.ts` re-dispatches it as a `calendars-changed` window event; `SelectCalendarModal`, `EditTimelineModal` and `CalendarManagerModal` reload their calendar lists |
+| `CloseRequested` | `f_AddEditItem.OnFormClosing` (user pressed the window's X, Alt+F4, …) — sent to the **edit window's own** WebView2 | `{}` | `EditItem.vue` runs its dirty check: clean → `WindowClose`; dirty → "Discard changes?" modal. WinForms only hides the form once `WindowClose` arrives (`ConfirmedClose`) |
 
 Any other pushed action is logged to the console and otherwise ignored.
 
@@ -122,6 +124,9 @@ lowercase while serialized domain models keep their C# PascalCase names.
 | `SaveItem` | req | `SaveItem(item, tagNames, characterAppearances, storyRefs, chapterRefs)` | `{ item: TimelineItem, tagNames: string[], characterAppearances: { CharacterId, Role }[], storyRefs: string[], chapterRefs: string[] }` | `HandleSaveItem` | `{ status: "ok", itemId }` \| `{ status: "error", message, detail }` | Deserialized case-insensitively into `SaveItemPayload`. On success also pushes `ItemSaved` to the opener window via `NotifyCallback` (see §3). |
 | `DeleteItem` | req | `DeleteItem(itemId)` | `{ itemId }` | `HandleDeleteItem` | `{ status: "ok" }` | No try/catch. |
 | `SearchTags` | req | `SearchTags(query)` | `{ query }` | `HandleSearchTags` | `Tag[]` | |
+| `GetTagList` | req | `GetTagList()` | `{}` | `HandleGetTagList` | `{ Id, Name, UsageCount }[]` | Tags manager (`TagManagerModal.vue`). |
+| `RenameTag` | req | `RenameTag(id, name)` | `{ id, name }` | `HandleRenameTag` | `{ status: "ok" }` \| `{ status: "error", message }` | Name is lower-cased/trimmed; collisions and empty names come back as errors. |
+| `DeleteTag` | req | `DeleteTag(id)` | `{ id }` | `HandleDeleteTag` | `{ status: "ok", unlinked }` \| `{ status: "error", message }` | Removes the tag from every item first; `unlinked` is that count. |
 | `GetTimelineCharacters` | req | `GetTimelineCharacters(timelineId)` | `{ timelineId }` | `HandleGetTimelineCharacters` | `CharacterItem[]` | |
 | `GetTimelineStories` | req | `GetTimelineStories(timelineId)` | `{ timelineId }` | `HandleGetTimelineStories` | `Story[]` | **Quirk:** handler ignores `timelineId` and returns *all* stories (`StoryRepo.GetAllStories()`). |
 | `SearchBooks` | req | `SearchBooks(query)` | `{ query }` | `HandleSearchBooks` | `Book[]` | |
@@ -131,11 +136,11 @@ lowercase while serialized domain models keep their C# PascalCase names.
 
 | Action | Dir | Frontend method | Payload | Backend handler | Response | Notes |
 |--------|-----|-----------------|---------|-----------------|----------|-------|
-| `GetCalendarList` | req | `GetCalendarList()` | `{}` | `HandleGetCalendarList` | `{ Id, Name }[]` | |
+| `GetCalendarList` | req | `GetCalendarList()` | `{}` | `HandleGetCalendarList` | `{ Id, Name, UsageCount }[]` | `UsageCount` = timelines using the calendar. |
 | `GetCalendarById` | req | `GetCalendarById(id)` | `{ id }` | `HandleGetCalendarById` | `Calendar` \| `{ status: "error", message }` | Error shape differs from the success shape — callers must sniff for `status`. |
 | `SaveCalendar` | req | `SaveCalendar(calendar)` | the **calendar object itself** (not wrapped) — deserialized into `CalendarItem` | `HandleSaveCalendar` | `{ status: "ok" }` \| `{ status: "error", message }` | Saves calendar + its LOD profile (`SaveCalendarWithLod`). |
 | `CreateCalendar` | req | `CreateCalendar(cloneFrom = 'cal_default_gregorian')` | `{ cloneFrom }` | `HandleCreateCalendar` | `{ status: "ok", calendarId }` \| `{ status: "error", message }` | Clones the source calendar *and* its LOD profile with new GUIDs; name is `"New Calendar"`. |
-| `DeleteCalendar` | req | `DeleteCalendar(id)` | `{ id }` | `HandleDeleteCalendar` | `{ status: "ok" }` \| `{ status: "error", message }` | |
+| `DeleteCalendar` | req | `DeleteCalendar(id)` | `{ id }` | `HandleDeleteCalendar` | `{ status: "ok", reassigned }` \| `{ status: "error", message }` | Timelines that used it switch to the default Gregorian calendar (`reassigned` = how many); the default calendar itself cannot be deleted. Only offered from `CalendarManagerModal`. |
 | `OpenCalendarEditorWindow` | f&f | — (`send()` from `SelectCalendarModal.vue`, `CalendarManagerModal.vue`, `EditTimelineModal.vue`) | `{ calendarId }` (nullable) | `HandleOpenCalendarEditorWindow` | none | Opens `f_Calendar`. |
 
 ### 4.4 Settings, fonts, layout presets

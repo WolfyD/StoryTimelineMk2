@@ -115,6 +115,9 @@ namespace StoryTimelineMk2.Bridge
                 case "GetItemForEdit":          HandleGetItemForEdit(message); break;
                 case "SaveItem":                HandleSaveItem(message); break;
                 case "SearchTags":              HandleSearchTags(message); break;
+                case "GetTagList":              HandleGetTagList(message); break;
+                case "RenameTag":               HandleRenameTag(message); break;
+                case "DeleteTag":               HandleDeleteTag(message); break;
                 case "GetTimelineCharacters":   HandleGetTimelineCharacters(message); break;
                 case "GetAllStories":           HandleGetAllStories(message); break;
                 case "SearchBooks":             HandleSearchBooks(message); break;
@@ -463,6 +466,43 @@ namespace StoryTimelineMk2.Bridge
             ReplyToVue(message.MessageId, tags);
         }
 
+        private void HandleGetTagList(BridgeMessage message)
+        {
+            var tags = new TagRepo().GetAllWithUsage().Select(t => new { t.Id, t.Name, t.UsageCount });
+            ReplyToVue(message.MessageId, tags);
+        }
+
+        private void HandleRenameTag(BridgeMessage message)
+        {
+            try
+            {
+                int id = message.Payload.GetProperty("id").GetInt32();
+                string name = message.Payload.GetProperty("name").GetString() ?? "";
+                new TagRepo().RenameTag(id, name);
+                ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("RenameTag", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleDeleteTag(BridgeMessage message)
+        {
+            try
+            {
+                int id = message.Payload.GetProperty("id").GetInt32();
+                int unlinked = new TagRepo().DeleteTag(id);
+                ReplyToVue(message.MessageId, new { status = "ok", unlinked });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("DeleteTag", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
         private void HandleGetTimelineCharacters(BridgeMessage message)
         {
             int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
@@ -762,7 +802,11 @@ namespace StoryTimelineMk2.Bridge
         private void HandleWindowClose(BridgeMessage message)
         {
             if (_parentForm == null) return;
-            _parentForm.BeginInvoke((MethodInvoker)(() => _parentForm.Close()));
+            _parentForm.BeginInvoke((MethodInvoker)(() =>
+            {
+                if (_parentForm is f_AddEditItem addEdit) addEdit.ConfirmedClose();
+                else _parentForm.Close();
+            }));
         }
 
         private void HandleWindowStartDrag(BridgeMessage message)
@@ -836,8 +880,10 @@ namespace StoryTimelineMk2.Bridge
 
         private void HandleGetCalendarList(BridgeMessage message)
         {
-            var calendars = new CalendarRepo().GetAll()
-                .Select(c => new { c.Id, c.Name });
+            var repo = new CalendarRepo();
+            var usage = repo.GetUsageCounts();
+            var calendars = repo.GetAll()
+                .Select(c => new { c.Id, c.Name, UsageCount = usage.GetValueOrDefault(c.Id) });
             ReplyToVue(message.MessageId, calendars);
         }
 
@@ -947,11 +993,12 @@ namespace StoryTimelineMk2.Bridge
             try
             {
                 string? id = message.Payload.GetProperty("id").GetString();
-                new CalendarRepo().DeleteCalendar(id!);
-                ReplyToVue(message.MessageId, new { status = "ok" });
+                int reassigned = new CalendarRepo().DeleteCalendar(id!);
+                ReplyToVue(message.MessageId, new { status = "ok", reassigned });
             }
             catch (Exception ex)
             {
+                Logger.Error("DeleteCalendar", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -964,6 +1011,8 @@ namespace StoryTimelineMk2.Bridge
 
             var calendarWindow = f_Calendar.TakePrewarmed() ?? new f_Calendar();
             calendarWindow.CalendarId = calendarId;
+            // Saving closes the editor, so FormClosed is the opener's "calendar list may have changed" signal.
+            calendarWindow.FormClosed += (_, _) => { if (_parentForm is { IsDisposed: false }) SendToVue("CalendarsChanged", new { }); };
             calendarWindow.Show(_parentForm);
             calendarWindow.TopMost = _parentForm?.TopMost ?? false;
             calendarWindow.Activate();

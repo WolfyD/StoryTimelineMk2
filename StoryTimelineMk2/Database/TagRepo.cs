@@ -35,10 +35,39 @@ namespace StoryTimelineMk2.Database
                 new { Query = $"%{query.ToLowerInvariant()}%" });
         }
 
-        public void DeleteTag(int id)
+        /// <summary>Every tag with the number of items carrying it, ordered by name.</summary>
+        public IEnumerable<(int Id, string Name, int UsageCount)> GetAllWithUsage()
         {
             using var db = new SqliteConnection(_connString);
-            db.Execute("DELETE FROM tags WHERE id = @Id", new { Id = id });
+            return db.Query<(int Id, string Name, int UsageCount)>(@"
+                SELECT t.id, t.name, COUNT(it.item_id)
+                FROM tags t LEFT JOIN item_tags it ON it.tag_id = t.id
+                GROUP BY t.id ORDER BY t.name");
+        }
+
+        public void RenameTag(int id, string name)
+        {
+            var normalized = name.ToLowerInvariant().Trim();
+            if (normalized.Length == 0) throw new ArgumentException("Tag name cannot be empty.");
+            using var db = new SqliteConnection(_connString);
+            if (db.ExecuteScalar<int>("SELECT COUNT(*) FROM tags WHERE name = @Name AND id <> @Id", new { Name = normalized, Id = id }) > 0)
+                throw new InvalidOperationException($"A tag named '{normalized}' already exists.");
+            db.Execute("UPDATE tags SET name = @Name WHERE id = @Id", new { Name = normalized, Id = id });
+        }
+
+        /// <summary>
+        /// Deletes a tag and its item links (foreign keys are off in the app, so the cascade is explicit).
+        /// Returns how many items lost the tag.
+        /// </summary>
+        public int DeleteTag(int id)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            using var tx = db.BeginTransaction();
+            int unlinked = db.Execute("DELETE FROM item_tags WHERE tag_id = @Id", new { Id = id }, tx);
+            db.Execute("DELETE FROM tags WHERE id = @Id", new { Id = id }, tx);
+            tx.Commit();
+            return unlinked;
         }
     }
 }
