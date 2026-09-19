@@ -36,9 +36,8 @@ async function addKeywordRule(tl: Page, keyword: string) {
 }
 
 /**
- * Delete every rule. The UI has no delete affordance (the chip X only deactivates,
- * the setup panel only adds), so go through the Pinia store, which is what a
- * delete button would call.
+ * Delete every rule through the Pinia store — the same call the chip X makes
+ * while the setup panel is open, without having to open it.
  */
 async function deleteAllRules(tl: Page) {
   await tl.evaluate(async () => {
@@ -169,23 +168,26 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(panel.locator('.filter-chip', { hasText: 'chipTestWord' })).not.toBeVisible({ timeout: 2000 })
   })
 
-  test('chip X button deactivates an active chip without deleting the rule', async ({ appContext }) => {
+  test('chip X deactivates an active chip; with the setup panel open it deletes the rule', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterSetup(tl)
     await addKeywordRule(tl, 'deactivateMe')
-    await tl.locator('.fsetup-close').click()
 
     const panel = tl.locator('.filter-panel')
     const chip = panel.locator('.filter-chip', { hasText: 'deactivateMe' })
     await expect(chip).toBeVisible({ timeout: 3000 })
 
-    // Neutral chip: no X button rendered
+    // Setup panel open: X is the delete affordance, even on a neutral chip
+    await expect(chip.locator('.chip-remove')).toHaveAttribute('title', 'Remove filter')
+
+    // Setup panel closed: neutral chip has no X
+    await tl.locator('.fsetup-close').click()
     await expect(chip.locator('.chip-remove')).not.toBeVisible()
 
-    // Activate → X appears
+    // Activate → X appears and deactivates
     await chip.locator('.chip-body').click()
     await expect(chip).toHaveClass(/chip--positive/)
-    await expect(chip.locator('.chip-remove')).toBeVisible()
+    await expect(chip.locator('.chip-remove')).toHaveAttribute('title', 'Deactivate filter')
 
     // X deactivates back to neutral — the chip itself STAYS (rule not deleted)
     await chip.locator('.chip-remove').click()
@@ -193,7 +195,19 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(chip).toBeVisible()
     await expect(chip.locator('.chip-remove')).not.toBeVisible()
 
+    // Reopen setup → X deletes the rule — chip gone, store agrees
+    await tl.locator('.fp-icon-btn[title="Filter setup"]').click()
+    await expect(tl.locator('.fsetup-panel')).toBeVisible({ timeout: 3000 })
+    await chip.locator('.chip-remove').click()
+    await expect(chip).toHaveCount(0)
+    const remaining = await tl.evaluate(() => {
+      const pinia = (document.getElementById('app') as any).__vue_app__.config.globalProperties.$pinia
+      return pinia._s.get('timeline').filterRules.filter((r: any) => r.Label.includes('deactivateMe')).length
+    })
+    expect(remaining).toBe(0)
+
     // Clean up
+    await tl.locator('.fsetup-close').click()
     await cleanupRules(tl)
   })
 

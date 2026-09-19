@@ -661,6 +661,7 @@ async function removeImage(pictureId: string) {
     <WindowTitleBar
         :title="item.Title || (ITEM_TYPES.find(t => t.id === item.TypeId)?.name ?? 'Edit Item')"
         :show-maximize="false"
+        :close-handler="requestClose"
     />
 
     <div class="edit-item-content">
@@ -693,7 +694,7 @@ async function removeImage(pictureId: string) {
       <div class="row">
         <div class="field flex-1">
           <label>Description</label>
-          <textarea rows="2" v-model="item.Description" placeholder="Short description" />
+          <textarea rows="7" v-model="item.Description" placeholder="Short description" />
         </div>
         <div class="field color-field">
           <label>Color</label>

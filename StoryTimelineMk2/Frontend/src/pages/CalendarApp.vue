@@ -36,6 +36,8 @@ const KNOWN_FORMAT_KEYS = ['MILLENNIA', 'CENTURIES', 'DECADES', 'YEARS', 'SEASON
 const ADD_LOD_KEYS = KNOWN_FORMAT_KEYS.filter(k => k !== 'YEARS')
 const useFractions = ref(false)
 const lodManuallyEdited = ref(false)
+// Levels the saved profile deliberately lacks: the auto-sync updates rows, it must not re-add these.
+const lodAbsentKeys = new Set<string>()
 
 // ---- LOD add-level form ----
 const showAddLodForm = ref(false)
@@ -112,35 +114,27 @@ function autoSetLod() {
 }
 
 function syncLodStepFractions() {
-    // Remove SEASONS row if seasons disabled
+    // Remove SEASONS row if seasons disabled (and forget it was absent, so re-enabling adds it back)
     if (!hasSeasons.value) {
         lodLevels.value = lodLevels.value.filter(l => l.formatKey !== 'SEASONS')
+        lodAbsentKeys.delete('SEASONS')
     }
     // Remove WEEKS row if weeks disabled
     if (!hasWeekDef.value) {
         lodLevels.value = lodLevels.value.filter(l => l.formatKey !== 'WEEKS')
+        lodAbsentKeys.delete('WEEKS')
     }
-    // Update or add SEASONS
-    if (hasSeasons.value && seasons.value.length > 0) {
-        const frac = 1 / seasons.value.length
-        const row = lodLevels.value.find(l => l.formatKey === 'SEASONS')
-        if (row) { row.stepFraction = frac }
-        else { lodLevels.value.push({ index: 0, formatKey: 'SEASONS', stepFraction: frac }) }
+    // Update an existing row; add a missing one at its place in step order (never re-add a removed one)
+    const upsert = (formatKey: string, stepFraction: number) => {
+        const row = lodLevels.value.find(l => l.formatKey === formatKey)
+        if (row) { row.stepFraction = stepFraction; return }
+        if (lodAbsentKeys.has(formatKey)) return
+        const at = lodLevels.value.findIndex(l => l.stepFraction < stepFraction)
+        lodLevels.value.splice(at < 0 ? lodLevels.value.length : at, 0, { index: 0, formatKey, stepFraction })
     }
-    // Update or add MONTHS
-    if (months.value.length > 0) {
-        const frac = 1 / months.value.length
-        const row = lodLevels.value.find(l => l.formatKey === 'MONTHS')
-        if (row) { row.stepFraction = frac }
-        else { lodLevels.value.push({ index: 0, formatKey: 'MONTHS', stepFraction: frac }) }
-    }
-    // Update or add WEEKS
-    if (hasWeekDef.value && yearLength.value > 0) {
-        const frac = weekLength.value / yearLength.value
-        const row = lodLevels.value.find(l => l.formatKey === 'WEEKS')
-        if (row) { row.stepFraction = frac }
-        else { lodLevels.value.push({ index: 0, formatKey: 'WEEKS', stepFraction: frac }) }
-    }
+    if (hasSeasons.value && seasons.value.length > 0) upsert('SEASONS', 1 / seasons.value.length)
+    if (months.value.length > 0) upsert('MONTHS', 1 / months.value.length)
+    if (hasWeekDef.value && yearLength.value > 0) upsert('WEEKS', weekLength.value / yearLength.value)
     // Update DAYS
     if (yearLength.value > 0) {
         const row = lodLevels.value.find(l => l.formatKey === 'DAYS')
@@ -434,6 +428,10 @@ onMounted(async () => {
                 } catch { lodLevels.value = [] }
             }
             parseYearDefinition(cal.YearDefinition)
+            // A level the sync would add but the saved profile lacks was removed on purpose — keep it out.
+            const wanted = { SEASONS: hasSeasons.value, MONTHS: months.value.length > 0, WEEKS: hasWeekDef.value }
+            for (const [k, on] of Object.entries(wanted))
+                if (on && !lodLevels.value.some(l => l.formatKey === k)) lodAbsentKeys.add(k)
         }
     } else {
         months.value = Array.from({ length: 12 }, (_, i) => ({ name: `Month ${i + 1}`, shortName: `M${i + 1}`, length: 30, season: 0 }))

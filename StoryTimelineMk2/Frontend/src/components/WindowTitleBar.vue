@@ -2,10 +2,12 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
     title?: string
     subtitle?: string
     showMaximize?: boolean
+    /** When set, the X calls this instead of closing — lets a page run its own guard (edit item's "Discard changes?"). */
+    closeHandler?: () => void
 }>(), {
     showMaximize: true,
 })
@@ -36,7 +38,7 @@ onUnmounted(() => {
 
 function minimize()       { BackendAPI.WindowMinimize() }
 function toggleMaximize() { cancelDrag(); isMaximized.value = !isMaximized.value; BackendAPI.WindowMaximizeRestore() }
-function close()          { BackendAPI.WindowClose() }
+function close()          { props.closeHandler ? props.closeHandler() : BackendAPI.WindowClose() }
 function toggleTopmost()  { isTopmost.value = !isTopmost.value; BackendAPI.WindowSetTopMost(isTopmost.value) }
 
 // ── Drag: only start the native move-loop after the mouse actually moves.

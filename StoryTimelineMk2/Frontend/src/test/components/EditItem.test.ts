@@ -387,6 +387,20 @@ describe('EditItem page', () => {
     wrapper.unmount()
   })
 
+  it('title-bar X on a dirty form asks first instead of closing', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] }, attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="Item title"]').setValue('Changed')
+    await wrapper.find('.tb-btn--close').trigger('click')
+    await flushPromises()
+
+    expect(BackendAPI.WindowClose).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Discard changes?')
+    wrapper.unmount()
+  })
+
   it('Escape and a CloseRequested push close a clean form without asking', async () => {
     ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
     const addListener = window.chrome!.webview!.addEventListener as unknown as ReturnType<typeof vi.fn>

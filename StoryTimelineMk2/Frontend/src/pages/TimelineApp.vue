@@ -352,7 +352,7 @@ onBeforeUnmount(() => {
     <HelpModal v-if="showHelp" @close="showHelp = false" />
 
     <div v-if="store.filterPanelOpen" class="filter-area">
-        <TimelineFilterPanel :flashed-rule-id="flashedRuleId" @open-setup="showFilterSetup = !showFilterSetup" />
+        <TimelineFilterPanel :flashed-rule-id="flashedRuleId" :setup-open="showFilterSetup" @open-setup="showFilterSetup = !showFilterSetup" />
         <TimelineFilterSetupModal
             v-if="showFilterSetup"
             @close="showFilterSetup = false"

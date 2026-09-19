@@ -253,6 +253,7 @@ function picUrl(item: TimelineItem): string | null {
     color: var(--dp-h4);
     margin-top: 3px;
     font-style: italic;
+    white-space: pre-wrap;
 }
 
 // Periods — H2
@@ -277,6 +278,7 @@ function picUrl(item: TimelineItem): string | null {
     color: var(--dp-h4);
     margin-top: 3px;
     line-height: 1.55;
+    white-space: pre-wrap;
 }
 
 // Other items — H3 title + H4 body
@@ -352,6 +354,7 @@ function picUrl(item: TimelineItem): string | null {
     font-size: 0.82em;
     color: var(--dp-h4);
     line-height: 1.45;
+    white-space: pre-wrap;
 }
 
 .data-item-content {
@@ -360,6 +363,7 @@ function picUrl(item: TimelineItem): string | null {
     opacity: 0.75;
     margin-top: 4px;
     line-height: 1.4;
+    white-space: pre-wrap;
 }
 
 .data-item-image {

@@ -124,6 +124,55 @@ describe('CalendarApp — new calendar', () => {
         wrapper.unmount()
     })
 
+    // ── LOD auto-sync (BL-48) ──────────────────────────────────────────────────
+
+    it('auto-sync inserts an added level in step order, not at the end', async () => {
+        const wrapper = mountApp()
+        await flushPromises()
+        const vm = wrapper.vm as any
+        // New calendar: MONTHS was auto-added after YEARS by the mount-time sync
+        expect(vm.lodLevels.map((l: any) => l.formatKey)).toEqual(['MILLENNIA', 'CENTURIES', 'DECADES', 'YEARS', 'MONTHS'])
+        vm.hasSeasons = true
+        vm.seasons = [{ name: 'A', shortName: '', start: 0, end: 0, significance: '' }, { name: 'B', shortName: '', start: 0, end: 0, significance: '' }]
+        await flushPromises()
+        const keys = vm.lodLevels.map((l: any) => l.formatKey)
+        expect(keys).toEqual(['MILLENNIA', 'CENTURIES', 'DECADES', 'YEARS', 'SEASONS', 'MONTHS'])
+        expect(vm.lodLevels.map((l: any) => l.index)).toEqual([0, 1, 2, 3, 4, 5])
+        wrapper.unmount()
+    })
+
+    it('a level removed from a saved profile stays removed when the calendar is reopened', async () => {
+        const { BackendAPI } = await import('@/bridge/api')
+        ;(BackendAPI.GetCalendarById as any).mockResolvedValueOnce({
+            Id: 'cal-7', Name: 'Curated', LodProfileId: 'lod-3',
+            LodProfile: { Name: 'P', Profile: JSON.stringify([
+                { index: 0, formatKey: 'YEARS', stepFraction: 1 },
+                { index: 1, formatKey: 'WEEKS', stepFraction: 7 / 360 },
+            ]) },
+            YearDefinition: JSON.stringify({
+                length: 360, months: 12,
+                month_definition: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [String(i), { name: `M${i + 1}`, length: 30 }])),
+                week_definition: { length: 7 },
+            }),
+        })
+        window.location.search = '?calendarId=cal-7'
+        try {
+            const wrapper = mountApp()
+            await flushPromises()
+            const vm = wrapper.vm as any
+            expect(vm.months.length).toBe(12)
+            expect(vm.lodLevels.map((l: any) => l.formatKey)).toEqual(['YEARS', 'WEEKS'])
+            // Editing the year definition still syncs existing rows but does not resurrect MONTHS
+            vm.weekLength = 6
+            await flushPromises()
+            expect(vm.lodLevels.map((l: any) => l.formatKey)).toEqual(['YEARS', 'WEEKS'])
+            expect(vm.lodLevels[1].stepFraction).toBeCloseTo(6 / 360)
+            wrapper.unmount()
+        } finally {
+            window.location.search = ''
+        }
+    })
+
     // ── LOD validation ─────────────────────────────────────────────────────────
 
     it('save() sets error when LOD has no levels', async () => {

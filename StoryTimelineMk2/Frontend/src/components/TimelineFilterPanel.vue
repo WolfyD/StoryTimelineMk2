@@ -4,7 +4,8 @@ import { useTimelineStore } from '@/stores/timelineStore'
 import { PhGear, PhX, PhFloppyDisk, PhFolderOpen, PhTrash } from '@phosphor-icons/vue'
 import type { FilterRule, FilterState } from '@/types/models'
 
-const props = withDefaults(defineProps<{ flashedRuleId?: string | null }>(), { flashedRuleId: null })
+// setupOpen: while the filter setup modal is open the chip X removes the rule instead of deactivating it.
+const props = withDefaults(defineProps<{ flashedRuleId?: string | null; setupOpen?: boolean }>(), { flashedRuleId: null, setupOpen: false })
 
 function colorFromRule(rule: FilterRule): string {
     try { return (JSON.parse(rule.ParamsJson) as { hex?: string }).hex ?? '#888888' } catch { return '#888888' }
@@ -90,12 +91,13 @@ onMounted(() => store.loadFilterPresets())
                         <span v-if="rule.Dimension === 'color'" class="chip-color-swatch" :style="{ background: colorFromRule(rule) }"></span>
                         <span class="chip-label">{{ rule.Label }}</span>
                     </div>
-                    <!-- Deactivate button — only on active chips, completely separate from cycle click -->
+                    <!-- X: setup modal open → removes the rule; otherwise only on active chips → back to neutral. Separate from cycle click -->
                     <button
-                        v-if="rule.State !== 'neutral'"
+                        v-if="props.setupOpen || rule.State !== 'neutral'"
                         class="chip-remove"
-                        title="Deactivate filter"
-                        @click="store.setFilterRuleState(rule.Id, 'neutral')"
+                        :class="{ 'chip-remove--delete': props.setupOpen }"
+                        :title="props.setupOpen ? 'Remove filter' : 'Deactivate filter'"
+                        @click="props.setupOpen ? removeRule(rule.Id) : store.setFilterRuleState(rule.Id, 'neutral')"
                     >
                         <PhX :size="10" />
                     </button>
@@ -278,6 +280,8 @@ onMounted(() => store.loadFilterPresets())
 
     .chip-label { line-height: 1.4; }
 }
+
+.chip-remove--delete { color: #f87171; opacity: 0.8; }
 
 .chip-remove {
     display: inline-flex;

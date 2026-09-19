@@ -54,6 +54,26 @@ describe('WindowTitleBar', () => {
     wrapper.unmount()
   })
 
+  // ── close ──────────────────────────────────────────────────────────────────
+
+  it('X closes the window directly by default', async () => {
+    const wrapper = mountBar()
+    await flushPromises()
+    await wrapper.find('.tb-btn--close').trigger('click')
+    expect(BackendAPI.WindowClose).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('X defers to closeHandler when one is given', async () => {
+    const closeHandler = vi.fn()
+    const wrapper = mountBar({ closeHandler })
+    await flushPromises()
+    await wrapper.find('.tb-btn--close').trigger('click')
+    expect(closeHandler).toHaveBeenCalledOnce()
+    expect(BackendAPI.WindowClose).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   // ── toggleTopmost ──────────────────────────────────────────────────────────
 
   it('clicking the pin button calls WindowSetTopMost(true) and marks button active', async () => {

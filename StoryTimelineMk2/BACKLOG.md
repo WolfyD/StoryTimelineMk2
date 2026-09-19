@@ -1,6 +1,790 @@
 # StoryTimelineMk2 — Backlog
 
+Grouped by size, not by number: BL numbers are permanent and a new item always gets the next
+free one whatever group it lands in. Move an item between groups by moving its section.
+
 ---
+
+# Small — 1.0.3 candidates
+
+Bugs first, then quick wins; roughly in the order to take them.
+
+## [BL-47] Filter rules cannot be deleted
+
+**Status:** Done (1.0.3). While the filter setup modal is open every chip shows a red `X` that
+deletes the rule (`removeRule` → `store.deleteFilterRule`); with it closed the `X` is the old
+deactivate control on active chips only. Presets keep their own rule snapshots, so a deleted rule
+never breaks a preset.
+
+Once a filter chip exists there is no way to remove it. `TimelineFilterPanel.vue` has
+`removeRule()` → `store.deleteFilterRule()` but nothing in the template calls it: the chip's `X`
+(`.chip-remove`) only appears on active chips and merely sets the state back to neutral.
+
+- Add a real delete affordance — e.g. `X` on neutral chips deletes, or a trash action in the
+  chip's context / the filter setup modal — and keep "deactivate" on active chips.
+- Presets referencing a deleted rule must still load (drop the missing rule silently or rebuild
+  it from the preset's stored rule data).
+
+---
+
+## [BL-57] Edit window title-bar X skips the discard guard
+
+**Status:** Done (1.0.3). `WindowTitleBar` takes an optional `closeHandler` prop; `EditItem.vue`
+passes `requestClose`, so the X now asks "Discard changes?" like Cancel / Escape / WinForms X.
+
+The 1.0.2 "Discard changes?" guard covers Cancel, Escape and the WinForms close path
+(`OnFormClosing` → `CloseRequested` push), but the X in the Vue title bar (`WindowTitleBar.vue`
+`close()` → `BackendAPI.WindowClose()`) goes straight to `ConfirmedClose()` and never asks.
+
+Fix: let the title bar defer the close to the page — e.g. an optional `beforeClose` prop /
+`close-request` event that `EditItem.vue` routes into `requestClose()`; other windows keep the
+direct close.
+
+---
+
+## [BL-48] Calendar editor LOD auto-sync re-adds removed levels, out of order
+
+**Status:** Done (1.0.3). `syncLodStepFractions()` keeps a set of levels the saved profile lacks
+(seeded on load: SEASONS / MONTHS / WEEKS that the year definition would want but the profile
+does not have) and never re-adds those; a level it does add is inserted at its place in
+step-fraction order instead of appended. Profiles already saved out of order are left as they are
+(items store the LOD *index*) — use the editor's sort button if wanted.
+
+Two reported symptoms, one cause in `CalendarApp.vue`:
+
+1. Remove an LOD level in the calendar editor, save, reopen → the level is back.
+2. A calendar whose LOD list reads MILLENNIA, CENTURIES, DECADES, YEARS, MONTHS, WEEKS, SEASONS;
+   the edit window's Date Granularity dropdown shows that order and "Months" behaves like weeks.
+
+`syncLodStepFractions()` runs from a deep watcher on months / seasons / weeks / year length whenever
+`lodManuallyEdited` is false. That flag is session-only and starts false, so on **load**
+`parseYearDefinition()` triggers the watcher and the sync re-adds every missing SEASONS / MONTHS /
+WEEKS row. Re-added rows are `push`ed to the **end** and then re-indexed sequentially, which is
+why SEASONS lands after WEEKS. `CreationGranularity` is the LOD *index*, so a mis-ordered profile
+shifts what every granularity means.
+
+Fix (one place): do not auto-sync during load (only on user edits), and when the sync does add a
+row, insert it sorted by `stepFraction` descending (the manual sort at line ~55 already does this)
+before re-indexing. Then decide what to do with profiles already saved out of order — re-sorting
+changes indices, and items store the index, so a repair must remap `creation_granularity` too.
+
+---
+
+## [BL-64] Taller description box in the edit item window
+
+**Status:** Done (1.0.3). The Description textarea in `EditItem.vue` is `rows="7"` (~130 px);
+still resizable.
+
+---
+
+## [BL-65] Data panel keeps multi-line whitespace
+
+**Status:** Done (1.0.3). `white-space: pre-wrap` on the four description / content classes in
+`TimelineDataPanel.vue`.
+
+`TimelineDataPanel.vue` renders `item.Description` / `item.Content` in plain `div`s, so line
+breaks and indentation collapse. Add `white-space: pre-wrap` to `.data-age-desc`,
+`.data-period-desc`, `.data-item-desc` and `.data-item-content` (the view modal and notes panel
+already do this).
+
+---
+
+## [BL-37] Application manifest — product identity
+
+**Status:** Done. `app.manifest` created with Per-Monitor V2 DPI awareness, `asInvoker` UAC, and Windows 10 compatibility GUID. `<Product>Story Timeline</Product>` set in `.csproj`. Remaining optional fields (`Company`, `Copyright`, `Description`, `NeutralLanguage`) not yet set.
+
+Set up the Windows application manifest and assembly attributes so the app presents with a
+proper product name, company/creator, copyright notice, and description in all the standard
+places (Windows file properties, Task Manager, Add/Remove Programs, UAC prompt).
+
+### Manifest changes required
+
+- In the `.csproj`, populate: `<Product>`, `<Company>`, `<Copyright>`, `<Description>`,
+  `<NeutralLanguage>`.
+- Confirm `<ApplicationManifest>` points to (or generates) a manifest that declares:
+  - `dpiAware` / `dpiAwareness` (already set, but worth verifying in context of the manifest).
+  - `requestedExecutionLevel` as `asInvoker` (no UAC elevation).
+- Optionally add a `[assembly: AssemblyProduct(...)]` etc. in `Program.cs` if the csproj
+  properties alone don't flow through to the manifest.
+
+> These are purely metadata changes — no runtime behaviour is affected. Payoff: the app looks
+> professional in file properties, Task Manager shows "StoryTimeline" not the exe path, and
+> any future installer / MSIX packaging picks up the metadata automatically.
+
+---
+
+## [BL-40] Force item side (above / below the timeline)
+
+**Status:** Partially done (2026-09-19) — `items.placement` exists (migration 2, `0` unassigned /
+`1` above / `2` below), `ItemRepo.SaveItemFull` assigns a side on first save by balancing the
+nearest neighbours and keeps it sticky afterwards, and `renderItems` honours `Placement` before the
+parity fallback. Remaining: the Edit Item three-way toggle (Auto / Above / Below) so the user can
+override the assigned side.
+
+Originally an item's side was `ItemIndex % 2` (`TimelineCanvas.vue` → `isAboveLine`), i.e. creation
+order decided it and the user had no say. Add a per-item placement setting: **Auto** (current
+behaviour), **Above**, **Below**.
+
+- ~~New `items.placement` column (schema migration, `0 = auto, 1 = above, 2 = below`), exposed on
+  `TimelineItem`~~ — done; still to do: the Edit Item window control (small three-way toggle next
+  to Importance). Note `0` now means "not assigned yet" rather than "auto forever": the backend
+  fills it on the next save, so "Auto" in the UI should send `0` and let the backend pick again.
+- ~~`renderItems` reads it before the parity fallback~~ — done; lane packing (`getAssignedLane`) is
+  unchanged — the forced side just fixes `isAboveLine`.
+- Mini mode ignores it (pins have no side).
+
+---
+
+## [BL-43] Shrink / hide the timeline title header
+
+**Status:** Pending.
+
+`#timeline-header` (`TimelineApp.vue`) takes a fixed strip at the top of the timeline window for
+the title, author and colour strip. Add a compact mode (single line, smaller type) and a way to
+hide it entirely, persisted per timeline in `settings` like `timeline_minimised` (BL-32). A
+hidden header should still expose the title somewhere (window title bar already has it).
+
+---
+
+## [BL-56] Quick edit — Shift+click opens the edit window
+
+**Status:** Pending.
+
+Shift+clicking an item on the canvas opens it in the edit window directly, skipping the
+view modal / context menu. `TimelineCanvas.vue` click handler → `OpenAddEditItemWindow`. Document
+in BL-39's shortcut table.
+
+---
+
+## [BL-55] Centered items — box centered on the stem
+
+**Status:** Pending.
+
+Per-item option (next to the side toggle from BL-40) that centers the item box on its stem
+instead of the default sideways offset. `renderItems` / `timelineNodes.ts` box x-position; lane
+packing should account for the wider footprint on both sides of the stem.
+
+---
+
+## [BL-61] Picture items — optional title on the timeline
+
+**Status:** Pending.
+
+Picture-type items (`TypeId` 4) render only the image on the canvas. Add a per-item (or
+per-layout) option to show the title as well, like event boxes do. `timelineNodes.ts` picture
+node builder + edit window checkbox.
+
+---
+
+## [BL-50] Number inputs adjust with the mouse wheel when focused
+
+**Status:** Pending.
+
+The `<input type="number">` fields (years, subticks, importance, settings values). Reported: some
+of them — especially in the add/edit item window — step with neither the mouse wheel nor the
+up/down arrow keys.
+
+- Wheel: Chromium never steps a number input on wheel. When the input is focused, wheel up/down
+  should step the value (respecting `step` / `min` / `max`) and swallow the event so the page /
+  canvas behind does not scroll. One global directive applied to every number input, not
+  per-component handlers.
+- Arrow keys: these work natively, so find which inputs break them — candidates are fields bound
+  with `:value` + `@change` (`LodDateInput.vue`), a `keydown` handler that prevents default, or
+  inputs that are really `type="text"`.
+
+---
+
+## [BL-46] Collapsible "Memorable days" section
+
+**Status:** Pending.
+
+The Memorable Days list in the calendar editor (`CalendarApp.vue`) grows with the calendar and
+pushes everything below it down. Make the section collapsible like the editor's other sections
+(`toggleCollapse`), with the count shown while collapsed. A full-calendar view of all memorable
+days is BL-63.
+
+---
+
+## [BL-49] Most common tags in the add/edit item window
+
+**Status:** Pending.
+
+Below the Tags section in `EditItem.vue`, show the N (≈8) most-used tags of the current timeline
+as click-to-add chips, hiding ones already on the item. Backend: `TagRepo.GetAllWithUsage()`
+already exists (Tags manager); scope it per timeline or add a `GetTopTags(timelineId, limit)`.
+
+---
+
+## [BL-62] Configurable colour swatches
+
+**Status:** Pending.
+
+The 12 quick-pick colours in the edit window (`COLOR_PALETTE` in `EditItem.vue`) are hardcoded.
+Add a "Colour swatches" row to Timeline Settings — 12 colour pickers with a "reset to defaults"
+button — stored per timeline, and have `EditItem.vue` read them from the timeline instead of the
+constant. Also used by any other palette that shows the same 12 (filter colour rule).
+
+---
+
+## [BL-52] Default LOD visibility for new items
+
+**Status:** Pending.
+
+Timeline Settings gets a "New items are visible at" row of per-LOD toggles (same control as the
+edit window's per-level toggles, BL-05). New items start with that mask instead of 255. Stored per
+timeline (`misc_settings` or a `layout_settings`-independent timeline column — it is a timeline
+preference, not a layout template value).
+
+---
+
+## [BL-54] Set the LOD visibility of every item in a timeline
+
+**Status:** Pending.
+
+Power-user command (BL-53) — and possibly a Timeline Settings / actions-menu entry — that
+rewrites `lod_visibility_mask` for all items of the current timeline to a given mask, e.g.
+"years and weeks only". Bridge action `SetTimelineItemsLodMask(timelineId, mask)`, one `UPDATE`,
+canvas reload afterwards. Confirm before applying — it overwrites per-item settings.
+
+---
+
+## [BL-45] Mass add items
+
+**Status:** Pending. Idea stage — spec below may change.
+
+New side-panel entry opening a small **"Mass add items"** modal. Left side: title, type and a
+Year / from–to input. Each *Add* pushes the item onto a list on the right; the user keeps adding
+until they press *Finished*, at which point all listed items are saved to the timeline in one go.
+
+- Type persists between adds; changing it is remembered for the next item.
+- Start year persists when a **Remember year** checkbox is on, with a `[-] [ YEAR ] [+]` stepper for
+  quick adjustment.
+- Items in the right-hand list should be removable before finishing.
+
+---
+
+## [BL-51] "Item Notes" — hidden per-item data
+
+**Status:** Pending.
+
+A free-text field on items that is stored but never rendered on the canvas, data panel or view
+modal: a place for the writer's own bookkeeping. New `items.item_notes TEXT` column (schema
+migration), textarea in `EditItem.vue` (collapsed by default), included in copy / export /
+import. Later: attachments (PDF and other documents) hang off the same concept — keep the field
+name generic enough for that.
+
+---
+
+## [BL-59] Calendar export / import
+
+**Status:** Pending.
+
+Export a calendar (year definition, LOD profile, memorable days) to a single JSON file and import
+one from a file, so writers working on the same world can share it. Entry points in the calendar
+manager (`CalendarManagerModal.vue`) and the calendar editor window. Import creates a new
+calendar (new id) — never overwrites — and reports name collisions.
+
+---
+
+## [BL-58] Custom dictionary for spellcheck
+
+**Status:** Pending. Needs investigation.
+
+Writers use invented names and archaic words; the WebView2 (Chromium) spellchecker underlines
+them everywhere. Add a user dictionary of words that are not misspelled, just uncommon, and feed
+it to the spellchecker. Options to evaluate: Chromium's `Custom Dictionary.txt` in the WebView2
+user data folder (`%LOCALAPPDATA%\StoryTimelineMk2_Cache`), or the right-click "Add to
+dictionary" flow if WebView2 exposes it. Managed from Settings; exported with the data folder.
+
+---
+
+## [BL-53] Power-user console
+
+**Status:** Pending. Idea stage.
+
+Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two steps:
+
+1. Grow that into a documented power-user namespace (`__stl.<command>`), starting with BL-54.
+2. Later: an in-app toggleable command console (hotkey, small overlay at the bottom of the
+   timeline window) that runs the same commands without DevTools, with completion and history.
+
+---
+
+## [BL-60] Calendar window — more functionality
+
+**Status:** Pending. Placeholder — scope to be defined.
+
+The calendar editor window (`f_Calendar` / `CalendarApp.vue`) needs more than it has today;
+ideas to be collected here as they come up.
+
+---
+
+## [BL-39] Extended keyboard shortcuts
+
+**Status:** Pending. Ctrl+S / Esc exist in the edit item window (1.0.2) and `HelpModal` (BL-38)
+already has a shortcuts section to document them in; the canvas / toolbar set below is still to do.
+
+Common timeline actions should have keyboard shortcuts so power users never need to reach for
+the mouse for routine operations.
+
+### Proposed shortcuts (baseline set)
+
+| Action | Shortcut |
+| ------ | -------- |
+| Scroll forward one tick | `→` or `L` |
+| Scroll back one tick | `←` or `H` |
+| Zoom in (LOD finer) | `+` / `=` |
+| Zoom out (LOD coarser) | `-` |
+| Jump to year (focus input) | `G` |
+| New Event at current position | `E` |
+| New Period | `P` |
+| New Age | `A` |
+| Toggle mini mode | `M` |
+| Toggle performant panning | `Shift+P` |
+| Toggle filter panel | `F` |
+| Toggle data panel | `D` |
+| Open Help | `?` |
+| Close modal / panel | `Escape` |
+
+### Shortcut implementation notes
+
+- Most of these map to existing functions already callable from the canvas or toolbar.
+- Add a `keydown` listener in `TimelineCanvas.vue` (already exists for `Shift`) extended to
+  the new keys, guarded against firing when a text input has focus.
+- Document the full shortcut table in the Help system (BL-38 / BL-34) under a dedicated
+  "Keyboard shortcuts" section.
+- Consider a shortcut cheat-sheet overlay triggered by `?` when no modal is open — a
+  semi-transparent overlay listing all shortcuts, dismissed by any key.
+
+### Power-user set
+
+A second, larger tier of shortcuts for power users, on top of the baseline table. List to be
+filled in as they come up (2026-09-19):
+
+- _(none yet)_
+
+---
+
+## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
+
+**Status:** Substantially resolved. All 10 planned items addressed; since then also done: 30 s
+bridge request timeout (FC-C1, `api.ts`), deleted items' Konva nodes destroyed (TC-H1), minimap
+static + dynamic layers (TC-H2). Still open, none user-visible: status-discriminated bridge
+response types (FC-C1 deeper fix), heavy handlers on the UI thread (H1), gallery panel
+re-fetching `GetItemForEdit` (TC-H5), z-index token scale, icon convention sweep.
+
+### Data integrity — RESOLVED
+
+- ~~**V2 backup import silently drops entire tables** (DB-C2)~~ — **Fixed.** `DatabaseImporter.ImportV2Backup` now restores lod_profiles, layout_settings, filter_presets, notes, timeline_hidden_ranges, and timeline_filter_rules. Copy order correct.
+- ~~**V1 import writes character↔event links into a dead table** (DB-H1)~~ — **Fixed.** V1 import now maps `item_characters` → `item_character_appearances` correctly.
+- ~~**`SetDataRoot` can silently create a fresh empty DB** (L5)~~ — **Mitigated.** `AppSettingsModal.vue` shows a warning before the action ("Use this folder will load whatever data already exists there") and informs the user after if `isNewDb` is true. Not a blocking issue.
+
+### Bridge / architecture (still pending)
+
+- **`request()` offline path now rejects** (FC-C1 partial): the `resolve(null)` in the no-WebView2
+  branch is replaced by `reject(Error)`, and a hung request rejects after 30 s. The deeper fix (status-discriminated response types
+  so backend error payloads also reject) is still pending — callers must still manually check
+  `?.status === 'error'` for production error responses.
+- **All handlers run synchronously on the UI thread** (H1): a big timeline load or media-folder
+  move freezes the window. Wants `Task.Run` + marshalled replies for the heavy handlers.
+- ~~**`ShowDialog` inside WebMessageReceived** (H2)~~ — **Fixed.** All dialog calls wrapped in `BeginInvoke`.
+- ~~**`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5)~~ — **Fixed.** `CreateBackup` uses `VACUUM INTO`; `MoveDataFolder` now uses `ItemRepo.VacuumInto()` instead of `File.Copy`.
+- ~~**`GetTimelineStories` name is misleading** (CT-M1)~~ — **Fixed.** Renamed to `GetAllStories`.
+
+### Dead weight — RESOLVED
+
+- ~~**`SettingsApp.vue` is broken boilerplate** (PG-C2)~~ — **Deleted.** `SettingsApp.vue`, `settings.ts`, `settings.html` removed; vite entry removed.
+- ~~**Dead layout settings render in the Settings UI but are consumed nowhere** (TC-C2)~~ — **Fixed.** Hover Line group, `TimelineJumpToYearAnimationLength`, `TimelineTickMarkerFontSize`, `TimelineNonYearTicksSmaller` are all wired into the canvas.
+- ~~**Dead backend code**: `SaveItemWithTags` in `Database/ItemRepo.cs`~~ — **Deleted.** Method removed entirely. `GetTimelineItems` and `InsertDefaultPreset` already removed.
+  Note: `relationship_types`, `timeline_calendars`, and `item_characters` are reserved schema
+  for future modules (BL-17 character relations, multi-calendar support, character event links)
+  — not dead, do not remove.
+
+### Custom-calendar correctness (core-feature gaps)
+
+- ~~**`LodDateInput` hardcodes Gregorian month lengths** (MD-H3)~~ — **Fixed.** `MONTH_LENGTHS` and `SEASON_NAMES` constants removed. New props `monthLengths`, `seasonNames`, `weekCount` added. `EditItem.vue` now calls `parseCalendarDef(YearDefinition)` and passes all four values to both date inputs.
+- ~~**NotesPanel distance math hardcodes Gregorian** (TC-M13/FC-H4)~~ — **Fixed.** `formatSpecific` now decomposes via `store.calendarConfig.months` (actual month lengths from `startDay` differences) and `cfg.weekLength`. `formatApproximate` uses `cfg.yearLength`, `cfg.months.length`, `cfg.seasons.length`, and derived weeks-per-year. `formatPoint` now uses `store.activeFormatRegistry` instead of the static module-level `FormatRegistry`.
+
+### Store correctness — RESOLVED
+
+- ~~**`loadFilterPreset` resurrects old rules** (FC-H1)~~ — **Fixed.** DB writes (delete old, save new) now complete before in-memory state is updated, so a failure leaves the store consistent with what's actually in the DB.
+- ~~**Concurrent `loadTimelineData` calls tear state** (FC-H2)~~ — **Fixed.** Sequence token check added after the second `await Promise.all` (filter rules + misc settings), not just after the first bridge call.
+- ~~**Filter data maps go stale after item edits** (FC-H3)~~ — **Fixed.** `upsertItem` now accepts tag/character/story link arrays and `hasPicture` flag; `ItemSaved` push extended in `HandleSaveItem` to include `ItemRepo.GetItemLinksById()` output so all four filter maps stay current after every save.
+
+### Performance (canvas stack)
+
+- ~~**Minimap rebuilds its entire Konva scene per mouse-move** (TC-H2)~~ — **Fixed.**
+  `TimelineMinimap.vue` keeps a static content layer and a `dynamicLayer` for the NOW line /
+  viewport rect.
+- ~~**Deleted items' Konva nodes are hidden, never destroyed** (TC-H1)~~ — **Fixed.** `evictNode()`
+  in `TimelineCanvas.vue` destroys the cached nodes on delete and on `upsertItem`.
+- **DataPanel + GalleryPanel double-fetch `GetItemForEdit` per item per pan** (TC-H5): the data
+  panel has its own `pictureCache`; the gallery panel still fetches on its own. Wants one shared
+  cache keyed by item id.
+
+### Styling consolidation (staged plan in AUDIT_FINDINGS §8)
+
+- ~~**No design tokens; three competing accent systems; two surface systems** (ST-H1–H4): ~230
+  colour literals, 9 backdrop darknesses, a z-index ladder with real conflicts, no global
+  font-family (some windows fall back to serif).~~ **DONE** — `:root` token block in `main.scss`
+  (`--app-bg/surface/border/text/accent` family + new `--app-save-accent`, `--app-danger`);
+  `font-family: system-ui` + global scrollbar rule added; 18 component/page `<style>` sections
+  swept; `canvasTheme.ts` created so Konva reads tokens at runtime; `applyAppTheme` clears
+  canvas cache on theme change; `ChromeTheme` (TS + C#) includes save-accent. Remaining bare
+  literals are intentional: DB-stored LayoutSettings defaults (TimelineSettingsModal script),
+  canvas context-menu semantic colours (dark-canvas overlay), and data-driven item colour
+  fallbacks. z-index scale and icon convention sweep deferred — separate effort.
+- ~~**`BaseModal` extraction** (MD-H1/H2): ~700 lines of duplicated modal chrome across 11 modals
+  with inconsistent Escape/backdrop/z-index behaviour.~~ **DONE** — `BaseModal.vue` created; 12 of 13
+  modals converted (backdrop + panel + Escape key + `#header`/`#footer` slots). `TimelineItemViewModal`
+  intentionally skipped (themed viewer, incompatible design).
+- **Icon convention**: 19 of 20 modal/picker files contradict the CLAUDE.md Remix-vs-Phosphor
+  rule — at this scale, decide whether to fix the components or change the convention.
+
+---
+
+## [BL-23] App icon
+
+**Status:** Placeholder in place. Pending commission of final artwork.
+
+The application currently uses a placeholder icon. A proper icon (`.ico` with
+16/32/48/256px variants, plus a matching `favicon` for the WebView2 shell) should be
+provided.
+
+> In the `.csproj`, set `<ApplicationIcon>` to the `.ico` path. The icon will appear in the
+> taskbar, Alt-Tab switcher, and the title bar of any non-borderless window. For the
+> borderless windows a small SVG/PNG version can be shown in the Vue title bar next to the
+> window title.
+
+---
+
+# Major — 1.1.0
+
+New moving parts; each needs its own design pass before code.
+
+## [BL-14] Top-level menu system
+
+**Status:** Pending. Architectural feature.
+
+A persistent top-of-screen menu bar (or equivalent) providing navigation to all screens: item management, search, export options, map screen, characters, statistics, etc.
+
+> **Aside:** This is an architectural decision as much as a feature. Currently the app uses separate WinForms windows for different views, which means each has its own WebView2 instance, its own state, and its own load time. A top menu that navigates within a single SPA would be faster and more cohesive, but requires collapsing the multi-window model. I'd suggest a hybrid: keep separate windows for the timeline canvas (which genuinely benefits from being its own resizable window) but move everything else into a single SPA shell with in-page navigation. The menu itself: a thin horizontal bar at the top with icon + label buttons (Timeline, Characters, Map, Search, Statistics, Export). This is a prerequisite for several other BL items that need a "home" screen.
+
+---
+
+## [BL-15] Characters module
+
+**Status:** Pending. Large feature.
+
+Full character management: create/edit characters with biography fields, birth/death dates, states (alive/deceased/unknown), attachment to timeline items, exportable as a character-specific event timeline, and filterable.
+
+> **Aside:** The DB schema already has `characters` and `character_appearances` tables, so the data layer is partially in place. The main work is the UI. Key screens needed: (1) character list with search/filter; (2) character detail/edit form (biography, dates, color, portrait image); (3) character appearances timeline — a filtered view of the main timeline showing only items where that character appears, which is essentially just BL-03 filter applied to one character. The "state" system (born/alive/deceased) should tie into the item dates where possible — if a character has a "death" event, the state should auto-update. The "export as timeline" feature is high value: it lets a writer hand a character's journey to someone else without exposing the full world history.
+
+---
+
+## [BL-17] Character relations screen
+
+**Status:** Pending. Depends on BL-15 (Characters module).
+
+A visual network graph showing characters and their relationships (family, rival, ally, etc.), centered on a selected character, with relationship types as labeled edges.
+
+> **Aside:** This is a graph visualization problem. Konva.js can draw this but a dedicated force-directed graph library (D3.js `d3-force`, or vis.js Network) would produce much better layouts automatically. The data model needs a `character_relationships` table: `(character_a_id, character_b_id, relationship_type, notes, start_year?, end_year?)`. Relationship types should be configurable (not hardcoded), since every story world has its own social structures. The UX pattern of "center on a selected character and show their direct connections" is the right starting point — expanding outward one degree at a time (click a connected character to recenter). A full graph of all characters at once becomes unreadable quickly. Worth also thinking about time: if relationships have start/end years, the graph should respond to the timeline's current time position (or have its own time scrubber) to show the relational state at a given point in the story.
+
+---
+
+## [BL-44] Integer time model for ticks, labels and item positions
+
+**Status:** Pending. Agreed design; separate effort from the per-LOD label fixes.
+
+Tick labels are derived by rounding a floating-point year fraction back to a calendar unit
+(`toDayRaw = Math.round(f * yearLength)` in `buildFormatRegistry`, `timelineLayout.ts`), and each
+LOD carries a free-form `stepFraction` (`1/seasons.length`, `weekLength/yearLength`, user-typed
+values like `1/525600`). Any fraction that does not divide the calendar evenly produces wrong or
+useless labels — a 3-season calendar's SEASONS LOD only ever shows the first season, a minutes LOD
+labels nothing meaningful.
+
+Replace the fraction-first model with an integer one:
+
+- Canonical sub-year unit is integer **day-of-year** (0-based) derived from the calendar
+  (`YearDefinition`). Every LOD is a list of *boundary days* computed from the calendar rather than
+  a fraction: MONTHS → each month's start day, SEASONS → each season's start day, WEEKS →
+  `k * weekLength`, DAYS → every day. `stepFraction` survives only as the zoom scale that decides
+  which LOD is active.
+- `renderGrid` (`TimelineCanvas.vue`) iterates whole years, then that LOD's boundary days within
+  each visible year, instead of stepping `i * targetStep` and rounding.
+- Label formatters take `(year, day)` — no rounding path.
+- `EditItem.vue` / `LodDateInput.vue` store day-of-year; `AbsoluteStart = year + day / yearLength`
+  (same for end). Items saved at MONTHS/SEASONS granularity under the old model
+  (`Year + monthIndex / 12`) need a one-time re-snap migration to the nearest boundary day.
+- Sub-day LODs (hours/minutes) are out of scope; the model should not prevent adding a
+  `dayFraction` later.
+
+---
+
+## [BL-41] Dual year labels (year offset)
+
+**Status:** Pending. Do after BL-44 (integer time model) — no point reworking the axis labels
+twice.
+
+Let a timeline show a second year numbering: below the axis the native years (0, 1, 2 …) and
+above it the same ticks with a configurable offset (e.g. 1450, 1451, 1452 …), so writers can
+work in an in-world era while keeping a real-world (or second calendar) reference.
+
+- Per-timeline setting: `year_offset` (integer) + `year_offset_label` (optional short prefix /
+  suffix such as "AD" or "AE"), edited in Timeline Settings.
+- `renderGrid` draws the offset label mirrored above the axis for YEARS-and-coarser ticks;
+  sub-year LODs keep a single label row (the offset only changes the year part).
+- Cursor label and jump-to-year input keep working in native years; the offset is display-only.
+- Related to the reserved `timeline_calendars` table (multi-calendar) — a full second calendar
+  is out of scope here, this is a pure numeric offset.
+
+---
+
+## [BL-63] Full-calendar view of memorable days
+
+**Status:** Pending. Later — after BL-46.
+
+A large calendar view (year grid, `CalendarYearView.vue` / `CalendarMonthGrid.vue` already draw
+one) that shows every memorable day of the calendar in place, as an alternative to the editor's
+list. Possibly the same view doubles as the editor: click a day to add / edit a memorable day.
+
+---
+
+## [BL-42] Data panel and image panel — display options and pop-out windows
+
+**Status:** Pending. Needs design discussion before implementation.
+
+The data panel (`TimelineDataPanel.vue`) and gallery panel (`TimelineGalleryPanel.vue`) are
+locked into the splitpanes layout and always show the same row / tile layout. Investigate:
+
+- Custom display logic: user-selectable row density (compact / normal / cards), column choice,
+  sort key, and which item types are listed; gallery tile size and grouping (by item, by year).
+- Pop-out: open either panel in its own borderless WinForms window (same pattern as
+  `f_YearCalendar` — own HTML entry point, `OpenXWindow` bridge action, position persisted in
+  `settings`), kept in sync with the timeline viewport via push messages.
+- Decide whether the popped-out panel replaces or duplicates the in-window one.
+
+---
+
+## [BL-13] Configurable incremental backup system
+
+**Status:** Pending. Depends on evaluating scope.
+
+Replace/supplement the current manual full-copy backup with a more granular change-tracking system, similar in spirit to git — only recording what changed since the last recorded state.
+
+> **Aside:** Full git-style content-addressable storage is probably overkill. A practical middle ground: on each app close (or on a configurable interval), write a "change journal" file containing only the rows that differ from the last snapshot. Rows are identified by ID + a hash or modification timestamp. The "last recorded state" can just be a stored hash of each row's content in a `backup_state` table — on backup, compare current rows against stored hashes, write only changed/added/deleted rows to the journal. Restoring means replaying the journal or reverting to the snapshot. The most important thing to get right is the restore UX — it should be a browsable history ("show me the state from 3 sessions ago") not just a single rollback point. SQLite's WAL mode actually gives you some of this for free within a session, but across sessions you need the journal approach. Worth also keeping the manual full-copy backup as a "nuclear option" alongside this.
+
+---
+
+## [BL-12] Usage statistics and milestones
+
+**Status:** Framework done. Content pending. Deferred — collaborative effort required for achievement definitions, character tier content, and portrait assets.
+
+Stats DB (`usage.sqlite` next to exe), session tracking, fire-and-forget item/activity event recording, DB-driven achievement definitions, character progression tables, achievement/milestone toast system (Steam-style lower-right + shimmer top-center), Web Audio chimes, DevTools console helpers (`window.__stl`), app settings toggles, and Vitest coverage all in place.
+
+Remaining: fill in real achievement definitions (flavor text, trigger criteria), real DnD character definitions with tier ladders, and character portrait images in `Resources/`.
+
+> **Aside:** The statistics data collection is best done in two layers: (1) session-level events stored in memory (start time, focus/blur timestamps via `window` events, item-add count) flushed to the DB on close; (2) aggregate DB queries for historical stats (items per timeline, density distributions, active days). The statistics screen can use a charting library — Chart.js is the obvious lightweight choice given we're already using Vue; Recharts if we want more control. The achievements system is genuinely fun and worth doing right — a small set of carefully chosen milestones ("first item", "100 items", "first import", "timeline spanning 1000 years", etc.) with cosmetic unlocks. Store earned achievements in a DB table with timestamp. The "character progression" angle is interesting — could tie achievement points to an in-universe character who grows alongside the writer's project. Keep this entirely optional and silent (no pop-ups, just discoverable in the stats screen) to avoid being annoying.
+
+---
+
+# Long-term / deferred
+
+## [BL-16] The Map feature
+
+**Status:** Pending. Major long-term feature.
+
+A multi-layer interactive map screen: a world map containing regions, each region drillable into a sub-map, locations pinned on each map, locations linked to items/events, time-scrubbing to animate events and character movement across the map over time.
+
+> **Aside:** This is the most architecturally complex feature in the backlog by a significant margin. The data model alone needs careful design: a tree of map layers (world → region → sub-region), map images per layer (uploaded by the user), locations (x/y coordinates on a specific layer's image), and associations between locations and timeline items / characters. The time dimension is what makes this special — a scrubber that moves through the timeline and highlights which events are "current", with character movement paths drawn as animated lines between locations. For the canvas, Konva.js could handle this (we already use it for the timeline) but something like OpenLayers or Leaflet would give better image-overlay and zoom/pan behavior for map-style navigation. I'd strongly recommend a dedicated design sprint for this one before any code is written — the scope is large enough that getting the data model wrong early would be expensive to undo. Start with static display (locations visible on map, click to see linked events) before tackling the time animation.
+
+---
+
+## [BL-31] Celestial data — lunar cycles, stars, and astrophysical calculations
+
+**Status:** Pending. Long-term / speculative — nice to have, not critical.
+
+Allow a world's calendar to define one or more moons and notable celestial bodies. The app
+computes and displays phase information on the calendar views (BL-28, BL-29) so a writer can
+track which moon is full on any given story day without manual arithmetic.
+
+### Data model (proposed)
+
+Stored as JSON in a new `celestial_config` column on the `timelines` table (or a sibling
+`timeline_celestial` table if multiple bodies per timeline is cleaner).
+
+**Moon definition:**
+
+```json
+{
+  "name": "Aethon",
+  "synodicPeriodDays": 28.5,
+  "phaseOffsetDays": 0,
+  "color": "#e8d5a3"
+}
+```
+
+- `synodicPeriodDays` — full cycle length in calendar days (fractional allowed).
+- `phaseOffsetDays` — the day-of-absolute-time at which this moon was at new moon (phase = 0).
+  Lets the writer "anchor" the cycle to a specific story date.
+- `color` — optional tint for the phase icon.
+
+**Star / celestial event definition:**
+
+```json
+{
+  "name": "The Wandering Eye",
+  "type": "recurring",
+  "periodDays": 365,
+  "firstOccurrenceDayOfYear": 180,
+  "durationDays": 3,
+  "description": "Visible at dusk for 3 days each year"
+}
+```
+
+Recurring events repeat every `periodDays` days starting from `firstOccurrenceDayOfYear`.
+One-off events have `type: "fixed"` with an absolute day.
+
+### Phase calculation
+
+For a moon at absolute day `D`:
+
+```ts
+phaseAngle = ((D - phaseOffsetDays) % synodicPeriodDays) / synodicPeriodDays  // 0..1
+```
+
+Map to 8 standard phases: new (0), waxing crescent, first quarter, waxing gibbous, full (0.5),
+waning gibbous, last quarter, waning crescent. Phase icons are SVG — a circle with a
+light/dark hemisphere split at the computed angle, rendered purely in CSS/SVG (no image
+assets needed).
+
+### Calendar integration (BL-28 / BL-29)
+
+- In the calendar overlay (BL-28) and year calendar (BL-29), each day cell can show a row
+  of small phase icons (one per moon) beneath the day number.
+- Hovering a phase icon shows a tooltip: moon name + phase name + days to next full/new moon.
+- Recurring celestial events appear as a small coloured dot on their active days, with a
+  hover tooltip giving the event name and description.
+- A settings toggle (per calendar, not global) controls whether celestial data is shown —
+  off by default so it doesn't clutter the default calendar view.
+
+### Configuration UI
+
+A new "Celestial" section in the timeline's calendar settings (alongside months, seasons,
+weeks). Add / remove moons and recurring events. Each moon has: name, synodic period, phase
+anchor date picker, colour. The anchor date picker reuses `LodDateInput` at DAY granularity.
+
+### Scope notes
+
+- No orbital mechanics beyond the synodic phase formula — no elliptical orbits, no
+  gravitational interactions, no eclipse prediction. Pure periodic phase arithmetic.
+- Tidal effects, planetary visibility windows, and constellation tracking are explicitly
+  out of scope (interesting but too open-ended for now).
+- The formula works for any `synodicPeriodDays` value, including non-integer periods, so a
+  world with a 13.7-day moon and a 41-day moon works correctly.
+
+---
+
+## [BL-33] Session changes export and import collision screen
+
+**Status:** Pending — nice-to-have, defer to post-v2.0.
+
+### Session changes export
+
+A per-session diff export that captures every insert, update, and delete made to a single
+timeline during one open-to-close session. The resulting file (`.stlc` — StoryTimeline
+Changes) can be handed to a co-writer, who applies it to their own copy of the same timeline.
+
+**Mechanism (preferred approach — no triggers):**
+
+At session open, snapshot the timeline's item rows into a temp table. On export, diff current
+state against the snapshot:
+
+```text
+op=insert  → row exists now, did not exist in snapshot
+op=update  → row exists in both, differs
+op=delete  → row existed in snapshot, no longer exists
+```
+
+The resulting change file carries the full row for inserts/updates, and just the ID + `"delete"`
+marker for removals. Applying it on the receiving side: upsert inserts/updates, hard-delete
+deleteds. Scope: items, item_tags, item_story_refs, item_character_appearances. Not timelines
+or settings (those are per-installation, not per-session changes).
+
+**Alternative (trigger-based):** `AFTER INSERT / UPDATE / BEFORE DELETE` triggers write
+`(table, row_id, op, ts)` rows to a `change_log` table. Higher write overhead, richer
+intra-session granularity (every individual edit recorded, not just net result). Prefer the
+snapshot diff approach unless replay fidelity becomes important.
+
+### Import collision screen
+
+When applying a session changes file, detect rows where `op=update` or `op=delete` and the
+local copy was also modified since the session export timestamp. Present a simple side-by-side
+comparison (incoming vs local) with per-item radio buttons: **Keep incoming / Keep local /
+Skip**. Default: keep incoming (last write wins). A "Select all incoming" / "Select all local"
+bulk toggle keeps the flow fast for users who just want to accept everything.
+
+This screen applies equally to any future import path that involves per-item merging (not just
+session changes).
+
+---
+
+## [BL-34] In-app manual / help system
+
+**Status:** Pending — important but not urgent, defer to post-v2.0.
+
+A tabbed, searchable in-app manual covering every module. Accessible via a Help button in the
+main toolbar and a `?` button in each major panel (deep-links to the relevant tab).
+
+### Structure
+
+One top-level tab per module:
+
+| Tab | Covers |
+| --- | --- |
+| Getting started | Installation, first timeline, key concepts |
+| Timelines | Creating, editing, calendar settings, layout settings |
+| Items | Events, periods, ages, notes, bookmarks, pictures |
+| Characters | Character cards, relationships, appearances |
+| Stories & books | Story/book/chapter linking, cross-references |
+| Canvas | Zoom, pan, LOD, filters, minimap, performant panning |
+| Export & backup | All four export types, import behaviour, backup schedule |
+| Keyboard shortcuts | Full reference table |
+| Changelog | Version history, notable changes |
+
+### Content format
+
+Markdown rendered inside a scrollable panel (same WebView2 surface, a new HTML entry point
+`help.html`). Source files live in `Frontend/src/help/` — one `.md` per tab, compiled into
+the Vue bundle at build time. This keeps the help content version-controlled and diffable
+alongside the feature code that it documents.
+
+### Search
+
+A single text input searches across all tab content. Matches highlight inline; the tab
+containing the most matches activates first.
+
+### Deep-linking
+
+Each section header has an anchor. The `?` buttons in individual panels send
+`OpenHelp({ tab: 'canvas', anchor: 'lod' })` through the bridge, which opens the help window
+and scrolls to the right section.
+
+---
+
+## [BL-07] Calendar change — item position behavior
+
+**Status:** Deferred — probably not important to revisit.
+
+When a timeline's calendar is changed (e.g. from 365-day to 200-day), sub-year items have positions that may no longer align to valid ticks in the new calendar. Decide: snap to nearest valid tick, or allow floating positions?
+
+> **Aside:** My recommendation is snap-to-nearest, with a warning dialog before the change is applied listing how many items will be affected and their new positions. Floating items are worse — they create invisible or mislabelled ticks and confuse the canvas layout math. The snap formula is simple: `newDayOfYear = round(oldAbsoluteStart_fraction * newYearLength)`, clamped to `[0, newYearLength - 1]`. Items at YEAR granularity are unaffected. Items at MONTHS/SEASONS granularity snap to the first day of the nearest equivalent month/season in the new calendar (harder to define for custom calendars — may just snap to day). One open question: should this be reversible? If you switch calendars twice, positions may drift each time. A "store original absolute fraction" field would let you recompute from scratch on any calendar change, but adds schema complexity.
+
+---
+
+# Done
+
+Kept for the record, in number order.
 
 ## [BL-01] Tick label precision failure at large year values
 
@@ -167,16 +951,6 @@ The image picker currently allows selecting only one image at a time despite the
 
 ---
 
-## [BL-07] Calendar change — item position behavior
-
-**Status:** Deferred — probably not important to revisit.
-
-When a timeline's calendar is changed (e.g. from 365-day to 200-day), sub-year items have positions that may no longer align to valid ticks in the new calendar. Decide: snap to nearest valid tick, or allow floating positions?
-
-> **Aside:** My recommendation is snap-to-nearest, with a warning dialog before the change is applied listing how many items will be affected and their new positions. Floating items are worse — they create invisible or mislabelled ticks and confuse the canvas layout math. The snap formula is simple: `newDayOfYear = round(oldAbsoluteStart_fraction * newYearLength)`, clamped to `[0, newYearLength - 1]`. Items at YEAR granularity are unaffected. Items at MONTHS/SEASONS granularity snap to the first day of the nearest equivalent month/season in the new calendar (harder to define for custom calendars — may just snap to day). One open question: should this be reversible? If you switch calendars twice, positions may drift each time. A "store original absolute fraction" field would let you recompute from scratch on any calendar change, but adds schema complexity.
-
----
-
 ## [BL-08] New "actions" menu in timeline toolbar
 
 **Status:** Done. `TimelineActionsMenu.vue` — popover with hidden ranges and shift date — is implemented and wired into the timeline header.
@@ -214,142 +988,6 @@ After saving a new item in the EditItem window, it should appear on the timeline
 A sticky search/filter input at the top of the settings page that helps the user locate a specific setting by name.
 
 > **Aside:** Option C (highlight + scroll to match) is the best UX for a settings panel with many sections. Option B (hide non-matching) is faster for power users but disorienting in a settings context because the user loses the structural overview — they don't know what they're *not* seeing. A hybrid is ideal: show all sections always, but scroll to and visually highlight (animated border or background pulse — gentle, not flashy given the migraine consideration) the first matching setting, with prev/next arrows if there are multiple matches. Minimum viable version: just a simple `Ctrl+F`-style filter that scrolls to section headers containing the search term. Sticky positioning is CSS `position: sticky; top: 0` on the input — trivial to implement.
-
----
-
-## [BL-12] Usage statistics and milestones
-
-**Status:** Framework done. Content pending. Deferred — collaborative effort required for achievement definitions, character tier content, and portrait assets.
-
-Stats DB (`usage.sqlite` next to exe), session tracking, fire-and-forget item/activity event recording, DB-driven achievement definitions, character progression tables, achievement/milestone toast system (Steam-style lower-right + shimmer top-center), Web Audio chimes, DevTools console helpers (`window.__stl`), app settings toggles, and Vitest coverage all in place.
-
-Remaining: fill in real achievement definitions (flavor text, trigger criteria), real DnD character definitions with tier ladders, and character portrait images in `Resources/`.
-
-> **Aside:** The statistics data collection is best done in two layers: (1) session-level events stored in memory (start time, focus/blur timestamps via `window` events, item-add count) flushed to the DB on close; (2) aggregate DB queries for historical stats (items per timeline, density distributions, active days). The statistics screen can use a charting library — Chart.js is the obvious lightweight choice given we're already using Vue; Recharts if we want more control. The achievements system is genuinely fun and worth doing right — a small set of carefully chosen milestones ("first item", "100 items", "first import", "timeline spanning 1000 years", etc.) with cosmetic unlocks. Store earned achievements in a DB table with timestamp. The "character progression" angle is interesting — could tie achievement points to an in-universe character who grows alongside the writer's project. Keep this entirely optional and silent (no pop-ups, just discoverable in the stats screen) to avoid being annoying.
-
----
-
-## [BL-13] Configurable incremental backup system
-
-**Status:** Pending. Depends on evaluating scope.
-
-Replace/supplement the current manual full-copy backup with a more granular change-tracking system, similar in spirit to git — only recording what changed since the last recorded state.
-
-> **Aside:** Full git-style content-addressable storage is probably overkill. A practical middle ground: on each app close (or on a configurable interval), write a "change journal" file containing only the rows that differ from the last snapshot. Rows are identified by ID + a hash or modification timestamp. The "last recorded state" can just be a stored hash of each row's content in a `backup_state` table — on backup, compare current rows against stored hashes, write only changed/added/deleted rows to the journal. Restoring means replaying the journal or reverting to the snapshot. The most important thing to get right is the restore UX — it should be a browsable history ("show me the state from 3 sessions ago") not just a single rollback point. SQLite's WAL mode actually gives you some of this for free within a session, but across sessions you need the journal approach. Worth also keeping the manual full-copy backup as a "nuclear option" alongside this.
-
----
-
-## [BL-14] Top-level menu system
-
-**Status:** Pending. Architectural feature.
-
-A persistent top-of-screen menu bar (or equivalent) providing navigation to all screens: item management, search, export options, map screen, characters, statistics, etc.
-
-> **Aside:** This is an architectural decision as much as a feature. Currently the app uses separate WinForms windows for different views, which means each has its own WebView2 instance, its own state, and its own load time. A top menu that navigates within a single SPA would be faster and more cohesive, but requires collapsing the multi-window model. I'd suggest a hybrid: keep separate windows for the timeline canvas (which genuinely benefits from being its own resizable window) but move everything else into a single SPA shell with in-page navigation. The menu itself: a thin horizontal bar at the top with icon + label buttons (Timeline, Characters, Map, Search, Statistics, Export). This is a prerequisite for several other BL items that need a "home" screen.
-
----
-
-## [BL-15] Characters module
-
-**Status:** Pending. Large feature.
-
-Full character management: create/edit characters with biography fields, birth/death dates, states (alive/deceased/unknown), attachment to timeline items, exportable as a character-specific event timeline, and filterable.
-
-> **Aside:** The DB schema already has `characters` and `character_appearances` tables, so the data layer is partially in place. The main work is the UI. Key screens needed: (1) character list with search/filter; (2) character detail/edit form (biography, dates, color, portrait image); (3) character appearances timeline — a filtered view of the main timeline showing only items where that character appears, which is essentially just BL-03 filter applied to one character. The "state" system (born/alive/deceased) should tie into the item dates where possible — if a character has a "death" event, the state should auto-update. The "export as timeline" feature is high value: it lets a writer hand a character's journey to someone else without exposing the full world history.
-
----
-
-## [BL-16] The Map feature
-
-**Status:** Pending. Major long-term feature.
-
-A multi-layer interactive map screen: a world map containing regions, each region drillable into a sub-map, locations pinned on each map, locations linked to items/events, time-scrubbing to animate events and character movement across the map over time.
-
-> **Aside:** This is the most architecturally complex feature in the backlog by a significant margin. The data model alone needs careful design: a tree of map layers (world → region → sub-region), map images per layer (uploaded by the user), locations (x/y coordinates on a specific layer's image), and associations between locations and timeline items / characters. The time dimension is what makes this special — a scrubber that moves through the timeline and highlights which events are "current", with character movement paths drawn as animated lines between locations. For the canvas, Konva.js could handle this (we already use it for the timeline) but something like OpenLayers or Leaflet would give better image-overlay and zoom/pan behavior for map-style navigation. I'd strongly recommend a dedicated design sprint for this one before any code is written — the scope is large enough that getting the data model wrong early would be expensive to undo. Start with static display (locations visible on map, click to see linked events) before tackling the time animation.
-
----
-
-## [BL-17] Character relations screen
-
-**Status:** Pending. Depends on BL-15 (Characters module).
-
-A visual network graph showing characters and their relationships (family, rival, ally, etc.), centered on a selected character, with relationship types as labeled edges.
-
-> **Aside:** This is a graph visualization problem. Konva.js can draw this but a dedicated force-directed graph library (D3.js `d3-force`, or vis.js Network) would produce much better layouts automatically. The data model needs a `character_relationships` table: `(character_a_id, character_b_id, relationship_type, notes, start_year?, end_year?)`. Relationship types should be configurable (not hardcoded), since every story world has its own social structures. The UX pattern of "center on a selected character and show their direct connections" is the right starting point — expanding outward one degree at a time (click a connected character to recenter). A full graph of all characters at once becomes unreadable quickly. Worth also thinking about time: if relationships have start/end years, the graph should respond to the timeline's current time position (or have its own time scrubber) to show the relational state at a given point in the story.
-
----
-
-## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
-
-**Status:** Substantially resolved. All 10 planned items addressed. Remaining open: bridge
-error-path (timeout + discriminated types), three canvas perf issues (TC-H1/H2/H5), z-index
-scale, and icon convention sweep — these are separate efforts.
-
-### Data integrity — RESOLVED
-
-- ~~**V2 backup import silently drops entire tables** (DB-C2)~~ — **Fixed.** `DatabaseImporter.ImportV2Backup` now restores lod_profiles, layout_settings, filter_presets, notes, timeline_hidden_ranges, and timeline_filter_rules. Copy order correct.
-- ~~**V1 import writes character↔event links into a dead table** (DB-H1)~~ — **Fixed.** V1 import now maps `item_characters` → `item_character_appearances` correctly.
-- ~~**`SetDataRoot` can silently create a fresh empty DB** (L5)~~ — **Mitigated.** `AppSettingsModal.vue` shows a warning before the action ("Use this folder will load whatever data already exists there") and informs the user after if `isNewDb` is true. Not a blocking issue.
-
-### Bridge / architecture (still pending)
-
-- **`request()` offline path now rejects** (FC-C1 partial): the `resolve(null)` in the no-WebView2
-  branch is replaced by `reject(Error)`. The deeper fix (status-discriminated response types
-  so backend error payloads also reject) is still pending — callers must still manually check
-  `?.status === 'error'` for production error responses.
-- **All handlers run synchronously on the UI thread** (H1): a big timeline load or media-folder
-  move freezes the window. Wants `Task.Run` + marshalled replies for the heavy handlers.
-- ~~**`ShowDialog` inside WebMessageReceived** (H2)~~ — **Fixed.** All dialog calls wrapped in `BeginInvoke`.
-- ~~**`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5)~~ — **Fixed.** `CreateBackup` uses `VACUUM INTO`; `MoveDataFolder` now uses `ItemRepo.VacuumInto()` instead of `File.Copy`.
-- ~~**`GetTimelineStories` name is misleading** (CT-M1)~~ — **Fixed.** Renamed to `GetAllStories`.
-
-### Dead weight — RESOLVED
-
-- ~~**`SettingsApp.vue` is broken boilerplate** (PG-C2)~~ — **Deleted.** `SettingsApp.vue`, `settings.ts`, `settings.html` removed; vite entry removed.
-- ~~**Dead layout settings render in the Settings UI but are consumed nowhere** (TC-C2)~~ — **Fixed.** Hover Line group, `TimelineJumpToYearAnimationLength`, `TimelineTickMarkerFontSize`, `TimelineNonYearTicksSmaller` are all wired into the canvas.
-- ~~**Dead backend code**: `SaveItemWithTags` in `Database/ItemRepo.cs`~~ — **Deleted.** Method removed entirely. `GetTimelineItems` and `InsertDefaultPreset` already removed.
-  Note: `relationship_types`, `timeline_calendars`, and `item_characters` are reserved schema
-  for future modules (BL-17 character relations, multi-calendar support, character event links)
-  — not dead, do not remove.
-
-### Custom-calendar correctness (core-feature gaps)
-
-- ~~**`LodDateInput` hardcodes Gregorian month lengths** (MD-H3)~~ — **Fixed.** `MONTH_LENGTHS` and `SEASON_NAMES` constants removed. New props `monthLengths`, `seasonNames`, `weekCount` added. `EditItem.vue` now calls `parseCalendarDef(YearDefinition)` and passes all four values to both date inputs.
-- ~~**NotesPanel distance math hardcodes Gregorian** (TC-M13/FC-H4)~~ — **Fixed.** `formatSpecific` now decomposes via `store.calendarConfig.months` (actual month lengths from `startDay` differences) and `cfg.weekLength`. `formatApproximate` uses `cfg.yearLength`, `cfg.months.length`, `cfg.seasons.length`, and derived weeks-per-year. `formatPoint` now uses `store.activeFormatRegistry` instead of the static module-level `FormatRegistry`.
-
-### Store correctness — RESOLVED
-
-- ~~**`loadFilterPreset` resurrects old rules** (FC-H1)~~ — **Fixed.** DB writes (delete old, save new) now complete before in-memory state is updated, so a failure leaves the store consistent with what's actually in the DB.
-- ~~**Concurrent `loadTimelineData` calls tear state** (FC-H2)~~ — **Fixed.** Sequence token check added after the second `await Promise.all` (filter rules + misc settings), not just after the first bridge call.
-- ~~**Filter data maps go stale after item edits** (FC-H3)~~ — **Fixed.** `upsertItem` now accepts tag/character/story link arrays and `hasPicture` flag; `ItemSaved` push extended in `HandleSaveItem` to include `ItemRepo.GetItemLinksById()` output so all four filter maps stay current after every save.
-
-### Performance (canvas stack)
-
-- **Minimap rebuilds its entire Konva scene per mouse-move** (TC-H2): wants a static content
-  layer + dynamic overlay for the NOW line/viewport rect.
-- **Deleted items' Konva nodes are hidden, never destroyed** (TC-H1): unbounded scene-graph
-  growth over long sessions.
-- **DataPanel + GalleryPanel double-fetch `GetItemForEdit` per item per pan** (TC-H5): wants a
-  shared picture cache keyed by item id.
-
-### Styling consolidation (staged plan in AUDIT_FINDINGS §8)
-
-- ~~**No design tokens; three competing accent systems; two surface systems** (ST-H1–H4): ~230
-  colour literals, 9 backdrop darknesses, a z-index ladder with real conflicts, no global
-  font-family (some windows fall back to serif).~~ **DONE** — `:root` token block in `main.scss`
-  (`--app-bg/surface/border/text/accent` family + new `--app-save-accent`, `--app-danger`);
-  `font-family: system-ui` + global scrollbar rule added; 18 component/page `<style>` sections
-  swept; `canvasTheme.ts` created so Konva reads tokens at runtime; `applyAppTheme` clears
-  canvas cache on theme change; `ChromeTheme` (TS + C#) includes save-accent. Remaining bare
-  literals are intentional: DB-stored LayoutSettings defaults (TimelineSettingsModal script),
-  canvas context-menu semantic colours (dark-canvas overlay), and data-driven item colour
-  fallbacks. z-index scale and icon convention sweep deferred — separate effort.
-- ~~**`BaseModal` extraction** (MD-H1/H2): ~700 lines of duplicated modal chrome across 11 modals
-  with inconsistent Escape/backdrop/z-index behaviour.~~ **DONE** — `BaseModal.vue` created; 12 of 13
-  modals converted (backdrop + panel + Escape key + `#header`/`#footer` slots). `TimelineItemViewModal`
-  intentionally skipped (themed viewer, incompatible design).
-- **Icon convention**: 19 of 20 modal/picker files contradict the CLAUDE.md Remix-vs-Phosphor
-  rule — at this scale, decide whether to fix the components or change the convention.
 
 ---
 
@@ -399,21 +1037,6 @@ into the existing timeline colour tokens.
 
 > This is the natural companion to the design-token consolidation work in BL-18 (ST-H1–H4).
 > Doing that token sweep first will make the chrome theme settings much cheaper to implement.
-
----
-
-## [BL-23] App icon
-
-**Status:** Placeholder in place. Pending commission of final artwork.
-
-The application currently uses a placeholder icon. A proper icon (`.ico` with
-16/32/48/256px variants, plus a matching `favicon` for the WebView2 shell) should be
-provided.
-
-> In the `.csproj`, set `<ApplicationIcon>` to the `.ico` path. The icon will appear in the
-> taskbar, Alt-Tab switcher, and the title bar of any non-borderless window. For the
-> borderless windows a small SVG/PNG version can be shown in the Vue title bar next to the
-> window title.
 
 ---
 
@@ -618,91 +1241,6 @@ Add `year_start_day_of_week INTEGER DEFAULT 0` to the `timelines` table via the 
 
 ---
 
-## [BL-31] Celestial data — lunar cycles, stars, and astrophysical calculations
-
-**Status:** Pending. Long-term / speculative — nice to have, not critical.
-
-Allow a world's calendar to define one or more moons and notable celestial bodies. The app
-computes and displays phase information on the calendar views (BL-28, BL-29) so a writer can
-track which moon is full on any given story day without manual arithmetic.
-
-### Data model (proposed)
-
-Stored as JSON in a new `celestial_config` column on the `timelines` table (or a sibling
-`timeline_celestial` table if multiple bodies per timeline is cleaner).
-
-**Moon definition:**
-
-```json
-{
-  "name": "Aethon",
-  "synodicPeriodDays": 28.5,
-  "phaseOffsetDays": 0,
-  "color": "#e8d5a3"
-}
-```
-
-- `synodicPeriodDays` — full cycle length in calendar days (fractional allowed).
-- `phaseOffsetDays` — the day-of-absolute-time at which this moon was at new moon (phase = 0).
-  Lets the writer "anchor" the cycle to a specific story date.
-- `color` — optional tint for the phase icon.
-
-**Star / celestial event definition:**
-
-```json
-{
-  "name": "The Wandering Eye",
-  "type": "recurring",
-  "periodDays": 365,
-  "firstOccurrenceDayOfYear": 180,
-  "durationDays": 3,
-  "description": "Visible at dusk for 3 days each year"
-}
-```
-
-Recurring events repeat every `periodDays` days starting from `firstOccurrenceDayOfYear`.
-One-off events have `type: "fixed"` with an absolute day.
-
-### Phase calculation
-
-For a moon at absolute day `D`:
-
-```ts
-phaseAngle = ((D - phaseOffsetDays) % synodicPeriodDays) / synodicPeriodDays  // 0..1
-```
-
-Map to 8 standard phases: new (0), waxing crescent, first quarter, waxing gibbous, full (0.5),
-waning gibbous, last quarter, waning crescent. Phase icons are SVG — a circle with a
-light/dark hemisphere split at the computed angle, rendered purely in CSS/SVG (no image
-assets needed).
-
-### Calendar integration (BL-28 / BL-29)
-
-- In the calendar overlay (BL-28) and year calendar (BL-29), each day cell can show a row
-  of small phase icons (one per moon) beneath the day number.
-- Hovering a phase icon shows a tooltip: moon name + phase name + days to next full/new moon.
-- Recurring celestial events appear as a small coloured dot on their active days, with a
-  hover tooltip giving the event name and description.
-- A settings toggle (per calendar, not global) controls whether celestial data is shown —
-  off by default so it doesn't clutter the default calendar view.
-
-### Configuration UI
-
-A new "Celestial" section in the timeline's calendar settings (alongside months, seasons,
-weeks). Add / remove moons and recurring events. Each moon has: name, synodic period, phase
-anchor date picker, colour. The anchor date picker reuses `LodDateInput` at DAY granularity.
-
-### Scope notes
-
-- No orbital mechanics beyond the synodic phase formula — no elliptical orbits, no
-  gravitational interactions, no eclipse prediction. Pure periodic phase arithmetic.
-- Tidal effects, planetary visibility windows, and constellation tracking are explicitly
-  out of scope (interesting but too open-ended for now).
-- The formula works for any `synodicPeriodDays` value, including non-integer periods, so a
-  world with a 13.7-day moon and a 41-day moon works correctly.
-
----
-
 ## [BL-32] Minimised timeline mode — data-first layout
 
 **Status:** Done. Toggle button in `TimelineActivityStrip.vue`, `isMinimised` ref in `TimelineApp.vue` gates the splitpanes layout, `miniMode` prop wired into `TimelineCanvas.vue` with dedicated mini layer (pin-head stems), `SaveTimelineMinimised` bridge action persists state via `SettingsRepo`, `timeline_minimised` DB column in `settings` table.
@@ -783,96 +1321,12 @@ data). The exact toggle mechanism for the side panel is out of scope for this it
 
 ---
 
-## [BL-33] Session changes export and import collision screen
-
-**Status:** Pending — nice-to-have, defer to post-v2.0.
-
-### Session changes export
-
-A per-session diff export that captures every insert, update, and delete made to a single
-timeline during one open-to-close session. The resulting file (`.stlc` — StoryTimeline
-Changes) can be handed to a co-writer, who applies it to their own copy of the same timeline.
-
-**Mechanism (preferred approach — no triggers):**
-
-At session open, snapshot the timeline's item rows into a temp table. On export, diff current
-state against the snapshot:
-
-```text
-op=insert  → row exists now, did not exist in snapshot
-op=update  → row exists in both, differs
-op=delete  → row existed in snapshot, no longer exists
-```
-
-The resulting change file carries the full row for inserts/updates, and just the ID + `"delete"`
-marker for removals. Applying it on the receiving side: upsert inserts/updates, hard-delete
-deleteds. Scope: items, item_tags, item_story_refs, item_character_appearances. Not timelines
-or settings (those are per-installation, not per-session changes).
-
-**Alternative (trigger-based):** `AFTER INSERT / UPDATE / BEFORE DELETE` triggers write
-`(table, row_id, op, ts)` rows to a `change_log` table. Higher write overhead, richer
-intra-session granularity (every individual edit recorded, not just net result). Prefer the
-snapshot diff approach unless replay fidelity becomes important.
-
-### Import collision screen
-
-When applying a session changes file, detect rows where `op=update` or `op=delete` and the
-local copy was also modified since the session export timestamp. Present a simple side-by-side
-comparison (incoming vs local) with per-item radio buttons: **Keep incoming / Keep local /
-Skip**. Default: keep incoming (last write wins). A "Select all incoming" / "Select all local"
-bulk toggle keeps the flow fast for users who just want to accept everything.
-
-This screen applies equally to any future import path that involves per-item merging (not just
-session changes).
-
----
-
-## [BL-34] In-app manual / help system
-
-**Status:** Pending — important but not urgent, defer to post-v2.0.
-
-A tabbed, searchable in-app manual covering every module. Accessible via a Help button in the
-main toolbar and a `?` button in each major panel (deep-links to the relevant tab).
-
-### Structure
-
-One top-level tab per module:
-
-| Tab | Covers |
-| --- | --- |
-| Getting started | Installation, first timeline, key concepts |
-| Timelines | Creating, editing, calendar settings, layout settings |
-| Items | Events, periods, ages, notes, bookmarks, pictures |
-| Characters | Character cards, relationships, appearances |
-| Stories & books | Story/book/chapter linking, cross-references |
-| Canvas | Zoom, pan, LOD, filters, minimap, performant panning |
-| Export & backup | All four export types, import behaviour, backup schedule |
-| Keyboard shortcuts | Full reference table |
-| Changelog | Version history, notable changes |
-
-### Content format
-
-Markdown rendered inside a scrollable panel (same WebView2 surface, a new HTML entry point
-`help.html`). Source files live in `Frontend/src/help/` — one `.md` per tab, compiled into
-the Vue bundle at build time. This keeps the help content version-controlled and diffable
-alongside the feature code that it documents.
-
-### Search
-
-A single text input searches across all tab content. Matches highlight inline; the tab
-containing the most matches activates first.
-
-### Deep-linking
-
-Each section header has an anchor. The `?` buttons in individual panels send
-`OpenHelp({ tab: 'canvas', anchor: 'lod' })` through the bridge, which opens the help window
-and scrolls to the right section.
-
----
-
 ## [BL-35] Proper versioning
 
-**Status:** Done. `<Version>`, `<AssemblyVersion>`, `<FileVersion>` set to `0.9.0` in `.csproj`. Frontend `package.json` version bumped to `0.9.0`.
+**Status:** Done. One version number, propagated by `release.ps1` to `StoryTimelineMk2.csproj`
+(`Version` / `AssemblyVersion` / `FileVersion`), `app.manifest`, `Frontend/package.json` and
+`Installer/InstallerContext.cs`. The frontend reads `__APP_VERSION__` (Vite define from
+`package.json`), the update checker reads the assembly version. See `RELEASING.md`.
 
 Establish a single version source of truth for the application. Currently no version number
 is defined anywhere — the csproj has no `<Version>` and the frontend has no version field.
@@ -912,33 +1366,13 @@ not a user-facing product name. Rename to something presentable (e.g. `StoryTime
 
 ---
 
-## [BL-37] Application manifest — product identity
-
-**Status:** Done. `app.manifest` created with Per-Monitor V2 DPI awareness, `asInvoker` UAC, and Windows 10 compatibility GUID. `<Product>Story Timeline</Product>` set in `.csproj`. Remaining optional fields (`Company`, `Copyright`, `Description`, `NeutralLanguage`) not yet set.
-
-Set up the Windows application manifest and assembly attributes so the app presents with a
-proper product name, company/creator, copyright notice, and description in all the standard
-places (Windows file properties, Task Manager, Add/Remove Programs, UAC prompt).
-
-### Manifest changes required
-
-- In the `.csproj`, populate: `<Product>`, `<Company>`, `<Copyright>`, `<Description>`,
-  `<NeutralLanguage>`.
-- Confirm `<ApplicationManifest>` points to (or generates) a manifest that declares:
-  - `dpiAware` / `dpiAwareness` (already set, but worth verifying in context of the manifest).
-  - `requestedExecutionLevel` as `asInvoker` (no UAC elevation).
-- Optionally add a `[assembly: AssemblyProduct(...)]` etc. in `Program.cs` if the csproj
-  properties alone don't flow through to the manifest.
-
-> These are purely metadata changes — no runtime behaviour is affected. Payoff: the app looks
-> professional in file properties, Task Manager shows "StoryTimeline" not the exe path, and
-> any future installer / MSIX packaging picks up the metadata automatically.
-
----
-
 ## [BL-38] Help and About system
 
-**Status:** Pending.
+**Status:** Done. `?` button at the bottom of the activity strip opens a Help / About flyout
+(`TimelineActivityStrip.vue`). `HelpModal.vue` is the simplified single-page help (navigation,
+items, filters, calendar, time breaks, import/export, keyboard shortcuts); `AboutModal.vue` shows
+the version (`__APP_VERSION__`), art credit and "Check for updates". Both are Vue modals rather
+than a separate `f_Help` window; the full manual remains BL-34.
 
 A `?` button at the bottom of the left activity strip opens a small submenu with two items:
 **Help** and **About**.
@@ -972,154 +1406,5 @@ A Vue modal (not a new WinForms window) overlaid on the main window. Content:
 > The About modal is entirely frontend — no backend call needed if the version is injected at
 > startup. The Help window reuses the existing WebView2 infrastructure; it's a new
 > `BorderlessFormBase` subclass with its own entry point (`help.html`).
-
----
-
-## [BL-39] Extended keyboard shortcuts
-
-**Status:** Pending. Deferred — needs more features implemented first; shortcut targets and the help system (BL-38) should be in place before this is tackled.
-
-Common timeline actions should have keyboard shortcuts so power users never need to reach for
-the mouse for routine operations.
-
-### Proposed shortcuts (baseline set)
-
-| Action | Shortcut |
-| ------ | -------- |
-| Scroll forward one tick | `→` or `L` |
-| Scroll back one tick | `←` or `H` |
-| Zoom in (LOD finer) | `+` / `=` |
-| Zoom out (LOD coarser) | `-` |
-| Jump to year (focus input) | `G` |
-| New Event at current position | `E` |
-| New Period | `P` |
-| New Age | `A` |
-| Toggle mini mode | `M` |
-| Toggle performant panning | `Shift+P` |
-| Toggle filter panel | `F` |
-| Toggle data panel | `D` |
-| Open Help | `?` |
-| Close modal / panel | `Escape` |
-
-### Shortcut implementation notes
-
-- Most of these map to existing functions already callable from the canvas or toolbar.
-- Add a `keydown` listener in `TimelineCanvas.vue` (already exists for `Shift`) extended to
-  the new keys, guarded against firing when a text input has focus.
-- Document the full shortcut table in the Help system (BL-38 / BL-34) under a dedicated
-  "Keyboard shortcuts" section.
-- Consider a shortcut cheat-sheet overlay triggered by `?` when no modal is open — a
-  semi-transparent overlay listing all shortcuts, dismissed by any key.
-
----
-
-## [BL-40] Force item side (above / below the timeline)
-
-**Status:** Partially done (2026-09-19) — `items.placement` exists (migration 2, `0` unassigned /
-`1` above / `2` below), `ItemRepo.SaveItemFull` assigns a side on first save by balancing the
-nearest neighbours and keeps it sticky afterwards, and `renderItems` honours `Placement` before the
-parity fallback. Remaining: the Edit Item three-way toggle (Auto / Above / Below) so the user can
-override the assigned side.
-
-Originally an item's side was `ItemIndex % 2` (`TimelineCanvas.vue` → `isAboveLine`), i.e. creation
-order decided it and the user had no say. Add a per-item placement setting: **Auto** (current
-behaviour), **Above**, **Below**.
-
-- ~~New `items.placement` column (schema migration, `0 = auto, 1 = above, 2 = below`), exposed on
-  `TimelineItem`~~ — done; still to do: the Edit Item window control (small three-way toggle next
-  to Importance). Note `0` now means "not assigned yet" rather than "auto forever": the backend
-  fills it on the next save, so "Auto" in the UI should send `0` and let the backend pick again.
-- ~~`renderItems` reads it before the parity fallback~~ — done; lane packing (`getAssignedLane`) is
-  unchanged — the forced side just fixes `isAboveLine`.
-- Mini mode ignores it (pins have no side).
-
----
-
-## [BL-41] Dual year labels (year offset)
-
-**Status:** Pending.
-
-Let a timeline show a second year numbering: below the axis the native years (0, 1, 2 …) and
-above it the same ticks with a configurable offset (e.g. 1450, 1451, 1452 …), so writers can
-work in an in-world era while keeping a real-world (or second calendar) reference.
-
-- Per-timeline setting: `year_offset` (integer) + `year_offset_label` (optional short prefix /
-  suffix such as "AD" or "AE"), edited in Timeline Settings.
-- `renderGrid` draws the offset label mirrored above the axis for YEARS-and-coarser ticks;
-  sub-year LODs keep a single label row (the offset only changes the year part).
-- Cursor label and jump-to-year input keep working in native years; the offset is display-only.
-- Related to the reserved `timeline_calendars` table (multi-calendar) — a full second calendar
-  is out of scope here, this is a pure numeric offset.
-
----
-
-## [BL-42] Data panel and image panel — display options and pop-out windows
-
-**Status:** Pending. Needs design discussion before implementation.
-
-The data panel (`TimelineDataPanel.vue`) and gallery panel (`TimelineGalleryPanel.vue`) are
-locked into the splitpanes layout and always show the same row / tile layout. Investigate:
-
-- Custom display logic: user-selectable row density (compact / normal / cards), column choice,
-  sort key, and which item types are listed; gallery tile size and grouping (by item, by year).
-- Pop-out: open either panel in its own borderless WinForms window (same pattern as
-  `f_YearCalendar` — own HTML entry point, `OpenXWindow` bridge action, position persisted in
-  `settings`), kept in sync with the timeline viewport via push messages.
-- Decide whether the popped-out panel replaces or duplicates the in-window one.
-
----
-
-## [BL-43] Shrink / hide the timeline title header
-
-**Status:** Pending.
-
-`#timeline-header` (`TimelineApp.vue`) takes a fixed strip at the top of the timeline window for
-the title, author and colour strip. Add a compact mode (single line, smaller type) and a way to
-hide it entirely, persisted per timeline in `settings` like `timeline_minimised` (BL-32). A
-hidden header should still expose the title somewhere (window title bar already has it).
-
----
-
-## [BL-44] Integer time model for ticks, labels and item positions
-
-**Status:** Pending. Agreed design; separate effort from the per-LOD label fixes.
-
-Tick labels are derived by rounding a floating-point year fraction back to a calendar unit
-(`toDayRaw = Math.round(f * yearLength)` in `buildFormatRegistry`, `timelineLayout.ts`), and each
-LOD carries a free-form `stepFraction` (`1/seasons.length`, `weekLength/yearLength`, user-typed
-values like `1/525600`). Any fraction that does not divide the calendar evenly produces wrong or
-useless labels — a 3-season calendar's SEASONS LOD only ever shows the first season, a minutes LOD
-labels nothing meaningful.
-
-Replace the fraction-first model with an integer one:
-
-- Canonical sub-year unit is integer **day-of-year** (0-based) derived from the calendar
-  (`YearDefinition`). Every LOD is a list of *boundary days* computed from the calendar rather than
-  a fraction: MONTHS → each month's start day, SEASONS → each season's start day, WEEKS →
-  `k * weekLength`, DAYS → every day. `stepFraction` survives only as the zoom scale that decides
-  which LOD is active.
-- `renderGrid` (`TimelineCanvas.vue`) iterates whole years, then that LOD's boundary days within
-  each visible year, instead of stepping `i * targetStep` and rounding.
-- Label formatters take `(year, day)` — no rounding path.
-- `EditItem.vue` / `LodDateInput.vue` store day-of-year; `AbsoluteStart = year + day / yearLength`
-  (same for end). Items saved at MONTHS/SEASONS granularity under the old model
-  (`Year + monthIndex / 12`) need a one-time re-snap migration to the nearest boundary day.
-- Sub-day LODs (hours/minutes) are out of scope; the model should not prevent adding a
-  `dayFraction` later.
-
----
-
-## [BL-45] Mass add items
-
-**Status:** Pending. Idea stage — spec below may change.
-
-New side-panel entry opening a small **"Mass add items"** modal. Left side: title, type and a
-Year / from–to input. Each *Add* pushes the item onto a list on the right; the user keeps adding
-until they press *Finished*, at which point all listed items are saved to the timeline in one go.
-
-- Type persists between adds; changing it is remembered for the next item.
-- Start year persists when a **Remember year** checkbox is on, with a `[-] [ YEAR ] [+]` stepper for
-  quick adjustment.
-- Items in the right-hand list should be removable before finishing.
 
 ---
