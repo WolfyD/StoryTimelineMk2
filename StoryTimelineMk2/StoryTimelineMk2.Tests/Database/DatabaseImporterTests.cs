@@ -1,4 +1,5 @@
 using StoryTimelineMk2.Database;
+using StoryTimelineMk2.Database.Migrations;
 using Microsoft.Data.Sqlite;
 using Dapper;
 
@@ -256,7 +257,7 @@ public class DatabaseImporterTests
             "SELECT calendar_id FROM timelines WHERE title = 'V1 Timeline'");
 
         // The V1 importer sets calendar_id = 'cal_default_gregorian' explicitly,
-        // and ApplyLegacyMigrations also ensures any NULLs become the default.
+        // and the schema default covers anything the backup left NULL.
         Assert.Equal("cal_default_gregorian", calId);
     }
 
@@ -278,12 +279,11 @@ public class DatabaseImporterTests
         Assert.Equal(500.0, absStart!.Value, precision: 1);
     }
 
-    // ──────────────────── ApplyLegacyMigrations (direct) ─────────────────────
+    // ──────────────────── legacy row defaults ────────────────────────────────
 
     [Fact]
-    public void ApplyLegacyMigrations_SetsDefaultCalendar_ForTimelinesWithNullCalendarId()
+    public void Import_V1Backup_SetsDefaultCalendar_ForTimelinesWithNullCalendarId()
     {
-        // ApplyLegacyMigrations runs after import; simulate via V1 import which triggers it
         using var ctx = new DbTestContext();
 
         // Manually insert a timeline with NULL calendar_id to simulate old data
@@ -306,7 +306,7 @@ public class DatabaseImporterTests
     [Fact]
     public void Import_V1Backup_SetsMinLodLevel_OnImportedItems()
     {
-        // ApplyLegacyMigrations sets min_lod_level = COALESCE(min_lod_level, 3) for existing items
+        // V1 rows have no min_lod_level; the target schema default (3) must apply
         using var ctx = new DbTestContext();
         string backupPath = CreateV1Backup(ctx.TempDir);
 
@@ -595,4 +595,79 @@ public class DatabaseImporterTests
         string? tlTitle = verify.QuerySingleOrDefault<string>("SELECT title FROM timelines WHERE id = 300");
         Assert.Equal("Overwrite Me", tlTitle);
     }
+
+    [Fact]
+    public void ImportV2_MigratesBackupBeforeCopy_SoNewerColumnsGetDefaults()
+    {
+        // CreateV2Schema is a pre-1.0.1 layout: no lod_visibility_mask, no layout_settings_locked, etc.
+        using var ctx = new DbTestContext();
+        string backupPath = CreateV2Backup(ctx, timelineId: 400, itemCount: 1);
+
+        DatabaseImporter.Import(backupPath);
+
+        using var db = ctx.OpenConnection();
+        Assert.Equal(255, db.QuerySingle<int>("SELECT lod_visibility_mask FROM items WHERE timeline_id = 400"));
+        Assert.Equal(0, db.QuerySingle<int>("SELECT layout_settings_locked FROM timelines WHERE id = 400"));
+    }
+
+    [Fact]
+    public void ImportV2_RoundTripsCurrentSchema_ThroughRealBackup()
+    {
+        using var ctx = new DbTestContext();
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute("INSERT INTO timelines (id, title, author, description, start_year) VALUES (500, 'Round trip', '', '', 0)");
+            db.Execute(@"INSERT INTO items (id, title, type_id, year, absolute_start, absolute_end, timeline_id, lod_visibility_mask)
+                         VALUES ('rt-item', 'RT', 1, 1, 1.0, 1.0, 500, 5)");
+        }
+        string backupPath = BackupService.CreateBackup(includeMedia: false);
+        using (var db = ctx.OpenConnection())
+            db.Execute("DELETE FROM timelines WHERE id = 500");
+
+        DatabaseImporter.Import(backupPath);
+
+        using var verify = ctx.OpenConnection();
+        Assert.Equal(5, verify.QuerySingle<int>("SELECT lod_visibility_mask FROM items WHERE id = 'rt-item'"));
+        Assert.Equal(MainDbMigrations.LatestVersion, verify.QuerySingle<int>("PRAGMA user_version"));
+    }
+
+    [Fact]
+    public void ImportV2_RefusesBackup_FromNewerAppVersion()
+    {
+        using var ctx = new DbTestContext();
+        string backupPath = CreateV2Backup(ctx, timelineId: 600);
+        using (var bk = new SqliteConnection($"Data Source={backupPath};Pooling=False"))
+        {
+            bk.Open();
+            bk.Execute("PRAGMA user_version = 9999");
+        }
+
+        int scratchBefore = ScratchFiles().Length;
+
+        var ex = Assert.Throws<MigrationException>(() => DatabaseImporter.Import(backupPath));
+
+        Assert.Contains("newer version", ex.Message);
+        Assert.Equal("version check", ex.Stage);
+        Assert.Equal("imported backup", ex.Info.DbLabel);
+        Assert.Equal(backupPath, ex.Info.DbPath);            // the file the user picked, not the scratch copy
+        Assert.Equal(9999, ex.Info.FromVersion);
+        Assert.Null(ex.BackupPath);
+        Assert.Equal(scratchBefore, ScratchFiles().Length);  // scratch copy removed even on failure
+        using var db = ctx.OpenConnection();
+        Assert.Equal(0, db.QuerySingle<int>("SELECT COUNT(*) FROM timelines WHERE id = 600"));
+    }
+
+    [Fact]
+    public void ImportV2_LeavesNoScratchFile_AfterSuccess()
+    {
+        using var ctx = new DbTestContext();
+        string backupPath = CreateV2Backup(ctx, timelineId: 700);
+        int scratchBefore = ScratchFiles().Length;
+
+        DatabaseImporter.Import(backupPath);
+
+        Assert.Equal(scratchBefore, ScratchFiles().Length);
+    }
+
+    private static string[] ScratchFiles() => Directory.GetFiles(Path.GetTempPath(), "stl_import_*.sqlite");
 }

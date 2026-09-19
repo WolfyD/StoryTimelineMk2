@@ -28,28 +28,40 @@ Data-root resolution order (`AppConfig.cs:35-54`):
 
 ### Initialization flow
 
-`DbInitializer.Initialize()` (`Database/DbInitializer.cs:15-419`) runs at startup:
+`DbInitializer.Initialize()` (`Database/DbInitializer.cs`) runs at startup and after a data-folder change:
 
-1. `GetConnectionString()` (`DbInitializer.cs:8-13`) creates the data-root directory if missing and returns the connection string.
-2. Executes one large `CREATE TABLE IF NOT EXISTS ...` batch creating all 27 tables (`DbInitializer.cs:21-415`).
-3. `ApplyColumnMigrations(db)` (`DbInitializer.cs:425-499`) — adds columns missing from older databases (see §7).
-4. `CreateIndexes(db)` (`DbInitializer.cs:514-544`) — `CREATE INDEX IF NOT EXISTS` for all hot lookup paths (items/settings/characters/notes by `timeline_id`, junction table columns, `tags.name`, `misc_settings.key`, etc.).
-5. `SeedDefaultData(db)` (`DbInitializer.cs:546-732`) — idempotent `INSERT OR IGNORE` seeding:
-   - The 9 base `item_types` rows (`DbInitializer.cs:549-562`).
-   - `lod_default` LOD profile ("Standard Gregorian Scale", 8 levels Millennia→Days as JSON) (`DbInitializer.cs:564-567`).
-   - `cal_default_gregorian` calendar with full Gregorian `year_definition` JSON (`DbInitializer.cs:569-572`).
-   - `ls_default` layout settings preset (`DbInitializer.cs:574-685`), plus the `ls_dark` "Dark Mode" preset via `InsertDarkPreset()` (`DbInitializer.cs:830-901`).
+1. Creates the data-root directory and opens `timeline.sqlite`.
+2. `SchemaMigrator.Migrate(db, path, MainDbMigrations.Steps, "timeline", backupFirst: true)` refuses a
+   file stamped by a newer app version, runs `PRAGMA quick_check`, writes and verifies a
+   `backups/pre v{fromApp}-v{toApp} migration backup - {yyyy-MM-dd HH-mm-ss}.sqlite` snapshot
+   (`BackupService.CreatePreMigrationBackup`) if the file has tables and is behind, then applies every
+   missing numbered step (see [10-migrations.md](10-migrations.md)). Any failure is a
+   `MigrationException`, shown by `Program.cs` in the `f_ErrorReport` dialog.
+
+Step 1 (`MainDbMigrations.V1_Baseline`, `Database/Migrations/MainDbMigrations.cs`) is the 1.0.1 initializer:
+
+1. One large `CREATE TABLE IF NOT EXISTS ...` batch creating all 27 tables.
+2. `ApplyColumnMigrations(db)` — adds columns missing from pre-1.0.1 databases (see §7).
+3. `CreateIndexes(db)` — `CREATE INDEX IF NOT EXISTS` for all hot lookup paths (items/settings/characters/notes by `timeline_id`, junction table columns, `tags.name`, `misc_settings.key`, etc.).
+4. `SeedDefaultData(db)` — idempotent `INSERT OR IGNORE` seeding:
+   - The 9 base `item_types` rows.
+   - `lod_default` LOD profile ("Standard Gregorian Scale", 8 levels Millennia→Days as JSON).
+   - `cal_default_gregorian` calendar with full Gregorian `year_definition` JSON.
+   - `ls_default` layout settings preset, plus the `ls_dark` "Dark Mode" preset via `InsertDarkPreset()`.
    - Data-fix migrations and late-added columns (see §7).
+5. `NormaliseLegacyRows(db)` — NULL `timelines.calendar_id` → `cal_default_gregorian`, NULL calendar era names → `''`, NULL `items.min_lod_level` → 3 (this used to live in `DatabaseImporter.ApplyLegacyMigrations`).
 
-`DbInitializer` also exposes `ResetBuiltinPreset(string id)` (`DbInitializer.cs:746-755`) which restores `ls_default` / `ls_dark` layout presets to factory values via `UPDATE` (deliberately not DELETE+INSERT, to avoid breaking FK references from `timelines.layout_settings_id`).
+`DbInitializer.Initialize(string dbPath, bool backupFirst, string dbLabel = "timeline")` is the same routine for an arbitrary file; the importer uses it to migrate a scratch copy of a backup before merging it.
+
+`DbInitializer` also exposes `ResetBuiltinPreset(string id)` which restores `ls_default` / `ls_dark` layout presets to factory values via `UPDATE` (deliberately not DELETE+INSERT, to avoid breaking FK references from `timelines.layout_settings_id`).
 
 ---
 
 ## 2. Full Schema Reference
 
-All tables are created in `DbInitializer.cs:21-413`. Column types below are exactly as declared. SQLite booleans are stored as `INTEGER` 0/1; entity IDs are `TEXT` GUIDs except where noted.
+All tables are created in `Database/Migrations/MainDbMigrations.cs` (step 1; per-table refs below point at that file). Column types below are exactly as declared. SQLite booleans are stored as `INTEGER` 0/1; entity IDs are `TEXT` GUIDs except where noted.
 
-### `timelines` — owner: `TimelineRepo` (`DbInitializer.cs:22-35`)
+### `timelines` — owner: `TimelineRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -62,9 +74,9 @@ All tables are created in `DbInitializer.cs:21-413`. Column types below are exac
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `layout_settings_id` | TEXT | NOT NULL DEFAULT `'ls_default'`, FK → `layout_settings(id)` |
-| `color` | TEXT | DEFAULT NULL *(added by migration, `DbInitializer.cs:696`)* |
+| `color` | TEXT | DEFAULT NULL *(added by migration, `MainDbMigrations.cs`)* |
 
-### `timeline_calendars` — no repo owner; only copied by `DatabaseImporter` (`DbInitializer.cs:37-44`)
+### `timeline_calendars` — no repo owner; only copied by `DatabaseImporter` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -73,7 +85,7 @@ All tables are created in `DbInitializer.cs:21-413`. Column types below are exac
 | `timeline_id` | INTEGER | FK → `timelines(id)` ON DELETE CASCADE |
 | `year_0_at_default` | INTEGER | NOT NULL DEFAULT 0 |
 
-### `calendars` — owner: `CalendarRepo` (`DbInitializer.cs:46-56`)
+### `calendars` — owner: `CalendarRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -86,7 +98,7 @@ All tables are created in `DbInitializer.cs:21-413`. Column types below are exac
 | `year_definition` | TEXT | NOT NULL — JSON describing year length, weeks, months, seasons |
 | `lod_profile_id` | TEXT | NOT NULL DEFAULT `'lod_default'`, FK → `lod_profiles(id)` |
 
-### `lod_profiles` — owner: `LodRepo` (`DbInitializer.cs:58-62`)
+### `lod_profiles` — owner: `LodRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -94,7 +106,7 @@ All tables are created in `DbInitializer.cs:21-413`. Column types below are exac
 | `name` | TEXT | NOT NULL |
 | `profile` | TEXT | NOT NULL — JSON array of `{index, formatKey, stepFraction}` levels |
 
-### `stories` — owner: `StoryRepo` (`DbInitializer.cs:64-70`)
+### `stories` — owner: `StoryRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -104,7 +116,7 @@ All tables are created in `DbInitializer.cs:21-413`. Column types below are exac
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `item_types` — seeded lookup table, no repo; written only by `DbInitializer.SeedDefaultData` (`DbInitializer.cs:72-77`)
+### `item_types` — seeded lookup table, no repo; written only by `DbInitializer.SeedDefaultData` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -113,9 +125,9 @@ All tables are created in `DbInitializer.cs:21-413`. Column types below are exac
 | `description` | TEXT | |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-Seeded rows (`DbInitializer.cs:549-559`): 1=Event, 2=Period, 3=Age, 4=Picture, 5=Note, 6=Bookmark, 7=Character, 8=Timeline_start, 9=Timeline_end.
+Seeded rows (`MainDbMigrations.cs`): 1=Event, 2=Period, 3=Age, 4=Picture, 5=Note, 6=Bookmark, 7=Character, 8=Timeline_start, 9=Timeline_end.
 
-### `items` — owner: `ItemRepo` (`DbInitializer.cs:79-111`)
+### `items` — owner: `ItemRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -145,7 +157,7 @@ Seeded rows (`DbInitializer.cs:549-559`): 1=Event, 2=Period, 3=Age, 4=Picture, 5
 
 Note: the old `subtick`/`end_subtick` columns were removed from the schema (commit BL-02); migrations still read them from legacy DBs (see §7).
 
-### `notes` — owner: `NoteRepo` (`DbInitializer.cs:113-122`)
+### `notes` — owner: `NoteRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -155,9 +167,9 @@ Note: the old `subtick`/`end_subtick` columns were removed from the schema (comm
 | `connected_item_id` | INTEGER | FK → `items(id)` ON DELETE CASCADE *(declared INTEGER, but item IDs are TEXT GUIDs; SQLite's dynamic typing tolerates this — code writes string IDs, `NoteRepo.cs:36`)* |
 | `nearest_year` | INTEGER | |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
-| `absolute_time` | REAL | NOT NULL DEFAULT 0 *(added by migration, `DbInitializer.cs:697`)* |
+| `absolute_time` | REAL | NOT NULL DEFAULT 0 *(added by migration, `MainDbMigrations.cs`)* |
 
-### `pictures` — owner: `MediaRepo` (`DbInitializer.cs:124-135`)
+### `pictures` — owner: `MediaRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -172,7 +184,7 @@ Note: the old `subtick`/`end_subtick` columns were removed from the schema (comm
 | `description` | TEXT | |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `item_pictures` — junction, owner: `MediaRepo` (`DbInitializer.cs:137-144`)
+### `item_pictures` — junction, owner: `MediaRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -181,7 +193,7 @@ Note: the old `subtick`/`end_subtick` columns were removed from the schema (comm
 | `picture_id` | TEXT | NOT NULL, FK → `pictures(id)` ON DELETE CASCADE |
 | | | UNIQUE(item_id, picture_id) |
 
-### `settings` — owner: `SettingsRepo` (`DbInitializer.cs:146-167`)
+### `settings` — owner: `SettingsRepo` (`MainDbMigrations.cs`)
 
 One row per timeline plus one app-level row with `timeline_id IS NULL`.
 
@@ -205,7 +217,7 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 | `default_layout_settings_id` | TEXT | NOT NULL DEFAULT 'ls_default' |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `tags` — owner: `TagRepo` (`DbInitializer.cs:169-173`)
+### `tags` — owner: `TagRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -213,14 +225,14 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 | `name` | TEXT | UNIQUE NOT NULL (stored lower-case) |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `item_tags` — junction, owner: `ItemRepo` (`DbInitializer.cs:175-181`)
+### `item_tags` — junction, owner: `ItemRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
 | `item_id` | TEXT | FK → `items(id)` ON DELETE CASCADE, composite PK |
 | `tag_id` | INTEGER | FK → `tags(id)` ON DELETE CASCADE, composite PK |
 
-### `characters` — owner: `CharacterRepo` (`DbInitializer.cs:184-204`)
+### `characters` — owner: `CharacterRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -242,7 +254,7 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 | `timeline_id` | INTEGER | NOT NULL, FK → `timelines(id)` ON DELETE CASCADE |
 | `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `relationship_types` — lookup table, no repo owner (`DbInitializer.cs:206-213`)
+### `relationship_types` — lookup table, no repo owner (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -255,7 +267,7 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 
 Has a matching model (`RelationshipTypeItem.cs`) but no repo reads or writes this table yet.
 
-### `item_characters` — legacy junction; written only by `DatabaseImporter` V1 import (`DbInitializer.cs:215-227`)
+### `item_characters` — legacy junction; written only by `DatabaseImporter` V1 import (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -267,9 +279,9 @@ Has a matching model (`RelationshipTypeItem.cs`) but no repo reads or writes thi
 | `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | | | UNIQUE(item_id, character_id) |
 
-Superseded by `item_character_appearances` (comment at `DbInitializer.cs:374`).
+Superseded by `item_character_appearances` (comment at `MainDbMigrations.cs`).
 
-### `layout_settings` — owner: `LayoutSettingsRepo` (`DbInitializer.cs:229-298` + migrated columns `DbInitializer.cs:699-714`)
+### `layout_settings` — owner: `LayoutSettingsRepo` (`MainDbMigrations.cs` + migrated columns `MainDbMigrations.cs`)
 
 All columns NOT NULL unless noted. Grouped for readability:
 
@@ -317,7 +329,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `timeline_jump_to_year_animation_length` | INTEGER | ms |
 | `timeline_animate_lod_change` | INTEGER | DEFAULT 1 |
 | `timeline_lod_change_animation_length` | INTEGER | ms |
-| **Migration-added** (`DbInitializer.cs:699-714`) | | |
+| **Migration-added** (`MainDbMigrations.cs`) | | |
 | `timeline_tick_color` | TEXT | DEFAULT '#c8b9a4' |
 | `timeline_axis_color` | TEXT | DEFAULT '#b5a692' |
 | `notes_panel_background_color` / `_card_background_color` / `_text_color` / `_heading_color` / `_accent_color` | TEXT | dark defaults |
@@ -325,7 +337,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `data_panel_background_color` / `_card_background_color` / `_h1_color` / `_h2_color` / `_h3_color` / `_h4_color` / `_font_family` | TEXT | light defaults |
 | `data_panel_font_size` | INTEGER | DEFAULT 14 |
 
-### `character_relationships` — read by `CharacterRepo.GetNetwork`; rows written only by importer/duplication (`DbInitializer.cs:301-318`)
+### `character_relationships` — read by `CharacterRepo.GetNetwork`; rows written only by importer/duplication (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -342,14 +354,14 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `timeline_id` | INTEGER | NOT NULL, FK → `timelines(id)` ON DELETE CASCADE |
 | `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `item_story_refs` — junction, owner: `ItemRepo` (`DbInitializer.cs:321-327`)
+### `item_story_refs` — junction, owner: `ItemRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
 | `item_id` | TEXT | NOT NULL, composite PK, FK → `items(id)` ON DELETE CASCADE |
 | `story_id` | TEXT | NOT NULL, composite PK, FK → `stories(id)` ON DELETE CASCADE |
 
-### `books` — owner: `BookRepo` (`DbInitializer.cs:330-337`)
+### `books` — owner: `BookRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -359,14 +371,14 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `description` | TEXT | |
 | `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `book_stories` — junction, no repo owner; only copied by importer (`DbInitializer.cs:339-345`)
+### `book_stories` — junction, no repo owner; only copied by importer (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
 | `book_id` | TEXT | NOT NULL, composite PK, FK → `books(id)` ON DELETE CASCADE |
 | `story_id` | TEXT | NOT NULL, composite PK, FK → `stories(id)` ON DELETE CASCADE |
 
-### `chapters` — owner: `BookRepo` (`DbInitializer.cs:347-353`)
+### `chapters` — owner: `BookRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -375,7 +387,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `number` | INTEGER | NOT NULL |
 | `title` | TEXT | |
 
-### `item_chapters` — junction, owner: `ItemRepo` (`DbInitializer.cs:355-362`)
+### `item_chapters` — junction, owner: `ItemRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -384,7 +396,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `chapter_id` | TEXT | NOT NULL, FK → `chapters(id)` ON DELETE CASCADE |
 | | | UNIQUE(item_id, chapter_id) |
 
-### `timeline_hidden_ranges` — owner: `HiddenRangeRepo` (`DbInitializer.cs:365-372`)
+### `timeline_hidden_ranges` — owner: `HiddenRangeRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -394,7 +406,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `end_year` | INTEGER | NOT NULL |
 | `label` | TEXT | |
 
-### `item_character_appearances` — junction, owner: `ItemRepo` (`DbInitializer.cs:375-383`)
+### `item_character_appearances` — junction, owner: `ItemRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -404,7 +416,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `role` | TEXT | freetext role for the appearance |
 | | | UNIQUE(item_id, character_id) |
 
-### `filter_presets` — owner: `FilterPresetRepo` (`DbInitializer.cs:386-392`)
+### `filter_presets` — owner: `FilterPresetRepo` (`MainDbMigrations.cs`)
 
 Global (not timeline-scoped) named filter presets.
 
@@ -416,7 +428,7 @@ Global (not timeline-scoped) named filter presets.
 | `and_mode` | INTEGER | NOT NULL DEFAULT 0 |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `timeline_filter_rules` — owner: `FilterRuleRepo` (`DbInitializer.cs:395-404`)
+### `timeline_filter_rules` — owner: `FilterRuleRepo` (`MainDbMigrations.cs`)
 
 Per-timeline active filter rules.
 
@@ -430,7 +442,7 @@ Per-timeline active filter rules.
 | `state` | TEXT | NOT NULL DEFAULT `'neutral'` |
 | `sort_order` | INTEGER | NOT NULL DEFAULT 0 |
 
-### `misc_settings` — owner: `MiscSettingsRepo` (`DbInitializer.cs:407-412`)
+### `misc_settings` — owner: `MiscSettingsRepo` (`MainDbMigrations.cs`)
 
 Key-value store, explicitly **not** exported/imported.
 
@@ -479,7 +491,7 @@ Key relationship facts:
 - **Calendar → LOD profile:** each `calendars.lod_profile_id` points at a `lod_profiles` row; `TimelineInfo` composes calendar + LOD in memory (`TimelineRepo.cs:85-96`, `CalendarRepo.cs:17-23`).
 - **Layout settings** are shared presets: many timelines can point to the same `layout_settings` row via `timelines.layout_settings_id` (no cascade; presets outlive timelines).
 - **Stories, books, tags, pictures, filter presets are global** — not timeline-scoped; they survive timeline deletion.
-- **Items reference stories twice:** the single `items.story_id` FK (primary story) plus the many-to-many `item_story_refs` table ported from v1 (`DbInitializer.cs:320-327`).
+- **Items reference stories twice:** the single `items.story_id` FK (primary story) plus the many-to-many `item_story_refs` table ported from v1 (`MainDbMigrations.cs`).
 - **Characters are not stored in `items`.** `ItemRepo.GetItemsByTimeline` explicitly excludes `type_id = 7` (`ItemRepo.cs:22`); characters live in their own table.
 
 ---
@@ -695,18 +707,21 @@ The only repo that does **not** set `MatchNamesWithUnderscores` (it only queries
 `Database/DatabaseImporter.cs` merges an external SQLite backup **into** the live database (it never replaces the current DB).
 
 - `HandleDBImport()` (`DatabaseImporter.cs:13-36`) — shows an `OpenFileDialog` (filters `*.sql;*.sqlite;*.sqlite3;*.db;*.db3`), then calls `Import`. Returns false if anything throws.
-- `Import(string sourceFilePath)` (`DatabaseImporter.cs:38-56`) — detects the source version via `CheckIfV2` (`DatabaseImporter.cs:58-64`): **a `calendars` table means v2**, otherwise v1. Dispatches to the matching importer, then runs `ApplyLegacyMigrations`.
+- `Import(string sourceFilePath)` — detects the source version via `CheckIfV2`: **a `calendars` table means v2**, otherwise v1. Dispatches to the matching importer.
 
-### V2 import — `ImportV2Backup` (`DatabaseImporter.cs:73-228`)
+### V2 import — `ImportV2Backup` / `MergeMigratedBackup`
 
-Single transaction that `ATTACH DATABASE`-es the backup as `BackupDb` and merges table-by-table with SQL-level upserts (`ON CONFLICT(id) DO UPDATE` for entities, `INSERT OR IGNORE` for junctions):
+The backup is never read on its original schema. Instead:
 
-1. Probes the backup schema with `pragma_table_info(..., 'BackupDb')` to handle older v2 backups: optional `timelines.calendar_id`, optional `items.absolute_start`, legacy `items.subtick`, optional `items.min_lod_level` (`DatabaseImporter.cs:84-100`).
-2. `absolute_start/end` for items is either copied directly, computed from `year + subtick/10` (legacy 0–9 subtick scale), or plain `year`, depending on what the backup has (`DatabaseImporter.cs:94-99`).
-3. Merges: timelines, calendars, stories, tags, items, characters, pictures; then junctions `item_tags`, `item_pictures`, `item_characters`; then progressively-added tables only if they exist in the backup (`timeline_calendars`, `character_relationships`, `item_story_refs`, `books` + `book_stories` + `chapters` + `item_chapters`, `item_character_appearances`); finally `settings` (`DatabaseImporter.cs:108-218`).
-4. `DETACH`, commit; rollback + rethrow on error.
+1. `VACUUM INTO` a scratch copy (`%TEMP%/stl_import_<guid>.sqlite`) from a read-only, unpooled connection.
+2. `DbInitializer.Initialize(scratch, backupFirst: false)` migrates the copy to the current schema — the same code path a live database goes through, so any historical v2 backup ends up with every table, column, default and seed row the app expects. A backup stamped by a newer app version throws here ("newer version of Story Timeline") and nothing is merged.
+3. `MergeMigratedBackup` opens the live DB with `PRAGMA foreign_keys = ON`, `ATTACH`es the scratch copy as `BackupDb`, and in one transaction:
+   - cascade-deletes every `timelines` row whose id exists in the backup (removing its items, settings, characters, hidden ranges, filter rules and junction rows);
+   - copies each table in `V2CopyPlan` (FK-safe order) with the column set common to both sides (`pragma_table_info` intersection, by name). Conflict policy per table: `INSERT OR REPLACE` for global lookups the backup is authoritative for (`lod_profiles`, `calendars`, `stories`, `tags`, `layout_settings`, `filter_presets`); plain `INSERT` for the cascade-cleared timeline-scoped tables (`timelines`, `items`, `characters`); `INSERT OR IGNORE` for everything else (`pictures`, `settings`, all junctions, `books`/`chapters`, `notes`, `timeline_hidden_ranges`, `timeline_filter_rules`, and the reserved `item_characters` / `timeline_calendars`).
+   - commits, then `DETACH`es (must happen after commit — SQLite refuses to detach a database still in a read transaction).
+4. Deletes the scratch file (`finally`).
 
-Not imported at all: `notes`, `lod_profiles`, `layout_settings`, `timeline_hidden_ranges`, `filter_presets`, `timeline_filter_rules`, `misc_settings` (the latter is by design — see comment at `DbInitializer.cs:406`).
+Not imported at all: `item_types`, `misc_settings`, `relationship_types`.
 
 ### V1 legacy import — `ImportV1Legacy` (`DatabaseImporter.cs:230-449`)
 
@@ -720,21 +735,21 @@ Row-by-row Dapper copy in a single transaction (two connections, source opened r
 - Settings upserted by id (`DatabaseImporter.cs:378-403`).
 - Pictures: v1 used INTEGER picture IDs — each gets a fresh GUID, and `item_pictures` links are remapped through the id map (`DatabaseImporter.cs:405-439`).
 
-### Post-import — `ApplyLegacyMigrations` (`DatabaseImporter.cs:451-479`)
-
-Transaction on the target DB: sets `calendar_id = 'cal_default_gregorian'` where NULL, and backfills `min_lod_level`/`absolute_start`/`absolute_end` for any items still lacking `absolute_start` (safety net).
-
 ---
 
 ## 7. Migration / Versioning Approach
 
-There is **no `PRAGMA user_version`** or numbered migration system. Schema evolution is handled defensively and idempotently on every startup:
+Since 1.0.2 both databases carry a **`PRAGMA user_version`** and are upgraded by numbered C# steps
+(`Database/Migrations/`). The full procedure, the rules for adding a step and the importer's use of it are in
+[10-migrations.md](10-migrations.md). In short:
 
-1. **`CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`** — new tables and indexes appear automatically on old DBs (`DbInitializer.cs:21-413`, `514-544`).
-2. **Column probing + `ALTER TABLE ADD COLUMN`** — `ApplyColumnMigrations` (`DbInitializer.cs:425-499`) reads each table's column set via `pragma_table_info` (`GetColumnSet`, `DbInitializer.cs:501-512`) and adds any missing column with its default: `timelines.calendar_id`/`layout_settings_id`; ~12 progressively-added `items` columns; `characters` timeline/importance/color/timestamps; `settings.timeline_id`; `notes.timeline_id`. A second helper, `AddCol`/`HasColumn` (`DbInitializer.cs:734-744`), does the same inside `SeedDefaultData` for later additions: `timelines.color`, `notes.absolute_time`, `items.lod_visibility_mask`, and all 17 layout-settings tick/axis/notes-panel/data-panel columns (`DbInitializer.cs:696-714`).
-3. **Data backfills** — after adding columns, `ApplyColumnMigrations` backfills `absolute_start`/`absolute_end` for rows where they are NULL, branching on whether the legacy `subtick` column still exists (old formula `year + subtick/10`) or not (plain `year`) (`DbInitializer.cs:466-498`). Rows with a valid `0.0` are deliberately left untouched.
-4. **Seed-value fix-ups** — `SeedDefaultData` runs targeted `UPDATE`s to correct default preset values that changed after initial release (e.g. `ls_default.timeline_period_height` → 15, tick marker color `#fff` → `#2a1a0e`, and dark-preset data-panel colors created with light defaults) (`DbInitializer.cs:688-693`, `717-728`).
-5. **Schema pruning** — removal of `items.subtick`/`end_subtick` (BL-02) was done by changing the CREATE statement; old DBs keep the physical column but all code paths ignore it except the backfill/import formulas above.
-6. **Import-time tolerance** — `DatabaseImporter` probes backup schemas per-table/per-column instead of assuming a version, so any historical backup imports without a version stamp (see §6).
-
-The upshot: any database created by any prior version of the app is upgraded in place, idempotently, on first launch — and imported backups of either generation are normalized through the same funnel.
+1. `SchemaMigrator.Migrate` runs every step above the file's version, each in its own transaction with the version stamp; a newer file is refused; a failed step is rolled back and reported with the version the file was left at.
+2. **Step 1 is the 1.0.1 initializer** and keeps the pre-versioning defensive behaviour, which is why databases from any earlier build (version 0) upgrade in place:
+   - `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` for tables and indexes;
+   - column probing + `ALTER TABLE ADD COLUMN` (`ApplyColumnMigrations`, `AddCol`/`HasColumn`) for `timelines.calendar_id`/`layout_settings_id`/`color`, the progressively-added `items` columns (incl. `lod_visibility_mask`), `characters`, `settings`, `notes.absolute_time`, and the layout-settings tick/axis/notes-panel/data-panel columns;
+   - `absolute_start`/`absolute_end` backfill for NULL rows, branching on whether the legacy `subtick` column still exists (`year + subtick/10`) or not (plain `year`);
+   - seed-value fix-ups (`ls_default.timeline_period_height` → 15, tick marker colour, dark-preset panel colours);
+   - `NormaliseLegacyRows` (NULL calendar ids / era names / `min_lod_level`).
+3. **Every later change is a new step** — never an edit to step 1's DDL.
+4. `PruneOldBackups` never deletes `pre v…` migration snapshots (timeline or `(usage stats)`).
+5. `DatabaseImporter` migrates a scratch copy of the backup through the same chain before copying rows (§6), so backups from any earlier build import without per-column probing.

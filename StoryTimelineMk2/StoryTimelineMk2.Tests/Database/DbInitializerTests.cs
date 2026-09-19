@@ -195,4 +195,46 @@ public class DbInitializerTests
             "SELECT lod_profile_id FROM calendars WHERE id = 'cal_default_gregorian'");
         Assert.Equal("lod_default", lodId);
     }
+
+    // ── ResetBuiltinPreset ────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("ls_default", "Default layout settings")]
+    [InlineData("ls_dark", "Dark Mode")]
+    public void ResetBuiltinPreset_RestoresBuiltinValues(string id, string expectedName)
+    {
+        using var ctx = new DbTestContext();
+        using var db = ctx.OpenConnection();
+        db.Execute("UPDATE layout_settings SET name = 'tampered', timeline_period_height = 999 WHERE id = @Id", new { Id = id });
+
+        DbInitializer.ResetBuiltinPreset(id);
+
+        Assert.Equal(expectedName, db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = @Id", new { Id = id }));
+        Assert.Equal(15, db.QuerySingle<int>("SELECT timeline_period_height FROM layout_settings WHERE id = @Id", new { Id = id }));
+    }
+
+    [Fact]
+    public void ResetBuiltinPreset_TouchesOnlyTheNamedPreset()
+    {
+        using var ctx = new DbTestContext();
+        using var db = ctx.OpenConnection();
+        db.Execute("UPDATE layout_settings SET name = 'tampered' WHERE id IN ('ls_default', 'ls_dark')");
+
+        DbInitializer.ResetBuiltinPreset("ls_default");
+
+        Assert.Equal("Default layout settings", db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_default'"));
+        Assert.Equal("tampered", db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_dark'"));
+    }
+
+    [Fact]
+    public void ResetBuiltinPreset_IgnoresUnknownIds()
+    {
+        using var ctx = new DbTestContext();
+        using var db = ctx.OpenConnection();
+        db.Execute("UPDATE layout_settings SET name = 'tampered' WHERE id = 'ls_default'");
+
+        DbInitializer.ResetBuiltinPreset("ls_custom");
+
+        Assert.Equal("tampered", db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_default'"));
+    }
 }

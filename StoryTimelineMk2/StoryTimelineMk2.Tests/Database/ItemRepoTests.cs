@@ -1,5 +1,6 @@
 using StoryTimelineMk2.Database;
 using Dapper;
+using Microsoft.Data.Sqlite;
 
 namespace StoryTimelineMk2.Tests.Database;
 
@@ -182,5 +183,339 @@ public class ItemRepoTests
 
         Assert.Single(results);
         Assert.Equal(item1.Id, results[0].Id);
+    }
+
+    // ── relation seeding helpers ──────────────────────────────────────────────
+
+    private static string SeedCharacter(DbTestContext ctx, int timelineId, string name = "Alice", string color = "#ff0000")
+    {
+        var id = Guid.NewGuid().ToString();
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO characters (id, name, color, timeline_id) VALUES (@Id, @Name, @Color, @TlId)",
+            new { Id = id, Name = name, Color = color, TlId = timelineId });
+        return id;
+    }
+
+    private static string SeedStory(DbTestContext ctx, string title = "The Saga")
+    {
+        var id = Guid.NewGuid().ToString();
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO stories (id, title) VALUES (@Id, @Title)", new { Id = id, Title = title });
+        return id;
+    }
+
+    private static string SeedBook(DbTestContext ctx, string title)
+    {
+        var id = Guid.NewGuid().ToString();
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO books (id, title) VALUES (@Id, @Title)", new { Id = id, Title = title });
+        return id;
+    }
+
+    private static string SeedChapter(DbTestContext ctx, string bookId, int number, string title)
+    {
+        var id = Guid.NewGuid().ToString();
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO chapters (id, book_id, number, title) VALUES (@Id, @BookId, @Number, @Title)",
+            new { Id = id, BookId = bookId, Number = number, Title = title });
+        return id;
+    }
+
+    private static string SeedPicture(DbTestContext ctx, string itemId)
+    {
+        var picId = Guid.NewGuid().ToString();
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO pictures (id, file_path, file_name, file_size, file_type) VALUES (@Id, 'x.png', 'x.png', 1, 'png')",
+            new { Id = picId });
+        db.Execute("INSERT INTO item_pictures (item_id, picture_id) VALUES (@ItemId, @PicId)",
+            new { ItemId = itemId, PicId = picId });
+        return picId;
+    }
+
+    // ── GetItemsByYear ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GetItemsByYear_ReturnsOnlyItemsInThatYear_ExcludingCharacters()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+        var hit = MakeItem(tl); // year 1500
+        var otherYear = MakeItem(tl); otherYear.Year = 1501; otherYear.AbsoluteStart = 1501;
+        var character = MakeItem(tl); character.TypeId = 7;
+        repo.SaveItemFull(hit, [], [], [], []);
+        repo.SaveItemFull(otherYear, [], [], [], []);
+        repo.SaveItemFull(character, [], [], [], []);
+
+        var results = repo.GetItemsByYear(tl, 1500).ToList();
+
+        Assert.Single(results);
+        Assert.Equal(hit.Id, results[0].Id);
+    }
+
+    // ── timeline-wide link getters ────────────────────────────────────────────
+
+    [Fact]
+    public void GetAllItemTagsForTimeline_ReturnsNormalisedTagLinks_OnlyForThatTimeline()
+    {
+        using var ctx = new DbTestContext();
+        int tl1 = SeedTimeline(ctx, "TL One");
+        int tl2 = SeedTimeline(ctx, "TL Two");
+        var repo = new ItemRepo();
+        var a = MakeItem(tl1); repo.SaveItemFull(a, ["Siege", " battle "], [], [], []);
+        var b = MakeItem(tl2); repo.SaveItemFull(b, ["other"], [], [], []);
+
+        var links = repo.GetAllItemTagsForTimeline(tl1).ToList();
+
+        Assert.Equal(2, links.Count);
+        Assert.All(links, l => Assert.Equal(a.Id, l.ItemId));
+        Assert.All(links, l => Assert.True(l.TagId > 0));
+        Assert.Equal(["battle", "siege"], links.Select(l => l.TagName).ToList()); // lower-cased, trimmed, ordered by name
+    }
+
+    [Fact]
+    public void GetAllItemCharactersForTimeline_ReturnsCharacterLinks_OnlyForThatTimeline()
+    {
+        using var ctx = new DbTestContext();
+        int tl1 = SeedTimeline(ctx, "TL One");
+        int tl2 = SeedTimeline(ctx, "TL Two");
+        string alice = SeedCharacter(ctx, tl1, "Alice", "#ff0000");
+        string bob = SeedCharacter(ctx, tl2, "Bob", "#00ff00");
+        var repo = new ItemRepo();
+        var a = MakeItem(tl1); repo.SaveItemFull(a, [], [new() { CharacterId = alice, Role = "lead" }], [], []);
+        var b = MakeItem(tl2); repo.SaveItemFull(b, [], [new() { CharacterId = bob, Role = "lead" }], [], []);
+
+        var links = repo.GetAllItemCharactersForTimeline(tl1).ToList();
+
+        var link = Assert.Single(links);
+        Assert.Equal(a.Id, link.ItemId);
+        Assert.Equal(alice, link.CharacterId);
+        Assert.Equal("Alice", link.CharacterName);
+        Assert.Equal("#ff0000", link.CharacterColor);
+    }
+
+    [Fact]
+    public void GetAllItemStoryRefsForTimeline_ReturnsStoryLinks_OnlyForThatTimeline()
+    {
+        using var ctx = new DbTestContext();
+        int tl1 = SeedTimeline(ctx, "TL One");
+        int tl2 = SeedTimeline(ctx, "TL Two");
+        string story = SeedStory(ctx, "The Saga");
+        var repo = new ItemRepo();
+        var a = MakeItem(tl1); repo.SaveItemFull(a, [], [], [story], []);
+        var b = MakeItem(tl2); repo.SaveItemFull(b, [], [], [story], []);
+
+        var links = repo.GetAllItemStoryRefsForTimeline(tl1).ToList();
+
+        var link = Assert.Single(links);
+        Assert.Equal(a.Id, link.ItemId);
+        Assert.Equal(story, link.StoryId);
+        Assert.Equal("The Saga", link.StoryTitle);
+    }
+
+    [Fact]
+    public void GetItemsWithPicturesForTimeline_ReturnsDistinctItemIds_OnlyForThatTimeline()
+    {
+        using var ctx = new DbTestContext();
+        int tl1 = SeedTimeline(ctx, "TL One");
+        int tl2 = SeedTimeline(ctx, "TL Two");
+        var repo = new ItemRepo();
+        var twoPics = MakeItem(tl1); repo.SaveItemFull(twoPics, [], [], [], []);
+        var noPics = MakeItem(tl1); repo.SaveItemFull(noPics, [], [], [], []);
+        var elsewhere = MakeItem(tl2); repo.SaveItemFull(elsewhere, [], [], [], []);
+        SeedPicture(ctx, twoPics.Id);
+        SeedPicture(ctx, twoPics.Id);
+        SeedPicture(ctx, elsewhere.Id);
+
+        var ids = repo.GetItemsWithPicturesForTimeline(tl1).ToList();
+
+        Assert.Equal([twoPics.Id], ids);
+    }
+
+    // ── per-item link getters ─────────────────────────────────────────────────
+
+    [Fact]
+    public void GetItemCharacterAppearances_ReturnsRoleNameAndColor_PerCharacter()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        string alice = SeedCharacter(ctx, tl, "Alice", "#ff0000");
+        string bob = SeedCharacter(ctx, tl, "Bob", "#00ff00");
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        repo.SaveItemFull(item, [], [new() { CharacterId = alice, Role = "lead" }, new() { CharacterId = bob, Role = "cameo" }], [], []);
+
+        var rows = repo.GetItemCharacterAppearances(item.Id).ToList();
+
+        Assert.Equal(2, rows.Count);
+        var aliceRow = rows.Single(r => r.CharacterId == alice);
+        Assert.Equal("lead", aliceRow.Role);
+        Assert.Equal("Alice", aliceRow.CharacterName);
+        Assert.Equal("#ff0000", aliceRow.CharacterColor);
+        Assert.Equal("cameo", rows.Single(r => r.CharacterId == bob).Role);
+    }
+
+    [Fact]
+    public void GetItemStoryRefs_ReturnsStoryIdAndTitle()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        string story = SeedStory(ctx, "The Saga");
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        repo.SaveItemFull(item, [], [], [story], []);
+
+        var refs = repo.GetItemStoryRefs(item.Id).ToList();
+
+        var r = Assert.Single(refs);
+        Assert.Equal(story, r.StoryId);
+        Assert.Equal("The Saga", r.StoryTitle);
+    }
+
+    [Fact]
+    public void GetItemStoryRefs_ReturnsEmpty_WhenNoneLinked()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        repo.SaveItemFull(item, [], [], [], []);
+
+        Assert.Empty(repo.GetItemStoryRefs(item.Id));
+    }
+
+    [Fact]
+    public void GetItemChapterRefs_ReturnsChapterAndBookDetails_OrderedByBookThenNumber()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        string bookA = SeedBook(ctx, "Book A");
+        string bookB = SeedBook(ctx, "Book B");
+        string a2 = SeedChapter(ctx, bookA, 2, "A2");
+        string a1 = SeedChapter(ctx, bookA, 1, "A1");
+        string b1 = SeedChapter(ctx, bookB, 1, "B1");
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        repo.SaveItemFull(item, [], [], [], [b1, a2, a1]);
+
+        var refs = repo.GetItemChapterRefs(item.Id).ToList();
+
+        Assert.Equal(["A1", "A2", "B1"], refs.Select(r => r.ChapterTitle).ToList());
+        var first = refs[0];
+        Assert.Equal(a1, first.ChapterId);
+        Assert.Equal(1, first.ChapterNumber);
+        Assert.Equal(bookA, first.BookId);
+        Assert.Equal("Book A", first.BookTitle);
+    }
+
+    // ── GetItemLinksById ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void GetItemLinksById_ReturnsTagsCharactersStoryRefsAndPictureFlag()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        string alice = SeedCharacter(ctx, tl, "Alice", "#ff0000");
+        string story = SeedStory(ctx, "The Saga");
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        repo.SaveItemFull(item, ["epic"], [new() { CharacterId = alice, Role = "lead" }], [story], []);
+        SeedPicture(ctx, item.Id);
+
+        var links = repo.GetItemLinksById(item.Id);
+
+        var tag = Assert.Single(links.Tags);
+        Assert.Equal(item.Id, tag.ItemId);
+        Assert.Equal("epic", tag.TagName);
+        var ch = Assert.Single(links.Characters);
+        Assert.Equal(alice, ch.CharacterId);
+        Assert.Equal("Alice", ch.CharacterName);
+        Assert.Equal("#ff0000", ch.CharacterColor);
+        var sr = Assert.Single(links.StoryRefs);
+        Assert.Equal(story, sr.StoryId);
+        Assert.Equal("The Saga", sr.StoryTitle);
+        Assert.True(links.HasPicture);
+    }
+
+    [Fact]
+    public void GetItemLinksById_ReturnsEmptyLinks_ForBareItem()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        repo.SaveItemFull(item, [], [], [], []);
+
+        var links = repo.GetItemLinksById(item.Id);
+
+        Assert.Empty(links.Tags);
+        Assert.Empty(links.Characters);
+        Assert.Empty(links.StoryRefs);
+        Assert.False(links.HasPicture);
+    }
+
+    // ── ShiftItems ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ShiftItems_MovesAllYearFields_OnlyForThatTimeline_AndReturnsCount()
+    {
+        using var ctx = new DbTestContext();
+        int tl1 = SeedTimeline(ctx, "TL One");
+        int tl2 = SeedTimeline(ctx, "TL Two");
+        var repo = new ItemRepo();
+        var a = MakeItem(tl1);
+        var b = MakeItem(tl1); b.Year = 1600; b.EndYear = 1610; b.AbsoluteStart = 1600.25; b.AbsoluteEnd = 1610.5;
+        var c = MakeItem(tl2);
+        repo.SaveItemFull(a, [], [], [], []);
+        repo.SaveItemFull(b, [], [], [], []);
+        repo.SaveItemFull(c, [], [], [], []);
+
+        int shifted = repo.ShiftItems(tl1, -100);
+
+        Assert.Equal(2, shifted);
+        var a2 = repo.GetItemById(a.Id);
+        Assert.Equal(1400, a2.Year);
+        Assert.Equal(1400, a2.EndYear);
+        Assert.Equal(1400.0, a2.AbsoluteStart);
+        Assert.Equal(1400.0, a2.AbsoluteEnd);
+        var b2 = repo.GetItemById(b.Id);
+        Assert.Equal(1500, b2.Year);
+        Assert.Equal(1510, b2.EndYear);
+        Assert.Equal(1500.25, b2.AbsoluteStart, 6);
+        Assert.Equal(1510.5, b2.AbsoluteEnd, 6);
+        Assert.Equal(1500, repo.GetItemById(c.Id).Year); // other timeline untouched
+    }
+
+    [Fact]
+    public void ShiftItems_ReturnsZero_WhenTimelineHasNoItems()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        Assert.Equal(0, repo.ShiftItems(tl, 10));
+    }
+
+    // ── VacuumInto ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void VacuumInto_ReplacesExistingFile_WithStandaloneCopy_EvenWhenPathHasQuotes()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        repo.SaveItemFull(item, [], [], [], []);
+        string dest = Path.Combine(ctx.TempDir, "it's a copy.sqlite");
+        File.WriteAllText(dest, "stale");
+
+        repo.VacuumInto(dest);
+
+        using (var copy = new SqliteConnection($"Data Source={dest}"))
+        {
+            copy.Open();
+            Assert.Equal("Test Event", copy.QuerySingle<string>("SELECT title FROM items WHERE id = @Id", new { item.Id }));
+        }
+        SqliteConnection.ClearAllPools(); // let DbTestContext delete the temp folder
     }
 }

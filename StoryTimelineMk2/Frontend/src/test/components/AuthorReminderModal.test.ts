@@ -14,8 +14,8 @@ describe('AuthorReminderModal', () => {
 
     it('renders the modal panel', () => {
         const wrapper = mount(AuthorReminderModal)
-        expect(wrapper.find('.modal-backdrop').exists()).toBe(true)
-        expect(wrapper.find('.modal-panel').exists()).toBe(true)
+        expect(wrapper.find('.bm-backdrop').exists()).toBe(true)
+        expect(wrapper.find('.bm-panel').exists()).toBe(true)
         wrapper.unmount()
     })
 
@@ -35,14 +35,14 @@ describe('AuthorReminderModal', () => {
 
     it('emits skip when X close button is clicked', async () => {
         const wrapper = mount(AuthorReminderModal)
-        await wrapper.find('.close-btn').trigger('click')
+        await wrapper.find('.bm-close').trigger('click')
         expect(wrapper.emitted('skip')).toBeTruthy()
         wrapper.unmount()
     })
 
     it('emits skip when backdrop is clicked', async () => {
         const wrapper = mount(AuthorReminderModal)
-        await wrapper.find('.modal-backdrop').trigger('click')
+        await wrapper.find('.bm-backdrop').trigger('click')
         expect(wrapper.emitted('skip')).toBeTruthy()
         wrapper.unmount()
     })

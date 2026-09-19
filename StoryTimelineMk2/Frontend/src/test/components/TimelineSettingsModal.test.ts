@@ -179,7 +179,7 @@ describe('TimelineSettingsModal', () => {
 
   it('renders the modal panel', () => {
     const wrapper = mountModal()
-    expect(wrapper.find('.modal-panel').exists()).toBe(true)
+    expect(wrapper.find('.bm-panel').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -272,7 +272,7 @@ describe('TimelineSettingsModal', () => {
     const wrapper = mountModal()
     await flushPromises()
 
-    const closeBtn = wrapper.find('.close-btn')
+    const closeBtn = wrapper.find('.bm-close')
     await closeBtn.trigger('click')
 
     expect(wrapper.emitted('close')).toBeTruthy()

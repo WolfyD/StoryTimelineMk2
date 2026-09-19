@@ -80,7 +80,7 @@ export const BackendAPI = {
 	},
 
 	async ExecuteImportDB(path: string) {
-		return await this.request<{ status: string; message?: string }>('ExecuteImportDB', { path });
+		return await this.request<{ status: string; message?: string; reported?: boolean }>('ExecuteImportDB', { path });
 	},
 
 	async ExportFullDB() {

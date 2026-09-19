@@ -1,4 +1,4 @@
-import { test, expect, findPageByRole } from './fixtures'
+import { test, expect, findPageByRole, deleteTimelineRow } from './fixtures'
 import type { BrowserContext } from '@playwright/test'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -40,10 +40,10 @@ test.describe('Main app — project management', () => {
     await closeTimelineWindow(appContext)
 
     // 2. Dismiss any open modal left by a previous test
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     if (await modal.isVisible({ timeout: 500 }).catch(() => false)) {
       const cancelBtn = modal.locator('.btn-cancel')
-      const closeBtn  = modal.locator('.close-btn')
+      const closeBtn  = modal.locator('.bm-close')
       if (await cancelBtn.isVisible().catch(() => false)) {
         await cancelBtn.click().catch(() => {})
       } else if (await closeBtn.isVisible().catch(() => false)) {
@@ -121,6 +121,7 @@ test.describe('Main app — project management', () => {
     await mainPage.locator('#start-project-button').click()
 
     await expect(mainPage.locator('.project-timeline-row', { hasText: name })).toBeVisible({ timeout: 8000 })
+    await deleteTimelineRow(mainPage, name)
   })
 
   // ── Row action menu ───────────────────────────────────────────────────────
@@ -157,9 +158,9 @@ test.describe('Main app — project management', () => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Delete"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
-    await expect(modal.locator('.modal-title')).toContainText('Delete Timeline')
+    await expect(modal.locator('.bm-title')).toContainText('Delete Timeline')
     await expect(modal.locator('.btn-danger')).toContainText('Delete')
     await expect(modal.locator('.btn-cancel')).toContainText('Cancel')
   })
@@ -169,7 +170,7 @@ test.describe('Main app — project management', () => {
     const rowTitle = await row.locator('.project-timeline-row').textContent()
     await row.locator('.row-action-button[title="Delete"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
     await modal.locator('.btn-cancel').click()
     await expect(modal).not.toBeVisible({ timeout: 2000 })
@@ -182,9 +183,9 @@ test.describe('Main app — project management', () => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Delete"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
-    await modal.locator('.close-btn').click()
+    await modal.locator('.bm-close').click()
     await expect(modal).not.toBeVisible({ timeout: 2000 })
   })
 
@@ -192,10 +193,10 @@ test.describe('Main app — project management', () => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Delete"]').click()
 
-    const backdrop = mainPage.locator('.modal-backdrop')
+    const backdrop = mainPage.locator('.bm-backdrop')
     await expect(backdrop).toBeVisible({ timeout: 3000 })
     await backdrop.click({ position: { x: 5, y: 5 } })
-    await expect(mainPage.locator('.modal-panel')).not.toBeVisible({ timeout: 2000 })
+    await expect(mainPage.locator('.bm-panel')).not.toBeVisible({ timeout: 2000 })
   })
 
   // ── Edit modal ────────────────────────────────────────────────────────────
@@ -204,16 +205,16 @@ test.describe('Main app — project management', () => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Edit"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
-    await expect(modal.locator('.modal-title')).toContainText('Edit Timeline')
+    await expect(modal.locator('.bm-title')).toContainText('Edit Timeline')
   })
 
   test('edit modal has input fields for title and author', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Edit"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
     const inputs = modal.locator('input[type="text"]')
     expect(await inputs.count()).toBeGreaterThan(0)
@@ -223,7 +224,7 @@ test.describe('Main app — project management', () => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Edit"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
     await modal.locator('.btn-cancel').click()
     await expect(modal).not.toBeVisible({ timeout: 2000 })
@@ -235,9 +236,9 @@ test.describe('Main app — project management', () => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Duplicate"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
-    await expect(modal.locator('.modal-title')).toContainText('Duplicate Timeline')
+    await expect(modal.locator('.bm-title')).toContainText('Duplicate Timeline')
   })
 
   test('duplicate modal shows a pre-filled title input with _duplicate suffix', async ({ mainPage }) => {
@@ -245,7 +246,7 @@ test.describe('Main app — project management', () => {
     const originalTitle = await row.locator('.project-timeline-row').textContent()
     await row.locator('.row-action-button[title="Duplicate"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
     const titleInput = modal.locator('.field-input')
     await expect(titleInput).toBeVisible()
@@ -258,7 +259,7 @@ test.describe('Main app — project management', () => {
     const row = await openRowMenu(mainPage)
     await row.locator('.row-action-button[title="Duplicate"]').click()
 
-    const modal = mainPage.locator('.modal-panel')
+    const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
     await modal.locator('.btn-cancel').click()
     await expect(modal).not.toBeVisible({ timeout: 2000 })

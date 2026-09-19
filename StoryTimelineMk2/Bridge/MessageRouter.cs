@@ -1,5 +1,6 @@
 using Microsoft.Web.WebView2.Core;
 using StoryTimelineMk2.Database;
+using StoryTimelineMk2.Database.Migrations;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -1336,6 +1337,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("SetDataFolder", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -1368,6 +1370,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("MoveDataFolder", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -1457,6 +1460,14 @@ namespace StoryTimelineMk2.Bridge
             {
                 DatabaseImporter.Import(path);
                 ReplyToVue(message.MessageId, new { status = "ok" });
+            }
+            catch (MigrationException ex)
+            {
+                // The backup could not be brought to the current schema; nothing was merged. Shown as a
+                // copyable report (schema versions, stage, log path) instead of the Vue alert.
+                Logger.Error("ExecuteImportDB", ex);
+                f_ErrorReport.ShowReport("The backup could not be imported. Your current data was not changed.", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message, reported = true });
             }
             catch (Exception ex)
             {

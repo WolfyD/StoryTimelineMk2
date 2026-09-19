@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using StoryTimelineMk2.Database.Migrations;
 
 namespace StoryTimelineMk2.Database
 {
@@ -70,8 +71,7 @@ namespace StoryTimelineMk2.Database
                 // Project rule: log full stack trace and show to the user — never
                 // swallow. Before this, any import failure was reported as success.
                 Logger.Error("DatabaseImporter", ex);
-                MessageBox.Show($"Database import failed:\n\n{ex}", "Import error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Forms.f_ErrorReport.ShowReport("Database import failed.", ex);
                 return false;
             }
             return true;
@@ -92,9 +92,6 @@ namespace StoryTimelineMk2.Database
             {
                 ImportV1Legacy(sourceFilePath, targetFilePath);
             }
-
-            // After data is dumped in, ensure all legacy/missing fields are computed and backfilled
-            ApplyLegacyMigrations(targetFilePath);
         }
 
         private static bool CheckIfV2(string sourceFilePath)
@@ -105,14 +102,78 @@ namespace StoryTimelineMk2.Database
             return db.QuerySingle<int>("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='calendars'") > 0;
         }
 
-        private static bool TableExistsInBackup(SqliteConnection db, Microsoft.Data.Sqlite.SqliteTransaction tx, string tableName)
+        /// <summary>
+        /// Tables copied from a V2 backup, in FK-safe order, with the conflict policy for rows that already
+        /// exist in the live database. Timeline-scoped tables are cleared by the cascade delete first, so a
+        /// plain INSERT there restores the backup's version; global rows either overwrite (REPLACE: presets,
+        /// lookups the backup is authoritative for) or keep the local copy (IGNORE: pictures, junctions).
+        /// Tables not listed (item_types, misc_settings, relationship_types) are never imported.
+        /// </summary>
+        private static readonly (string Table, string Conflict)[] V2CopyPlan =
         {
-            return db.QuerySingle<int>(
-                $"SELECT COUNT(*) FROM BackupDb.sqlite_master WHERE type='table' AND name='{tableName}'",
-                transaction: tx) > 0;
+            ("lod_profiles",               "OR REPLACE"),
+            ("calendars",                  "OR REPLACE"),
+            ("stories",                    "OR REPLACE"),
+            ("tags",                       "OR REPLACE"),
+            ("pictures",                   "OR IGNORE"),
+            ("layout_settings",            "OR REPLACE"),
+            ("filter_presets",             "OR REPLACE"),
+            ("timelines",                  ""),
+            ("items",                      ""),
+            ("characters",                 ""),
+            ("settings",                   "OR IGNORE"),
+            ("item_tags",                  "OR IGNORE"),
+            ("item_pictures",              "OR IGNORE"),
+            ("item_characters",            "OR IGNORE"),
+            ("timeline_calendars",         "OR IGNORE"),
+            ("character_relationships",    "OR IGNORE"),
+            ("item_story_refs",            "OR IGNORE"),
+            ("books",                      "OR IGNORE"),
+            ("book_stories",               "OR IGNORE"),
+            ("chapters",                   "OR IGNORE"),
+            ("item_chapters",              "OR IGNORE"),
+            ("item_character_appearances", "OR IGNORE"),
+            ("notes",                      "OR IGNORE"),
+            ("timeline_hidden_ranges",     "OR IGNORE"),
+            ("timeline_filter_rules",      "OR IGNORE"),
+        };
+
+        /// <summary>
+        /// Snapshots the backup to a scratch file, runs the normal schema migrations on that copy, and only
+        /// then merges it into the live database. Whatever app version wrote the backup, by the time rows
+        /// are copied both sides have the current schema, so the copy is a plain column-for-column transfer.
+        /// </summary>
+        private static void ImportV2Backup(string sourceFilePath, string targetFilePath)
+        {
+            string scratchPath = Path.Combine(Path.GetTempPath(), $"stl_import_{Guid.NewGuid():N}.sqlite");
+            try
+            {
+                // VACUUM INTO (rather than File.Copy) so a live database with a WAL sidecar is captured whole.
+                using (var src = new SqliteConnection($"Data Source={sourceFilePath};Mode=ReadOnly;Pooling=False"))
+                {
+                    src.Open();
+                    src.Execute($"VACUUM INTO '{scratchPath}'");
+                }
+
+                try
+                {
+                    DbInitializer.Initialize(scratchPath, backupFirst: false, dbLabel: "imported backup");
+                }
+                catch (MigrationException ex)
+                {
+                    // Report the file the user picked, not the scratch copy that is deleted below.
+                    throw new MigrationException(ex.Info with { DbPath = sourceFilePath }, ex.Stage, ex.BackupPath, ex.Message, ex.InnerException);
+                }
+                MergeMigratedBackup(scratchPath, targetFilePath);
+            }
+            finally
+            {
+                SqliteConnection.ClearAllPools();
+                try { File.Delete(scratchPath); } catch { /* scratch file; best-effort */ }
+            }
         }
 
-        private static void ImportV2Backup(string sourceFilePath, string targetFilePath)
+        private static void MergeMigratedBackup(string backupPath, string targetFilePath)
         {
             using var dbTarget = new SqliteConnection($"Data Source={targetFilePath}");
             dbTarget.Open();
@@ -128,7 +189,7 @@ namespace StoryTimelineMk2.Database
             using var tx = dbTarget.BeginTransaction();
             try
             {
-                dbTarget.Execute("ATTACH DATABASE @path AS BackupDb", new { path = sourceFilePath }, transaction: tx);
+                dbTarget.Execute("ATTACH DATABASE @path AS BackupDb", new { path = backupPath }, transaction: tx);
 
                 // --- Cascade-delete timelines that exist in both backup and target ---
                 // Deleting a timeline row cascades (ON DELETE CASCADE) to items, settings,
@@ -141,119 +202,20 @@ namespace StoryTimelineMk2.Database
                     dbTarget.Execute($"DELETE FROM main.timelines WHERE id IN ({idList})", transaction: tx);
                 }
 
-                // --- Dynamic schema checks ---
-                bool hasCalendarId    = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('timelines', 'BackupDb') WHERE name='calendar_id'",    transaction: tx) > 0;
-                bool hasAbsoluteStart = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('items', 'BackupDb') WHERE name='absolute_start'",      transaction: tx) > 0;
-                bool hasSrcSubtick    = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('items', 'BackupDb') WHERE name='subtick'",             transaction: tx) > 0;
-                bool hasMinLod        = dbTarget.QuerySingle<int>("SELECT COUNT(*) FROM pragma_table_info('items', 'BackupDb') WHERE name='min_lod_level'",       transaction: tx) > 0;
-
-                string timelineCols  = "id, title, author, description, start_year, created_at, updated_at" + (hasCalendarId ? ", calendar_id" : "");
-                string absStartExpr  = hasAbsoluteStart ? "absolute_start"
-                    : (hasSrcSubtick ? "CAST(year AS REAL) + CAST(IFNULL(subtick, 0) AS REAL) / 10.0" : "CAST(year AS REAL)");
-                string absEndExpr    = hasAbsoluteStart ? "absolute_end"
-                    : (hasSrcSubtick ? "CASE WHEN end_year IS NOT NULL THEN CAST(end_year AS REAL) + CAST(IFNULL(end_subtick, 0) AS REAL) / 10.0 ELSE CAST(year AS REAL) + CAST(IFNULL(subtick, 0) AS REAL) / 10.0 END"
-                                     : "COALESCE(CAST(end_year AS REAL), CAST(year AS REAL))");
-                string minLodExpr    = hasMinLod ? "min_lod_level" : "3";
-
-                string itemDestCols  = "id, title, description, content, story_id, type_id, year, end_year, absolute_start, absolute_end, book_title, chapter, page, color, creation_granularity, timeline_id, item_index, show_in_notes, importance, min_lod_level, created_at, updated_at";
-                string itemSrcSelect = $"id, title, description, content, story_id, type_id, year, end_year, {absStartExpr}, {absEndExpr}, book_title, chapter, page, color, creation_granularity, timeline_id, item_index, show_in_notes, importance, {minLodExpr}, created_at, updated_at";
-
-                // --- Global data (INSERT OR REPLACE — safe to overwrite with backup version) ---
-
-                // 1. LOD Profiles (before calendars — FK order)
-                if (TableExistsInBackup(dbTarget, tx, "lod_profiles"))
-                    dbTarget.Execute("INSERT OR REPLACE INTO main.lod_profiles SELECT * FROM BackupDb.lod_profiles", transaction: tx);
-
-                // 2. Calendars
-                dbTarget.Execute(@"INSERT OR REPLACE INTO main.calendars
-                    (id, name, short_name, alternate_name, name_before_0, name_after_0, lod_profile_id, year_definition)
-                    SELECT id, name, short_name, alternate_name,
-                        COALESCE(name_before_0, ''), COALESCE(name_after_0, ''),
-                        lod_profile_id, year_definition FROM BackupDb.calendars", transaction: tx);
-
-                // 3. Stories
-                dbTarget.Execute(@"INSERT OR REPLACE INTO main.stories (id, title, description, created_at, updated_at)
-                    SELECT id, title, description, created_at, updated_at FROM BackupDb.stories", transaction: tx);
-
-                // 4. Tags
-                dbTarget.Execute(@"INSERT OR REPLACE INTO main.tags (id, name, created_at)
-                    SELECT id, name, created_at FROM BackupDb.tags", transaction: tx);
-
-                // 5. Pictures (INSERT OR IGNORE — keep existing copies; paths may differ per machine)
-                dbTarget.Execute(@"INSERT OR IGNORE INTO main.pictures
-                    (id, file_path, file_name, file_size, file_type, width, height, title, description, created_at)
-                    SELECT id, file_path, file_name, file_size, file_type, width, height, title, description, created_at
-                    FROM BackupDb.pictures", transaction: tx);
-
-                // 6. Layout settings + filter presets (global presets)
-                if (TableExistsInBackup(dbTarget, tx, "layout_settings"))
-                    dbTarget.Execute("INSERT OR REPLACE INTO main.layout_settings SELECT * FROM BackupDb.layout_settings", transaction: tx);
-
-                if (TableExistsInBackup(dbTarget, tx, "filter_presets"))
-                    dbTarget.Execute("INSERT OR REPLACE INTO main.filter_presets SELECT * FROM BackupDb.filter_presets", transaction: tx);
-
-                // --- Timeline-scoped data (cascade-deleted above → plain INSERT) ---
-
-                // 7. Timelines
-                dbTarget.Execute($"INSERT INTO main.timelines ({timelineCols}) SELECT {timelineCols} FROM BackupDb.timelines", transaction: tx);
-
-                // 8. Items
-                dbTarget.Execute($"INSERT INTO main.items ({itemDestCols}) SELECT {itemSrcSelect} FROM BackupDb.items", transaction: tx);
-
-                // 9. Characters
-                dbTarget.Execute(@"INSERT INTO main.characters
-                    (id, name, nicknames, aliases, race, description, notes, birth_year, birth_date,
-                     birth_alternative_year, death_year, death_date, death_alternative_year, importance,
-                     color, timeline_id, created_at, updated_at)
-                    SELECT id, name, nicknames, aliases, race, description, notes, birth_year, birth_date,
-                     birth_alternative_year, death_year, death_date, death_alternative_year, importance,
-                     color, timeline_id, created_at, updated_at FROM BackupDb.characters", transaction: tx);
-
-                // 10. Settings
-                dbTarget.Execute(@"INSERT OR IGNORE INTO main.settings
-                    (id, timeline_id, font, font_size_scale, pixels_per_subtick, custom_css,
-                     use_custom_css, is_fullscreen, show_guides, window_size_x, window_size_y,
-                     window_position_x, window_position_y, use_custom_scaling, custom_scale,
-                     display_radius, canvas_settings, updated_at)
-                    SELECT id, timeline_id, font, font_size_scale, pixels_per_subtick, custom_css,
-                     use_custom_css, is_fullscreen, show_guides, window_size_x, window_size_y,
-                     window_position_x, window_position_y, use_custom_scaling, custom_scale,
-                     display_radius, canvas_settings, updated_at FROM BackupDb.settings", transaction: tx);
-
-                // 11. Junction tables (always present in V2)
-                dbTarget.Execute("INSERT OR IGNORE INTO main.item_tags SELECT * FROM BackupDb.item_tags", transaction: tx);
-                dbTarget.Execute("INSERT OR IGNORE INTO main.item_pictures SELECT * FROM BackupDb.item_pictures", transaction: tx);
-                dbTarget.Execute("INSERT OR IGNORE INTO main.item_characters SELECT * FROM BackupDb.item_characters", transaction: tx);
-
-                // 12. Optional tables added progressively
-                if (TableExistsInBackup(dbTarget, tx, "timeline_calendars"))
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.timeline_calendars SELECT * FROM BackupDb.timeline_calendars", transaction: tx);
-
-                if (TableExistsInBackup(dbTarget, tx, "character_relationships"))
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.character_relationships SELECT * FROM BackupDb.character_relationships", transaction: tx);
-
-                if (TableExistsInBackup(dbTarget, tx, "item_story_refs"))
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.item_story_refs SELECT * FROM BackupDb.item_story_refs", transaction: tx);
-
-                if (TableExistsInBackup(dbTarget, tx, "books"))
+                foreach (var (table, conflict) in V2CopyPlan)
                 {
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.books SELECT * FROM BackupDb.books", transaction: tx);
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.book_stories SELECT * FROM BackupDb.book_stories", transaction: tx);
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.chapters SELECT * FROM BackupDb.chapters", transaction: tx);
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.item_chapters SELECT * FROM BackupDb.item_chapters", transaction: tx);
+                    // Both sides are on the current schema, but a migrated file appends ALTER-added columns
+                    // at the end while a fresh one declares them inline — so copy by name, never by position.
+                    var cols = dbTarget.Query<string>($"SELECT name FROM pragma_table_info('{table}')", transaction: tx)
+                        .Intersect(dbTarget.Query<string>($"SELECT name FROM pragma_table_info('{table}', 'BackupDb')", transaction: tx),
+                                   StringComparer.OrdinalIgnoreCase)
+                        .Select(c => $"\"{c}\"")
+                        .ToList();
+                    if (cols.Count == 0) continue;
+
+                    string colList = string.Join(", ", cols);
+                    dbTarget.Execute($"INSERT {conflict} INTO main.{table} ({colList}) SELECT {colList} FROM BackupDb.{table}", transaction: tx);
                 }
-
-                if (TableExistsInBackup(dbTarget, tx, "item_character_appearances"))
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.item_character_appearances SELECT * FROM BackupDb.item_character_appearances", transaction: tx);
-
-                if (TableExistsInBackup(dbTarget, tx, "notes"))
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.notes SELECT * FROM BackupDb.notes", transaction: tx);
-
-                if (TableExistsInBackup(dbTarget, tx, "timeline_hidden_ranges"))
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.timeline_hidden_ranges SELECT * FROM BackupDb.timeline_hidden_ranges", transaction: tx);
-
-                if (TableExistsInBackup(dbTarget, tx, "timeline_filter_rules"))
-                    dbTarget.Execute("INSERT OR IGNORE INTO main.timeline_filter_rules SELECT * FROM BackupDb.timeline_filter_rules", transaction: tx);
 
                 tx.Commit();
             }
@@ -491,34 +453,5 @@ namespace StoryTimelineMk2.Database
             }
         }
 
-        private static void ApplyLegacyMigrations(string targetFilePath)
-        {
-            using var db = new SqliteConnection($"Data Source={targetFilePath}");
-            db.Open();
-            using var tx = db.BeginTransaction();
-
-            try
-            {
-                // Update any existing timelines that have a NULL calendar_id to the default
-                db.Execute("UPDATE timelines SET calendar_id = 'cal_default_gregorian' WHERE calendar_id IS NULL;", transaction: tx);
-
-                // Backfill any items that somehow lack absolute_start (safety net — should not occur in practice
-                // since all import paths now compute absolute_start before inserting).
-                db.Execute(@"
-                    UPDATE items
-                    SET
-                        min_lod_level = COALESCE(min_lod_level, 3),
-                        absolute_start = CAST(year AS REAL),
-                        absolute_end   = COALESCE(CAST(end_year AS REAL), CAST(year AS REAL))
-                    WHERE absolute_start IS NULL;", transaction: tx);
-
-                tx.Commit();
-            }
-            catch
-            {
-                tx.Rollback();
-                throw;
-            }
-        }
     }
 }

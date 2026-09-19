@@ -17,7 +17,7 @@ function makePreview(overrides: Partial<ImportPreview> = {}): ImportPreview {
 describe('DbImportModal', () => {
   it('renders modal title', () => {
     const wrapper = mount(DbImportModal, { props: { preview: makePreview() } })
-    expect(wrapper.find('.modal-title').text()).toBe('Import Database')
+    expect(wrapper.find('.bm-title').text()).toBe('Import Database')
   })
 
   it('displays shortened source path', () => {
@@ -87,13 +87,13 @@ describe('DbImportModal', () => {
 
   it('emits close when backdrop is clicked', async () => {
     const wrapper = mount(DbImportModal, { props: { preview: makePreview() } })
-    await wrapper.find('.modal-backdrop').trigger('click')
+    await wrapper.find('.bm-backdrop').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
   it('emits close when X button is clicked', async () => {
     const wrapper = mount(DbImportModal, { props: { preview: makePreview() } })
-    await wrapper.find('.close-btn').trigger('click')
+    await wrapper.find('.bm-close').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 

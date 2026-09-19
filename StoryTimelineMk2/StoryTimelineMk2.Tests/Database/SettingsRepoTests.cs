@@ -213,4 +213,48 @@ public class SettingsRepoTests
         Assert.Equal(1280, appSettings.WindowSizeX);
         Assert.Equal(720, appSettings.WindowSizeY);
     }
+
+    // ── SaveYearCalendarWindowState ───────────────────────────────────────────
+
+    [Fact]
+    public void SaveYearCalendarWindowState_UpdatesYearCalendarFields_Only()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new SettingsRepo();
+        repo.GetOrCreateSettings(tlId); // ensure row exists
+
+        repo.SaveYearCalendarWindowState(tlId, x: 11, y: 22, width: 333, height: 444);
+
+        var s = repo.GetOrCreateSettings(tlId);
+        Assert.Equal(11, s.YearCalendarPositionX);
+        Assert.Equal(22, s.YearCalendarPositionY);
+        Assert.Equal(333, s.YearCalendarSizeX);
+        Assert.Equal(444, s.YearCalendarSizeY);
+        Assert.Equal(1000, s.WindowSizeX); // main window state untouched
+        Assert.Equal(300, s.WindowPositionX);
+    }
+
+    // ── DeleteSettings ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DeleteSettings_RemovesRow_AndNextGetRecreatesDefaults()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new SettingsRepo();
+        var s = repo.GetOrCreateSettings(tlId);
+        s.PixelsPerSubtick = 99;
+        repo.SaveSettings(s);
+        // settings.id is an INTEGER rowid assigned on insert; re-read to get the stored id
+        string storedId = repo.GetOrCreateSettings(tlId).Id;
+
+        repo.DeleteSettings(storedId);
+
+        using var db = ctx.OpenConnection();
+        Assert.Equal(0, db.QuerySingle<int>("SELECT COUNT(*) FROM settings WHERE timeline_id = @TlId", new { TlId = tlId }));
+        Assert.Equal(20, repo.GetOrCreateSettings(tlId).PixelsPerSubtick);
+    }
 }

@@ -13,7 +13,7 @@ async function openSettingsModal(page: Parameters<typeof injectBridgeMock>[0]) {
   await page.waitForLoadState('networkidle')
   // The gear icon opens AppSettingsModal
   await page.locator('#app-settings-btn').click()
-  await expect(page.locator('.modal-title')).toContainText('App Settings')
+  await expect(page.locator('.bm-title')).toContainText('App Settings')
 }
 
 test.describe('AppSettingsModal — backup section', () => {
@@ -23,7 +23,7 @@ test.describe('AppSettingsModal — backup section', () => {
 
   test('settings modal opens via gear icon', async ({ page }) => {
     await openSettingsModal(page)
-    await expect(page.locator('.modal-panel')).toBeVisible()
+    await expect(page.locator('.bm-panel')).toBeVisible()
   })
 
   test('backup section heading is visible', async ({ page }) => {
@@ -64,7 +64,7 @@ test.describe('AppSettingsModal — backup section', () => {
       }
     })
     await page.locator('#app-settings-btn').click()
-    await expect(page.locator('.modal-title')).toContainText('App Settings')
+    await expect(page.locator('.bm-title')).toContainText('App Settings')
     await page.locator('select.interval-select').selectOption('daily')
     await page.waitForTimeout(300)
 
@@ -91,7 +91,7 @@ test.describe('AppSettingsModal — backup section', () => {
       }
     })
     await page.locator('#app-settings-btn').click()
-    await expect(page.locator('.modal-title')).toContainText('App Settings')
+    await expect(page.locator('.bm-title')).toContainText('App Settings')
     await page.getByText('Create Backup Now').click()
     await page.waitForTimeout(300)
 
@@ -124,7 +124,7 @@ test.describe('AppSettingsModal — backup section', () => {
       }
     })
     await page.locator('#app-settings-btn').click()
-    await expect(page.locator('.modal-title')).toContainText('App Settings')
+    await expect(page.locator('.bm-title')).toContainText('App Settings')
     await page.getByText('Open folder').click()
     await page.waitForTimeout(300)
 
@@ -162,13 +162,13 @@ test.describe('AppSettingsModal — backup section', () => {
   test('closing modal via Close button hides it', async ({ page }) => {
     await openSettingsModal(page)
     await page.locator('.btn-cancel').click()
-    await expect(page.locator('.modal-title')).not.toBeVisible()
+    await expect(page.locator('.bm-title')).not.toBeVisible()
   })
 
   test('closing modal via backdrop click hides it', async ({ page }) => {
     await openSettingsModal(page)
-    await page.locator('.modal-backdrop').click({ position: { x: 5, y: 5 } })
-    await expect(page.locator('.modal-title')).not.toBeVisible()
+    await page.locator('.bm-backdrop').click({ position: { x: 5, y: 5 } })
+    await expect(page.locator('.bm-title')).not.toBeVisible()
   })
 })
 
@@ -225,7 +225,7 @@ test.describe('AppSettingsModal — includeMedia, pruning hint, and backup list 
       }
     })
     await page.locator('#app-settings-btn').click()
-    await expect(page.locator('.modal-title')).toContainText('App Settings')
+    await expect(page.locator('.bm-title')).toContainText('App Settings')
     const cb = page.locator('label.toggle-label').filter({ hasText: 'Include images' }).locator('input[type="checkbox"]')
     await expect(cb).toBeChecked()
     await cb.uncheck()

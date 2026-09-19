@@ -21,7 +21,7 @@ function makePreview(overrides: Partial<TimelineImportPreview> = {}): TimelineIm
 describe('ImportTimelineModal', () => {
   it('renders modal title', () => {
     const wrapper = mount(ImportTimelineModal, { props: { preview: makePreview() } })
-    expect(wrapper.find('.modal-title').text()).toBe('Import Timeline')
+    expect(wrapper.find('.bm-title').text()).toBe('Import Timeline')
   })
 
   it('shows the timeline title', () => {
@@ -114,13 +114,13 @@ describe('ImportTimelineModal', () => {
 
   it('emits close when X button is clicked', async () => {
     const wrapper = mount(ImportTimelineModal, { props: { preview: makePreview() } })
-    await wrapper.find('.close-btn').trigger('click')
+    await wrapper.find('.bm-close').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
   it('emits close on backdrop click', async () => {
     const wrapper = mount(ImportTimelineModal, { props: { preview: makePreview() } })
-    await wrapper.find('.modal-backdrop').trigger('click')
+    await wrapper.find('.bm-backdrop').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 

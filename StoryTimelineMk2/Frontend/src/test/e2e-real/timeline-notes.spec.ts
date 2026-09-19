@@ -1,4 +1,4 @@
-import { test, expect, findPageByRole, openTimelinePage } from './fixtures'
+import { test, expect, findPageByRole, openTimelinePage, ensureNotesTall } from './fixtures'
 import type { Page } from '@playwright/test'
 
 /**
@@ -20,7 +20,8 @@ async function setNotesTextarea(tl: Page, text: string) {
 
 test.describe('Timeline notes panel — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
-    await openTimelinePage(mainPage, appContext, pageErrors)
+    const tl = await openTimelinePage(mainPage, appContext, pageErrors)
+    await ensureNotesTall(tl)
   })
 
   // ── Panel structure ───────────────────────────────────────────────────────

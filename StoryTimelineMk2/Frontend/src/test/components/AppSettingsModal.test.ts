@@ -84,7 +84,7 @@ describe('AppSettingsModal — backup section', () => {
 
   it('renders the modal', async () => {
     const wrapper = await mountModal()
-    expect(wrapper.find('.modal-title').text()).toBe('App Settings')
+    expect(wrapper.find('.bm-title').text()).toBe('App Settings')
     wrapper.unmount()
   })
 

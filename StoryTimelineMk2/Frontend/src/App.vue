@@ -51,7 +51,8 @@
 		} else {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
 			console.error('[ImportDB]', msg)
-			alert(`Database import failed:\n\n${msg}`)
+			// reported: the backend already showed its own error-report dialog for this failure
+			if (!result?.reported) alert(`Database import failed:\n\n${msg}`)
 		}
 	}
 

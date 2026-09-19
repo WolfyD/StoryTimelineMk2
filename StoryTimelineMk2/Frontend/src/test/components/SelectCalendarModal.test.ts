@@ -33,7 +33,7 @@ describe('SelectCalendarModal', () => {
     it('renders the modal panel', async () => {
         const wrapper = mount(SelectCalendarModal)
         await flushPromises()
-        expect(wrapper.find('.modal-panel').exists()).toBe(true)
+        expect(wrapper.find('.bm-panel').exists()).toBe(true)
         wrapper.unmount()
     })
 
@@ -66,7 +66,7 @@ describe('SelectCalendarModal', () => {
     it('emits skipped when backdrop is clicked', async () => {
         const wrapper = mount(SelectCalendarModal)
         await flushPromises()
-        await wrapper.find('.modal-backdrop').trigger('click')
+        await wrapper.find('.bm-backdrop').trigger('click')
         expect(wrapper.emitted('skipped')).toBeTruthy()
         wrapper.unmount()
     })

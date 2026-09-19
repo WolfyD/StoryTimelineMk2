@@ -228,25 +228,25 @@ namespace StoryTimelineMk2.Database
                     var tags = db.Query("SELECT tag_id FROM item_tags WHERE item_id = @Id", new { Id = oldItemId }, tx);
                     foreach (var t in tags)
                         db.Execute("INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (@ItemId, @TagId)",
-                            new { ItemId = newItemId, t.tag_id }, tx);
+                            new { ItemId = newItemId, TagId = (long)t.tag_id }, tx);
 
                     var appearances = db.Query("SELECT character_id, role FROM item_character_appearances WHERE item_id = @Id", new { Id = oldItemId }, tx);
                     foreach (var a in appearances)
                     {
                         string newCharId = charMap.TryGetValue((string)a.character_id, out var mapped) ? mapped : (string)a.character_id;
                         db.Execute("INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role) VALUES (@ItemId, @CharId, @Role)",
-                            new { ItemId = newItemId, CharId = newCharId, a.role }, tx);
+                            new { ItemId = newItemId, CharId = newCharId, Role = (string?)a.role }, tx);
                     }
 
                     var storyRefs = db.Query("SELECT story_id FROM item_story_refs WHERE item_id = @Id", new { Id = oldItemId }, tx);
                     foreach (var s in storyRefs)
                         db.Execute("INSERT OR IGNORE INTO item_story_refs (item_id, story_id) VALUES (@ItemId, @StoryId)",
-                            new { ItemId = newItemId, s.story_id }, tx);
+                            new { ItemId = newItemId, StoryId = (string)s.story_id }, tx);
 
                     var chapters = db.Query("SELECT chapter_id FROM item_chapters WHERE item_id = @Id", new { Id = oldItemId }, tx);
                     foreach (var c in chapters)
                         db.Execute("INSERT OR IGNORE INTO item_chapters (item_id, chapter_id) VALUES (@ItemId, @ChapterId)",
-                            new { ItemId = newItemId, c.chapter_id }, tx);
+                            new { ItemId = newItemId, ChapterId = (string)c.chapter_id }, tx);
                 }
 
                 // 6. Clone notes
@@ -260,7 +260,7 @@ namespace StoryTimelineMk2.Database
                     db.Execute(@"
                         INSERT INTO notes (id, note_contents, timeline_id, connected_item_id, nearest_year, absolute_time)
                         VALUES (@Id, @NoteContents, @TimelineId, @ConnectedItemId, @NearestYear, @AbsoluteTime)",
-                        new { Id = Guid.NewGuid().ToString(), NoteContents = note.note_contents, TimelineId = newId, ConnectedItemId = newConnectedId, note.nearest_year, AbsoluteTime = note.absolute_time }, tx);
+                        new { Id = Guid.NewGuid().ToString(), NoteContents = note.note_contents, TimelineId = newId, ConnectedItemId = newConnectedId, NearestYear = (long?)note.nearest_year, AbsoluteTime = note.absolute_time }, tx);
                 }
 
 

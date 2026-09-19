@@ -3,10 +3,12 @@
     Prepares and launches StoryTimelineMk2 for Playwright real E2E testing.
 
 .DESCRIPTION
-    1. Kills any running StoryTimelineMk2 / WebView2 processes (to free port 9222).
+    1. Kills any running StoryTimeline / WebView2 processes (to free port 9222).
     2. Sets STORYTIMELINE_DATA_ROOT to an isolated temp folder so tests never
        touch the user's real database.
-    3. Copies Misc\timeline.db into that folder as timeline.sqlite (seed data).
+    3. Builds timeline.sqlite from the frozen 1.0.1 schema fixture plus
+       scripts\e2e-seed.sql, so the app upgrades a real pre-versioning
+       database (and writes its pre-migration backup) on every run.
     4. Sets STORYTIMELINE_REMOTE_DEBUG_PORT=9222 so all WebView2 windows share
        one browser process and expose a CDP endpoint.
     5. Builds the .NET project in Debug configuration.
@@ -37,8 +39,8 @@ $scriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectDir = Split-Path -Parent $scriptDir
 
 # 1. Kill stale app and WebView2 processes so port 9222 is free
-Write-Host "Stopping any running StoryTimelineMk2 instances..."
-Get-Process -Name StoryTimelineMk2   -ErrorAction SilentlyContinue | Stop-Process -Force
+Write-Host "Stopping any running StoryTimeline instances..."
+Get-Process -Name StoryTimeline      -ErrorAction SilentlyContinue | Stop-Process -Force
 Get-Process -Name msedgewebview2     -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 800
 
@@ -49,21 +51,20 @@ if (-not $KeepData -and (Test-Path $DataRoot)) {
 }
 New-Item -ItemType Directory -Force -Path $DataRoot | Out-Null
 
-# 3. Seed the database from Misc\timeline.db
-$seedSource = Join-Path $projectDir "Misc\timeline.db"
-$seedDest   = Join-Path $DataRoot   "timeline.sqlite"
+# 3. Build the seed database: frozen 1.0.1 schema (schema version 0) + generic sample rows.
+#    Skipped with -KeepData when a database is already there.
+$schemaSql = Join-Path $projectDir "StoryTimelineMk2.Tests\Fixtures\main_schema_v0_1.0.1.sql"
+$seedSql   = Join-Path $projectDir "scripts\e2e-seed.sql"
+$seedDest  = Join-Path $DataRoot   "timeline.sqlite"
 
-if (Test-Path $seedSource) {
-    Write-Host "Seeding database from $seedSource"
-    Copy-Item -Path $seedSource -Destination $seedDest -Force
-
-    # Normalize window state so every timeline opens windowed at a consistent size,
-    # regardless of how the snapshot was taken (fullscreen, maximised, huge monitor, etc.)
-    $normSql = "UPDATE settings SET is_fullscreen = 0, window_size_x = 1280, window_size_y = 800, window_position_x = 100, window_position_y = 100;"
-    python3 -c "import sqlite3; c=sqlite3.connect(r'$seedDest'); c.execute('$normSql'); c.commit()" 2>$null
-    if (-not $?) { Write-Warning "Could not normalize window state (python3 not found) - windows may open fullscreen." }
+if (Test-Path $seedDest) {
+    Write-Host "Keeping existing database at $seedDest"
 } else {
-    Write-Warning "Seed DB not found at $seedSource - app will start with an empty database."
+    $python = Get-Command python, python3 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $python) { throw "python/python3 not found on PATH - needed to build the E2E seed database." }
+    Write-Host "Building seed database at $seedDest"
+    & $python.Source -c "import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute('PRAGMA foreign_keys = OFF'); [c.executescript(open(f, encoding='utf-8').read()) for f in sys.argv[2:]]; c.commit()" $seedDest $schemaSql $seedSql
+    if ($LASTEXITCODE -ne 0) { throw "Seed database build failed (exit $LASTEXITCODE)" }
 }
 
 # 4. Clear the shared WebView2 test cache (stale profiles cause CDP port conflicts)
@@ -85,7 +86,7 @@ try {
 
 # 6. Launch the app with explicit env vars via ProcessStartInfo
 #    (more reliable than $env: inheritance through Start-Process in PS 5.1)
-$exePath = Join-Path $projectDir "bin\Debug\net10.0-windows\StoryTimelineMk2.exe"
+$exePath = Join-Path $projectDir "bin\Debug\net10.0-windows\StoryTimeline.exe"
 if (-not (Test-Path $exePath)) {
     throw "Executable not found at $exePath - did the build succeed?"
 }

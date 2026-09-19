@@ -1,4 +1,5 @@
 using StoryTimelineMk2.Database;
+using StoryTimelineMk2.Forms;
 
 namespace StoryTimelineMk2
 {
@@ -21,8 +22,7 @@ namespace StoryTimelineMk2
             Application.ThreadException += (_, e) =>
             {
                 Logger.Error("UnhandledUI", e.Exception);
-                MessageBox.Show($"Unexpected error:\n\n{e.Exception}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                f_ErrorReport.ShowReport("Unexpected error.", e.Exception);
             };
             AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             {
@@ -37,9 +37,7 @@ namespace StoryTimelineMk2
             catch (Exception ex)
             {
                 Logger.Error("DbInitializer", ex);
-                MessageBox.Show(
-                    $"The database could not be initialized — the app cannot start.\n\n{ex}",
-                    "Startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                f_ErrorReport.ShowReport("The timeline database could not be opened or upgraded, so the app cannot start.", ex);
                 return;
             }
 
@@ -49,8 +47,10 @@ namespace StoryTimelineMk2
             }
             catch (Exception ex)
             {
-                // Non-fatal: stats DB failure must never prevent the app from starting.
+                // Non-fatal: stats DB failure must never prevent the app from starting — but it is still shown.
                 Logger.Error("StatsDbInitializer", ex);
+                f_ErrorReport.ShowReport("The usage-statistics database could not be opened or upgraded. " +
+                    "The app will start, but statistics and achievements may not be recorded until this is fixed.", ex);
             }
 
             Application.Run(new AppStartupContext());

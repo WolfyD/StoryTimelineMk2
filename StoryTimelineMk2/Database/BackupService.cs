@@ -20,6 +20,7 @@ namespace StoryTimelineMk2.Database
     public static class BackupService
     {
         private const int KeepCount = 20;
+        private const string PreMigrationPrefix = "pre v";
 
         public static string CreateBackup(bool includeMedia)
         {
@@ -54,10 +55,52 @@ namespace StoryTimelineMk2.Database
                 {
                     using var conn = new SqliteConnection($"Data Source={dbFile}");
                     conn.Open();
-                    conn.Execute($"VACUUM INTO '{sqlitePath}'");
+                    conn.Execute("VACUUM INTO @path", new { path = sqlitePath });
                 }
                 return sqlitePath;
             }
+        }
+
+        /// <summary>
+        /// Verified snapshot taken by <see cref="Migrations.SchemaMigrator"/> right before schema migrations
+        /// run on an out-of-date database. The copy is re-opened and checked (quick_check, user_version,
+        /// table count) so a migration never starts on the strength of a backup that would not restore.
+        /// Named for the user ("pre v1.0.1-v1.0.2 migration backup - ...") and exempt from pruning.
+        /// </summary>
+        public static string CreatePreMigrationBackup(SqliteConnection db, string fileName)
+        {
+            string folder = AppConfig.Instance.GetBackupsFolder();
+            Directory.CreateDirectory(folder);
+            string path = Path.Combine(folder, fileName);
+
+            db.Execute("VACUUM INTO @path", new { path });
+            try
+            {
+                VerifyBackup(path, db.ExecuteScalar<int>("PRAGMA user_version"),
+                    db.ExecuteScalar<int>("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'"));
+            }
+            catch
+            {
+                SqliteConnection.ClearAllPools();
+                try { File.Delete(path); } catch { /* unverifiable copy; nothing to keep */ }
+                throw;
+            }
+            Logger.Info("BackupService", $"Pre-migration backup written and verified: {path} ({new FileInfo(path).Length / 1024} KB)");
+            return path;
+        }
+
+        /// <summary>Throws unless <paramref name="path"/> opens, passes quick_check and matches the expected version and table count.</summary>
+        internal static void VerifyBackup(string path, int expectedVersion, int expectedTables)
+        {
+            using var copy = new SqliteConnection($"Data Source={path};Mode=ReadOnly;Pooling=False");
+            copy.Open();
+            string check   = Migrations.SchemaMigrator.QuickCheck(copy);
+            int    version = copy.ExecuteScalar<int>("PRAGMA user_version");
+            int    tables  = copy.ExecuteScalar<int>("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'");
+            if (check != "ok" || version != expectedVersion || tables != expectedTables)
+                throw new InvalidOperationException(
+                    $"Backup verification failed for {path}: quick_check = \"{check}\", " +
+                    $"schema version {version} (expected {expectedVersion}), {tables} tables (expected {expectedTables}).");
         }
 
         public static void CheckAndAutoBackup()
@@ -97,6 +140,7 @@ namespace StoryTimelineMk2.Database
             var toDelete = Directory.GetFiles(folder)
                 .Where(f => f.EndsWith(".sqlite", StringComparison.OrdinalIgnoreCase)
                          || f.EndsWith(".stlm",   StringComparison.OrdinalIgnoreCase))
+                .Where(f => !Path.GetFileName(f).StartsWith(PreMigrationPrefix, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(File.GetCreationTime)
                 .Skip(KeepCount);
 

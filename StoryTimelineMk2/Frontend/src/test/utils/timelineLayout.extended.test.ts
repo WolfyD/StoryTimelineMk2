@@ -40,16 +40,19 @@ describe('FormatRegistry[SEASONS]', () => {
     expect(FormatRegistry['SEASONS']!(2020, 0.76)).toBe('Winter')
   })
 
-  it('does not return undefined at upper boundary f=0.9999', () => {
-    // Math.round(0.9999 * 4) = Math.round(3.9996) = 4 → clamped to min(4, 3) = 3 → 'Winter'
-    const result = FormatRegistry['SEASONS']!(2020, 0.9999)
-    expect(result).toBeDefined()
-    expect(result).toBe('Winter')
+  it('returns "Winter" at the last day of the year (f=0.998)', () => {
+    // Math.round(0.998 * 365) = 364 → last day → 'Winter'
+    expect(FormatRegistry['SEASONS']!(2020, 0.998)).toBe('Winter')
+  })
+
+  it('labels a fraction that rounds past the year boundary as the next year', () => {
+    // stepFraction is a rounded float; Math.round(0.9999 * 365) = 365 ≥ yearLength → '2021'
+    expect(FormatRegistry['SEASONS']!(2020, 0.9999)).toBe('2021')
   })
 
   it('only returns values from the seasons array', () => {
     const valid = ['Spring', 'Summer', 'Fall', 'Winter']
-    for (const f of [0.01, 0.13, 0.26, 0.38, 0.51, 0.63, 0.76, 0.88, 0.9999]) {
+    for (const f of [0.01, 0.13, 0.26, 0.38, 0.51, 0.63, 0.76, 0.88, 0.998]) {
       expect(valid).toContain(FormatRegistry['SEASONS']!(2020, f))
     }
   })
@@ -88,11 +91,9 @@ describe('FormatRegistry[MONTHS]', () => {
     }
   })
 
-  it('does not return undefined at upper boundary f=0.9999', () => {
-    // Math.round(0.9999 * 12) = 12 → clamped to min(12, 11) = 11 → 'Dec'
-    const result = FormatRegistry['MONTHS']!(2020, 0.9999)
-    expect(result).toBeDefined()
-    expect(result).toBe('Dec')
+  it('labels a fraction that rounds past the year boundary as the next year', () => {
+    // Math.round(0.9999 * 365) = 365 ≥ yearLength → '2021'
+    expect(FormatRegistry['MONTHS']!(2020, 0.9999)).toBe('2021')
   })
 
   it('returns "Dec" for f very close to 1', () => {
@@ -184,9 +185,9 @@ describe('FormatRegistry[DAYS]', () => {
     expect(FormatRegistry['DAYS']!(2020, 0)).toBe('2020')
   })
 
-  it('returns "Day 183" for f=0.5 (approximately mid-year)', () => {
-    // Math.floor(0.5 * 365) + 1 = 182 + 1 = 183
-    expect(FormatRegistry['DAYS']!(2020, 0.5)).toBe('Day 183')
+  it('returns "Day 184" for f=0.5 (approximately mid-year)', () => {
+    // Math.round(0.5 * 365) + 1 = 183 + 1 = 184
+    expect(FormatRegistry['DAYS']!(2020, 0.5)).toBe('Day 184')
   })
 
   it('returns "Day 1" for a very small fraction (start of year)', () => {
@@ -195,8 +196,13 @@ describe('FormatRegistry[DAYS]', () => {
   })
 
   it('returns "Day 365" near end of year', () => {
-    // Math.floor(0.999 * 365) + 1 = 364 + 1 = 365
-    expect(FormatRegistry['DAYS']!(2020, 0.999)).toBe('Day 365')
+    // Math.round(0.998 * 365) + 1 = 364 + 1 = 365
+    expect(FormatRegistry['DAYS']!(2020, 0.998)).toBe('Day 365')
+  })
+
+  it('labels a fraction that rounds past the year boundary as the next year', () => {
+    // Math.round(0.999 * 365) = 365 ≥ yearLength → '2021'
+    expect(FormatRegistry['DAYS']!(2020, 0.999)).toBe('2021')
   })
 
   it('matches expected format "Day N"', () => {

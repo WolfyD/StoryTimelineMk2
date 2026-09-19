@@ -64,7 +64,11 @@ type PageRole = 'main' | 'timeline' | 'editItem' | 'calendar'
 function matchesRole(p: Page, role: PageRole): boolean {
   const u = p.url()
   switch (role) {
-    case 'main':     return !u.includes('timeline.html') && !u.includes('editItem.html') && !u.includes('calendar.html')
+    case 'main': {
+      // Pre-warmed windows sit on about:blank until shown — only the project list is "main".
+      const path = u.startsWith('http') ? new URL(u).pathname : ''
+      return path === '/' || path.endsWith('/index.html')
+    }
     case 'timeline': return u.includes('timeline.html')
     case 'editItem': return u.includes('editItem.html')
     case 'calendar': return u.includes('calendar.html')
@@ -128,4 +132,41 @@ export async function openTimelinePage(
   const tl = await waitForNewPage(ctx, 'timeline', 10_000, pageErrors)
   await tl.waitForSelector('#timeline-workspace', { timeout: 10_000 })
   return tl
+}
+
+/**
+ * Delete a timeline from the project list through the row menu + confirm modal.
+ * Tests that create timelines must call this, otherwise the leftover row sorts
+ * ahead of the seed timeline and every later spec opens an empty timeline.
+ */
+export async function deleteTimelineRow(mainPage: Page, title: string): Promise<void> {
+  const row = mainPage.locator('.project-timeline-row-container', { hasText: title })
+  await expect(row).toBeVisible({ timeout: 8000 })
+  await row.locator('.ellipsis-button').click()
+  await row.locator('.row-action-button[title="Delete"]').click()
+  const modal = mainPage.locator('.bm-panel')
+  await expect(modal).toBeVisible({ timeout: 3000 })
+  await modal.locator('.btn-danger').click()
+  await expect(row).not.toBeVisible({ timeout: 8000 })
+}
+
+/**
+ * Drag the horizontal splitter down until the notes panel is in its tall layout
+ * (textarea + "Add Note" button). Pane sizes are not persisted, so call this after
+ * every openTimelinePage(). Below ~260px the panel switches to short/tiny modes
+ * that hide the button or move the editor into a modal.
+ */
+export async function ensureNotesTall(tl: Page): Promise<void> {
+  const notesTab = tl.locator('#timeline-data-notes .notes-tab')
+  if (await notesTab.evaluate(el => el.classList.contains('mode-tall')).catch(() => false)) return
+  const splitter = tl.locator('.timeline-splitpanes-wrapper > .splitpanes__splitter').first()
+  const box = await splitter.boundingBox()
+  if (!box) throw new Error('horizontal splitter not found')
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await tl.mouse.move(x, y)
+  await tl.mouse.down()
+  await tl.mouse.move(x, y + 300, { steps: 10 })
+  await tl.mouse.up()
+  await expect(notesTab).toHaveClass(/mode-tall/, { timeout: 3000 })
 }

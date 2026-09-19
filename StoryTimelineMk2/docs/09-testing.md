@@ -21,7 +21,7 @@ dotnet test StoryTimelineMk2.Tests
 ```
 
 - Project: `StoryTimelineMk2.Tests/StoryTimelineMk2.Tests.csproj` — `net10.0-windows`, xUnit 2.9.3, `xunit.runner.visualstudio`, `coverlet.collector` (coverage), references the main `StoryTimelineMk2.csproj`.
-- No prerequisites. Each test creates its own temp database (see conventions below); nothing touches `%LOCALAPPDATA%`.
+- No prerequisites. Each test creates its own temp database (see conventions below); nothing touches `%LOCALAPPDATA%`. Two exceptions, both self-cleaning: `StatsRepoTests` wipe/re-seed `usage.sqlite` next to the test binary (its path is fixed by `StatsDbInitializer.GetStatsDbPath()`), and the auto-backup tests in `BackupServiceTests` snapshot and restore `%APPDATA%\StoryTimelineMk2\config.json` because `CheckAndAutoBackup` calls `AppConfig.Save()`.
 
 ### 2. Vitest unit / component tests
 
@@ -33,8 +33,7 @@ npm run test:coverage   # vitest run --coverage (v8 provider)
 ```
 
 - Config: `Frontend/vitest.config.ts` — environment `happy-dom`, `globals: true`, setup file `src/test/setup.ts`.
-- No dev server, no backend, no browser needed.
-- **Known issue:** the config's `exclude` lists `src/test/e2e/**` but **not** `src/test/e2e-real/**`. Since the real-E2E specs match Vitest's default `*.spec.ts` include pattern, `npm run test` also collects them and they fail under the Vitest runner ("You are calling test.describe() from an async test.describe() block"). Until `src/test/e2e-real/**` is added to `exclude`, run targeted paths (e.g. `npx vitest run src/test/components`) or expect those file-level failures.
+- No dev server, no backend, no browser needed. Both Playwright folders (`src/test/e2e/**`, `src/test/e2e-real/**`) are excluded so `npm run test` never collects them.
 
 ### 3. Playwright mocked E2E
 
@@ -61,7 +60,7 @@ npm run test:e2e:real:ui    # Playwright UI mode
 ```
 
 - Config: `Frontend/playwright.real.config.ts` — `testDir: ./src/test/e2e-real`, `workers: 1`, `fullyParallel: false` (all tests share one live app instance), `retries: 0`, single project `real-app` with **no browser launch** (connection happens in fixtures).
-- Prerequisites: Windows, .NET 10 SDK, WebView2 runtime, and the app started via `Start-E2EApp.ps1` **before** running tests. The Vite dev server is auto-started by the config's `webServer` block (the Debug build of the app navigates to `http://localhost:5173`). `python3` on PATH is optional but recommended (used to normalize window state in the seed DB).
+- Prerequisites: Windows, .NET 10 SDK, WebView2 runtime, and the app started via `Start-E2EApp.ps1` **before** running tests. The Vite dev server is auto-started by the config's `webServer` block (the Debug build of the app navigates to `http://localhost:5173`). `python` or `python3` on PATH is **required** — the launcher uses its bundled `sqlite3` module to build the seed database.
 
 ## The Bridge Mock (mocked E2E)
 
@@ -89,11 +88,11 @@ This mirrors the handshake in `Frontend/src/bridge/api.ts` exactly, so `BackendA
 
 ### `scripts/Start-E2EApp.ps1` (run first, from repo root)
 
-1. Kills stale `StoryTimelineMk2` / `msedgewebview2` processes to free port 9222.
+1. Kills stale `StoryTimeline` / `msedgewebview2` processes to free port 9222.
 2. Sets `STORYTIMELINE_DATA_ROOT` to an isolated folder (default `%TEMP%\StoryTimelineE2E`) so tests never touch the user's real database. Wiped each run unless `-KeepData` is passed.
-3. **Seeds the DB** by copying `Misc\timeline.db` → `<DataRoot>\timeline.sqlite`, then normalizes window state via a `python3` sqlite one-liner (`is_fullscreen = 0`, 1280×800 at 100,100) so windows open predictably.
+3. **Builds the seed DB** at `<DataRoot>\timeline.sqlite` (skipped if one exists, i.e. with `-KeepData`): applies the frozen 1.0.1 schema fixture `StoryTimelineMk2.Tests\Fixtures\main_schema_v0_1.0.1.sql` (schema version 0) and then `scripts\e2e-seed.sql` (two timelines, ten items, two characters, one note, windowed 1280×800 settings rows). Because the seed is a genuine pre-versioning database, every run also exercises the real upgrade path: on startup the app writes `backups\pre v… migration backup - <timestamp>.sqlite` and migrates in place (see [10-migrations.md](10-migrations.md)).
 4. Sets `STORYTIMELINE_REMOTE_DEBUG_PORT=9222` so all WebView2 windows share one browser process exposing a CDP endpoint; clears the shared WebView2 test cache at `%LOCALAPPDATA%\StoryTimelineMk2_Cache\test-shared`.
-5. Runs `dotnet build -c Debug` and launches `bin\Debug\net10.0-windows\StoryTimelineMk2.exe` with those env vars via `ProcessStartInfo`.
+5. Runs `dotnet build -c Debug` and launches `bin\Debug\net10.0-windows\StoryTimeline.exe` with those env vars via `ProcessStartInfo`.
 
 ### `global-setup.ts`
 
@@ -126,10 +125,19 @@ Specs import `test`/`expect` from `./fixtures`, not from `@playwright/test`.
 | `Database/LayoutSettingsRepo.cs` | `LayoutSettingsRepoTests.cs` |
 | `Database/CharacterRepo.cs` | `CharacterRepoTests.cs` |
 | `Database/TagRepo.cs` | `TagRepoTests.cs` |
-| `Database/MediaRepo.cs` | `MediaRepoTests.cs` |
-| `Database/DbInitializer.cs` | `DbInitializerTests.cs` |
-| `Database/DatabaseImporter.cs` | `DatabaseImporterTests.cs` |
-| **Gaps** | `MiscSettingsRepo`, `FilterRuleRepo`, `FilterPresetRepo` — no tests. `Bridge/MessageRouter.cs` and everything under `Forms/` have **no unit tests at all** (covered only indirectly by real E2E). |
+| `Database/MediaRepo.cs` | `MediaRepoTests.cs` — incl. import/copy, thumbnail generation (256px cap, no upscale, webp skipped, fallback to original), lazy thumb backfill, delete cleanup |
+| `Database/MiscSettingsRepo.cs` | `MiscSettingsRepoTests.cs` |
+| `Database/FilterRuleRepo.cs` | `FilterRuleRepoTests.cs` |
+| `Database/FilterPresetRepo.cs` | `FilterPresetRepoTests.cs` |
+| `Database/StatsRepo.cs`, `Database/StatsDbInitializer.cs` | `StatsRepoTests.cs` (uses its own `StatsDbContext`, see above) |
+| `Database/BackupService.cs` | `BackupServiceTests.cs` — manual + auto backup, restore, retention |
+| `Database/TimelineExporter.cs` | `TimelineExporterTests.cs` |
+| `Database/DbInitializer.cs` | `DbInitializerTests.cs` — schema, seeds, migrations, `ResetBuiltinPreset` |
+| `Database/Migrations/*` (`SchemaMigrator`, `MainDbMigrations`, `StatsDbMigrations`) | `SchemaMigratorTests.cs` — chain numbering + release tags, `AppVersionOf`, fresh DB stamped, idempotent re-run, newer-version refusal (file untouched), v0 fixture → same schema as fresh (columns, FKs, indexes) with rows kept + legacy NULLs normalised, pre-1.0.0 dev schema (subtick, INTEGER note ids, missing columns), verified restorable pre-migration backup with the `pre v1.0.1-v{current} …` name, prune exemption, `VerifyBackup` rejects garbage / wrong version / missing tables, abort-before-change on `quick_check` failure and on unwritable backup, every stage logged to `app.log`, failing-step rollback/resume, failure report carries backup + old version, stats DB: fixture → fresh schema with `(usage stats)` backup, newer-version refusal. Fixtures in `StoryTimelineMk2.Tests/Fixtures/*.sql` are frozen 1.0.1 dumps (copied to the output dir by the csproj) — never edit them by hand |
+| `Database/DatabaseImporter.cs` | `DatabaseImporterTests.cs` — v1 legacy import, preview, v2 migrate-then-merge (old-schema backup gets new-column defaults, real `CreateBackup` round-trip, newer-version backup refused as `MigrationException` with the picked path and no scratch file left behind, scratch cleaned up on success) |
+| `ErrorReport.cs` | `ErrorReportTests.cs` — migration report lists database, schema/app versions, stage, backup (or "not modified"), log path, inner exception + stack; plain exceptions get type/message/stack |
+| Cross-table scenarios | `DbStressTests.cs` — backup/restore round-trips across every table, cascade deletes, multi-checkpoint restore, full lifecycle |
+| **Gaps** | Every public method on every `Database/*` class is exercised except `DatabaseImporter.HandleDBImport` (opens a file dialog). `Bridge/MessageRouter.cs` and everything under `Forms/` (incl. `f_ErrorReport`) have **no unit tests at all** (covered only indirectly by real E2E). |
 
 ### Frontend (Vitest)
 
@@ -183,4 +191,5 @@ Specs import `test`/`expect` from `./fixtures`, not from `@playwright/test`.
 - Import `test`, `expect` (and `waitForNewPage`) from `./fixtures`, never from `@playwright/test` directly.
 - Tests share one live app + DB and run sequentially — make created data unique (`` `E2E Timeline ${Date.now()}` ``), don't assume a pristine DB (assert "at least one row", not exact counts), and use `waitForNewPage(appContext, 'timeline' | 'editItem' | ..., timeout, pageErrors)` when a click opens a new WinForms window.
 - The `pageErrors` fixture surfaces console errors / uncaught exceptions — reference it in tests that open new windows so failures carry diagnostics.
-- Seed-data changes go in `Misc/timeline.db` (copied fresh each `Start-E2EApp.ps1` run); use `-KeepData` while iterating to skip re-seeding.
+- Seed-data changes go in `scripts/e2e-seed.sql` (plain `INSERT`s against the frozen 1.0.1 schema — keep them generic, the specs only assume "at least one timeline with a few items around year 0"); the DB is rebuilt on each `Start-E2EApp.ps1` run, use `-KeepData` while iterating to skip that.
+- Selector conventions: modals rendered through `BaseModal` expose `.bm-backdrop`, `.bm-panel`, `.bm-header`, `.bm-title`, `.bm-close`, `.bm-footer`; a component's own body stays `.modal-body`. `CalendarManagerModal` uses the `#header` slot, so it keeps `.modal-title` and its own `.icon-btn[title="Close"]`.

@@ -1,4 +1,4 @@
-import { test, expect, waitForNewPage } from './fixtures'
+import { test, expect, waitForNewPage, deleteTimelineRow } from './fixtures'
 
 test.describe('Main app — project list', () => {
   test('page loads and shows the app heading', async ({ mainPage }) => {
@@ -20,6 +20,7 @@ test.describe('Main app — project list', () => {
     await mainPage.locator('#start-project-button').click()
 
     await expect(mainPage.locator('.project-timeline-row', { hasText: name })).toBeVisible({ timeout: 8000 })
+    await deleteTimelineRow(mainPage, name)
   })
 })
 

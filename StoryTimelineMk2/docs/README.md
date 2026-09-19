@@ -8,7 +8,7 @@ code it documents, with `file.cs:123`-style references throughout.
 | # | File | Covers |
 |---|------|--------|
 | 01 | [01-architecture.md](01-architecture.md) | Stack overview, Vite entry points ↔ WinForms windows, startup sequence, AppConfig, build/run/test commands, repo layout |
-| 02 | [02-database.md](02-database.md) | Full schema, ER relationships, per-repo API reference, importer, migrations |
+| 02 | [02-database.md](02-database.md) | Full schema, ER relationships, per-repo API reference, importer, migration summary |
 | 03 | [03-bridge-protocol.md](03-bridge-protocol.md) | The complete 62-action frontend↔backend message contract with payload/response shapes, push actions, protocol quirks |
 | 04 | [04-windows-host.md](04-windows-host.md) | Window inventory, BorderlessFormBase deep-dive (borderless drag/resize system), lifecycle flows, WebView2 setup |
 | 05 | [05-frontend-pages.md](05-frontend-pages.md) | Each page: layout, state, interactions, modals, data flow on load |
@@ -16,6 +16,7 @@ code it documents, with `file.cs:123`-style references throughout.
 | 07 | [07-store-and-utils.md](07-store-and-utils.md) | timelineStore, types/models, layout math, Konva node builders, filter/relative rules, calendar math |
 | 08 | [08-domain-concepts.md](08-domain-concepts.md) | TimelineItem TypeIds, custom calendars, LOD ladder, layout presets, filter system, hidden ranges, glossary |
 | 09 | [09-testing.md](09-testing.md) | Test pyramid, run commands, bridge-mock and e2e-real (CDP) strategies, coverage map |
+| 10 | [10-migrations.md](10-migrations.md) | `PRAGMA user_version` schema migrations for both databases: runner, pre-migration backup, how to add a step, importer flow |
 
 > **Note:** the older lowercase docs in this folder (`architecture.md`, `bridge-api.md`,
 > `data-model.md`, `development.md`, `frontend.md`, `overview.md`) predate this set and may be

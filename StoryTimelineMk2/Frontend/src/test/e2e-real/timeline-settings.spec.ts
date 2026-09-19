@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test'
 /** Open the settings modal on the already-open timeline page. */
 async function openSettingsModal(tl: Page) {
   await tl.locator('.strip-btn--settings').click()
-  await expect(tl.locator('.modal-panel')).toBeVisible({ timeout: 5000 })
+  await expect(tl.locator('.bm-panel')).toBeVisible({ timeout: 5000 })
 }
 
 test.describe('Timeline settings modal — real backend', () => {
@@ -22,34 +22,34 @@ test.describe('Timeline settings modal — real backend', () => {
   test('clicking settings button opens the settings modal', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await tl.locator('.strip-btn--settings').click()
-    await expect(tl.locator('.modal-panel')).toBeVisible({ timeout: 5000 })
+    await expect(tl.locator('.bm-panel')).toBeVisible({ timeout: 5000 })
   })
 
   test('settings modal header contains "Settings"', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openSettingsModal(tl)
-    await expect(tl.locator('.modal-header')).toContainText('Settings')
+    await expect(tl.locator('.bm-header')).toContainText('Settings')
   })
 
   test('close button (X) dismisses the settings modal', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openSettingsModal(tl)
-    await tl.locator('.modal-panel .close-btn').click()
-    await expect(tl.locator('.modal-panel')).not.toBeVisible({ timeout: 3000 })
+    await tl.locator('.bm-panel .bm-close').click()
+    await expect(tl.locator('.bm-panel')).not.toBeVisible({ timeout: 3000 })
   })
 
   test('Escape key closes the settings modal', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openSettingsModal(tl)
     await tl.keyboard.press('Escape')
-    await expect(tl.locator('.modal-panel')).not.toBeVisible({ timeout: 3000 })
+    await expect(tl.locator('.bm-panel')).not.toBeVisible({ timeout: 3000 })
   })
 
   test('clicking the backdrop closes the modal', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openSettingsModal(tl)
-    await tl.locator('.modal-backdrop').click({ position: { x: 5, y: 5 } })
-    await expect(tl.locator('.modal-panel')).not.toBeVisible({ timeout: 3000 })
+    await tl.locator('.bm-backdrop').click({ position: { x: 5, y: 5 } })
+    await expect(tl.locator('.bm-panel')).not.toBeVisible({ timeout: 3000 })
   })
 
   // ── Modal content ─────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ test.describe('Timeline settings modal — real backend', () => {
     const body = tl.locator('.modal-body')
     await body.evaluate(el => { el.scrollTop = el.scrollHeight })
     await tl.waitForTimeout(300)
-    await expect(tl.locator('.modal-panel')).toBeVisible()
+    await expect(tl.locator('.bm-panel')).toBeVisible()
   })
 
   test('at least one select element exists (layout preset)', async ({ appContext }) => {

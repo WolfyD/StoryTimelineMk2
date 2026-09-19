@@ -239,4 +239,75 @@ public class BackupServiceTests
         // backup_001.sqlite (newest, 1h ago) should remain
         Assert.True(File.Exists(Path.Combine(folder, "backup_001.sqlite")));
     }
+
+    // ── CheckAndAutoBackup ────────────────────────────────────────────────────
+
+    private static readonly string ConfigPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StoryTimelineMk2", "config.json");
+
+    // CheckAndAutoBackup calls AppConfig.Save(), which writes the user's real config.json.
+    // Snapshot the singleton fields and the file, and put both back afterwards.
+    private static void WithAutoBackupConfig(string interval, int? lastBackupHoursAgo, Action body)
+    {
+        var cfg = AppConfig.Instance;
+        string savedInterval = cfg.BackupInterval;
+        DateTime? savedLast = cfg.LastAutoBackupAt;
+        byte[]? savedFile = File.Exists(ConfigPath) ? File.ReadAllBytes(ConfigPath) : null;
+        try
+        {
+            cfg.BackupInterval = interval;
+            cfg.LastAutoBackupAt = lastBackupHoursAgo.HasValue ? DateTime.Now.AddHours(lastBackupHoursAgo.Value) : null;
+            body();
+        }
+        finally
+        {
+            cfg.BackupInterval = savedInterval;
+            cfg.LastAutoBackupAt = savedLast;
+            if (savedFile != null) File.WriteAllBytes(ConfigPath, savedFile);
+            else if (File.Exists(ConfigPath)) File.Delete(ConfigPath);
+        }
+    }
+
+    private static int SqliteBackupCount()
+    {
+        string folder = AppConfig.Instance.GetBackupsFolder();
+        return Directory.Exists(folder) ? Directory.GetFiles(folder, "*.sqlite").Length : 0;
+    }
+
+    [Theory]
+    [InlineData("never", null)]
+    [InlineData("daily", -1)]     // last backup 1 hour ago
+    [InlineData("weekly", -72)]   // last backup 3 days ago
+    public void CheckAndAutoBackup_DoesNothing_WhenNotDue(string interval, int? lastBackupHoursAgo)
+    {
+        using var ctx = new DbTestContext();
+        WithAutoBackupConfig(interval, lastBackupHoursAgo, () =>
+        {
+            DateTime? before = AppConfig.Instance.LastAutoBackupAt;
+
+            BackupService.CheckAndAutoBackup();
+
+            Assert.Equal(0, SqliteBackupCount());
+            Assert.Equal(before, AppConfig.Instance.LastAutoBackupAt);
+        });
+    }
+
+    [Theory]
+    [InlineData("daily", null)]        // never backed up
+    [InlineData("daily", -25)]
+    [InlineData("weekly", -8 * 24)]
+    public void CheckAndAutoBackup_CreatesBackup_AndStampsTime_WhenDue(string interval, int? lastBackupHoursAgo)
+    {
+        using var ctx = new DbTestContext();
+        WithAutoBackupConfig(interval, lastBackupHoursAgo, () =>
+        {
+            DateTime before = DateTime.Now.AddSeconds(-1);
+
+            BackupService.CheckAndAutoBackup();
+
+            Assert.Equal(1, SqliteBackupCount());
+            Assert.NotNull(AppConfig.Instance.LastAutoBackupAt);
+            Assert.True(AppConfig.Instance.LastAutoBackupAt >= before);
+        });
+    }
 }

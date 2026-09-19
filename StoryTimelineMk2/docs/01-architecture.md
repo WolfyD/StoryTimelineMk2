@@ -85,7 +85,7 @@ Note: the `.csproj` explicitly excludes `Frontend\**` from the build (`StoryTime
 
 1. **`Program.cs:11` — `Main()`** (`[STAThread]`):
    1. `ApplicationConfiguration.Initialize()` — standard WinForms bootstrapping (DPI, default font).
-   2. `DbInitializer.Initialize()` (`Database/DbInitializer.cs:15`) — opens a `SqliteConnection` using `AppConfig`'s connection string (creating the `DataRoot` directory first, `DbInitializer.cs:8-13`) and executes `CREATE TABLE IF NOT EXISTS …` for the full schema (timelines, calendars, lod_profiles, items, tags, layout_settings, …).
+   2. `DbInitializer.Initialize()` (`Database/DbInitializer.cs`) — creates the `DataRoot` directory, opens `timeline.sqlite`, snapshots it to `backups/` if its `PRAGMA user_version` is behind, and runs the numbered schema migrations in `Database/Migrations/MainDbMigrations.cs` (step 1 = full `CREATE TABLE IF NOT EXISTS …` schema + seeds). A database from a newer app version is refused — see [10-migrations.md](10-migrations.md).
    3. `Application.Run(new Forms.f_Main())` — starts the message loop with the main window.
 2. **`f_Main` constructor** (`Forms/f_Main.cs:18-27`) — `InitializeComponent()`, borderless style (inherits `Forms/BorderlessFormBase.cs`), wires `Load`/resize/move handlers.
 3. **`F_Main_Load`** (`Forms/f_Main.cs:29-47`):
@@ -121,7 +121,7 @@ Load precedence (`AppConfig.Load()`, `AppConfig.cs:35-54`):
 A small static factory that decides how `CoreWebView2Environment` instances are created (`WebView2EnvironmentFactory.cs:17-64`). Every window calls `GetAsync(subfolder)` instead of letting WebView2 pick defaults.
 
 - **Normal mode** (no `STORYTIMELINE_REMOTE_DEBUG_PORT` env var): each window gets its **own private environment** with a per-window cache folder `%LOCALAPPDATA%\StoryTimelineMk2_Cache\<subfolder>` — subfolders `"main"`, `"timeline"`, `"edit"`, `"calendar"`. Each window therefore runs in its own isolated browser process.
-- **Test mode** (`STORYTIMELINE_REMOTE_DEBUG_PORT` set): a **single shared environment** is created once (guarded by a `SemaphoreSlim`) with cache folder `…\StoryTimelineMk2_Cache\test-shared` and `--remote-debugging-port={port}` added to the browser arguments. All windows then share one browser process and one CDP endpoint, so **Playwright can connect once and see every page** — this is what `scripts/Start-E2EApp.ps1` sets up (port 9222, isolated `STORYTIMELINE_DATA_ROOT`, seed DB copied from `Misc\timeline.db`).
+- **Test mode** (`STORYTIMELINE_REMOTE_DEBUG_PORT` set): a **single shared environment** is created once (guarded by a `SemaphoreSlim`) with cache folder `…\StoryTimelineMk2_Cache\test-shared` and `--remote-debugging-port={port}` added to the browser arguments. All windows then share one browser process and one CDP endpoint, so **Playwright can connect once and see every page** — this is what `scripts/Start-E2EApp.ps1` sets up (port 9222, isolated `STORYTIMELINE_DATA_ROOT`, seed DB built from the frozen 1.0.1 schema fixture + `scripts/e2e-seed.sql`).
 
 Why it exists: without it, multi-window CDP testing would be impossible (each private environment exposes its own — or no — debugging port), while normal users keep fully isolated per-window browser state.
 
@@ -178,8 +178,7 @@ npm run test:e2e:real     # Playwright against the real WinForms app over CDP
 | `Forms/` | WinForms windows: `f_Main`, `f_Timeline`, `f_AddEditItem`, `f_Calendar`, shared `BorderlessFormBase` + designer files |
 | `Frontend/` | Vue 3 SPA: `src/pages/`, `src/components/`, `src/stores/timelineStore.ts`, `src/bridge/api.ts`, `src/types/models.ts`, `src/utils/` (canvas math + Konva builders), `src/test/` (unit + `e2e/` + `e2e-real/`); five HTML entries; Vite/Vitest/Playwright/ESLint configs |
 | `docs/` | Project documentation (this file, `architecture.md`, `bridge-api.md`, `data-model.md`, `development.md`, `frontend.md`, `overview.md`, feature specs) |
-| `Misc/` | `timeline.db` — seed database copied into the isolated data root by the E2E launcher |
-| `scripts/` | `Start-E2EApp.ps1` — builds and launches the app configured for real-app Playwright testing |
+| `scripts/` | `Start-E2EApp.ps1` — builds the seed DB and launches the app configured for real-app Playwright testing; `e2e-seed.sql` — sample rows applied on top of the frozen 1.0.1 schema fixture |
 | `StoryTimelineMk2.Tests/` | .NET unit test project (has access to internals via `InternalsVisibleTo`) |
 | `Models/` | Empty placeholder folder (declared in the csproj, no files) |
 | `src/` | Empty leftover folder (no files) |

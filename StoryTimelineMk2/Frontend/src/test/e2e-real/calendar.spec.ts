@@ -9,7 +9,7 @@ async function closeAny(mainPage: Page, appContext: BrowserContext) {
     await cal.evaluate(() => window.close()).catch(() => {})
     await new Promise(r => setTimeout(r, 800))
   }
-  const modal = mainPage.locator('.modal-panel')
+  const modal = mainPage.locator('.bm-panel')
   if (await modal.isVisible({ timeout: 500 }).catch(() => false)) {
     const closeBtn = modal.locator('.icon-btn[title="Close"]')
     if (await closeBtn.isVisible().catch(() => false)) {
@@ -24,7 +24,7 @@ async function closeAny(mainPage: Page, appContext: BrowserContext) {
 
 async function openManagerModal(mainPage: Page) {
   await mainPage.locator('[title="Manage Calendars"]').click()
-  const modal = mainPage.locator('.modal-panel')
+  const modal = mainPage.locator('.bm-panel')
   await expect(modal).toBeVisible({ timeout: 5000 })
   await expect(modal.locator('.modal-title')).toContainText('Calendars', { timeout: 3000 })
   return modal
@@ -63,7 +63,7 @@ test.describe('Calendar Manager Modal — real backend', () => {
 
   test('"Manage Calendars" button opens the modal', async ({ mainPage }) => {
     await mainPage.locator('[title="Manage Calendars"]').click()
-    await expect(mainPage.locator('.modal-panel')).toBeVisible({ timeout: 5000 })
+    await expect(mainPage.locator('.bm-panel')).toBeVisible({ timeout: 5000 })
   })
 
   test('modal title is "Calendars"', async ({ mainPage }) => {
@@ -97,13 +97,13 @@ test.describe('Calendar Manager Modal — real backend', () => {
   test('close button (X) dismisses the modal', async ({ mainPage }) => {
     const modal = await openManagerModal(mainPage)
     await modal.locator('.icon-btn[title="Close"]').click()
-    await expect(mainPage.locator('.modal-panel')).not.toBeVisible({ timeout: 2000 })
+    await expect(mainPage.locator('.bm-panel')).not.toBeVisible({ timeout: 2000 })
   })
 
   test('clicking the backdrop dismisses the modal', async ({ mainPage }) => {
     await openManagerModal(mainPage)
-    await mainPage.locator('.modal-backdrop').click({ position: { x: 5, y: 5 } })
-    await expect(mainPage.locator('.modal-panel')).not.toBeVisible({ timeout: 2000 })
+    await mainPage.locator('.bm-backdrop').click({ position: { x: 5, y: 5 } })
+    await expect(mainPage.locator('.bm-panel')).not.toBeVisible({ timeout: 2000 })
   })
 
   test('Refresh button reloads the list without error', async ({ mainPage }) => {

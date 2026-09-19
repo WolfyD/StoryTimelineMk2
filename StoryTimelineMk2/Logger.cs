@@ -14,7 +14,8 @@ namespace StoryTimelineMk2
         private static readonly object _lock = new object();
         private static string _logPath = null!;
 
-        private static string LogPath
+        /// <summary>Full path of app.log — shown in error reports so users can find and send it.</summary>
+        public static string LogPath
         {
             get
             {

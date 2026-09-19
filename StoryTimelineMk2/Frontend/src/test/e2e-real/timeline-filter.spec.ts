@@ -20,40 +20,37 @@ async function closeFilterPanel(tl: Page) {
   await expect(panel).not.toBeVisible({ timeout: 3000 })
 }
 
-/** Open filter panel then setup modal (assumes timeline page already open). */
+/** Open filter panel then the slide-down setup panel (assumes timeline page already open). */
 async function openFilterSetup(tl: Page) {
   await openFilterPanel(tl)
   await tl.locator('.fp-icon-btn[title="Filter setup"]').click()
-  await expect(tl.locator('.fsetup-modal')).toBeVisible({ timeout: 3000 })
+  await expect(tl.locator('.fsetup-panel')).toBeVisible({ timeout: 3000 })
 }
 
-/** Add a keyword rule via the already-open setup modal. */
+/** Add a keyword rule via the already-open setup panel; rules only show up as chips in the filter bar. */
 async function addKeywordRule(tl: Page, keyword: string) {
   const kwBlock = tl.locator('.add-block', { hasText: 'Keyword' })
   await kwBlock.locator('.fs-input').fill(keyword)
   await kwBlock.locator('.add-btn').click()
-  await expect(tl.locator('.rule-row', { hasText: keyword })).toBeVisible({ timeout: 3000 })
-}
-
-/** Delete all visible rules from the already-open setup modal. */
-async function deleteAllRules(tl: Page) {
-  const delBtns = tl.locator('.rule-del')
-  while (await delBtns.count() > 0) {
-    await delBtns.first().click()
-    await tl.waitForTimeout(200)
-  }
+  await expect(tl.locator('.filter-chip', { hasText: keyword })).toBeVisible({ timeout: 3000 })
 }
 
 /**
- * Delete every rule via the setup modal, then close it.
- * The chip X button only DEACTIVATES a rule (sets it neutral) and is only
- * rendered on active chips — actual rule deletion lives in the setup modal.
+ * Delete every rule. The UI has no delete affordance (the chip X only deactivates,
+ * the setup panel only adds), so go through the Pinia store, which is what a
+ * delete button would call.
  */
-async function cleanupRules(tl: Page) {
-  await openFilterSetup(tl)
-  await deleteAllRules(tl)
-  await tl.locator('.fsetup-close').click()
+async function deleteAllRules(tl: Page) {
+  await tl.evaluate(async () => {
+    type Store = { filterRules: { Id: string }[]; deleteFilterRule(id: string): Promise<void> }
+    type Root = { __vue_app__: { config: { globalProperties: { $pinia: { _s: Map<string, Store> } } } } }
+    const store = (document.getElementById('app') as unknown as Root).__vue_app__.config.globalProperties.$pinia._s.get('timeline')!
+    for (const r of [...store.filterRules]) await store.deleteFilterRule(r.Id)
+  })
+  await expect(tl.locator('.filter-chip')).toHaveCount(0, { timeout: 3000 })
 }
+
+const cleanupRules = deleteAllRules
 
 test.describe('Timeline filter panel — real backend', () => {
   test.beforeEach(async ({ mainPage, appContext, pageErrors }) => {
@@ -100,17 +97,17 @@ test.describe('Timeline filter panel — real backend', () => {
 
   // ── Filter setup modal ────────────────────────────────────────────────────
 
-  test('filter setup button opens the setup modal with correct title', async ({ appContext }) => {
+  test('filter setup button opens the setup panel with correct title', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterSetup(tl)
-    await expect(tl.locator('.fsetup-title')).toContainText('Filter Setup')
+    await expect(tl.locator('.fsetup-topbar-label')).toContainText('Add filters')
   })
 
-  test('setup modal close button dismisses the modal', async ({ appContext }) => {
+  test('setup panel close button dismisses the panel', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterSetup(tl)
     await tl.locator('.fsetup-close').click()
-    await expect(tl.locator('.fsetup-modal')).not.toBeVisible({ timeout: 2000 })
+    await expect(tl.locator('.fsetup-panel')).not.toBeVisible({ timeout: 2000 })
   })
 
   test('setup modal shows "Add new rules" section with add-blocks', async ({ appContext }) => {
@@ -121,37 +118,38 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(tl.locator('.add-block', { hasText: 'Keyword' })).toBeVisible()
   })
 
-  test('empty state shown when no rules are defined', async ({ appContext }) => {
+  test('empty state shown in the filter bar when no rules are defined', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
-    await openFilterSetup(tl)
+    await openFilterPanel(tl)
     await deleteAllRules(tl)
-    await expect(tl.locator('.fsetup-empty')).toBeVisible({ timeout: 2000 })
+    await expect(tl.locator('.filter-panel .fp-empty')).toBeVisible({ timeout: 2000 })
   })
 
   // ── Adding rules ──────────────────────────────────────────────────────────
 
-  test('can add a keyword filter rule and see it in the active rules list', async ({ appContext }) => {
+  test('can add a keyword filter rule and see it as a chip', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterSetup(tl)
     await addKeywordRule(tl, 'e2eKeyword')
-    await expect(tl.locator('.rule-label')).toContainText('e2eKeyword')
+    await expect(tl.locator('.filter-chip .chip-label', { hasText: 'e2eKeyword' })).toContainText('Keyword: "e2eKeyword"')
     await deleteAllRules(tl)
   })
 
   test('can add an item-type filter rule', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterSetup(tl)
+    await deleteAllRules(tl)
     await tl.locator('.add-block', { hasText: 'Item Type' }).locator('.add-btn').click()
-    await expect(tl.locator('.rule-row').first()).toBeVisible({ timeout: 3000 })
+    await expect(tl.locator('.filter-chip')).toHaveCount(1, { timeout: 3000 })
     await deleteAllRules(tl)
   })
 
-  test('can delete a rule from the active rules list', async ({ appContext }) => {
+  test('deleting a rule removes its chip', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterSetup(tl)
     await addKeywordRule(tl, 'toDelete')
-    await tl.locator('.rule-del').first().click()
-    await expect(tl.locator('.rule-row', { hasText: 'toDelete' })).not.toBeVisible({ timeout: 2000 })
+    await deleteAllRules(tl)
+    await expect(tl.locator('.filter-chip', { hasText: 'toDelete' })).not.toBeVisible({ timeout: 2000 })
   })
 
   // ── Filter chips ──────────────────────────────────────────────────────────
@@ -166,7 +164,7 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(panel.locator('.filter-chip')).toBeVisible({ timeout: 3000 })
     await expect(panel.locator('.chip-label')).toContainText('chipTestWord')
 
-    // Clean up (deletion happens in the setup modal — the chip X only deactivates)
+    // Clean up (the chip X only deactivates)
     await cleanupRules(tl)
     await expect(panel.locator('.filter-chip', { hasText: 'chipTestWord' })).not.toBeVisible({ timeout: 2000 })
   })
@@ -329,7 +327,7 @@ test.describe('Timeline filter panel — real backend', () => {
     await presetRow.locator('.preset-del-btn').click()
     await expect(presetRow).not.toBeVisible({ timeout: 2000 })
 
-    // Clean up rule (deletion lives in the setup modal, not the chip X)
+    // Clean up rule (the chip X only deactivates)
     await tl.keyboard.press('Escape')
     await tl.waitForTimeout(300)
     await cleanupRules(tl)

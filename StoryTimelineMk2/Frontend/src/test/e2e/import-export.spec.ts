@@ -56,7 +56,7 @@ test.describe('DB import flow', () => {
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await expect(page.locator('.bm-title')).toContainText('Import Database')
   })
 
   test('DbImportModal displays preview data from bridge mock', async ({ page }) => {
@@ -67,7 +67,7 @@ test.describe('DB import flow', () => {
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
 
-    const modal = page.locator('.modal-panel')
+    const modal = page.locator('.bm-panel')
     await expect(modal).toContainText('export.sqlite')
     await expect(modal).toContainText('42')
   })
@@ -79,10 +79,10 @@ test.describe('DB import flow', () => {
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await expect(page.locator('.bm-title')).toContainText('Import Database')
 
     await page.locator('.btn-cancel').click()
-    await expect(page.locator('.modal-title')).not.toBeVisible()
+    await expect(page.locator('.bm-title')).not.toBeVisible()
   })
 
   test('confirming import calls ExecuteImportDB and closes modal on success', async ({ page }) => {
@@ -92,10 +92,10 @@ test.describe('DB import flow', () => {
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await expect(page.locator('.bm-title')).toContainText('Import Database')
 
     await page.locator('.btn-danger').click()
-    await expect(page.locator('.modal-title')).not.toBeVisible({ timeout: 3000 })
+    await expect(page.locator('.bm-title')).not.toBeVisible({ timeout: 3000 })
   })
 
   test('conflict scenario shows warning in DbImportModal', async ({ page }) => {
@@ -158,7 +158,7 @@ test.describe('Timeline import flow', () => {
     // import-export container. Try the DB menu first.
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Timeline').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Timeline')
+    await expect(page.locator('.bm-title')).toContainText('Import Timeline')
   })
 
   test('ImportTimelineModal shows preview data', async ({ page }) => {
@@ -169,7 +169,7 @@ test.describe('Timeline import flow', () => {
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Timeline').click()
 
-    const modal = page.locator('.modal-panel')
+    const modal = page.locator('.bm-panel')
     await expect(modal).toContainText('Test Timeline')
     await expect(modal).toContainText('15')
   })
@@ -181,10 +181,10 @@ test.describe('Timeline import flow', () => {
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Timeline').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Timeline')
+    await expect(page.locator('.bm-title')).toContainText('Import Timeline')
 
     await page.locator('.btn-cancel').click()
-    await expect(page.locator('.modal-title')).not.toBeVisible()
+    await expect(page.locator('.bm-title')).not.toBeVisible()
   })
 
   test('confirming ImportTimeline with no conflict uses btn-primary', async ({ page }) => {
@@ -264,7 +264,7 @@ test.describe('DB import — post-import behaviour', () => {
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await expect(page.locator('.bm-title')).toContainText('Import Database')
     await page.locator('.btn-danger').click()
     await page.waitForTimeout(500)
 
@@ -290,7 +290,7 @@ test.describe('DB import — post-import behaviour', () => {
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await expect(page.locator('.bm-title')).toContainText('Import Database')
     await page.locator('.btn-danger').click()
     await page.waitForTimeout(500)
 
@@ -305,10 +305,10 @@ test.describe('DB import — post-import behaviour', () => {
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
-    await expect(page.locator('.modal-title')).toContainText('Import Database')
+    await expect(page.locator('.bm-title')).toContainText('Import Database')
     await page.locator('.btn-danger').click()
 
-    await expect(page.locator('.modal-title')).not.toBeVisible({ timeout: 3000 })
+    await expect(page.locator('.bm-title')).not.toBeVisible({ timeout: 3000 })
     // Project list is restored after the refresh
     await expect(page.locator('.project-timeline-row')).toBeVisible({ timeout: 3000 })
   })
