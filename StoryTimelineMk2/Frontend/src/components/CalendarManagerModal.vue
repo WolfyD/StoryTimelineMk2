@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { PhX, PhPencilSimple, PhEye, PhPlus, PhArrowsClockwise, PhTrash } from '@phosphor-icons/vue'
+import { PhX, PhPencilSimple, PhEye, PhPlus, PhArrowsClockwise, PhTrash, PhExport, PhDownloadSimple } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
@@ -17,6 +17,8 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const viewingId = ref<string | null>(null)
 const deleteTarget = ref<CalendarRow | null>(null)
+// Export/import outcome; kept apart from `error`, which replaces the whole list.
+const notice = ref<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
 async function load() {
     loading.value = true
@@ -62,6 +64,38 @@ async function confirmDelete() {
     }
 }
 
+async function exportCalendar(c: CalendarRow) {
+    notice.value = null
+    try {
+        const result = await BackendAPI.ExportCalendar({ id: c.Id })
+        if (result?.status === 'cancelled') return
+        if (result?.status !== 'ok') throw new Error(result?.message ?? 'Export failed')
+        notice.value = { kind: 'ok', text: `Exported "${c.Name}" to ${result.path}.` }
+    } catch (e) {
+        console.error('[CalendarManagerModal] export failed:', e)
+        notice.value = { kind: 'error', text: `Failed to export calendar: ${e instanceof Error ? e.message : String(e)}` }
+    }
+}
+
+async function importCalendar() {
+    notice.value = null
+    try {
+        const result = await BackendAPI.ImportCalendar()
+        if (result?.status === 'cancelled') return
+        if (result?.status !== 'ok') throw new Error(result?.message ?? 'Import failed')
+        notice.value = {
+            kind: 'ok',
+            text: `Imported "${result.name}".`
+                + (result.nameCollision ? ` A calendar named "${result.name}" already existed — you may want to rename one of them.` : ''),
+        }
+        // Reloads this list and any open calendar pickers.
+        window.dispatchEvent(new Event('calendars-changed'))
+    } catch (e) {
+        console.error('[CalendarManagerModal] import failed:', e)
+        notice.value = { kind: 'error', text: `Failed to import calendar: ${e instanceof Error ? e.message : String(e)}` }
+    }
+}
+
 onMounted(() => { load(); window.addEventListener('calendars-changed', load) })
 onUnmounted(() => window.removeEventListener('calendars-changed', load))
 </script>
@@ -100,6 +134,10 @@ onUnmounted(() => window.removeEventListener('calendars-changed', load))
                                 <PhPencilSimple :size="14" />
                                 Edit
                             </button>
+                            <button class="action-btn export" title="Export calendar to a file" @click="exportCalendar(c)">
+                                <PhExport :size="14" />
+                                Export
+                            </button>
                             <button
                                 v-if="c.Id !== DEFAULT_CALENDAR_ID"
                                 class="action-btn delete" title="Delete calendar" @click="deleteTarget = c">
@@ -112,10 +150,17 @@ onUnmounted(() => window.removeEventListener('calendars-changed', load))
             </div>
 
             <div class="modal-footer">
-                <button class="new-btn" @click="openEditor(null)">
-                    <PhPlus :size="14" />
-                    New Calendar
-                </button>
+                <p v-if="notice" class="notice" :class="notice.kind">{{ notice.text }}</p>
+                <div class="footer-btns">
+                    <button class="new-btn" @click="openEditor(null)">
+                        <PhPlus :size="14" />
+                        New Calendar
+                    </button>
+                    <button class="import-btn" title="Import a calendar from a file (always creates a new calendar)" @click="importCalendar">
+                        <PhDownloadSimple :size="14" />
+                        Import Calendar
+                    </button>
+                </div>
             </div>
         </BaseModal>
 
@@ -278,11 +323,24 @@ onUnmounted(() => window.removeEventListener('calendars-changed', load))
     flex-shrink: 0;
 }
 
-.new-btn {
+.notice {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    color: var(--app-text-muted, #94a3b8);
+    &.error { color: #e87a7a; }
+}
+
+.footer-btns {
+    display: flex;
+    gap: 8px;
+}
+
+.new-btn,
+.import-btn {
     display: flex;
     align-items: center;
     gap: 6px;
-    width: 100%;
+    flex: 1;
     padding: 6px 12px;
     border: 1px dashed var(--app-accent, #6366f1);
     border-radius: var(--app-radius-sm, 5px);

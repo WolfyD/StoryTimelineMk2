@@ -74,6 +74,7 @@ namespace StoryTimelineMk2.Database
                     display_radius      = @DisplayRadius,
                     canvas_settings      = @CanvasSettings,
                     timeline_minimised   = @TimelineMinimised,
+                    header_mode          = @HeaderMode,
                     pan_speed_multiplier = @PanSpeedMultiplier,
                     pan_deadzone         = @PanDeadzone,
                     default_item_color   = @DefaultItemColor,

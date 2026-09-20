@@ -289,11 +289,11 @@ namespace StoryTimelineMk2.Forms
                     mainForm = f as f_Main;
             }
 
-            if (mainForm != null)
+            // _messageRouter is null if main's WebView2 init failed; SendToVue is false when its
+            // WebView2 has since died (browser process gone). Either way there is no main page to
+            // go back to — showing it would just be a black window — so end the app instead.
+            if (mainForm != null && mainForm._messageRouter?.SendToVue("InitReload") == true)
             {
-                // _messageRouter is null if main's WebView2 init failed — an NRE here
-                // would be an unhandled exception inside FormClosing.
-                mainForm._messageRouter?.SendToVue("InitReload");
                 mainForm.Show();
                 // Pre-warm a fresh timeline instance for the next session
                 BeginPrewarm();

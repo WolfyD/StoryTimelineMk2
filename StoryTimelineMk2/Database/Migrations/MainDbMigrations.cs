@@ -16,6 +16,10 @@ namespace StoryTimelineMk2.Database.Migrations
         {
             new(1, "1.0.1 baseline", "1.0.1", V1_Baseline),
             new(2, "item placement", "1.0.2", V2_ItemPlacement),
+            new(3, "timeline header mode", "1.0.3", V3_HeaderMode),
+            new(4, "centered item boxes", "1.0.3", V4_ItemCentered),
+            new(5, "picture title", "1.0.3", V5_ShowTitle),
+            new(6, "item notes", "1.0.3", V6_ItemNotes),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -991,6 +995,38 @@ namespace StoryTimelineMk2.Database.Migrations
                           FROM items WHERE type_id NOT IN (3, 6, 7, 8, 9)) AS o
                     WHERE o.id = items.id)
                 WHERE type_id NOT IN (3, 6, 7, 8, 9)");
+        }
+
+        // ── 3: timeline header mode ──────────────────────────────────────────────────────────────
+
+        /// <summary>How the timeline window shows its title strip: 0 = full, 1 = compact, 2 = hidden.</summary>
+        private static void V3_HeaderMode(MigrationDb db)
+        {
+            db.Execute("ALTER TABLE settings ADD COLUMN header_mode INTEGER NOT NULL DEFAULT 0");
+        }
+
+        // ── 4: centered item boxes ───────────────────────────────────────────────────────────────
+
+        /// <summary>Per-item flag: the box sits centered on its stem instead of offset to one side.</summary>
+        private static void V4_ItemCentered(MigrationDb db)
+        {
+            db.Execute("ALTER TABLE items ADD COLUMN centered INTEGER NOT NULL DEFAULT 0");
+        }
+
+        // ── 5: picture title ─────────────────────────────────────────────────────────────────────
+
+        /// <summary>Per-item flag: draw the title as a caption strip on picture items.</summary>
+        private static void V5_ShowTitle(MigrationDb db)
+        {
+            db.Execute("ALTER TABLE items ADD COLUMN show_title INTEGER NOT NULL DEFAULT 0");
+        }
+
+        // ── 6: item notes ────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Writer's private notes on an item; stored, exported, never rendered.</summary>
+        private static void V6_ItemNotes(MigrationDb db)
+        {
+            db.Execute("ALTER TABLE items ADD COLUMN item_notes TEXT");
         }
     }
 }

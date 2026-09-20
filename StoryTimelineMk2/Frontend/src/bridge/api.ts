@@ -136,7 +136,7 @@ export const BackendAPI = {
 		storyRefs: string[],
 		chapterRefs: string[]
 	) {
-		return await this.request<{ status: string; itemId: string }>('SaveItem', {
+		return await this.request<{ status: string; itemId: string; message?: string }>('SaveItem', {
 			item,
 			tagNames,
 			characterAppearances,
@@ -147,6 +147,11 @@ export const BackendAPI = {
 
 	async SearchTags(query: string) {
 		return await this.request<Tag[]>('SearchTags', { query });
+	},
+
+	/** Most-used tags of a timeline, busiest first */
+	async GetTopTags(timelineId: number, limit = 8) {
+		return await this.request<Tag[]>('GetTopTags', { timelineId, limit });
 	},
 
 	async GetTagList() {
@@ -209,6 +214,7 @@ export const BackendAPI = {
 		panSpeedMultiplier: number;
 		panDeadzone: number;
 		defaultItemColor: string;
+		headerMode: number;
 	}) {
 		return await this.request<{ status: string }>('SaveSettings', payload);
 	},
@@ -235,6 +241,16 @@ export const BackendAPI = {
 
 	async DeleteCalendar(id: string) {
 		return await this.request<{ status: string; reassigned?: number; message?: string }>('DeleteCalendar', { id });
+	},
+
+	/** Native save dialog. `{ id }` exports a stored calendar, `{ calendar }` the editor's unsaved state. */
+	async ExportCalendar(payload: { id: string } | { calendar: object }) {
+		return await this.request<{ status: string; path?: string; message?: string }>('ExportCalendar', payload);
+	},
+
+	/** Native open dialog; always creates a new calendar. */
+	async ImportCalendar() {
+		return await this.request<{ status: string; calendarId?: string; name?: string; nameCollision?: boolean; message?: string }>('ImportCalendar', {});
 	},
 
 	async GetAppConfig() {
@@ -315,6 +331,11 @@ export const BackendAPI = {
 
 	async ShiftTimelineItems(timelineId: number, delta: number) {
 		return await this.request<{ status: string; affected?: number }>('ShiftTimelineItems', { timelineId, delta });
+	},
+
+	/** Overwrites the LOD visibility mask of every item of the timeline */
+	async SetTimelineItemsLodMask(timelineId: number, mask: number) {
+		return await this.request<{ status: string; affected?: number; message?: string }>('SetTimelineItemsLodMask', { timelineId, mask });
 	},
 
 	async ResetLayoutPreset(id: string) {

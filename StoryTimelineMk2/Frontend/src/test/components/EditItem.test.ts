@@ -9,6 +9,8 @@ vi.mock('@/bridge/api', () => ({
     GetTimelineCharacters: vi.fn().mockResolvedValue([]),
     GetAllStories: vi.fn().mockResolvedValue([]),
     SearchTags: vi.fn().mockResolvedValue([]),
+    GetTopTags: vi.fn().mockResolvedValue([]),
+    GetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok', value: null }),
     SaveItem: vi.fn(),
     RemoveImageFromItem: vi.fn().mockResolvedValue({ status: 'ok' }),
     SearchBooks: vi.fn().mockResolvedValue([]),
@@ -164,6 +166,23 @@ describe('EditItem page', () => {
 
     const titleInput = wrapper.find('input[type="text"]')
     expect(titleInput.element.value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('new item starts with the LOD mask the backend stub carries', async () => {
+    const d = makeItemForEdit()
+    d.Item.LodVisibilityMask = 0b1000   // only LOD index 3
+    d.Calendar.LodProfile.Profile = [
+      { index: 0, formatKey: 'Millennia', stepFraction: 1000 },
+      { index: 3, formatKey: 'Years', stepFraction: 1 },
+    ] as any
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(d)
+
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    const active = wrapper.findAll('.lod-toggle-btn.active')
+    expect(active.map(b => b.attributes('title'))).toEqual(['Years'])
     wrapper.unmount()
   })
 
@@ -366,6 +385,46 @@ describe('EditItem page', () => {
     await flushPromises()
 
     expect(BackendAPI.SaveItem).toHaveBeenCalledOnce()
+    windowClose.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('top tags render as click-to-add chips, hiding ones already on the item', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit({ Tags: [{ Id: 1, Name: 'war' }] }))
+    ;(BackendAPI.GetTopTags as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ Id: 1, Name: 'war' }, { Id: 2, Name: 'politics' }])
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    expect(wrapper.findAll('.chip-suggest').map(c => c.text())).toEqual(['+ politics'])
+    await wrapper.find('.chip-suggest').trigger('click')
+    expect(wrapper.findAll('.chip-suggest')).toHaveLength(0)
+    expect(wrapper.findAll('.tag-chips .chip').map(c => c.text())).toEqual(['war ×', 'politics ×'])
+    wrapper.unmount()
+  })
+
+  it('Side toggle writes Placement: Auto = 0, Above = 1, Below = 2', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    ;(BackendAPI.SaveItem as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok', itemId: 'existing-uuid-1234' })
+    const windowClose = vi.spyOn(window, 'close').mockImplementation(() => {})
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    const btns = wrapper.findAll('.seg-btn')
+    expect(btns.map(b => b.text())).toEqual(['Auto', 'Above', 'Below'])
+    expect(btns[0].classes()).toContain('active')   // fixture has no Placement → Auto
+
+    await btns[2].trigger('click')
+    expect(btns[2].classes()).toContain('active')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))
+    await flushPromises()
+    // SaveItem receives the live item object — read Placement before it changes again
+    expect((BackendAPI.SaveItem as ReturnType<typeof vi.fn>).mock.calls[0][0].Placement).toBe(2)
+
+    await btns[0].trigger('click')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))
+    await flushPromises()
+    expect((BackendAPI.SaveItem as ReturnType<typeof vi.fn>).mock.calls[1][0].Placement).toBe(0)
+
     windowClose.mockRestore()
     wrapper.unmount()
   })

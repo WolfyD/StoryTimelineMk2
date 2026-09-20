@@ -881,7 +881,7 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
                     emit('miniHover', { item, x: rect.left + pos.x, y: rect.top + pos.y });
                 });
                 hitTarget.on('mouseleave', () => { document.body.style.cursor = 'default'; emit('miniHover', null); });
-                hitTarget.on('click', () => emit('viewItem', itemIdStr));
+                hitTarget.on('click', (e) => { if (e.evt.shiftKey) emit('itemClick', itemIdStr); else emit('viewItem', itemIdStr); });
             }
             setMiniNodeVisibility(el, true);
             if (el.kind === 'pin') {
@@ -973,7 +973,7 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
 
         let elements = nodeCache.get(itemIdStr);
         if (!elements) {
-            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls);
+            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls, !!item.ShowTitle);
             nodeCache.set(itemIdStr, elements);
             if (typeName === 'Age' || typeName === 'Period' || typeName === 'Picture') {
                 const itemTitle = getTitle(item);
@@ -1013,7 +1013,7 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         }
 
         const isLeft = isLeftOfNow(itemX, viewport.width);
-        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeft, stageCenterY, ls);
+        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeft, stageCenterY, ls, !!item.Centered);
     }
 
     if (isMini) {
@@ -1491,7 +1491,8 @@ onMounted(() => {
         const targetId = e.target.id();
         if (targetId && (targetId.startsWith('box-') || targetId.startsWith('label-') || targetId.startsWith('stem-') || targetId.startsWith('bookmark-'))) {
             const itemId = targetId.split('-').slice(1).join('-');
-            emit('viewItem', itemId);
+            if (e.evt.shiftKey) emit('itemClick', itemId);   // Shift+click → straight to the edit window
+            else emit('viewItem', itemId);
         } else if (targetId && targetId.startsWith('boundary-')) {
             // Left-click on boundary flag → show remove menu
             const itemId = targetId.slice('boundary-'.length);

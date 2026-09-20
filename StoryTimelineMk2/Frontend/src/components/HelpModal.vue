@@ -44,7 +44,8 @@ defineEmits<{ close: [] }>()
             <section>
                 <h2>Editing items</h2>
                 <table>
-                    <tr><td>Open edit form</td><td>Left-click the item</td></tr>
+                    <tr><td>View item</td><td>Left-click the item</td></tr>
+                    <tr><td>Open edit form</td><td><kbd>Shift</kbd> + click the item, or right-click → Edit</td></tr>
                     <tr><td>Quick actions</td><td>Right-click the item (edit, delete, distance points)</td></tr>
                     <tr><td>LOD visibility</td><td>Set which zoom levels show this item in the edit form</td></tr>
                     <tr><td>Undo delete</td><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td></tr>
@@ -105,6 +106,7 @@ defineEmits<{ close: [] }>()
                 <table>
                     <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Undo last item deletion</td></tr>
                     <tr><td><kbd>Ctrl</kbd> + <kbd>Enter</kbd></td><td>Save note</td></tr>
+                    <tr><td><kbd>Shift</kbd> + click</td><td>Open the item in the edit window</td></tr>
                     <tr><td><kbd>Esc</kbd></td><td>Close modals and context menus</td></tr>
                 </table>
             </section>

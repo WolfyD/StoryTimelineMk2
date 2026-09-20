@@ -204,6 +204,31 @@ test.describe('Timeline actions menu — real backend', () => {
     await expect(tl.locator('.shift-ok')).toBeVisible({ timeout: 6000 })
   })
 
+  // ── Set visibility of all items ───────────────────────────────────────────
+
+  test('set-visibility button opens a modal whose Apply updates every item', async ({ appContext }) => {
+    const tl = findPageByRole(appContext, 'timeline')!
+    await openActionsPopover(tl)
+    await expect(tl.locator('.actions-popover .lod-row')).toHaveCount(0)   // no toggles in the popover itself
+
+    await tl.locator('.lod-open').click()
+    const modal = tl.locator('.bm-panel')
+    await expect(modal).toBeVisible({ timeout: 3000 })
+    await expect(modal.locator('.lod-row')).not.toHaveCount(0)
+    await expect(modal.locator('.lod-apply')).toHaveText(/Apply to \d+ items/)
+
+    // Cancel changes nothing
+    await modal.locator('.btn-secondary').click()
+    await expect(modal).not.toBeVisible({ timeout: 2000 })
+    await expect(tl.locator('.actions-popover')).toBeVisible()
+
+    // Apply (all levels ticked = the seed items' own default) writes and reports the count
+    await tl.locator('.lod-open').click()
+    await modal.locator('.lod-apply').click()
+    await expect(modal).not.toBeVisible({ timeout: 6000 })
+    await expect(tl.locator('.lod-ok')).toContainText(/Updated \d+ items/)
+  })
+
   test('shift success message contains the affected item count', async ({ appContext }) => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openActionsPopover(tl)

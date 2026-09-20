@@ -6,6 +6,7 @@ vi.mock('@/bridge/api', () => ({
     BackendAPI: {
         GetCalendarById: vi.fn().mockResolvedValue(null),
         SaveCalendar: vi.fn().mockResolvedValue({ status: 'ok' }),
+        ExportCalendar: vi.fn().mockResolvedValue({ status: 'ok', path: 'x.json' }),
         GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
         WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
         WindowGetTopMost: vi.fn().mockResolvedValue({ isTopmost: false }),
@@ -195,6 +196,39 @@ describe('CalendarApp — new calendar', () => {
         wrapper.unmount()
     })
 
+    // ── Export ─────────────────────────────────────────────────────────────────
+
+    it('Export sends the on-screen calendar in the SaveCalendar shape and surfaces backend errors', async () => {
+        const { BackendAPI } = await import('@/bridge/api')
+        const wrapper = mountApp()
+        await flushPromises()
+        const vm = wrapper.vm as any
+        vm.calName = '  Elven  '
+
+        await wrapper.find('.btn-export').trigger('click')
+        await flushPromises()
+        const payload = (BackendAPI.ExportCalendar as any).mock.calls[0][0].calendar
+        expect(payload.Name).toBe('Elven')
+        expect(payload.Id).toBe(vm.calId)
+        expect(JSON.parse(payload.LodProfile.Profile).some((l: any) => l.formatKey === 'YEARS')).toBe(true)
+        expect(typeof JSON.parse(payload.YearDefinition)).toBe('object')
+        expect(vm.saveError).toBe('')
+
+        ;(BackendAPI.ExportCalendar as any).mockResolvedValueOnce({ status: 'error', message: 'disk full' })
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+        await wrapper.find('.btn-export').trigger('click')
+        await flushPromises()
+        expect(vm.saveError).toBe('Export failed: disk full')
+        expect(consoleError).toHaveBeenCalled()
+        consoleError.mockRestore()
+
+        vm.lodLevels = []
+        await wrapper.find('.btn-export').trigger('click')
+        expect(BackendAPI.ExportCalendar).toHaveBeenCalledTimes(2)
+        expect(vm.saveError).toContain('at least one level')
+        wrapper.unmount()
+    })
+
     // ── Season DOY calculation ─────────────────────────────────────────────────
 
     it('applySeasonDOY distributes seasons evenly from the given start day', async () => {
@@ -284,6 +318,55 @@ describe('CalendarApp — new calendar', () => {
         vm.removeMemorableDay(0)
         expect(vm.memorableDays.length).toBe(1)
         expect(vm.memorableDays[0].id).toBe(secondId)
+        wrapper.unmount()
+    })
+
+    it('collapsed Memorable Days header shows the entry count', async () => {
+        const wrapper = mountApp()
+        await flushPromises()
+        const vm = wrapper.vm as any
+        vm.hasMemorableDays = true
+        vm.addMemorableDay()
+        vm.addMemorableDay()
+        await flushPromises()
+        expect(wrapper.find('.section-count').exists()).toBe(false)
+        vm.toggleCollapse('memdays')
+        await flushPromises()
+        expect(wrapper.find('.section-count').text()).toBe('2')
+        wrapper.unmount()
+    })
+
+    it('section lists days as chips; clicking one opens the modal on that day, and the modal adds/removes live', async () => {
+        const wrapper = mountApp()
+        await flushPromises()
+        const vm = wrapper.vm as any
+        vm.hasMemorableDays = true
+        vm.addMemorableDay()
+        vm.addMemorableDay()
+        vm.memorableDays[0].name = 'Harvest'
+        vm.memorableDays[1].name = 'Yule'
+        await flushPromises()
+
+        expect(wrapper.findAll('.mem-day-chip').map(c => c.text())).toEqual(['Harvest', 'Yule'])
+        expect(wrapper.find('.md-list').exists()).toBe(false)
+
+        await wrapper.findAll('.mem-day-chip')[1]!.trigger('click')
+        expect(wrapper.find('.md-row.selected .md-row-name').text()).toBe('Yule')
+        expect((wrapper.find('.md-name').element as HTMLInputElement).value).toBe('Yule')
+
+        await wrapper.find('.md-name').setValue('Midwinter')            // live: no Update button
+        expect(vm.memorableDays[1].name).toBe('Midwinter')
+
+        await wrapper.find('.md-add').trigger('click')
+        expect(vm.memorableDays.length).toBe(3)
+        expect(wrapper.find('.md-row.selected .md-row-name').text()).toBe('New Day')
+
+        await wrapper.find('.md-delete').trigger('click')
+        expect(vm.memorableDays.length).toBe(2)
+
+        await wrapper.find('.md-close').trigger('click')
+        expect(wrapper.find('.md-list').exists()).toBe(false)
+        expect(wrapper.findAll('.mem-day-chip').map(c => c.text())).toEqual(['Harvest', 'Midwinter'])
         wrapper.unmount()
     })
 

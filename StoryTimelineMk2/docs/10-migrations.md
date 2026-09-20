@@ -85,6 +85,26 @@ runs it as its first step. The same applies to `StatsDbMigrations` step 1.
 from `item_index` parity (alternating by start order per timeline, periods on their own cycle,
 full-width types left at 0). See `docs/02-database.md` → `items.placement`.
 
+### Step 3 — timeline header mode (1.0.3)
+
+`V3_HeaderMode` adds `settings.header_mode` (0 full, 1 compact, 2 hidden) for the "Title Header"
+option in the timeline settings modal.
+
+### Step 4 — centered item boxes (1.0.3)
+
+`V4_ItemCentered` adds `items.centered` (0/1) for the "Centered" checkbox in the edit window:
+the box straddles its stem instead of sitting to one side of it.
+
+### Step 5 — picture title (1.0.3)
+
+`V5_ShowTitle` adds `items.show_title` (0/1) for the "Show title" checkbox on picture items:
+the canvas draws the title as a translucent caption strip along the bottom of the image.
+
+### Step 6 — item notes (1.0.3)
+
+`V6_ItemNotes` adds `items.item_notes` (nullable TEXT) for the collapsed "Item notes" box in the
+edit window: the writer's private bookkeeping, never rendered.
+
 ## Adding a migration
 
 1. Append a step to the relevant `Steps` array with the **next** number:

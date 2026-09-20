@@ -3,12 +3,14 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 import { useAppTheme } from '@/utils/useAppTheme'
+import { DEFAULT_SWATCHES, loadSwatches } from '@/utils/timelinePrefs'
+import LodMaskToggles from '@/components/LodMaskToggles.vue'
 import { useLightbox } from '@/composables/useLightbox'
 import LightboxOverlay from '@/components/LightboxOverlay.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import LodDateInput from '@/components/LodDateInput.vue'
 import ImagePickerModal from '@/components/ImagePickerModal.vue'
-import BaseModal from '@/components/BaseModal.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import type {
   TimelineItem,
   MediaItem,
@@ -67,6 +69,10 @@ const item = ref<TimelineItem>({
   CreationGranularity: 3,
   TimelineId: timelineId,
   ItemIndex: 0,
+  Placement: 0,
+  Centered: false,
+  ShowTitle: false,
+  ItemNotes: '',
   ShowInNotes: true,
   Importance: 5,
   MinLodLevel: 3,
@@ -105,13 +111,14 @@ const isLoading         = ref(true)
 const isSaving          = ref(false)
 const isCharExpanded    = ref(true)
 const isStoryExpanded   = ref(true)
+const isNotesExpanded   = ref(false)
 const saveError         = ref('')
 
 // Tag autocomplete
 const tagInputValue     = ref('')
 const tagSuggestions    = ref<Tag[]>([])
-const topTags           = ref<Tag[]>([])
-const tagInputFocused   = ref(false)
+const topTags           = ref<Tag[]>([])   // most-used tags of the timeline, offered as click-to-add chips
+const suggestedTags     = computed(() => topTags.value.filter(t => !tags.value.some(x => x.Name === t.Name)))
 let tagDebounce: ReturnType<typeof setTimeout>
 
 // Lightbox
@@ -138,6 +145,10 @@ let bookDebounce: ReturnType<typeof setTimeout>
 // Computed
 // ---------------------------------------------------------------------------
 const isRangeType = computed(() => item.value.TypeId === 2 || item.value.TypeId === 3)
+// Types drawn without a side of the axis (mirrors ItemRepo.SaveItemFull)
+const hasSide     = computed(() => ![3, 6, 7, 8, 9].includes(item.value.TypeId))
+// Types drawn as a box on a stem — the only ones "Centered" changes (events, notes)
+const hasStemBox  = computed(() => item.value.TypeId === 1 || item.value.TypeId === 5)
 
 const filteredCharacters = computed(() => {
   const q = charPickerFilter.value.toLowerCase()
@@ -227,6 +238,10 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
     CreationGranularity: 3,
     TimelineId: tId,
     ItemIndex: 0,
+    Placement: 0,
+    Centered: false,
+    ShowTitle: false,
+    ItemNotes: '',
     ShowInNotes: true,
     Importance: 5,
     MinLodLevel: 3,
@@ -278,6 +293,7 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
         item.value.TypeId = dtype
         item.value.CreationGranularity = gran
         if (data.Item?.Color) item.value.Color = data.Item.Color
+        if (data.Item?.LodVisibilityMask != null) item.value.LodVisibilityMask = data.Item.LodVisibilityMask   // timeline's default for new items
         if (absTime) {
           item.value.Year          = Math.floor(absTime)
           item.value.EndYear       = item.value.Year
@@ -343,9 +359,8 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
     allCharacters.value = characters ?? []
     allStories.value    = stories ?? []
 
-    BackendAPI.SearchTags('').then(results => {
-      topTags.value = (results ?? []).slice(0, 8)
-    })
+    BackendAPI.GetTopTags(tId, 8).then(results => { topTags.value = results ?? [] })
+    loadSwatches(tId).then(s => { swatches.value = s })
   } catch (err) {
     console.error('[EditItem] loadData error:', err)
   } finally {
@@ -412,10 +427,7 @@ function handlePushMessage(event: MessageEvent) {
 }
 
 // ---- Colour helpers ----
-const COLOR_PALETTE = [
-  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#14b8a6',
-  '#06b6d4', '#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#64748b',
-]
+const swatches = ref<string[]>([...DEFAULT_SWATCHES])   // per-timeline quick-pick colours, see Timeline Settings
 const paletteOpen = ref(false)
 function randomColor() {
   item.value.Color = '#' + Math.floor(Math.random() * 0x1000000).toString(16).padStart(6, '0')
@@ -449,10 +461,6 @@ function onTagInput(e: Event) {
   }, 200)
 }
 
-function onTagFocus() {
-  tagInputFocused.value = true
-}
-
 async function onTagKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter') {
     e.preventDefault()
@@ -481,10 +489,7 @@ function removeTag(index: number) {
 }
 
 function dismissTagSuggestions() {
-  setTimeout(() => {
-    tagSuggestions.value = []
-    tagInputFocused.value = false
-  }, 150)
+  setTimeout(() => { tagSuggestions.value = [] }, 150)
 }
 
 
@@ -579,10 +584,6 @@ function addChapterRef() {
 
 function removeChapterRef(index: number) {
   chapterRefs.value.splice(index, 1)
-}
-
-function toggleLodVisibility(lodIndex: number) {
-  item.value.LodVisibilityMask = (item.value.LodVisibilityMask ?? 255) ^ (1 << lodIndex)
 }
 
 // ---------------------------------------------------------------------------
@@ -705,7 +706,7 @@ async function removeImage(pictureId: string) {
               <button type="button" class="color-tool" :class="{ open: paletteOpen }" title="Palette" @click="paletteOpen = !paletteOpen"><i class="ri-arrow-down-s-line" /></button>
               <div v-if="paletteOpen" class="color-palette">
                 <button
-                  v-for="c in COLOR_PALETTE" :key="c" type="button" class="color-swatch"
+                  v-for="c in swatches" :key="c" type="button" class="color-swatch"
                   :class="{ active: item.Color?.toLowerCase() === c }" :style="{ background: c }" :title="c"
                   @click="item.Color = c; paletteOpen = false" />
               </div>
@@ -745,17 +746,7 @@ async function removeImage(pictureId: string) {
         <div class="row">
           <div class="field" style="flex: 1;">
             <label>Visible at LOD levels</label>
-            <div class="lod-toggle-row">
-              <button
-                v-for="lod in lodProfile"
-                :key="lod.index"
-                type="button"
-                class="lod-toggle-btn"
-                :class="{ active: (item.LodVisibilityMask ?? 255) & (1 << lod.index) }"
-                @click="toggleLodVisibility(lod.index)"
-                :title="lod.formatKey"
-              >{{ lod.formatKey.slice(0, 3) }}</button>
-            </div>
+            <LodMaskToggles v-model="item.LodVisibilityMask" :lodProfile="lodProfile" />
           </div>
         </div>
 
@@ -816,6 +807,35 @@ async function removeImage(pictureId: string) {
           </div>
         </div>
 
+        <div class="row" v-if="hasSide || hasStemBox || item.TypeId === 4">
+          <!-- Side of the axis. Auto sends 0 and the backend picks the emptier side again on save -->
+          <div class="field" v-if="hasSide">
+            <label>Side</label>
+            <div class="seg-btns">
+              <button
+                v-for="(name, v) in ['Auto', 'Above', 'Below']"
+                :key="name"
+                type="button"
+                class="seg-btn"
+                :class="{ active: (item.Placement ?? 0) === v }"
+                @click="item.Placement = v"
+              >{{ name }}</button>
+            </div>
+          </div>
+          <div class="field checkbox-field" v-if="hasStemBox" title="Center the box on its stem instead of offsetting it to one side">
+            <label>
+              <input type="checkbox" v-model="item.Centered" />
+              Centered
+            </label>
+          </div>
+          <div class="field checkbox-field" v-if="item.TypeId === 4" title="Draw the title as a caption strip along the bottom of the picture">
+            <label>
+              <input type="checkbox" v-model="item.ShowTitle" />
+              Show title
+            </label>
+          </div>
+        </div>
+
         <!-- Tags -->
         <div class="field spaced-field">
           <label>Tags</label>
@@ -832,18 +852,21 @@ async function removeImage(pictureId: string) {
                 placeholder="Add tag…"
                 @input="onTagInput"
                 @keydown="onTagKeydown"
-                @focus="onTagFocus"
                 @blur="dismissTagSuggestions"
               />
             </div>
-            <div class="suggestions" v-if="tagInputFocused && !tagInputValue ? topTags.length : tagSuggestions.length">
+            <div class="suggestions" v-if="tagSuggestions.length">
               <div
                 class="suggestion-item"
-                v-for="s in (tagInputFocused && !tagInputValue ? topTags : tagSuggestions)"
+                v-for="s in tagSuggestions"
                 :key="s.Id"
                 @mousedown.prevent="addTagFromSuggestion(s)"
               >{{ s.Name }}</div>
             </div>
+          </div>
+          <!-- Most-used tags of this timeline, minus the ones already on the item -->
+          <div class="top-tags" v-if="suggestedTags.length">
+            <button type="button" class="chip chip-suggest" v-for="t in suggestedTags" :key="t.Id" @click="addTagFromSuggestion(t)">+ {{ t.Name }}</button>
           </div>
         </div>
 
@@ -884,6 +907,17 @@ async function removeImage(pictureId: string) {
           @close="showImagePicker = false"
           @linked="onImageLinked"
         />
+      </div>
+
+      <!-- Item notes (BL-51): private bookkeeping — saved and exported, never drawn anywhere -->
+      <div class="section collapsible-section item-notes">
+        <div class="collapsible-header" @click="isNotesExpanded = !isNotesExpanded">
+          <h3 class="section-title">Item Notes</h3>
+          <span class="collapse-toggle">{{ isNotesExpanded ? '▲' : '▼' }}</span>
+        </div>
+        <div v-if="isNotesExpanded" class="collapsible-body field">
+          <textarea v-model="item.ItemNotes" rows="5" placeholder="Item notes are not displayed on the timeline or in the data panel." />
+        </div>
       </div>
 
       <!-- Characters -->
@@ -1063,13 +1097,12 @@ async function removeImage(pictureId: string) {
   </div>
 
   <div v-else class="loading-screen">Loading…</div>
-  <BaseModal v-if="showDiscard" title="Discard changes?" width="min(400px, 92vw)" @close="showDiscard = false">
-    <p class="discard-msg">This item has unsaved changes.</p>
-    <template #footer>
-      <button class="btn btn-secondary" @click="showDiscard = false">Keep editing</button>
-      <button class="btn btn-danger" @click="discard">Discard</button>
-    </template>
-  </BaseModal>
+  <ConfirmModal
+    v-if="showDiscard"
+    title="Discard changes?" message="This item has unsaved changes."
+    confirm-label="Discard" cancel-label="Keep editing" danger
+    @confirm="discard" @cancel="showDiscard = false"
+  />
   <NotificationContainer />
 </template>
 
@@ -1137,6 +1170,7 @@ async function removeImage(pictureId: string) {
   user-select: none;
 }
 
+
 // ---- Header ----
 .header-section {
   display: flex;
@@ -1191,12 +1225,6 @@ async function removeImage(pictureId: string) {
   opacity: 0.7;
 }
 
-.discard-msg {
-  margin: 0;
-  padding: 16px;
-  font-size: 0.88rem;
-  color: var(--app-text-muted, #94a3b8);
-}
 
 .save-error {
   margin: 0;
@@ -1347,6 +1375,30 @@ async function removeImage(pictureId: string) {
   }
 }
 
+// ---- Side toggle (same look as RelativeRuleEditor's segmented buttons) ----
+.seg-btns {
+  display: flex;
+  border: 1px solid var(--app-border, #2d3a56);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.seg-btn {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  background: var(--app-surface, #0c1524);
+  color: var(--app-text-muted, #94a3b8);
+  border: none;
+  border-right: 1px solid var(--app-border, #2d3a56);
+  cursor: pointer;
+  user-select: none;
+
+  &:last-child { border-right: none; }
+  &:hover:not(.active) { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
+  &.active { background: #2c5f8a; color: #e8f0ff; font-weight: 600; }
+}
+
 // ---- Tags ----
 .tag-input-wrap { position: relative; }
 
@@ -1373,6 +1425,22 @@ async function removeImage(pictureId: string) {
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 0.8rem;
+}
+
+.top-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.chip-suggest {
+  border: 1px dashed #93c5fd66;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  &:hover { background: #1e3a5f; }
 }
 
 .chip-remove {
@@ -1727,32 +1795,5 @@ async function removeImage(pictureId: string) {
 }
 
 .mt-6 { margin-top: 6px; }
-
-// ---- LOD visibility toggles ----
-.lod-toggle-row {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-}
-
-.lod-toggle-btn {
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--app-border, #334155);
-  background: var(--app-bg, #0f172a);
-  color: var(--app-text-dim, #64748b);
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-
-  // Semantic blue active state — intentionally kept
-  &.active {
-    background: #1e3a5f;
-    color: #93c5fd;
-    border-color: #3b82f6;
-  }
-
-  &:hover { border-color: var(--app-accent, #4a90d9); }
-}
 
 </style>

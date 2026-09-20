@@ -35,6 +35,19 @@ namespace StoryTimelineMk2.Database
                 new { Query = $"%{query.ToLowerInvariant()}%" });
         }
 
+        /// <summary>The most-used tags of one timeline, busiest first (ties by name).</summary>
+        public IEnumerable<TagItem> GetTopTags(int timelineId, int limit)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<TagItem>(@"
+                SELECT t.* FROM tags t
+                JOIN item_tags it ON it.tag_id = t.id
+                JOIN items i ON i.id = it.item_id
+                WHERE i.timeline_id = @TimelineId
+                GROUP BY t.id ORDER BY COUNT(*) DESC, t.name LIMIT @Limit",
+                new { TimelineId = timelineId, Limit = limit });
+        }
+
         /// <summary>Every tag with the number of items carrying it, ordered by name.</summary>
         public IEnumerable<(int Id, string Name, int UsageCount)> GetAllWithUsage()
         {

@@ -4,6 +4,9 @@ import { PhPlus } from '@phosphor-icons/vue'
 import type { TimelineSettings, LayoutSettings } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
+import { DEFAULT_SWATCHES, ALL_LODS_MASK, loadSwatches, saveSwatches, loadDefaultLodMask, saveDefaultLodMask, lodMaskSummary } from '@/utils/timelinePrefs'
+import SwatchEditorModal from './SwatchEditorModal.vue'
+import LodMaskModal from './LodMaskModal.vue'
 import FontPicker from './FontPicker.vue'
 import BaseModal from './BaseModal.vue'
 import SettingHint from './SettingHint.vue'
@@ -27,6 +30,7 @@ const local = reactive({
     PanSpeedMultiplier: props.settings?.PanSpeedMultiplier ?? 5.0,
     PanDeadzone: props.settings?.PanDeadzone ?? 100,
     DefaultItemColor: props.settings?.DefaultItemColor ?? '#000000',
+    HeaderMode: props.settings?.HeaderMode ?? 0,
     selectedLayoutId: props.layoutSettings?.Id ?? 'ls_default',
 })
 
@@ -294,13 +298,23 @@ function applyCalendarPanelDark() {
     calDayHlRGB.value  = '#818cf8'; calDayHlAlpha.value  = 21
 }
 
+const swatches = ref<string[]>([...DEFAULT_SWATCHES])   // quick-pick colours of the edit item window
+const defaultLodMask = ref(ALL_LODS_MASK)                // LOD visibility new items start with
+const showSwatchEditor = ref(false)
+const showLodPicker = ref(false)
+const lodSummary = computed(() => lodMaskSummary(defaultLodMask.value, store.lodProfile))
+
 onMounted(async () => {
-    const [presets, fonts] = await Promise.all([
+    const [presets, fonts, sw, mask] = await Promise.all([
         BackendAPI.GetLayoutSettingsList(),
         BackendAPI.GetSystemFonts(),
+        loadSwatches(store.currentProject!.Id),
+        loadDefaultLodMask(store.currentProject!.Id),
     ])
     if (presets) layoutPresets.value = presets
     if (fonts) systemFonts.value = fonts
+    swatches.value = sw
+    defaultLodMask.value = mask
 })
 
 watch(() => local.selectedLayoutId, async (newId) => {
@@ -326,7 +340,7 @@ async function save() {
 
     localLayout.Id = local.selectedLayoutId
 
-    const [settingsResult, lsResult] = await Promise.all([
+    const [settingsResult, lsResult, swResult, maskResult] = await Promise.all([
         BackendAPI.SaveSettings({
             timelineId: store.currentProject!.Id,
             pixelsPerSubtick: local.PixelsPerSubtick,
@@ -339,11 +353,14 @@ async function save() {
             panSpeedMultiplier: local.PanSpeedMultiplier,
             panDeadzone: local.PanDeadzone,
             defaultItemColor: local.DefaultItemColor,
+            headerMode: local.HeaderMode,
         }),
         BackendAPI.SaveLayoutSettings(localLayout),
+        saveSwatches(store.currentProject!.Id, swatches.value),
+        saveDefaultLodMask(store.currentProject!.Id, defaultLodMask.value),
     ])
 
-    if (settingsResult?.status === 'ok' && lsResult?.status === 'ok') {
+    if (settingsResult?.status === 'ok' && lsResult?.status === 'ok' && swResult?.status === 'ok' && maskResult?.status === 'ok') {
         if (store.settings) {
             store.settings.PixelsPerSubtick = local.PixelsPerSubtick
             store.settings.ShowGuides = local.ShowGuides
@@ -354,10 +371,12 @@ async function save() {
             store.settings.PanSpeedMultiplier = local.PanSpeedMultiplier
             store.settings.PanDeadzone = local.PanDeadzone
             store.settings.DefaultItemColor = local.DefaultItemColor
+            store.settings.HeaderMode = local.HeaderMode
         }
         if (lsResult.layoutSettings) store.setLayoutSettings(lsResult.layoutSettings)
         emit('close')
     } else {
+        console.error('[TimelineSettingsModal] save failed:', { settingsResult, lsResult, swResult, maskResult })
         saveError.value = 'Save failed. Please try again.'
     }
 
@@ -407,6 +426,14 @@ async function save() {
                     <span class="s-label">Default Item Color <SettingHint tip="Colour pre-filled for every new item on this timeline" /></span>
                     <input class="s-color" type="color" v-model="local.DefaultItemColor" />
 
+                    <span class="s-label">Colour Swatches <SettingHint tip="The quick-pick colours offered in the edit item window" /></span>
+                    <button class="swatch-preview" type="button" title="Edit swatches" @click="showSwatchEditor = true">
+                        <span v-for="(c, i) in swatches" :key="i" class="swatch-dot" :style="{ background: c }" />
+                    </button>
+
+                    <span class="s-label">New Items Visible At <SettingHint tip="LOD levels a newly created item is visible at; changeable per item in the edit window" /></span>
+                    <button class="lod-summary" type="button" title="Choose levels" @click="showLodPicker = true">{{ lodSummary }}</button>
+
                     <span class="s-label">Show Guides <SettingHint tip="Toggle guide lines on the canvas (reserved for future use)" /></span>
                     <button class="toggle" :class="{ 'is-on': local.ShowGuides }" type="button" @click="local.ShowGuides = !local.ShowGuides">
                         <span class="toggle-thumb" />
@@ -432,6 +459,13 @@ async function save() {
                     <button class="toggle" :class="{ 'is-on': local.IsFullscreen }" type="button" @click="local.IsFullscreen = !local.IsFullscreen">
                         <span class="toggle-thumb" />
                     </button>
+
+                    <span class="s-label">Title Header <SettingHint tip="The title strip above the timeline. Compact is a single small line with just the title; Hidden removes it (the title stays in the window's title bar)" /></span>
+                    <select class="s-input s-input--narrow" v-model.number="local.HeaderMode">
+                        <option :value="0">Full</option>
+                        <option :value="1">Compact</option>
+                        <option :value="2">Hidden</option>
+                    </select>
 
                     <span class="s-label">Custom Scaling <SettingHint tip="Override the system DPI scaling for this window" /></span>
                     <button class="toggle" :class="{ 'is-on': local.UseCustomScaling }" type="button" @click="local.UseCustomScaling = !local.UseCustomScaling">
@@ -963,6 +997,12 @@ async function save() {
             </button>
         </template>
     </BaseModal>
+    <SwatchEditorModal v-if="showSwatchEditor" v-model="swatches" @close="showSwatchEditor = false" />
+    <LodMaskModal
+        v-if="showLodPicker" v-model="defaultLodMask" :lodProfile="store.lodProfile"
+        title="New Items Visible At" hint="Newly created items start out visible at these zoom levels."
+        @close="showLodPicker = false"
+    />
 </template>
 
 <style scoped lang="scss">
@@ -1131,6 +1171,41 @@ select.s-input {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+// Both open a modal; styled as a soft chip rather than a button so they read as values
+.swatch-preview,
+.lod-summary {
+    justify-self: start;
+    padding: 6px 10px;
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--app-accent, #4a90d9) 10%, var(--app-surface, #0c1524));
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+
+    &:hover {
+        border-color: var(--app-accent, #4a90d9);
+        background: color-mix(in srgb, var(--app-accent, #4a90d9) 18%, var(--app-surface, #0c1524));
+    }
+}
+
+.swatch-preview {
+    display: flex;
+    gap: 5px;
+}
+
+.swatch-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.lod-summary {
+    font-size: 0.8rem;
+    color: var(--app-text, #e2e8f0);
+    text-align: left;
 }
 
 .s-color {

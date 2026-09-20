@@ -7,288 +7,18 @@ free one whatever group it lands in. Move an item between groups by moving its s
 
 # Small — 1.0.3 candidates
 
-Bugs first, then quick wins; roughly in the order to take them.
-
-## [BL-47] Filter rules cannot be deleted
-
-**Status:** Done (1.0.3). While the filter setup modal is open every chip shows a red `X` that
-deletes the rule (`removeRule` → `store.deleteFilterRule`); with it closed the `X` is the old
-deactivate control on active chips only. Presets keep their own rule snapshots, so a deleted rule
-never breaks a preset.
-
-Once a filter chip exists there is no way to remove it. `TimelineFilterPanel.vue` has
-`removeRule()` → `store.deleteFilterRule()` but nothing in the template calls it: the chip's `X`
-(`.chip-remove`) only appears on active chips and merely sets the state back to neutral.
-
-- Add a real delete affordance — e.g. `X` on neutral chips deletes, or a trash action in the
-  chip's context / the filter setup modal — and keep "deactivate" on active chips.
-- Presets referencing a deleted rule must still load (drop the missing rule silently or rebuild
-  it from the preset's stored rule data).
-
----
-
-## [BL-57] Edit window title-bar X skips the discard guard
-
-**Status:** Done (1.0.3). `WindowTitleBar` takes an optional `closeHandler` prop; `EditItem.vue`
-passes `requestClose`, so the X now asks "Discard changes?" like Cancel / Escape / WinForms X.
-
-The 1.0.2 "Discard changes?" guard covers Cancel, Escape and the WinForms close path
-(`OnFormClosing` → `CloseRequested` push), but the X in the Vue title bar (`WindowTitleBar.vue`
-`close()` → `BackendAPI.WindowClose()`) goes straight to `ConfirmedClose()` and never asks.
-
-Fix: let the title bar defer the close to the page — e.g. an optional `beforeClose` prop /
-`close-request` event that `EditItem.vue` routes into `requestClose()`; other windows keep the
-direct close.
-
----
-
-## [BL-48] Calendar editor LOD auto-sync re-adds removed levels, out of order
-
-**Status:** Done (1.0.3). `syncLodStepFractions()` keeps a set of levels the saved profile lacks
-(seeded on load: SEASONS / MONTHS / WEEKS that the year definition would want but the profile
-does not have) and never re-adds those; a level it does add is inserted at its place in
-step-fraction order instead of appended. Profiles already saved out of order are left as they are
-(items store the LOD *index*) — use the editor's sort button if wanted.
-
-Two reported symptoms, one cause in `CalendarApp.vue`:
-
-1. Remove an LOD level in the calendar editor, save, reopen → the level is back.
-2. A calendar whose LOD list reads MILLENNIA, CENTURIES, DECADES, YEARS, MONTHS, WEEKS, SEASONS;
-   the edit window's Date Granularity dropdown shows that order and "Months" behaves like weeks.
-
-`syncLodStepFractions()` runs from a deep watcher on months / seasons / weeks / year length whenever
-`lodManuallyEdited` is false. That flag is session-only and starts false, so on **load**
-`parseYearDefinition()` triggers the watcher and the sync re-adds every missing SEASONS / MONTHS /
-WEEKS row. Re-added rows are `push`ed to the **end** and then re-indexed sequentially, which is
-why SEASONS lands after WEEKS. `CreationGranularity` is the LOD *index*, so a mis-ordered profile
-shifts what every granularity means.
-
-Fix (one place): do not auto-sync during load (only on user edits), and when the sync does add a
-row, insert it sorted by `stepFraction` descending (the manual sort at line ~55 already does this)
-before re-indexing. Then decide what to do with profiles already saved out of order — re-sorting
-changes indices, and items store the index, so a repair must remap `creation_granularity` too.
-
----
-
-## [BL-64] Taller description box in the edit item window
-
-**Status:** Done (1.0.3). The Description textarea in `EditItem.vue` is `rows="7"` (~130 px);
-still resizable.
-
----
-
-## [BL-65] Data panel keeps multi-line whitespace
-
-**Status:** Done (1.0.3). `white-space: pre-wrap` on the four description / content classes in
-`TimelineDataPanel.vue`.
-
-`TimelineDataPanel.vue` renders `item.Description` / `item.Content` in plain `div`s, so line
-breaks and indentation collapse. Add `white-space: pre-wrap` to `.data-age-desc`,
-`.data-period-desc`, `.data-item-desc` and `.data-item-content` (the view modal and notes panel
-already do this).
-
----
-
-## [BL-37] Application manifest — product identity
-
-**Status:** Done. `app.manifest` created with Per-Monitor V2 DPI awareness, `asInvoker` UAC, and Windows 10 compatibility GUID. `<Product>Story Timeline</Product>` set in `.csproj`. Remaining optional fields (`Company`, `Copyright`, `Description`, `NeutralLanguage`) not yet set.
-
-Set up the Windows application manifest and assembly attributes so the app presents with a
-proper product name, company/creator, copyright notice, and description in all the standard
-places (Windows file properties, Task Manager, Add/Remove Programs, UAC prompt).
-
-### Manifest changes required
-
-- In the `.csproj`, populate: `<Product>`, `<Company>`, `<Copyright>`, `<Description>`,
-  `<NeutralLanguage>`.
-- Confirm `<ApplicationManifest>` points to (or generates) a manifest that declares:
-  - `dpiAware` / `dpiAwareness` (already set, but worth verifying in context of the manifest).
-  - `requestedExecutionLevel` as `asInvoker` (no UAC elevation).
-- Optionally add a `[assembly: AssemblyProduct(...)]` etc. in `Program.cs` if the csproj
-  properties alone don't flow through to the manifest.
-
-> These are purely metadata changes — no runtime behaviour is affected. Payoff: the app looks
-> professional in file properties, Task Manager shows "StoryTimeline" not the exe path, and
-> any future installer / MSIX packaging picks up the metadata automatically.
-
----
-
-## [BL-40] Force item side (above / below the timeline)
-
-**Status:** Partially done (2026-09-19) — `items.placement` exists (migration 2, `0` unassigned /
-`1` above / `2` below), `ItemRepo.SaveItemFull` assigns a side on first save by balancing the
-nearest neighbours and keeps it sticky afterwards, and `renderItems` honours `Placement` before the
-parity fallback. Remaining: the Edit Item three-way toggle (Auto / Above / Below) so the user can
-override the assigned side.
-
-Originally an item's side was `ItemIndex % 2` (`TimelineCanvas.vue` → `isAboveLine`), i.e. creation
-order decided it and the user had no say. Add a per-item placement setting: **Auto** (current
-behaviour), **Above**, **Below**.
-
-- ~~New `items.placement` column (schema migration, `0 = auto, 1 = above, 2 = below`), exposed on
-  `TimelineItem`~~ — done; still to do: the Edit Item window control (small three-way toggle next
-  to Importance). Note `0` now means "not assigned yet" rather than "auto forever": the backend
-  fills it on the next save, so "Auto" in the UI should send `0` and let the backend pick again.
-- ~~`renderItems` reads it before the parity fallback~~ — done; lane packing (`getAssignedLane`) is
-  unchanged — the forced side just fixes `isAboveLine`.
-- Mini mode ignores it (pins have no side).
-
----
-
-## [BL-43] Shrink / hide the timeline title header
-
-**Status:** Pending.
-
-`#timeline-header` (`TimelineApp.vue`) takes a fixed strip at the top of the timeline window for
-the title, author and colour strip. Add a compact mode (single line, smaller type) and a way to
-hide it entirely, persisted per timeline in `settings` like `timeline_minimised` (BL-32). A
-hidden header should still expose the title somewhere (window title bar already has it).
-
----
-
-## [BL-56] Quick edit — Shift+click opens the edit window
-
-**Status:** Pending.
-
-Shift+clicking an item on the canvas opens it in the edit window directly, skipping the
-view modal / context menu. `TimelineCanvas.vue` click handler → `OpenAddEditItemWindow`. Document
-in BL-39's shortcut table.
-
----
-
-## [BL-55] Centered items — box centered on the stem
-
-**Status:** Pending.
-
-Per-item option (next to the side toggle from BL-40) that centers the item box on its stem
-instead of the default sideways offset. `renderItems` / `timelineNodes.ts` box x-position; lane
-packing should account for the wider footprint on both sides of the stem.
-
----
-
-## [BL-61] Picture items — optional title on the timeline
-
-**Status:** Pending.
-
-Picture-type items (`TypeId` 4) render only the image on the canvas. Add a per-item (or
-per-layout) option to show the title as well, like event boxes do. `timelineNodes.ts` picture
-node builder + edit window checkbox.
-
----
-
-## [BL-50] Number inputs adjust with the mouse wheel when focused
-
-**Status:** Pending.
-
-The `<input type="number">` fields (years, subticks, importance, settings values). Reported: some
-of them — especially in the add/edit item window — step with neither the mouse wheel nor the
-up/down arrow keys.
-
-- Wheel: Chromium never steps a number input on wheel. When the input is focused, wheel up/down
-  should step the value (respecting `step` / `min` / `max`) and swallow the event so the page /
-  canvas behind does not scroll. One global directive applied to every number input, not
-  per-component handlers.
-- Arrow keys: these work natively, so find which inputs break them — candidates are fields bound
-  with `:value` + `@change` (`LodDateInput.vue`), a `keydown` handler that prevents default, or
-  inputs that are really `type="text"`.
-
----
-
-## [BL-46] Collapsible "Memorable days" section
-
-**Status:** Pending.
-
-The Memorable Days list in the calendar editor (`CalendarApp.vue`) grows with the calendar and
-pushes everything below it down. Make the section collapsible like the editor's other sections
-(`toggleCollapse`), with the count shown while collapsed. A full-calendar view of all memorable
-days is BL-63.
-
----
-
-## [BL-49] Most common tags in the add/edit item window
-
-**Status:** Pending.
-
-Below the Tags section in `EditItem.vue`, show the N (≈8) most-used tags of the current timeline
-as click-to-add chips, hiding ones already on the item. Backend: `TagRepo.GetAllWithUsage()`
-already exists (Tags manager); scope it per timeline or add a `GetTopTags(timelineId, limit)`.
-
----
-
-## [BL-62] Configurable colour swatches
-
-**Status:** Pending.
-
-The 12 quick-pick colours in the edit window (`COLOR_PALETTE` in `EditItem.vue`) are hardcoded.
-Add a "Colour swatches" row to Timeline Settings — 12 colour pickers with a "reset to defaults"
-button — stored per timeline, and have `EditItem.vue` read them from the timeline instead of the
-constant. Also used by any other palette that shows the same 12 (filter colour rule).
-
----
-
-## [BL-52] Default LOD visibility for new items
-
-**Status:** Pending.
-
-Timeline Settings gets a "New items are visible at" row of per-LOD toggles (same control as the
-edit window's per-level toggles, BL-05). New items start with that mask instead of 255. Stored per
-timeline (`misc_settings` or a `layout_settings`-independent timeline column — it is a timeline
-preference, not a layout template value).
-
----
-
-## [BL-54] Set the LOD visibility of every item in a timeline
-
-**Status:** Pending.
-
-Power-user command (BL-53) — and possibly a Timeline Settings / actions-menu entry — that
-rewrites `lod_visibility_mask` for all items of the current timeline to a given mask, e.g.
-"years and weeks only". Bridge action `SetTimelineItemsLodMask(timelineId, mask)`, one `UPDATE`,
-canvas reload afterwards. Confirm before applying — it overwrites per-item settings.
-
----
-
-## [BL-45] Mass add items
-
-**Status:** Pending. Idea stage — spec below may change.
-
-New side-panel entry opening a small **"Mass add items"** modal. Left side: title, type and a
-Year / from–to input. Each *Add* pushes the item onto a list on the right; the user keeps adding
-until they press *Finished*, at which point all listed items are saved to the timeline in one go.
-
-- Type persists between adds; changing it is remembered for the next item.
-- Start year persists when a **Remember year** checkbox is on, with a `[-] [ YEAR ] [+]` stepper for
-  quick adjustment.
-- Items in the right-hand list should be removable before finishing.
-
----
-
-## [BL-51] "Item Notes" — hidden per-item data
-
-**Status:** Pending.
-
-A free-text field on items that is stored but never rendered on the canvas, data panel or view
-modal: a place for the writer's own bookkeeping. New `items.item_notes TEXT` column (schema
-migration), textarea in `EditItem.vue` (collapsed by default), included in copy / export /
-import. Later: attachments (PDF and other documents) hang off the same concept — keep the field
-name generic enough for that.
-
----
-
-## [BL-59] Calendar export / import
-
-**Status:** Pending.
-
-Export a calendar (year definition, LOD profile, memorable days) to a single JSON file and import
-one from a file, so writers working on the same world can share it. Entry points in the calendar
-manager (`CalendarManagerModal.vue`) and the calendar editor window. Import creates a new
-calendar (new id) — never overwrites — and reports name collisions.
-
----
+What is left of the 1.0.3 pass; finished items are under Done.
 
 ## [BL-58] Custom dictionary for spellcheck
 
-**Status:** Pending. Needs investigation.
+**Status:** Investigated (2026-09-20), deliberately not built yet. WebView2 on Windows uses the
+*Windows* spellchecker, not Hunspell: right-click **Add to dictionary** already exists in every
+window and writes to `%APPDATA%\Microsoft\Spelling\<lang>\default.dic` (UTF-16LE, `#LID <lcid>`
+header, one word per line). That dictionary is shared by all windows of the app and by every
+other app using the Windows spellchecker; no `Custom Dictionary.txt` is ever created under
+`%LOCALAPPDATA%\StoryTimelineMk2_Cache`. Building an app-owned list would mean pushing words
+through the Windows Spell Checking API (`ISpellChecker.Add`/`ISpellChecker2.Remove`, COM
+interop) at startup and on change. Options were put to the user; decision: skip for now.
 
 Writers use invented names and archaic words; the WebView2 (Chromium) spellchecker underlines
 them everywhere. Add a user dictionary of words that are not misspelled, just uncommon, and feed
@@ -300,7 +30,9 @@ dictionary" flow if WebView2 exposes it. Managed from Settings; exported with th
 
 ## [BL-53] Power-user console
 
-**Status:** Pending. Idea stage.
+**Status:** Step 1 started (1.0.3) — `__stl.lodLevels()` and `__stl.setAllLodMask(levels)` (BL-54)
+joined the `__stl` helpers and `__stl.help()` lists them; levels are named (`['years','decades']`
+or `'all'`, prefixes accepted), never a raw bitmask. Step 2 (in-app console) pending.
 
 Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two steps:
 
@@ -312,7 +44,8 @@ Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two
 
 ## [BL-60] Calendar window — more functionality
 
-**Status:** Pending. Placeholder — scope to be defined.
+**Status:** Pending. Placeholder — scope to be defined. (1.0.3 already added **Export** to the
+editor header via BL-59.)
 
 The calendar editor window (`f_Calendar` / `CalendarApp.vue`) needs more than it has today;
 ideas to be collected here as they come up.
@@ -321,8 +54,9 @@ ideas to be collected here as they come up.
 
 ## [BL-39] Extended keyboard shortcuts
 
-**Status:** Pending. Ctrl+S / Esc exist in the edit item window (1.0.2) and `HelpModal` (BL-38)
-already has a shortcuts section to document them in; the canvas / toolbar set below is still to do.
+**Status:** Deferred — the user will supply a revised shortcut list to review before anything is
+built; the set below is superseded by it. Ctrl+S / Esc exist in the edit item window (1.0.2) and
+`HelpModal` (BL-38) already has a shortcuts section to document them in.
 
 Common timeline actions should have keyboard shortcuts so power users never need to reach for
 the mouse for routine operations.
@@ -344,6 +78,7 @@ the mouse for routine operations.
 | Toggle filter panel | `F` |
 | Toggle data panel | `D` |
 | Open Help | `?` |
+| Open item in edit window | `Shift` + click (done, BL-56) |
 | Close modal / panel | `Escape` |
 
 ### Shortcut implementation notes
@@ -369,9 +104,11 @@ filled in as they come up (2026-09-19):
 
 **Status:** Substantially resolved. All 10 planned items addressed; since then also done: 30 s
 bridge request timeout (FC-C1, `api.ts`), deleted items' Konva nodes destroyed (TC-H1), minimap
-static + dynamic layers (TC-H2). Still open, none user-visible: status-discriminated bridge
-response types (FC-C1 deeper fix), heavy handlers on the UI thread (H1), gallery panel
-re-fetching `GetItemForEdit` (TC-H5), z-index token scale, icon convention sweep.
+static + dynamic layers (TC-H2). Still open, none user-visible (re-checked in the 1.0.3 pass,
+unchanged): status-discriminated bridge response types (FC-C1 deeper fix), heavy handlers on the
+UI thread (H1 — only `CheckForUpdates` uses `Task.Run`), gallery panel re-fetching
+`GetItemForEdit` (TC-H5), z-index token scale, icon convention sweep (the 1.0.3 modals follow the
+existing Phosphor-for-chrome practice, so the CLAUDE.md rule is still the odd one out).
 
 ### Data integrity — RESOLVED
 
@@ -1366,6 +1103,30 @@ not a user-facing product name. Rename to something presentable (e.g. `StoryTime
 
 ---
 
+## [BL-37] Application manifest — product identity
+
+**Status:** Done. `app.manifest` created with Per-Monitor V2 DPI awareness, `asInvoker` UAC, and Windows 10 compatibility GUID. `<Product>Story Timeline</Product>` set in `.csproj`. Remaining optional fields (`Company`, `Copyright`, `Description`, `NeutralLanguage`) not yet set.
+
+Set up the Windows application manifest and assembly attributes so the app presents with a
+proper product name, company/creator, copyright notice, and description in all the standard
+places (Windows file properties, Task Manager, Add/Remove Programs, UAC prompt).
+
+### Manifest changes required
+
+- In the `.csproj`, populate: `<Product>`, `<Company>`, `<Copyright>`, `<Description>`,
+  `<NeutralLanguage>`.
+- Confirm `<ApplicationManifest>` points to (or generates) a manifest that declares:
+  - `dpiAware` / `dpiAwareness` (already set, but worth verifying in context of the manifest).
+  - `requestedExecutionLevel` as `asInvoker` (no UAC elevation).
+- Optionally add a `[assembly: AssemblyProduct(...)]` etc. in `Program.cs` if the csproj
+  properties alone don't flow through to the manifest.
+
+> These are purely metadata changes — no runtime behaviour is affected. Payoff: the app looks
+> professional in file properties, Task Manager shows "StoryTimeline" not the exe path, and
+> any future installer / MSIX packaging picks up the metadata automatically.
+
+---
+
 ## [BL-38] Help and About system
 
 **Status:** Done. `?` button at the bottom of the activity strip opens a Help / About flyout
@@ -1406,5 +1167,312 @@ A Vue modal (not a new WinForms window) overlaid on the main window. Content:
 > The About modal is entirely frontend — no backend call needed if the version is injected at
 > startup. The Help window reuses the existing WebView2 infrastructure; it's a new
 > `BorderlessFormBase` subclass with its own entry point (`help.html`).
+
+---
+
+## [BL-40] Force item side (above / below the timeline)
+
+**Status:** Done (1.0.3). `items.placement` (migration 2, `0` auto / `1` above / `2` below);
+`ItemRepo.SaveItemFull` picks the emptier side whenever it receives `0` (new items, and items set
+back to Auto), `renderItems` honours `Placement` before the parity fallback, and the Edit Item
+window has an Auto / Above / Below segmented toggle next to Importance (hidden for ages, bookmarks,
+characters and boundaries).
+
+Originally an item's side was `ItemIndex % 2` (`TimelineCanvas.vue` → `isAboveLine`), i.e. creation
+order decided it and the user had no say. Add a per-item placement setting: **Auto** (current
+behaviour), **Above**, **Below**.
+
+- ~~New `items.placement` column (schema migration, `0 = auto, 1 = above, 2 = below`), exposed on
+  `TimelineItem`~~ — done, including the Edit Item toggle. `0` means "pick again on save": "Auto"
+  in the UI sends `0` and the backend chooses the emptier side.
+- ~~`renderItems` reads it before the parity fallback~~ — done; lane packing (`getAssignedLane`) is
+  unchanged — the forced side just fixes `isAboveLine`.
+- Mini mode ignores it (pins have no side).
+
+---
+
+## [BL-43] Shrink / hide the timeline title header
+
+**Status:** Done (1.0.3). "Title Header" select (Full / Compact / Hidden) in the timeline settings
+modal's Window section, stored in `settings.header_mode` (migration 3) and saved through the
+existing `SaveSettings` action. Compact is a single small left-aligned title line; Hidden removes
+the strip (the window title bar still shows the title).
+
+`#timeline-header` (`TimelineApp.vue`) takes a fixed strip at the top of the timeline window for
+the title, author and colour strip. Add a compact mode (single line, smaller type) and a way to
+hide it entirely, persisted per timeline in `settings` like `timeline_minimised` (BL-32). A
+hidden header should still expose the title somewhere (window title bar already has it).
+
+---
+
+## [BL-45] Mass add items
+
+**Status:** Done (1.0.3). `components/MassAddItemsModal.vue`, opened from the activity strip
+(`PhListPlus`, `open-mass-add`). Type is a 4-way segmented toggle (Event / Period / Age / Note);
+Period and Age get a To-year stepper that follows From + 1 until touched. Reversed years are
+swapped, equal years become a one-year range. Remember year is on by default; Shift + / Shift −
+step the year from anywhere in the modal (title box included). Queued rows are clickable to edit
+(Add → Update, plus Cancel). Finished saves sequentially through the existing `SaveItem` with the
+edit window's new-item defaults, then reloads the timeline; a failed save keeps the unsaved rows
+listed and shows the error. Closing with unsaved rows asks first via `ConfirmModal`.
+
+New side-panel entry opening a small **"Mass add items"** modal. Left side: title, type and a
+Year / from–to input. Each *Add* pushes the item onto a list on the right; the user keeps adding
+until they press *Finished*, at which point all listed items are saved to the timeline in one go.
+
+- Type persists between adds; changing it is remembered for the next item.
+- Start year persists when a **Remember year** checkbox is on, with a `[-] [ YEAR ] [+]` stepper for
+  quick adjustment.
+- Items in the right-hand list should be removable before finishing.
+
+---
+
+## [BL-46] Collapsible "Memorable days" section
+
+**Status:** Done (1.0.3). The section collapses via `toggleCollapse('memdays')` with an entry count
+badge while collapsed. The per-day cards moved out of the section into
+`components/MemorableDaysModal.vue` (list on the left, colour / name / type / picker on the right,
+live edits, Add Day / Delete / Close); the section body is a row of colour-dot chips (click = open
+the modal on that day) plus **Manage days…**.
+
+The Memorable Days list in the calendar editor (`CalendarApp.vue`) grows with the calendar and
+pushes everything below it down. Make the section collapsible like the editor's other sections
+(`toggleCollapse`), with the count shown while collapsed. A full-calendar view of all memorable
+days is BL-63.
+
+---
+
+## [BL-47] Filter rules cannot be deleted
+
+**Status:** Done (1.0.3). While the filter setup modal is open every chip shows a red `X` that
+deletes the rule (`removeRule` → `store.deleteFilterRule`); with it closed the `X` is the old
+deactivate control on active chips only. Presets keep their own rule snapshots, so a deleted rule
+never breaks a preset.
+
+Once a filter chip exists there is no way to remove it. `TimelineFilterPanel.vue` has
+`removeRule()` → `store.deleteFilterRule()` but nothing in the template calls it: the chip's `X`
+(`.chip-remove`) only appears on active chips and merely sets the state back to neutral.
+
+- Add a real delete affordance — e.g. `X` on neutral chips deletes, or a trash action in the
+  chip's context / the filter setup modal — and keep "deactivate" on active chips.
+- Presets referencing a deleted rule must still load (drop the missing rule silently or rebuild
+  it from the preset's stored rule data).
+
+---
+
+## [BL-48] Calendar editor LOD auto-sync re-adds removed levels, out of order
+
+**Status:** Done (1.0.3). `syncLodStepFractions()` keeps a set of levels the saved profile lacks
+(seeded on load: SEASONS / MONTHS / WEEKS that the year definition would want but the profile
+does not have) and never re-adds those; a level it does add is inserted at its place in
+step-fraction order instead of appended. Profiles already saved out of order are left as they are
+(items store the LOD *index*) — use the editor's sort button if wanted.
+
+Two reported symptoms, one cause in `CalendarApp.vue`:
+
+1. Remove an LOD level in the calendar editor, save, reopen → the level is back.
+2. A calendar whose LOD list reads MILLENNIA, CENTURIES, DECADES, YEARS, MONTHS, WEEKS, SEASONS;
+   the edit window's Date Granularity dropdown shows that order and "Months" behaves like weeks.
+
+`syncLodStepFractions()` runs from a deep watcher on months / seasons / weeks / year length whenever
+`lodManuallyEdited` is false. That flag is session-only and starts false, so on **load**
+`parseYearDefinition()` triggers the watcher and the sync re-adds every missing SEASONS / MONTHS /
+WEEKS row. Re-added rows are `push`ed to the **end** and then re-indexed sequentially, which is
+why SEASONS lands after WEEKS. `CreationGranularity` is the LOD *index*, so a mis-ordered profile
+shifts what every granularity means.
+
+Fix (one place): do not auto-sync during load (only on user edits), and when the sync does add a
+row, insert it sorted by `stepFraction` descending (the manual sort at line ~55 already does this)
+before re-indexing. Then decide what to do with profiles already saved out of order — re-sorting
+changes indices, and items store the index, so a repair must remap `creation_granularity` too.
+
+---
+
+## [BL-49] Most common tags in the add/edit item window
+
+**Status:** Done (1.0.3). `TagRepo.GetTopTags(timelineId, limit)` (usage desc, name asc, scoped
+to the timeline) behind a `GetTopTags` bridge action; `EditItem.vue` renders up to 8 as dashed
+"+ tag" chips under the tag input, minus tags already on the item. Replaced the old on-focus
+dropdown, which showed the first 8 tags alphabetically across all timelines.
+
+Below the Tags section in `EditItem.vue`, show the N (≈8) most-used tags of the current timeline
+as click-to-add chips, hiding ones already on the item. Backend: `TagRepo.GetAllWithUsage()`
+already exists (Tags manager); scope it per timeline or add a `GetTopTags(timelineId, limit)`.
+
+---
+
+## [BL-50] Number inputs adjust with the mouse wheel when focused
+
+**Status:** Done (1.0.3). `utils/numberInputStepping.ts` — one delegated `wheel` + `keydown`
+listener per window (installed from every entry point) that calls the native `stepUp`/`stepDown`
+on the focused number input, fires `input`/`change` so both `v-model` and `:value`+`@change`
+react, and swallows the event. Arrow keys go through the same path (with `preventDefault`) so they
+step deterministically — no code path that blocked the native arrow stepping was found, so the
+report is covered rather than root-caused.
+
+The `<input type="number">` fields (years, subticks, importance, settings values). Reported: some
+of them — especially in the add/edit item window — step with neither the mouse wheel nor the
+up/down arrow keys.
+
+- Wheel: Chromium never steps a number input on wheel. When the input is focused, wheel up/down
+  should step the value (respecting `step` / `min` / `max`) and swallow the event so the page /
+  canvas behind does not scroll. One global directive applied to every number input, not
+  per-component handlers.
+- Arrow keys: these work natively, so find which inputs break them — candidates are fields bound
+  with `:value` + `@change` (`LodDateInput.vue`), a `keydown` handler that prevents default, or
+  inputs that are really `type="text"`.
+
+---
+
+## [BL-51] "Item Notes" — hidden per-item data
+
+**Status:** Done (1.0.3). Migration step 6 adds `items.item_notes TEXT` (nullable);
+`TimelineItem.ItemNotes` round-trips through `SaveItemFull`, timeline duplication and the
+column-generic export/import. Edit window: its own collapsed **Item Notes** section below Images
+(same collapsible pattern as Characters / Stories). Nothing renders it. Attachments can hang off
+the same column/concept later.
+
+A free-text field on items that is stored but never rendered on the canvas, data panel or view
+modal: a place for the writer's own bookkeeping. New `items.item_notes TEXT` column (schema
+migration), textarea in `EditItem.vue` (collapsed by default), included in copy / export /
+import. Later: attachments (PDF and other documents) hang off the same concept — keep the field
+name generic enough for that.
+
+---
+
+## [BL-52] Default LOD visibility for new items
+
+**Status:** Done (1.0.3). Stored per timeline in `misc_settings` under `default_lod_mask`
+(`utils/timelinePrefs.ts`, no migration). Timeline Settings → General → "New Items Visible At" is
+a summary chip ("All levels" / "Years, Months" / "No levels") that opens
+`components/LodMaskModal.vue` — a checklist with the full level names and All / None. The
+three-letter `LodMaskToggles` stay in the edit window. The backend's new-item
+stub in `HandleGetItemForEdit` carries the mask, so `EditItem.vue` picks it up the same way it
+picks up the default colour.
+
+Timeline Settings gets a "New items are visible at" row of per-LOD toggles (same control as the
+edit window's per-level toggles, BL-05). New items start with that mask instead of 255. Stored per
+timeline (`misc_settings` or a `layout_settings`-independent timeline column — it is a timeline
+preference, not a layout template value).
+
+---
+
+## [BL-54] Set the LOD visibility of every item in a timeline
+
+**Status:** Done (1.0.3). `ItemRepo.SetLodMask(timelineId, mask)` (one `UPDATE`, all items of the
+timeline) behind `SetTimelineItemsLodMask`. Two front ends: the Actions menu ("Set Visibility Of
+All Items" — a **Set visibility…** button opens `LodMaskModal` in run-it-yourself mode, whose red
+**Apply to N items** button does the update, then `store.loadTimelineData`) and
+`__stl.setAllLodMask(levels)` for the console (BL-53 step 1), which takes level names.
+
+Power-user command (BL-53) — and possibly a Timeline Settings / actions-menu entry — that
+rewrites `lod_visibility_mask` for all items of the current timeline to a given mask, e.g.
+"years and weeks only". Bridge action `SetTimelineItemsLodMask(timelineId, mask)`, one `UPDATE`,
+canvas reload afterwards. Confirm before applying — it overwrites per-item settings.
+
+---
+
+## [BL-55] Centered items — box centered on the stem
+
+**Status:** Done (1.0.3). `items.centered` (migration 4) → `TimelineItem.Centered`, "Centered"
+checkbox under the Side toggle in the edit window (events and notes only), and
+`updateAbsolutePositions` takes a trailing `centered` flag: box at `anchorX - width/2`, no stem
+offset, stem straight up/down. Lane packing needed no change — the event collision check was
+already symmetric around the anchor.
+
+Per-item option (next to the side toggle from BL-40) that centers the item box on its stem
+instead of the default sideways offset. `renderItems` / `timelineNodes.ts` box x-position; lane
+packing should account for the wider footprint on both sides of the stem.
+
+---
+
+## [BL-56] Quick edit — Shift+click opens the edit window
+
+**Status:** Done (1.0.3). Both canvas click handlers (normal and mini mode) emit the existing
+`itemClick` (→ `OpenAddEditItemWindow`) instead of `viewItem` when Shift is held. Listed in the
+Help modal's editing and shortcut tables.
+
+Shift+clicking an item on the canvas opens it in the edit window directly, skipping the
+view modal / context menu. `TimelineCanvas.vue` click handler → `OpenAddEditItemWindow`. Document
+in BL-39's shortcut table.
+
+---
+
+## [BL-57] Edit window title-bar X skips the discard guard
+
+**Status:** Done (1.0.3). `WindowTitleBar` takes an optional `closeHandler` prop; `EditItem.vue`
+passes `requestClose`, so the X now asks "Discard changes?" like Cancel / Escape / WinForms X.
+
+The 1.0.2 "Discard changes?" guard covers Cancel, Escape and the WinForms close path
+(`OnFormClosing` → `CloseRequested` push), but the X in the Vue title bar (`WindowTitleBar.vue`
+`close()` → `BackendAPI.WindowClose()`) goes straight to `ConfirmedClose()` and never asks.
+
+Fix: let the title bar defer the close to the page — e.g. an optional `beforeClose` prop /
+`close-request` event that `EditItem.vue` routes into `requestClose()`; other windows keep the
+direct close.
+
+---
+
+## [BL-59] Calendar export / import
+
+**Status:** Done (1.0.3). `Database/CalendarExporter.cs` (`ToJson` / `Import`) behind
+`ExportCalendar` / `ImportCalendar` (native file dialogs). File: `{ format: "storytimeline-calendar",
+version: 1, name…, yearDefinition: {…}, lodProfile: { name, profile: […] } }` with the nested JSON
+inlined. Manager: per-row **Export** + footer **Import Calendar** (new ids, name kept, collision
+reported in the notice line). Editor: **Export** in the header exports the on-screen state (validated
+like Save). Import into the editor form was skipped — the manager's import covers it.
+
+Export a calendar (year definition, LOD profile, memorable days) to a single JSON file and import
+one from a file, so writers working on the same world can share it. Entry points in the calendar
+manager (`CalendarManagerModal.vue`) and the calendar editor window. Import creates a new
+calendar (new id) — never overwrites — and reports name collisions.
+
+---
+
+## [BL-61] Picture items — optional title on the timeline
+
+**Status:** Done (1.0.3). Per-item: `items.show_title` (migration 5) → `TimelineItem.ShowTitle`,
+"Show title" checkbox in the edit window for pictures. `buildNode` takes a trailing `showTitle`
+and adds a `Konva.Label` (translucent tag + text) that `updateAbsolutePositions` pins to the
+bottom edge of the image — footprint unchanged, so lane packing is untouched.
+
+Picture-type items (`TypeId` 4) render only the image on the canvas. Add a per-item (or
+per-layout) option to show the title as well, like event boxes do. `timelineNodes.ts` picture
+node builder + edit window checkbox.
+
+---
+
+## [BL-62] Configurable colour swatches
+
+**Status:** Done (1.0.3). `utils/timelinePrefs.ts` — 12 hex strings stored per timeline in
+`misc_settings` under `color_swatches` (existing `Get/SetMiscSetting` bridge, no migration);
+malformed values fall back to the defaults. Timeline Settings → General shows a chip of 12 colour
+dots that opens `components/SwatchEditorModal.vue` (12 pickers, Reset to defaults, Cancel / Apply);
+`EditItem.vue` loads them per timeline. The filter colour rule builds its palette from the colours
+actually in use (`store.allTimelineColors`), not these 12, so it was left alone.
+
+The 12 quick-pick colours in the edit window (`COLOR_PALETTE` in `EditItem.vue`) are hardcoded.
+Add a "Colour swatches" row to Timeline Settings — 12 colour pickers with a "reset to defaults"
+button — stored per timeline, and have `EditItem.vue` read them from the timeline instead of the
+constant. Also used by any other palette that shows the same 12 (filter colour rule).
+
+---
+
+## [BL-64] Taller description box in the edit item window
+
+**Status:** Done (1.0.3). The Description textarea in `EditItem.vue` is `rows="7"` (~130 px);
+still resizable.
+
+---
+
+## [BL-65] Data panel keeps multi-line whitespace
+
+**Status:** Done (1.0.3). `white-space: pre-wrap` on the four description / content classes in
+`TimelineDataPanel.vue`.
+
+`TimelineDataPanel.vue` renders `item.Description` / `item.Content` in plain `div`s, so line
+breaks and indentation collapse. Add `white-space: pre-wrap` to `.data-age-desc`,
+`.data-period-desc`, `.data-item-desc` and `.data-item-content` (the view modal and notes panel
+already do this).
 
 ---

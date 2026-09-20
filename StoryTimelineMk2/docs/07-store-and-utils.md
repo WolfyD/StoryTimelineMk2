@@ -475,6 +475,26 @@ result over consecutive days. Rules can chain via `anchorType: 'memorable-day'` 
 
 ---
 
+## 6b. `utils/timelinePrefs.ts` — per-timeline preferences in `misc_settings`
+
+Thin wrappers over `GetMiscSetting`/`SetMiscSetting` for values that are timeline preferences
+rather than layout-template values. Every loader validates the stored text and falls back to a
+default (logging `console.error`) so a hand-edited or corrupt row cannot break the UI.
+
+| Export | Key | Value | Default |
+|---|---|---|---|
+| `loadSwatches(tlId)` / `saveSwatches(tlId, hex[])` | `color_swatches` | JSON array of exactly 12 `#rrggbb` strings | `DEFAULT_SWATCHES` |
+| `loadDefaultLodMask(tlId)` / `saveDefaultLodMask(tlId, mask)` | `default_lod_mask` | non-negative integer bitmask (bit *n* = visible at LOD index *n*) | `ALL_LODS_MASK` (255) |
+
+Both are edited in `TimelineSettingsModal.vue` (General section) and consumed by `EditItem.vue`
+— the swatches directly, the mask via the new-item stub `HandleGetItemForEdit` returns.
+
+Two pure helpers for showing a mask to humans: `lodLevelLabel(lod)` (title-cased `formatKey`,
+e.g. `Years`) and `lodMaskSummary(mask, profile)` → `'No calendar'` / `'All levels'` /
+`'No levels'` / `'Years, Months'`. Used by `LodMaskModal.vue` and the settings summary chip.
+
+---
+
 ## 7. `calendar.ts` and the calendar system
 
 ### 7.1 `calendar.ts` — entry point only

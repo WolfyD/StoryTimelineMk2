@@ -191,10 +191,15 @@ the form, so it can desync if the window is restored by other means (e.g. F11 ex
    ▼ FormClosing
    ├─ stop move-timer, PersistWindowState()          (cs:123-124)
    ├─ find "f_Main" in Application.OpenForms         (cs:126-131)
-   ├─ found:  mainForm._messageRouter.SendToVue("InitReload")  // refresh project list
-   │          mainForm.Show()                        (cs:135-137)
-   └─ not found: Application.Exit()                  (cs:140)
+   ├─ found and mainForm._messageRouter?.SendToVue("InitReload") == true:
+   │          mainForm.Show()                        // refresh project list, return to it
+   │          BeginPrewarm()
+   └─ else (no main, its router never initialised, or its WebView2 is dead —
+            SendToVue returned false): Application.Exit()
 ```
+
+Main's page being gone means there is nothing to return to (showing it would be a black
+window), so the app ends instead.
 
 `WindowCloseRequested` wiring per form: `f_Timeline.cs:51` and `f_Calendar.cs:29`
 use `Invoke((MethodInvoker)Close)` (the event can fire off the UI thread);

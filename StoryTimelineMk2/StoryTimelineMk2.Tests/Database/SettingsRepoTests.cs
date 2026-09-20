@@ -110,6 +110,22 @@ public class SettingsRepoTests
     }
 
     [Fact]
+    public void SaveSettings_PersistsHeaderMode()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new SettingsRepo();
+        var settings = repo.GetOrCreateSettings(tlId);
+        Assert.Equal(0, settings.HeaderMode);   // full by default
+
+        settings.HeaderMode = 2;
+        repo.SaveSettings(settings);
+
+        Assert.Equal(2, repo.GetOrCreateSettings(tlId).HeaderMode);
+    }
+
+    [Fact]
     public void SaveSettings_PersistsWindowState()
     {
         using var ctx = new DbTestContext();

@@ -152,7 +152,10 @@ Seeded rows (`MainDbMigrations.cs`): 1=Event, 2=Period, 3=Age, 4=Picture, 5=Note
 | `importance` | INTEGER | DEFAULT 5 |
 | `min_lod_level` | INTEGER | DEFAULT 3 — legacy threshold, superseded by mask |
 | `lod_visibility_mask` | INTEGER | DEFAULT 255 — bit *i* set = visible at LOD index *i* |
-| `placement` | INTEGER | DEFAULT 0 — side of the line: `0` unassigned, `1` above, `2` below (migration 2). `SaveItemFull` picks a side on first save (`PickSide`: balance against the 6 nearest neighbours of the same kind, periods and non-periods separately; tie → opposite of the nearest) and keeps it afterwards. Full-width types (3, 6, 7, 8, 9) stay `0`. Migration 2 backfills existing rows with the parity the canvas used to compute. |
+| `placement` | INTEGER | DEFAULT 0 — side of the line: `0` unassigned, `1` above, `2` below (migration 2). `SaveItemFull` picks a side whenever it is saved as `0` (`PickSide`: balance against the 6 nearest neighbours of the same kind, periods and non-periods separately; tie → opposite of the nearest) — "Auto" in the edit window sends `0` to re-pick. Full-width types (3, 6, 7, 8, 9) stay `0`. Migration 2 backfills existing rows with the parity the canvas used to compute. |
+| `centered` | INTEGER | NOT NULL DEFAULT 0 — box centered on its stem instead of the sideways `TimelineEventBoxStemOffset` offset; only drawn for events and notes (migration 4) |
+| `show_title` | INTEGER | NOT NULL DEFAULT 0 — draw the title as a caption strip along the bottom of the picture; only read for pictures (migration 5) |
+| `item_notes` | TEXT | nullable — writer's private notes; saved, duplicated and exported with the item, never rendered (migration 6) |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
@@ -215,6 +218,7 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 | `custom_scale` | REAL | DEFAULT 1.0 |
 | `display_radius` | INTEGER | DEFAULT 10 |
 | `canvas_settings` | TEXT | JSON blob |
+| `header_mode` | INTEGER | NOT NULL DEFAULT 0 — title strip of the timeline window: 0 full, 1 compact (title only), 2 hidden (migration 3) |
 | `default_layout_settings_id` | TEXT | NOT NULL DEFAULT 'ls_default' |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
@@ -452,6 +456,11 @@ Key-value store, explicitly **not** exported/imported.
 | `key` | TEXT | NOT NULL, composite PK |
 | `timeline_id` | INTEGER | NOT NULL DEFAULT 0, composite PK — `0` means global |
 | `value` | TEXT | |
+
+Keys in use: `filter_and_mode`, `filter_panel_open` (per timeline), `filter_display_mode`
+(global), `color_swatches` (per timeline, JSON array of 12 hex colours) and `default_lod_mask`
+(per timeline, integer bitmask new items start with — also read by `HandleGetItemForEdit`). The
+last two are wrapped by `Frontend/src/utils/timelinePrefs.ts`.
 
 ---
 

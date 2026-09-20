@@ -15,6 +15,7 @@ import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
 import AboutModal from "@/components/AboutModal.vue";
 import TagManagerModal from "@/components/TagManagerModal.vue";
+import MassAddItemsModal from "@/components/MassAddItemsModal.vue";
 import HelpModal from "@/components/HelpModal.vue";
 import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
 import TimelineDataPanel from "@/components/TimelineDataPanel.vue";
@@ -33,6 +34,7 @@ const timelineCanvasRef = ref();
 const showSettings = ref(false);
 const showAbout = ref(false);
 const showTags = ref(false);
+const showMassAdd = ref(false);
 const showHelp = ref(false);
 const showFilterSetup = ref(false);
 const flashedRuleId = ref<string | null>(null);
@@ -308,6 +310,7 @@ onBeforeUnmount(() => {
                 @open-settings="showSettings = true"
                 @open-about="showAbout = true"
                 @open-tags="showTags = true"
+                @open-mass-add="showMassAdd = true"
                 @open-help="showHelp = true"
                 @toggle-year-calendar="toggleYearCalendar"
             >
@@ -328,10 +331,11 @@ onBeforeUnmount(() => {
             <button class="update-banner-close" @click="dismissUpdate" title="Dismiss"><i class="ri-close-line"></i></button>
         </div>
     </div>
-    <div id="timeline-header" style="user-select: none;">
+    <!-- HeaderMode (timeline settings): 0 full, 1 compact (title only), 2 hidden — the window title bar keeps the title -->
+    <div v-if="store.settings?.HeaderMode !== 2" id="timeline-header" :class="{ 'timeline-header--compact': store.settings?.HeaderMode === 1 }" style="user-select: none;">
         <div id="timeline-header-info-container">
             <h1>{{ store.title }}</h1>
-            <h2>{{ store.author }}</h2>
+            <h2 v-if="store.settings?.HeaderMode !== 1">{{ store.author }}</h2>
         </div>
         <div
             v-if="store.currentProject?.Color"
@@ -349,6 +353,7 @@ onBeforeUnmount(() => {
 
     <AboutModal v-if="showAbout" @close="showAbout = false" />
     <TagManagerModal v-if="showTags" @close="showTags = false" />
+    <MassAddItemsModal v-if="showMassAdd" @close="showMassAdd = false" />
     <HelpModal v-if="showHelp" @close="showHelp = false" />
 
     <div v-if="store.filterPanelOpen" class="filter-area">
@@ -662,6 +667,11 @@ onBeforeUnmount(() => {
 		margin-right: 6px;
 		font-style: normal;
 		opacity: 0.6;
+	}
+
+	&.timeline-header--compact {
+		#timeline-header-info-container { align-items: flex-start; }
+		h1 { font-size: 1rem; margin: 6px 12px; width: auto; justify-content: flex-start; }
 	}
 }
 

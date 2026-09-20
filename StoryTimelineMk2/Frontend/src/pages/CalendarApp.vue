@@ -4,11 +4,8 @@ import { BackendAPI } from '@/bridge/api'
 import { useAppTheme } from '@/utils/useAppTheme'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import type { LodLevel } from '@/types/models'
-import WeekDayPicker from '@/components/WeekDayPicker.vue'
-import CalendarDayPicker from '@/components/CalendarDayPicker.vue'
-import RelativeRuleEditor from '@/components/RelativeRuleEditor.vue'
-import { defaultRelativeRule } from '@/utils/relativeRule'
-import type { RelativeRule } from '@/utils/relativeRule'
+import MemorableDaysModal, { type MemorableDay } from '@/components/MemorableDaysModal.vue'
+import { defaultRelativeRule, type RelativeRule } from '@/utils/relativeRule'
 
 useAppTheme()
 
@@ -255,25 +252,20 @@ function applySeasonDOY() {
 
 // ---- Memorable Days ----
 const hasMemorableDays = ref(false)
-
-interface MemorableDay {
-    id: string
-    name: string
-    color: string
-    type: 'fixed' | 'weekly' | 'relative'
-    startMonth: number   // 0-indexed
-    startDay: number     // 1-indexed within month
-    endMonth: number
-    endDay: number
-    isRange: boolean
-    weekDays: number[]   // for type='weekly': 0-indexed day-of-week indices
-    rule: RelativeRule   // for type='relative'
-}
 const memorableDays = ref<MemorableDay[]>([])
+const showMemDays = ref(false)                    // the list + editor modal
+const memDayId = ref<string | null>(null)         // day selected in the modal
+
+function openMemDays(id: string | null = null) {
+    memDayId.value = id
+    showMemDays.value = true
+}
 
 function addMemorableDay() {
+    const id = crypto.randomUUID()
+    memDayId.value = id
     memorableDays.value.push({
-        id: crypto.randomUUID(),
+        id,
         name: 'New Day',
         color: '#e8944a',
         type: 'fixed',
@@ -296,6 +288,10 @@ const dayLabelsForPicker = computed((): string[] | undefined => {
     return undefined
 })
 function removeMemorableDay(i: number) { memorableDays.value.splice(i, 1) }
+function removeMemorableDayById(id: string) {
+    const i = memorableDays.value.findIndex(d => d.id === id)
+    if (i >= 0) removeMemorableDay(i)
+}
 
 // ---- Fraction conversion ----
 function toFraction(value: number): string {
@@ -486,35 +482,57 @@ function buildYearDefinition(): string {
     return JSON.stringify(yd)
 }
 
+function validate(): string {
+    if (!calName.value.trim()) return 'Name is required'
+    if (lodLevels.value.length === 0) return 'LOD Profile must have at least one level.'
+    if (!lodLevels.value.some(l => l.formatKey === 'YEARS')) return 'LOD Profile must include a YEARS level.'
+    return ''
+}
+
+// Same shape SaveCalendar deserializes into CalendarItem; ExportCalendar takes it as `calendar`.
+function buildPayload() {
+    return {
+        Id: calId.value,
+        Name: calName.value.trim(),
+        ShortName: shortName.value,
+        AlternateName: alternateName.value,
+        NameBefore0: nameBefore0.value,
+        NameAfter0: nameAfter0.value,
+        LodProfileId: lodProfileId.value,
+        YearDefinition: buildYearDefinition(),
+        LodProfile: {
+            Id: lodProfileId.value,
+            Name: lodProfileName.value,
+            Profile: JSON.stringify(lodLevels.value.map((l, i) => ({ ...l, index: i }))),
+        },
+    }
+}
+
 async function save() {
-    if (!calName.value.trim()) { saveError.value = 'Name is required'; return }
-    if (lodLevels.value.length === 0) { saveError.value = 'LOD Profile must have at least one level.'; return }
-    if (!lodLevels.value.some(l => l.formatKey === 'YEARS')) { saveError.value = 'LOD Profile must include a YEARS level.'; return }
-    saveError.value = ''
+    saveError.value = validate()
+    if (saveError.value) return
     isSaving.value = true
     try {
-        const payload = {
-            Id: calId.value,
-            Name: calName.value.trim(),
-            ShortName: shortName.value,
-            AlternateName: alternateName.value,
-            NameBefore0: nameBefore0.value,
-            NameAfter0: nameAfter0.value,
-            LodProfileId: lodProfileId.value,
-            YearDefinition: buildYearDefinition(),
-            LodProfile: {
-                Id: lodProfileId.value,
-                Name: lodProfileName.value,
-                Profile: JSON.stringify(lodLevels.value.map((l, i) => ({ ...l, index: i }))),
-            },
-        }
-        const result = await BackendAPI.SaveCalendar(payload)
+        const result = await BackendAPI.SaveCalendar(buildPayload())
         if (result?.status === 'ok') window.close()
         else saveError.value = result?.message ?? 'Save failed'
     } catch (e) {
         saveError.value = String(e)
     } finally {
         isSaving.value = false
+    }
+}
+
+// Exports what is on screen, saved or not — the file is the deliverable, the DB row is optional.
+async function exportCalendar() {
+    saveError.value = validate()
+    if (saveError.value) return
+    try {
+        const result = await BackendAPI.ExportCalendar({ calendar: buildPayload() })
+        if (result?.status === 'error') throw new Error(result.message ?? 'Export failed')
+    } catch (e) {
+        console.error('[CalendarApp] export failed:', e)
+        saveError.value = `Export failed: ${e instanceof Error ? e.message : String(e)}`
     }
 }
 
@@ -542,6 +560,7 @@ function toggleWeekend(d: number) {
         <span class="id-label">{{ isNew ? 'New Calendar' : calId.slice(0, 8) }}</span>
         <input class="name-input" type="text" v-model="calName" placeholder="Calendar name…" />
         <div class="header-actions">
+          <button class="btn btn-secondary btn-export" title="Export this calendar to a file" @click="exportCalendar">Export</button>
           <button class="btn btn-secondary" @click="BackendAPI.WindowClose()">Cancel</button>
           <button class="btn btn-primary" :disabled="isSaving" @click="save">
             {{ isSaving ? 'Saving…' : 'Save' }}
@@ -877,6 +896,7 @@ function toggleWeekend(d: number) {
             <div class="section-title-group" @click="toggleCollapse('memdays')">
               <span class="collapse-chevron" :class="{ expanded: !collapsed['memdays'] }">›</span>
               <h3 class="section-title">Memorable Days</h3>
+              <span v-if="collapsed['memdays'] && hasMemorableDays" class="section-count">{{ memorableDays.length }}</span>
             </div>
             <div class="header-right">
               <label class="toggle-label" @click.stop>
@@ -887,69 +907,13 @@ function toggleWeekend(d: number) {
           </div>
           <div v-show="!collapsed['memdays']">
             <template v-if="hasMemorableDays">
-              <div v-for="(md, i) in memorableDays" :key="md.id" class="mem-day-card">
-                <div class="mem-day-top">
-                  <input type="color" class="mem-color" v-model="md.color" title="Color" />
-                  <input type="text" class="tbl-input mem-name" v-model="md.name" placeholder="Holiday…" />
-                  <select class="tbl-input mem-type" v-model="md.type">
-                    <option value="fixed">Fixed Date</option>
-                    <option value="weekly" :disabled="!hasWeekDef">Weekly</option>
-                    <option value="relative">Relative</option>
-                  </select>
-                  <button class="btn-icon" @click="removeMemorableDay(i)">×</button>
-                </div>
-                <div class="mem-day-bottom">
-                  <template v-if="md.type === 'fixed'">
-                    <div class="mem-day-picker-wrap">
-                      <label class="toggle-label mb-0">
-                        <input type="checkbox" v-model="md.isRange" /> Range
-                      </label>
-                      <CalendarDayPicker
-                        :startMonth="md.startMonth"
-                        :startDay="md.startDay"
-                        :endMonth="md.endMonth"
-                        :endDay="md.endDay"
-                        :isRange="md.isRange"
-                        :months="months"
-                        :weekLength="hasWeekDef ? weekLength : 7"
-                        :dayLabels="dayLabelsForPicker"
-                        :weekendDays="hasWeekDef ? weekendDays : [5, 6]"
-                        @select="v => { md.startMonth = v.startMonth; md.startDay = v.startDay; md.endMonth = v.endMonth; md.endDay = v.endDay }"
-                      />
-                      <div class="date-summary">
-                        <span class="date-label">From:</span>
-                        <span class="date-val">{{ months[md.startMonth]?.name ?? `M${md.startMonth + 1}` }} {{ md.startDay }}</span>
-                        <template v-if="md.isRange">
-                          <span class="date-sep">→</span>
-                          <span class="date-val">{{ months[md.endMonth]?.name ?? `M${md.endMonth + 1}` }} {{ md.endDay }}</span>
-                        </template>
-                      </div>
-                    </div>
-                  </template>
-                  <template v-else-if="md.type === 'weekly'">
-                    <WeekDayPicker
-                      v-model="md.weekDays"
-                      :weekLength="weekLength"
-                      :dayLabels="dayLabelsForPicker"
-                    />
-                  </template>
-                  <template v-else>
-                    <RelativeRuleEditor
-                      v-model="md.rule"
-                      :seasons="seasons"
-                      :hasSeasons="hasSeasons"
-                      :months="months"
-                      :hasWeekDef="hasWeekDef"
-                      :weekLength="hasWeekDef ? weekLength : 7"
-                      :dayLabels="dayLabelsForPicker"
-                      :weekendDays="hasWeekDef ? weekendDays : [5, 6]"
-                      :otherMemDays="memorableDays.filter(d => d.id !== md.id).map(d => ({ id: d.id, name: d.name }))"
-                    />
-                  </template>
-                </div>
+              <div v-if="memorableDays.length" class="mem-day-list">
+                <button v-for="md in memorableDays" :key="md.id" type="button" class="mem-day-chip" title="Edit" @click="openMemDays(md.id)">
+                  <span class="mem-day-dot" :style="{ background: md.color }" />{{ md.name || 'Unnamed' }}
+                </button>
               </div>
-              <p v-if="memorableDays.length === 0" class="empty-note mt-8">No memorable days yet.</p>
-              <button class="btn-add mt-8" @click="addMemorableDay">+ Add Day</button>
+              <p v-else class="empty-note mt-8">No memorable days yet.</p>
+              <button class="btn-add mt-8 mem-days-manage" @click="openMemDays()">Manage days…</button>
             </template>
             <p v-else class="empty-note mt-8">Enable to define memorable days.</p>
           </div>
@@ -957,6 +921,22 @@ function toggleWeekend(d: number) {
 
       </div>
     </div>
+
+    <MemorableDaysModal
+      v-if="showMemDays"
+      :days="memorableDays"
+      v-model:selectedId="memDayId"
+      :months="months"
+      :seasons="seasons"
+      :hasSeasons="hasSeasons"
+      :hasWeekDef="hasWeekDef"
+      :weekLength="weekLength"
+      :dayLabels="dayLabelsForPicker"
+      :weekendDays="weekendDays"
+      @add="addMemorableDay"
+      @remove="removeMemorableDayById"
+      @close="showMemDays = false"
+    />
 
     <!-- Season DOY modal -->
     <div v-if="showSeasonDoyModal" class="doy-backdrop" @click.self="showSeasonDoyModal = false">
@@ -1016,6 +996,17 @@ function toggleWeekend(d: number) {
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: #7aa8e8;
+  user-select: none;
+}
+
+// Entry count shown next to a collapsed section title
+.section-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7aa8e8;
+  background: rgba(122, 168, 232, 0.15);
+  border-radius: 10px;
+  padding: 1px 8px;
   user-select: none;
 }
 
@@ -1312,83 +1303,34 @@ select.tbl-input option { background: var(--app-surface, #0c1524); color: var(--
 // ---- Memorable Days ----
 .empty-note { color: var(--app-text-dim, #4a6080); font-size: 0.82rem; font-style: italic; margin: 0; }
 
-.mem-day-card {
+.mem-day-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.mem-day-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
   border: 1px solid #253048;
-  border-radius: 5px;
+  border-radius: 999px;
   background: #0d1929;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.mem-day-top {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mem-color {
-  width: 32px; height: 28px;
-  padding: 1px;
-  border: 1px solid var(--app-border, #2d3a56);
-  border-radius: 4px;
-  cursor: pointer;
-  background: var(--app-surface, #0c1524);
-  flex-shrink: 0;
-}
-
-.mem-name { flex: 1; min-width: 0; }
-.mem-type { width: 110px; flex-shrink: 0; }
-
-.mem-day-bottom {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-left: 2px;
-}
-
-.md-date-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.date-label {
-  font-size: 0.72rem; font-weight: 600;
-  color: var(--app-text-dim, #4a6080);
-  text-transform: uppercase; letter-spacing: 0.04em;
-  user-select: none;
-}
-
-.date-sep {
-  color: var(--app-text-dim, #4a6080);
-  font-size: 0.85rem;
-  padding: 0 2px;
-}
-
-.mem-day-picker-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.mb-0 { margin-bottom: 0 !important; }
-
-.date-summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  padding-left: 2px;
-}
-
-.date-val {
   color: var(--app-text, #e2e8f0);
-  font-weight: 500;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+
+  &:hover { border-color: var(--app-accent, #3b6ec4); background: #12203a; }
+}
+
+.mem-day-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 
 // ---- Buttons ----

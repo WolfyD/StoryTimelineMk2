@@ -201,12 +201,13 @@ The add/edit window for a single `TimelineItem` (Event, Period, Age, Picture, No
 | DATE & RANGE (left)       | DETAILS (right)              |
 |  Type ▾ | Granularity ▾   |  Content textarea            |
 |  LOD visibility toggles   |  Importance slider | ☑ notes |
-|  Start: LodDateInput      |  Tags (chips + autocomplete) |
-|  End:   LodDateInput      |                              |
+|  Start: LodDateInput      |  Side ▾ |☑ Centered |☑ title |
+|  End:   LodDateInput      |  Tags (chips + autocomplete) |
 |  (End only for Period/Age)|                              |
 +---------------------------+------------------------------+
 | FOOTER sections:                                         |
 |  Images (grid + Add Image)                               |
+|  Item Notes (collapsible, closed; private textarea)      |
 |  Characters (collapsible; avatar+role list + picker)     |
 |  Stories & Books (collapsible; story chips, book search) |
 +----------------------------------------------------------+
@@ -234,8 +235,9 @@ No Pinia store is used — this page is fully self-contained over the bridge.
 | Interaction | Handler | Effect |
 |---|---|---|
 | **Save** button | `save(true)` | writes `startYear/endYear` back to item; computes `AbsoluteStart/AbsoluteEnd = Year + subYear × stepFraction` (from the LOD level matching `CreationGranularity`); bridge **`SaveItem`** with tag names, `{CharacterId, Role}` pairs, story ids, chapter ids. On `status==='ok'` → `window.close()`; else shows `saveError` |
-| **Cancel** button | `cancel` | `BackendAPI.WindowClose()` (bridge `WindowClose`) |
-| Title / Description / Content / Color / Importance slider / "Show in notes" checkbox | `v-model` | direct `item` field edits |
+| **Cancel** button / window X (`CloseRequested` push) / Escape | `requestClose` | `BackendAPI.WindowClose()` when clean; otherwise a `ConfirmModal` ("Discard changes?") whose Discard sends `WindowClose` |
+| Title / Description / Content / Color / Importance slider / "Show in notes" checkbox / Item Notes textarea | `v-model` | direct `item` field edits |
+| Side segmented buttons / Centered / Show title (own row; each only for the types it applies to) | `item.Placement` / `v-model` | Auto sends 0 and the backend picks the emptier side on save |
 | Type select | `v-model item.TypeId` | switching to Period/Age reveals the End date row |
 | Date granularity select | `v-model item.CreationGranularity` | changes which LOD level drives sub-year steps |
 | LOD visibility toggle buttons (one per LOD level) | `toggleLodVisibility(i)` | XORs bit `1<<i` in `item.LodVisibilityMask` |
@@ -260,13 +262,14 @@ No Pinia store is used — this page is fully self-contained over the bridge.
 | `ImagePickerModal` emits `linked(pictures)` | `onImageLinked` | appends new `MediaItem`s (dedup by Id) |
 | Image thumb "×" | `removeImage` | bridge **`RemoveImageFromItem(pictureId, itemId)`** then removes locally |
 | Image thumb click | `openLightbox` | full-screen lightbox (`https://media.app/<FilePath>`); backdrop click closes |
-| Collapsible headers (Characters, Stories & Books) | toggle `isCharExpanded` / `isStoryExpanded` | expand/collapse sections |
+| Collapsible headers (Item Notes, Characters, Stories & Books) | toggle `isNotesExpanded` / `isCharExpanded` / `isStoryExpanded` | expand/collapse sections |
 
 ### Modals
 
 | Modal / overlay | Purpose |
 |---|---|
 | `ImagePickerModal` | pick/link media items to the item; receives `already-linked` ids |
+| `ConfirmModal` (`showDiscard`) | discard-changes question on Cancel / X / Escape when the form is dirty |
 | Character picker overlay (in-page, not a component) | filter + select a character and optional role |
 | Image lightbox (Teleport to body) | full-screen image preview |
 
@@ -279,6 +282,8 @@ No Pinia store is used — this page is fully self-contained over the bridge.
 ---
 
 ## CalendarApp.vue — Calendar Editor (`calendar.html`)
+
+> **Export** (header, next to Cancel/Save) runs the same validation as Save, then `BackendAPI.ExportCalendar({ calendar: buildPayload() })` — the on-screen state, saved or not. Errors land in `saveError`.
 
 ### Purpose
 Full editor for a custom calendar system: metadata/era names, LOD profile, months, week structure, seasons, and memorable days. Serializes everything into the `YearDefinition` JSON + a `LodProfile` and saves via one bridge call. Hosted by `f_Calendar` with optional `?calendarId=`; no param means creating a new calendar.
@@ -348,13 +353,12 @@ No Pinia store usage.
 | Weeks: Enabled checkbox, days-per-week, "Day names"/"Short names" checkboxes, day name inputs, weekend checkboxes | `v-model`, `toggleWeekend(d)` | edit week structure; without day names only weekend indices are shown |
 | Seasons: Enabled checkbox, "Short names", per-season name/short/start/end/significance, "×", "+ Add Season" | `v-model`, `removeSeason`, `addSeason` | edit seasons; colored proportional track visualizes segments |
 | Seasons "Auto DOY" | `openSeasonDoyModal` → `applySeasonDOY` | modal asks for first day of season 1, then divides `yearLength` evenly across seasons (wrapping start/end day-of-year) |
-| Memorable Days: Enabled checkbox, "+ Add Day", per-day color/name/type select, "×" | `addMemorableDay`, `removeMemorableDay` | edit memorable-day cards |
-| Memorable day type = `fixed` | `CalendarDayPicker` + "Range" checkbox | picks start (and optional end) month/day |
-| Memorable day type = `weekly` (disabled unless week structure enabled) | `WeekDayPicker` | picks day-of-week indices |
-| Memorable day type = `relative` | `RelativeRuleEditor` | rule editor (can reference seasons, months, weekdays, other memorable days) |
+| Memorable Days: Enabled checkbox; one colour-dot chip per day; **Manage days…** | `openMemDays(id?)` | opens `MemorableDaysModal` (on that day, or the first) |
+| `MemorableDaysModal` Add / Delete | `addMemorableDay`, `removeMemorableDayById` | the page owns the list; the modal edits the day objects live (fixed → `CalendarDayPicker` + Range, weekly → `WeekDayPicker`, relative → `RelativeRuleEditor`) |
 | DOY modal backdrop click / Cancel | — | close modal |
 
 ### Modals
+- **Memorable Days modal** (`MemorableDaysModal`, `showMemDays` / `memDayId`): list + editor for memorable days; see `06-frontend-components.md`.
 - **Season DOY modal** (in-page overlay): auto-calculates season start/end days from a single "first day of season 1" input.
 
 ### Data Flow on Load
@@ -382,6 +386,6 @@ The application's real settings UIs live elsewhere: `AppSettingsModal` (opened f
 ## Cross-Page Notes
 
 - **Window chrome**: every real page renders `WindowTitleBar` (custom title bar; the WinForms windows are borderless). Edit-style windows (`EditItem`, `CalendarApp`) pass `:show-maximize="false"`.
-- **Closing**: Save paths use `window.close()`; Cancel paths use `BackendAPI.WindowClose()` (bridge `WindowClose` message to the host form).
+- **Closing**: Save paths use `window.close()`; Cancel paths use `BackendAPI.WindowClose()` (bridge `WindowClose` message to the host form). `EditItem` asks first when dirty (`ConfirmModal`); the host re-activates its owner before hiding, so closing never brings an Alt-Tabbed third app to the front.
 - **Media URLs**: images are served through the WebView2 virtual host `https://media.app/<FilePath>` (used by both `TimelineApp` and `EditItem` lightboxes/thumbnails).
 - **Store usage**: only `App.vue` and `TimelineApp.vue` meaningfully use `timelineStore`; `EditItem.vue` and `CalendarApp.vue` are self-contained over `BackendAPI`.

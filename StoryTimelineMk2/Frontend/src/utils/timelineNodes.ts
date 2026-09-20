@@ -8,7 +8,8 @@ export const buildNode = (
     color: string,
     stemsMaster: Konva.Group,
     boxesMaster: Konva.Group,
-	layoutSettings: LayoutSettings
+	layoutSettings: LayoutSettings,
+    showTitle = false,   // pictures: caption strip along the bottom edge (items.show_title)
 ) => {
     const safeColor = color || (typeName === "Event" ? '#ffffff' : '#888888');
     const elements: any = {}; // Standard JS object to hold references
@@ -52,6 +53,16 @@ export const buildNode = (
         });
         stemsMaster.add(elements.stem);
         boxesMaster.add(elements.box);
+        if (showTitle) {
+            // Label = Tag (background) + Text; the Text carries the label-id so clicks resolve to the item
+            elements.label = new Konva.Label({ id: `caption-${id}` });
+            elements.label.add(new Konva.Tag({ fill: 'rgba(0, 0, 0, 0.55)', cornerRadius: [0, 0, 4, 4] }));
+            elements.label.add(new Konva.Text({
+                id: `label-${id}`, text: title || 'Untitled', fill: '#ffffff', padding: 4, width: size, align: 'center',
+                ellipsis: true, wrap: 'none', fontFamily: layoutSettings.TimelineEventFontFamily, fontSize: layoutSettings.TimelineEventFontSize
+            }));
+            boxesMaster.add(elements.label);
+        }
     } else {
         const boxWidth = layoutSettings.TimelineEventBoxWidth;
         const boxHeight = layoutSettings.TimelineEventBoxHeight;
@@ -161,7 +172,8 @@ export const updateAbsolutePositions = (
     boxWidth: number,
     isLeft: boolean,
     stageCenterY: number,
-	layoutSettings: LayoutSettings
+	layoutSettings: LayoutSettings,
+    centered = false,   // box straddles the stem instead of the sideways offset (items.centered)
 ) => {
     if (typeName === "Age" || typeName === "Period") {
         elements.box.position({ x: anchorX, y: targetY });
@@ -186,12 +198,13 @@ export const updateAbsolutePositions = (
         // Lane Y is the box top sized for TimelineEventBoxHeight; below the line a taller picture would run off the bottom edge
         const y = targetY < stageCenterY ? targetY : targetY - (size - layoutSettings.TimelineEventBoxHeight);
         elements.box.position({ x: anchorX - size / 2, y });
+        elements.label?.position({ x: anchorX - size / 2, y: y + size - elements.label.height() });
         const stemEndY = targetY < stageCenterY ? y + size : y;
         elements.stem.points([anchorX, stageCenterY, anchorX, stemEndY]);
     } else {
         // Calculate the absolute X position for the box
-        const boxAbsoluteX = isLeft ? anchorX - boxWidth : anchorX;
-		const boxPosAbsoluteX = boxAbsoluteX + (isLeft ? ((layoutSettings.TimelineEventBoxStemOffset / 100) * boxWidth) : ((layoutSettings.TimelineEventBoxStemOffset / 100) * boxWidth) * -1)
+        const boxAbsoluteX = centered ? anchorX - boxWidth / 2 : isLeft ? anchorX - boxWidth : anchorX;
+		const boxPosAbsoluteX = centered ? boxAbsoluteX : boxAbsoluteX + (isLeft ? ((layoutSettings.TimelineEventBoxStemOffset / 100) * boxWidth) : ((layoutSettings.TimelineEventBoxStemOffset / 100) * boxWidth) * -1)
 
         elements.box.position({ x: boxPosAbsoluteX + (isLeft ? 0 : 0), y: targetY });
         elements.label.position({ x: boxPosAbsoluteX, y: targetY });
@@ -208,8 +221,8 @@ export const updateAbsolutePositions = (
             }
         }
 
-        // Calculate absolute stem connection point
-        const stemTargetX = isLeft ? boxAbsoluteX + (boxWidth) : boxAbsoluteX ;
+        // Calculate absolute stem connection point (straight up/down when centered)
+        const stemTargetX = centered ? anchorX : isLeft ? boxAbsoluteX + (boxWidth) : boxAbsoluteX ;
 
         // Stem goes from the absolute baseline anchor to the absolute box connection
         elements.stem.points([anchorX, stageCenterY, stemTargetX, targetY]);

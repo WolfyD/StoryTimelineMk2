@@ -158,10 +158,9 @@ namespace StoryTimelineMk2.Database
 
             try
             {
-                // Side is chosen once, on insert; an existing row keeps whatever it already has.
+                // 0 = Auto: pick the emptier side now — new items, and items the user set back to Auto.
                 if (item.Placement == 0 && item.TypeId is not (3 or 6 or 7 or 8 or 9))
-                    item.Placement = db.ExecuteScalar<int?>("SELECT placement FROM items WHERE id = @Id", new { item.Id }, tx)
-                                     ?? PickSide(db, tx, item);
+                    item.Placement = PickSide(db, tx, item);
 
                 string sql = @"
                     INSERT INTO items (
@@ -169,14 +168,14 @@ namespace StoryTimelineMk2.Database
                         year, end_year,
                         absolute_start, absolute_end,
                         book_title, chapter, page, color, creation_granularity,
-                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement
+                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement, centered, show_title, item_notes
                     )
                     VALUES (
                         @Id, @Title, @Description, @Content, @StoryId, @TypeId,
                         @Year, @EndYear,
                         @AbsoluteStart, @AbsoluteEnd,
                         @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
-                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask, @Placement
+                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask, @Placement, @Centered, @ShowTitle, @ItemNotes
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title, description = excluded.description, content = excluded.content,
@@ -188,6 +187,7 @@ namespace StoryTimelineMk2.Database
                         item_index = excluded.item_index, show_in_notes = excluded.show_in_notes,
                         importance = excluded.importance, min_lod_level = excluded.min_lod_level,
                         lod_visibility_mask = excluded.lod_visibility_mask, placement = excluded.placement,
+                        centered = excluded.centered, show_title = excluded.show_title, item_notes = excluded.item_notes,
                         updated_at = CURRENT_TIMESTAMP;";
 
                 db.Execute(sql, item, tx);
@@ -321,6 +321,17 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection(_connString);
             db.Execute("DELETE FROM items WHERE id = @Id", new { Id = id });
+        }
+
+        /// <summary>Overwrites the LOD visibility mask of every item of a timeline; returns the row count.</summary>
+        public int SetLodMask(int timelineId, int mask)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Execute(@"
+                UPDATE items
+                SET lod_visibility_mask = @Mask, updated_at = CURRENT_TIMESTAMP
+                WHERE timeline_id = @TimelineId",
+                new { Mask = mask, TimelineId = timelineId });
         }
 
         public int ShiftItems(int timelineId, int deltaYears)

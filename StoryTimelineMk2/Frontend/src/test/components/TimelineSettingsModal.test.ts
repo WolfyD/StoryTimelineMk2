@@ -11,6 +11,8 @@ vi.mock('@/bridge/api', () => ({
     GetSystemFonts: vi.fn().mockResolvedValue(['Arial', 'Times New Roman']),
     SaveSettings: vi.fn().mockResolvedValue({ status: 'ok' }),
     SaveLayoutSettings: vi.fn().mockResolvedValue({ status: 'ok', layoutSettings: null }),
+    GetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok', value: null }),
+    SetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok' }),
     SaveHiddenRange: vi.fn(),
     DeleteHiddenRange: vi.fn(),
     GetLayoutSettingsById: vi.fn(),
@@ -216,6 +218,92 @@ describe('TimelineSettingsModal', () => {
     wrapper.unmount()
   })
 
+  it('colour swatches load per timeline, edit in their own modal, and save alongside the settings', async () => {
+    ;(BackendAPI.GetMiscSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string) =>
+      ({ status: 'ok', value: key === 'color_swatches' ? JSON.stringify(['#111111', ...Array(11).fill('#222222')]) : null }))
+    ;(BackendAPI.SaveLayoutSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
+
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(BackendAPI.GetMiscSetting).toHaveBeenCalledWith('color_swatches', 1)
+    const dots = wrapper.findAll('.swatch-preview .swatch-dot')
+    expect(dots).toHaveLength(12)
+    expect((dots[0]!.element as HTMLElement).style.background).toBe('#111111')
+    expect(wrapper.find('.swatch-grid').exists()).toBe(false)
+
+    await wrapper.find('.swatch-preview').trigger('click')
+    const inputs = wrapper.findAll('.swatch-grid input[type="color"]')
+    expect(inputs).toHaveLength(12)
+    expect((inputs[0]!.element as HTMLInputElement).value).toBe('#111111')
+
+    // Cancel discards the modal's draft
+    await inputs[0]!.setValue('#abcdef')
+    await wrapper.findAll('.bm-footer .btn-secondary').find(b => b.text() === 'Cancel')!.trigger('click')
+    expect(wrapper.find('.swatch-grid').exists()).toBe(false)
+    expect((wrapper.findAll('.swatch-preview .swatch-dot')[0]!.element as HTMLElement).style.background).toBe('#111111')
+
+    await wrapper.find('.swatch-preview').trigger('click')
+    await wrapper.findAll('.swatch-grid input[type="color"]')[0]!.setValue('#abcdef')
+    await wrapper.findAll('.bm-footer .btn-primary').find(b => b.text() === 'Apply')!.trigger('click')
+    expect(wrapper.find('.swatch-grid').exists()).toBe(false)
+    expect((wrapper.findAll('.swatch-preview .swatch-dot')[0]!.element as HTMLElement).style.background).toBe('#abcdef')
+
+    await wrapper.find('.btn-save').trigger('click')
+    await flushPromises()
+
+    const call = (BackendAPI.SetMiscSetting as ReturnType<typeof vi.fn>).mock.calls.find(c => c[0] === 'color_swatches')!
+    expect(call[2]).toBe(1)
+    const saved = JSON.parse(call[1])
+    expect(saved[0]).toBe('#abcdef')
+    expect(saved[1]).toBe('#222222')
+    wrapper.unmount()
+  })
+
+  it('reset restores the default swatches', async () => {
+    ;(BackendAPI.GetMiscSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string) =>
+      ({ status: 'ok', value: key === 'color_swatches' ? JSON.stringify(Array(12).fill('#222222')) : null }))
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.find('.swatch-preview').trigger('click')
+    await wrapper.find('.reset-btn').trigger('click')
+    expect((wrapper.find('.swatch-grid input').element as HTMLInputElement).value).toBe('#ef4444')
+    wrapper.unmount()
+  })
+
+  it('default LOD mask for new items loads per timeline, toggles per level, and saves', async () => {
+    store.lodProfile = [
+      { index: 0, formatKey: 'Millennia', stepFraction: 1000 },
+      { index: 3, formatKey: 'Years', stepFraction: 1 },
+      { index: 5, formatKey: 'Months', stepFraction: 1 / 12 },
+    ]
+    ;(BackendAPI.GetMiscSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string) =>
+      ({ status: 'ok', value: key === 'default_lod_mask' ? '8' : null }))   // only index 3
+    ;(BackendAPI.SaveLayoutSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
+
+    const wrapper = mountModal()
+    await flushPromises()
+
+    expect(wrapper.find('.lod-summary').text()).toBe('Years')
+    await wrapper.find('.lod-summary').trigger('click')
+    const rows = wrapper.findAll('.lod-row')
+    expect(rows.map(r => r.find('.lod-name').text())).toEqual(['Millennia', 'Years', 'Months'])
+    expect(rows.map(r => (r.find('input').element as HTMLInputElement).checked)).toEqual([false, true, false])
+
+    await rows[2]!.find('input').trigger('change')   // + index 5
+    await wrapper.findAll('.bm-footer .btn-primary').find(b => b.text() === 'Apply')!.trigger('click')
+    expect(wrapper.find('.lod-row').exists()).toBe(false)
+    expect(wrapper.find('.lod-summary').text()).toBe('Years, Months')
+
+    await wrapper.find('.btn-save').trigger('click')
+    await flushPromises()
+
+    const call = (BackendAPI.SetMiscSetting as ReturnType<typeof vi.fn>).mock.calls.find(c => c[0] === 'default_lod_mask')!
+    expect(call.slice(1)).toEqual([String(8 | 32), 1])
+    wrapper.unmount()
+  })
+
   it('calls store.setLayoutSettings when save succeeds and layoutSettings is returned', async () => {
     const returnedLs = makeLayoutSettings({ Id: 'ls_updated', Name: 'Updated' })
     ;(BackendAPI.SaveSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
@@ -235,6 +323,24 @@ describe('TimelineSettingsModal', () => {
 
     expect(setLayoutSettingsSpy).toHaveBeenCalledOnce()
     expect(setLayoutSettingsSpy).toHaveBeenCalledWith(returnedLs)
+    wrapper.unmount()
+  })
+
+  it('header mode select is pre-filled from settings and sent on save', async () => {
+    ;(BackendAPI.SaveSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
+    ;(BackendAPI.SaveLayoutSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
+
+    const wrapper = mountModal({ settings: makeSettings({ HeaderMode: 1 }) })
+    await flushPromises()
+
+    const select = wrapper.findAll('select').find(s => s.text().includes('Compact'))!
+    expect((select.element as HTMLSelectElement).value).toBe('1')
+
+    await select.setValue('2')
+    await wrapper.find('.btn-save').trigger('click')
+    await flushPromises()
+
+    expect((BackendAPI.SaveSettings as ReturnType<typeof vi.fn>).mock.calls[0][0].headerMode).toBe(2)
     wrapper.unmount()
   })
 

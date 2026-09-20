@@ -115,6 +115,7 @@ namespace StoryTimelineMk2.Bridge
                 case "GetItemForEdit":          HandleGetItemForEdit(message); break;
                 case "SaveItem":                HandleSaveItem(message); break;
                 case "SearchTags":              HandleSearchTags(message); break;
+                case "GetTopTags":              HandleGetTopTags(message); break;
                 case "GetTagList":              HandleGetTagList(message); break;
                 case "RenameTag":               HandleRenameTag(message); break;
                 case "DeleteTag":               HandleDeleteTag(message); break;
@@ -154,6 +155,8 @@ namespace StoryTimelineMk2.Bridge
                 case "SaveCalendar":                HandleSaveCalendar(message); break;
                 case "CreateCalendar":              HandleCreateCalendar(message); break;
                 case "DeleteCalendar":              HandleDeleteCalendar(message); break;
+                case "ExportCalendar":              HandleExportCalendar(message); break;
+                case "ImportCalendar":              HandleImportCalendar(message); break;
                 case "OpenCalendarEditorWindow":    HandleOpenCalendarEditorWindow(message); break;
 
                 // Year calendar window
@@ -175,6 +178,7 @@ namespace StoryTimelineMk2.Bridge
 
                 // Timeline actions
                 case "ShiftTimelineItems":      HandleShiftTimelineItems(message); break;
+                case "SetTimelineItemsLodMask": HandleSetTimelineItemsLodMask(message); break;
                 case "ResetLayoutPreset":       HandleResetLayoutPreset(message); break;
 
                 // App-level settings
@@ -393,7 +397,14 @@ namespace StoryTimelineMk2.Bridge
             }
             else
             {
-                item = new TimelineItem { TimelineId = timelineId, TypeId = typeId, Color = new SettingsRepo().GetOrCreateSettings(timelineId).DefaultItemColor };
+                item = new TimelineItem
+                {
+                    TimelineId = timelineId,
+                    TypeId = typeId,
+                    Color = new SettingsRepo().GetOrCreateSettings(timelineId).DefaultItemColor,
+                    // Per-timeline preference written by Timeline Settings (frontend timelinePrefs.ts); 255 = every LOD
+                    LodVisibilityMask = int.TryParse(new MiscSettingsRepo().Get("default_lod_mask", timelineId), out int mask) ? mask : 255,
+                };
             }
 
             var timeline = timelineRepo.GetTimelineById(timelineId);
@@ -464,6 +475,13 @@ namespace StoryTimelineMk2.Bridge
             string query = message.Payload.GetProperty("query").GetString() ?? "";
             var tags = new TagRepo().SearchTags(query);
             ReplyToVue(message.MessageId, tags);
+        }
+
+        private void HandleGetTopTags(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            int limit = message.Payload.TryGetProperty("limit", out var l) ? l.GetInt32() : 8;
+            ReplyToVue(message.MessageId, new TagRepo().GetTopTags(timelineId, limit));
         }
 
         private void HandleGetTagList(BridgeMessage message)
@@ -629,6 +647,7 @@ namespace StoryTimelineMk2.Bridge
             if (p.TryGetProperty("panSpeedMultiplier",   out var e9)) settings.PanSpeedMultiplier   = e9.GetSingle();
             if (p.TryGetProperty("panDeadzone",          out var ea)) settings.PanDeadzone          = ea.GetInt32();
             if (p.TryGetProperty("defaultItemColor",     out var eb)) settings.DefaultItemColor     = eb.GetString() ?? "#000000";
+            if (p.TryGetProperty("headerMode",           out var ec)) settings.HeaderMode           = ec.GetInt32();
 
             settingsRepo.SaveSettings(settings);
             new TimelineRepo().SetLayoutPreset(timelineId, layoutPresetId);
@@ -1003,6 +1022,80 @@ namespace StoryTimelineMk2.Bridge
             }
         }
 
+        /// <summary>
+        /// Payload is either <c>{ id }</c> (manager: export the stored calendar) or
+        /// <c>{ calendar }</c> (editor: export the on-screen state, same shape as SaveCalendar).
+        /// </summary>
+        private void HandleExportCalendar(BridgeMessage message)
+        {
+            CalendarItem cal;
+            try
+            {
+                cal = message.Payload.TryGetProperty("calendar", out var calProp)
+                    ? JsonSerializer.Deserialize<CalendarItem>(calProp.GetRawText(), _jsonOpts) ?? throw new Exception("Invalid calendar payload.")
+                    : new CalendarRepo().GetCalendarById(message.Payload.GetProperty("id").GetString()!);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("ExportCalendar", ex);
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+                return;
+            }
+
+            _parentForm!.BeginInvoke((MethodInvoker)(() =>
+            {
+                using var dlg = new SaveFileDialog
+                {
+                    Title      = "Export calendar",
+                    Filter     = "Calendar JSON (*.json)|*.json|All files (*.*)|*.*",
+                    FileName   = string.Join("_", (cal.Name is { Length: > 0 } n ? n : "calendar").Split(Path.GetInvalidFileNameChars())) + ".json",
+                    DefaultExt = "json",
+                };
+                if (dlg.ShowDialog() != DialogResult.OK)
+                {
+                    ReplyToVue(message.MessageId, new { status = "cancelled" });
+                    return;
+                }
+                try
+                {
+                    File.WriteAllText(dlg.FileName, CalendarExporter.ToJson(cal));
+                    ReplyToVue(message.MessageId, new { status = "ok", path = dlg.FileName });
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("ExportCalendar", ex);
+                    ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+                }
+            }));
+        }
+
+        private void HandleImportCalendar(BridgeMessage message)
+        {
+            _parentForm!.BeginInvoke((MethodInvoker)(() =>
+            {
+                using var dlg = new OpenFileDialog
+                {
+                    Title  = "Import calendar",
+                    Filter = "Calendar JSON (*.json)|*.json|All files (*.*)|*.*",
+                };
+                if (dlg.ShowDialog() != DialogResult.OK)
+                {
+                    ReplyToVue(message.MessageId, new { status = "cancelled" });
+                    return;
+                }
+                try
+                {
+                    var (cal, nameCollision) = CalendarExporter.Import(dlg.FileName);
+                    ReplyToVue(message.MessageId, new { status = "ok", calendarId = cal.Id, name = cal.Name, nameCollision });
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("ImportCalendar", ex);
+                    ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+                }
+            }));
+        }
+
         private void HandleOpenCalendarEditorWindow(BridgeMessage message)
         {
             string? calendarId = null;
@@ -1076,18 +1169,32 @@ namespace StoryTimelineMk2.Bridge
         // Helpers
         // -----------------------------------------------------------------------
 
-        public void SendToVue(string action, object? payload = null)
-        {
-            var response = new { action, payload };
-            string json = JsonSerializer.Serialize(response);
-            _webView.PostWebMessageAsJson(json);
-        }
+        /// <returns>false when the page could not be reached (its WebView2 is gone).</returns>
+        public bool SendToVue(string action, object? payload = null)
+            => Post(new { action, payload }, $"Bridge/Send:{action}");
 
         private void ReplyToVue(int? messageId, object? payload)
+            => Post(new { messageId, payload }, "Bridge/Reply");
+
+        /// <summary>
+        /// Every message to the page goes through here. Once the WebView2 control is disposed
+        /// (browser process killed, window torn down) posting throws InvalidOperationException,
+        /// and a caller like f_Timeline's FormClosing must not die on it — there is simply nobody
+        /// left to tell, so log it and report failure instead.
+        /// </summary>
+        private bool Post(object response, string context)
         {
-            var response = new { messageId, payload };
             string json = JsonSerializer.Serialize(response);
-            _webView.PostWebMessageAsJson(json);
+            try
+            {
+                _webView.PostWebMessageAsJson(json);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(context, ex);
+                return false;
+            }
         }
 
         // -----------------------------------------------------------------------
@@ -1231,6 +1338,22 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+            }
+        }
+
+        private void HandleSetTimelineItemsLodMask(BridgeMessage message)
+        {
+            try
+            {
+                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+                int mask       = message.Payload.GetProperty("mask").GetInt32();
+                int affected = new ItemRepo().SetLodMask(timelineId, mask);
+                ReplyToVue(message.MessageId, new { status = "ok", affected });
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Bridge/SetTimelineItemsLodMask", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }

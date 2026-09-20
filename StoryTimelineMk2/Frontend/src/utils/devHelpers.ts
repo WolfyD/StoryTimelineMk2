@@ -1,4 +1,5 @@
 import { BackendAPI } from '@/bridge/api'
+import { useTimelineStore } from '@/stores/timelineStore'
 
 // Installs window.__stl dev helpers for testing achievements from the DevTools console.
 export function installDevHelpers(): void {
@@ -12,6 +13,8 @@ export function installDevHelpers(): void {
 				{ call: '__stl.randomAchievement()',        description: 'Fire a random achievement toast (tier=achievement)' },
 				{ call: '__stl.randomMilestone()',          description: 'Fire a random milestone toast (tier=milestone)' },
 				{ call: '__stl.listKeys()',                 description: 'List all keys, titles and tiers in the DB' },
+				{ call: '__stl.lodLevels()',                description: 'List the LOD level names of the open timeline' },
+				{ call: "__stl.setAllLodMask(levels)",      description: "Make every item of the open timeline visible at exactly these levels, e.g. ['years','decades'] or 'all' (names as in lodLevels(), prefixes ok)" },
 			])
 			console.groupEnd()
 		},
@@ -94,6 +97,35 @@ export function installDevHelpers(): void {
 
 		async randomMilestone() {
 			await BackendAPI.TriggerRandomMilestone()
+		},
+
+		lodLevels() {
+			const profile = useTimelineStore().lodProfile
+			if (!profile.length) { console.error('[__stl] no timeline is open'); return }
+			console.table(profile.map(l => ({ level: l.formatKey.toLowerCase(), index: l.index })))
+		},
+
+		async setAllLodMask(levels: string[] | 'all') {
+			const store = useTimelineStore()
+			const tlId = store.currentProject?.Id
+			const profile = store.lodProfile
+			if (!tlId || !profile.length) { console.error('[__stl] no timeline is open'); return }
+			const names = profile.map(l => l.formatKey.toLowerCase())
+			let picked = profile
+			if (levels !== 'all') {
+				if (!Array.isArray(levels)) { console.error(`[__stl] usage: setAllLodMask(['years', 'decades']) or setAllLodMask('all') — levels: ${names.join(', ')}`); return }
+				picked = []
+				for (const name of levels) {
+					const lod = profile.find(l => l.formatKey.toLowerCase().startsWith(String(name).toLowerCase()))
+					if (!lod) { console.error(`[__stl] unknown LOD level "${name}" — this timeline has: ${names.join(', ')}`); return }
+					picked.push(lod)
+				}
+			}
+			const mask = picked.reduce((m, l) => m | (1 << l.index), 0)
+			const r = await BackendAPI.SetTimelineItemsLodMask(tlId, mask)
+			if (r?.status !== 'ok') { console.error('[__stl] setAllLodMask failed:', r); return }
+			await store.loadTimelineData(tlId)
+			console.log(`%c✓ ${r.affected} items now visible at: ${picked.map(l => l.formatKey.toLowerCase()).join(', ') || 'no level'}`, 'color:#4ade80;font-weight:bold')
 		},
 
 		async listKeys() {

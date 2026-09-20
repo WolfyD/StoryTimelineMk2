@@ -1,5 +1,6 @@
 import './assets/main.scss'
 import { createApp } from 'vue'
+import { installNumberInputStepping } from './utils/numberInputStepping'
 import { createPinia } from 'pinia'
 import TimelineApp from './pages/TimelineApp.vue'
 import { installDevHelpers } from './utils/devHelpers'
@@ -7,6 +8,7 @@ import { installDevHelpers } from './utils/devHelpers'
 const app = createApp(TimelineApp)
 app.use(createPinia())
 app.mount('#app')
+installNumberInputStepping()
 
 installDevHelpers()
 

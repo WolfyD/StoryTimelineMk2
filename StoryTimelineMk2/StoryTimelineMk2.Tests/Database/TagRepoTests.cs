@@ -267,6 +267,28 @@ public class TagRepoTests
         Assert.Empty(TagNames(b));
     }
 
+    // ── GetTopTags ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GetTopTags_OrdersByUsage_ScopedToTimeline_AndLimited()
+    {
+        using var ctx = new DbTestContext();
+        int tlA = InsertTimeline(ctx), tlB = InsertTimeline(ctx, "Other");
+        string a1 = InsertItem(ctx, tlA), a2 = InsertItem(ctx, tlA), b1 = InsertItem(ctx, tlB);
+
+        var repo = new TagRepo();
+        repo.EnsureTagExists("unused");
+        Link(ctx, a1, "beta"); Link(ctx, a2, "beta");
+        Link(ctx, a1, "alpha");
+        Link(ctx, a2, "gamma");
+        Link(ctx, b1, "other-timeline"); Link(ctx, b1, "alpha");
+
+        var names = repo.GetTopTags(tlA, 2).Select(t => t.Name).ToList();
+
+        Assert.Equal(["beta", "alpha"], names);   // usage desc, then name; gamma cut by the limit
+        Assert.DoesNotContain("other-timeline", repo.GetTopTags(tlA, 10).Select(t => t.Name));
+    }
+
     // ── GetAllWithUsage / RenameTag ───────────────────────────────────────────
 
     [Fact]

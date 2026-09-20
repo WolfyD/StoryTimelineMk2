@@ -64,6 +64,8 @@ export interface TimelineSettings {
     DisplayRadius: number;
     CanvasSettings: CanvasSettingsObject;
     TimelineMinimised: boolean;
+    /** Title strip of the timeline window: 0 = full, 1 = compact (title only), 2 = hidden */
+    HeaderMode: number;
     PanSpeedMultiplier: number;
     PanDeadzone: number;
     DefaultItemColor: string;
@@ -216,6 +218,12 @@ export interface TimelineItem {
 	ItemIndex: number;
 	/** Side of the line: 0 = not assigned yet (backend picks on save), 1 = above, 2 = below. */
 	Placement?: number;
+	/** Box centered on its stem instead of offset to one side (events and notes) */
+	Centered?: boolean;
+	/** Draw the title as a caption strip on the canvas (pictures only) */
+	ShowTitle?: boolean;
+	/** Writer's private notes: stored and exported, never rendered anywhere */
+	ItemNotes?: string | null;
 	ShowInNotes: boolean;
 	Importance: number;
 	MinLodLevel: number;

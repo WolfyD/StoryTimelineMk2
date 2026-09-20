@@ -70,7 +70,7 @@ Conventions used throughout this document:
 - Weekend columns come from `weekendDays`, falling back to columns 5–6 when `weekLength === 7`.
 - Month navigation is clamped to `[0, months.length - 1]` — no year wrap.
 
-**Used by** — `pages/CalendarApp.vue` (calendar editor, for fixed memorable days); tested in `CalendarDayPicker.test.ts`.
+**Used by** — `MemorableDaysModal.vue` (fixed memorable days); tested in `CalendarDayPicker.test.ts`.
 
 **Gotchas** — `viewMonth` syncs from `props.startMonth` on change, and `pickingEnd` resets when `isRange` toggles; the packed-int scheme (100 000) differs from CalendarMonthGrid's (10 000) — they are independent encodings, not shared.
 
@@ -78,7 +78,7 @@ Conventions used throughout this document:
 
 ## CalendarManagerModal.vue
 
-**Purpose** — Lists all calendars with View / Edit actions and a "New Calendar" button. The management hub reachable from the project list.
+**Purpose** — Lists all calendars with View / Edit / Export actions and "New Calendar" / "Import Calendar" buttons. The management hub reachable from the project list.
 
 | Contract | Details |
 |---|---|
@@ -92,10 +92,11 @@ Conventions used throughout this document:
 - **View** opens a nested `CalendarViewModal` (rendered as a sibling inside the same Teleport, higher z-index) with `viewingId`.
 - **Edit** and **New** don't navigate in-page — they call `BackendAPI.send('OpenCalendarEditorWindow', { calendarId })`, which opens a *separate WinForms window* hosting `CalendarApp`.
 - The view modal's `edit` event closes the viewer and forwards to the same native-window opener.
+- **Export** (per row) → `BackendAPI.ExportCalendar({ id })`; **Import Calendar** (footer) → `BackendAPI.ImportCalendar()`. Both are native file dialogs; `cancelled` is silent, success and failure go to the `notice` line above the footer buttons (failures are also `console.error`-ed). A successful import dispatches `calendars-changed`, which reloads this list and any open calendar pickers, and the notice mentions a name collision when the file's name was already taken.
 
 **Used by** — `App.vue` (`showCalendarManager` flag).
 
-**Gotchas** — after editing in the external window, this list does **not** auto-refresh; the user must press the refresh button (unlike EditTimelineModal / SelectCalendarModal, which refresh on window focus).
+**Gotchas** — the list reloads on the `calendars-changed` window event (the editor window closing, an import here), so a manual refresh is only needed after out-of-band changes.
 
 ---
 
@@ -178,6 +179,22 @@ Conventions used throughout this document:
 **Used by** — `ProjectContainer.vue`.
 
 **Gotchas** — the component itself performs no deletion; the parent calls `BackendAPI.DeleteTimeline` on `confirm`. No busy state — double clicks are possible in theory.
+
+---
+
+## ConfirmModal.vue
+
+**Purpose** — The app's generic yes/no dialog on top of `BaseModal`; replaces `window.confirm()`, which cannot be themed.
+
+| Contract | Details |
+|---|---|
+| Props | `title: string`, `message?: string`, `confirmLabel?` (`'OK'`), `cancelLabel?` (`'Cancel'`), `danger?: boolean` (red confirm button) |
+| Emits | `confirm: []`, `cancel: []` (Escape and backdrop also emit `cancel`) |
+| Slots / Expose | *(none)* |
+
+**Used by** — `pages/EditItem.vue` (discard unsaved changes), `MassAddItemsModal.vue` (discard unsaved drafts).
+
+**Gotchas** — not teleported; z-index 1100 so it sits above a `BaseModal` caller. A caller inside a popover would wrap it in `<Teleport to="body">` itself. Footer buttons are `.bm-footer .btn-secondary` (cancel) and `.btn-danger` / `.btn-primary` (confirm) — tests click those.
 
 ---
 
@@ -303,6 +320,75 @@ Conventions used throughout this document:
 
 ---
 
+## LodMaskModal.vue
+
+**Purpose** — Checklist editor for a LOD visibility bitmask with the full level names (`lodLevelLabel`), plus All / None links. Used where the three-letter `LodMaskToggles` would be cryptic.
+
+| Contract | Details |
+|---|---|
+| Props | `modelValue: number`, `lodProfile: LodLevel[]`, `title?` (`'Visible At Zoom Levels'`), `hint?`, `applyLabel?` (`'Apply'`), `danger?` (red Apply), `closeOnApply?` (`true`), `busy?`, `error?` |
+| Emits | `update:modelValue: [number]`, `apply: [number]`, `close: []` |
+| Slots / Expose | *(none)* |
+
+**Key behaviour** — edits a local `draft`; **Apply** (`.lod-apply`) emits `update:modelValue` + `apply` and, with `closeOnApply`, closes. With `closeOnApply=false` the parent runs the change on `apply`, feeds back `busy` (buttons disabled, "…") and `error` (`.lod-error` under the list) and closes the modal itself on success. Cancel / Escape / backdrop just close. "All" is the OR of every level in the profile (not 255).
+
+**Used by** — `TimelineSettingsModal.vue` (New Items Visible At, hand-back mode), `TimelineActionsMenu.vue` (Set Visibility Of All Items, run-it-yourself mode, teleported to body).
+
+---
+
+## LodMaskToggles.vue
+
+**Purpose** — One toggle button per LOD level of a calendar, editing a visibility bitmask (bit *n* = visible at LOD index *n*). Compact three-letter form for the edit window; everywhere else `LodMaskModal` shows the full names.
+
+| Contract | Details |
+|---|---|
+| Props | `modelValue: number`, `lodProfile: LodLevel[]` |
+| Emits | `update:modelValue: [number]` (v-model compatible) |
+| Slots / Expose | *(none)* |
+
+**Key behaviour** — Click flips the level's bit (`modelValue ^ (1 << lod.index)`); labels are the first three letters of `formatKey`, the full name is the tooltip.
+
+**Used by** — `pages/EditItem.vue` (`item.LodVisibilityMask`).
+
+---
+
+## MassAddItemsModal.vue
+
+**Purpose** — Quick-add many items at once (BL-45): a two-column modal with a title/type/year form on the left and the queued drafts on the right; **Finished** saves them all.
+
+| Contract | Details |
+|---|---|
+| Props | *(none)* — reads `store.currentProject`, `store.settings`, `store.lodProfile` |
+| Emits | `close: []` |
+| Slots / Expose | *(none)* |
+
+**Key behaviour**
+- Types are a 4-way segmented toggle: Event, Period, Age, Note (Period/Age show a "To year" stepper; Picture and Bookmark are deliberately left out). To year follows From + 1 until the user touches it.
+- *Add* validates (title, year), swaps reversed years and turns equal years into a one-year range, pushes a draft, clears the title; the type sticks, the year is kept while **Remember year** is ticked (default on); the − / + buttons and Shift + / Shift − (window keydown, so they work inside the title box too) step the year.
+- Clicking a queued row loads it back into the form (`editingId`): Add becomes **Update**, a Cancel button drops the edit.
+- *Finished* builds each draft with the edit window's new-item defaults (`store.settings.DefaultItemColor`, `default_lod_mask` via `loadDefaultLodMask`, `CreationGranularity` = the profile's year level, Importance 5, MinLodLevel 3, ShowInNotes) and calls `BackendAPI.SaveItem` **sequentially** (the backend picks each item's side from what is already saved). Saved drafts leave the queue; the first failure stops the loop, is `console.error`-ed and shown inline with the count saved so far. Any successful save triggers `store.loadTimelineData`; the modal closes only when the queue is empty.
+- Escape / backdrop / Cancel go through `tryClose`, which asks via `ConfirmModal` when unsaved drafts remain.
+
+**Used by** — `pages/TimelineApp.vue` (`showMassAdd`, opened by the activity strip's `open-mass-add`).
+
+---
+
+## MemorableDaysModal.vue
+
+**Purpose** — The calendar editor's memorable-day editor (BL-46): list of days on the left, the selected day's colour / name / type and its picker (`CalendarDayPicker`, `WeekDayPicker` or `RelativeRuleEditor`) on the right. Also exports the `MemorableDay` interface (plain `<script>` block).
+
+| Contract | Details |
+|---|---|
+| Props | `days: MemorableDay[]`, `selectedId: string \| null`, `months`, `seasons`, `hasSeasons`, `hasWeekDef`, `weekLength`, `dayLabels?`, `weekendDays` |
+| Emits | `update:selectedId: [string \| null]`, `add: []`, `remove: [id]`, `close: []` |
+| Slots / Expose | *(none)* |
+
+**Key behaviour** — edits are **live**: `selected` is a computed over the parent's `days` array, so `v-model` on its fields mutates the parent's objects directly. Add and Delete are delegated to the parent (`add` / `remove` emits) so `CalendarApp` stays the owner of the list; Close is the only other footer button — the calendar's own Save persists. Falls back to the first day when `selectedId` matches nothing.
+
+**Used by** — `pages/CalendarApp.vue` (`showMemDays`, opened by the section's chips or **Manage days…**).
+
+---
+
 ## ProjectContainer.vue
 
 **Purpose** — The project list on the start screen: one row per timeline (color dot + title, click to open) with an expanding per-row action group (Edit / Export / Duplicate / Delete) behind a 3-dot toggle, plus all four action modals.
@@ -343,7 +429,7 @@ Conventions used throughout this document:
 - Preview computed by `describeRule()` (`@/utils/relativeRule`) with a name context built from props.
 - `periodMonth` select value `''` maps to `null` = "Every month".
 
-**Used by** — `pages/CalendarApp.vue` (memorable day type "relative"); `WeekDayPicker` internally.
+**Used by** — `MemorableDaysModal.vue` (memorable day type "relative"); `WeekDayPicker` internally.
 
 **Gotchas** — the "memorable-day" anchor option is disabled when `otherMemDays` is empty (prevents self-referencing rules with no target); span is clamped to `>= 1`.
 
@@ -379,9 +465,25 @@ Conventions used throughout this document:
 
 ---
 
+## SwatchEditorModal.vue
+
+**Purpose** — Edits the 12 quick-pick colour swatches in a grid of `<input type="color">`s with a hex label each.
+
+| Contract | Details |
+|---|---|
+| Props | `modelValue: string[]` |
+| Emits | `update:modelValue: [string[]]`, `close: []` |
+| Slots / Expose | *(none)* |
+
+**Key behaviour** — works on a local `draft`; **Apply** emits and closes, Cancel discards, **Reset to defaults** loads `DEFAULT_SWATCHES` into the draft (still needs Apply).
+
+**Used by** — `TimelineSettingsModal.vue` (Colour Swatches chip).
+
+---
+
 ## TimelineActionsMenu.vue
 
-**Purpose** — The "⋮" actions popover anchored to the activity strip: manages **hidden time ranges** (list / add / delete) and **Shift All Items** (move every item by ±N years).
+**Purpose** — The "⋮" actions popover anchored to the activity strip: manages **hidden time ranges** (list / add / delete), **Shift All Items** (move every item by ±N years) and **Set Visibility Of All Items** (overwrite every item's LOD mask).
 
 | Contract | Details |
 |---|---|
@@ -396,6 +498,7 @@ Conventions used throughout this document:
 - **Dismissal** — a document-level `mousedown` listener closes the popover when the click target is outside `rootEl`; Escape also closes. Listeners are registered on mount and removed on unmount.
 - **Hidden ranges** — seeds local state from `store.hiddenRanges`; add validates (both years present, end > start) then `BackendAPI.SaveHiddenRange(timelineId, start, end, label|null)`, inserts sorted by `StartYear`, and pushes the new list into the store (`store.setHiddenRanges`) so the canvas re-renders. Delete mirrors this via `BackendAPI.DeleteHiddenRange`.
 - **Shift** — `BackendAPI.ShiftTimelineItems(timelineId, delta)`; success shows "Shifted N items by ±delta years." and emits `shiftComplete` so the parent can reload items.
+- **LOD mask** — a single **Set visibility…** button (`.lod-open`) opens `LodMaskModal` (teleported to body, since the popover is `overflow: hidden`) with `closeOnApply=false`; the modal's red **Apply to N items** runs `BackendAPI.SetTimelineItemsLodMask(timelineId, mask)` then `store.loadTimelineData` directly (no emit — nothing to animate). Success closes the modal and shows "Updated N items." (`.lod-ok`) in the popover; failures are `console.error`-ed and shown inside the modal. While the modal is open, outside-click and Escape leave the popover alone.
 
 **Used by** — `pages/TimelineApp.vue`, slotted into `TimelineActivityStrip`'s `actions` slot.
 
@@ -405,12 +508,12 @@ Conventions used throughout this document:
 
 ## TimelineActivityStrip.vue
 
-**Purpose** — The 48 px vertical VS Code-style navigation strip on the left edge of the timeline window: actions slot (3-dot menu), filter toggle, nav icons (Timeline active; Characters/Map/Search/Statistics ghosted "coming soon"), and a settings gear pinned to the bottom.
+**Purpose** — The 48 px vertical VS Code-style navigation strip on the left edge of the timeline window: actions slot (3-dot menu), filter toggle, year calendar, Tags, Mass add items, nav icons (Timeline active; Characters/Map/Search/Statistics ghosted "coming soon"), help flyout and a settings gear pinned to the bottom.
 
 | Contract | Details |
 |---|---|
-| Props | `filterActive: boolean` (green "tool active" styling on the funnel) |
-| Emits | `toggle-filter: []`, `open-settings: []` |
+| Props | `filterActive: boolean` (green "tool active" styling on the funnel), `miniMode: boolean`, `yearCalendarOpen: boolean` |
+| Emits | `toggle-filter`, `toggle-mini`, `toggle-year-calendar`, `open-tags`, `open-mass-add`, `open-help`, `open-about`, `open-settings` (all `[]`) |
 | Slots | `actions` — rendered at the very top (TimelineApp puts `TimelineActionsMenu` here) |
 | Expose | *(none)* |
 
@@ -689,11 +792,12 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 **Key behaviour**
 
 - Two reactive mirrors: `local` (per-timeline `TimelineSettings` + `selectedLayoutId`) and `localLayout` (a fully defaulted `LayoutSettings` built by `initLayout()`, which supplies a hard-coded default for **every** field — this doubles as the canonical default table).
-- On mount loads layout presets + system fonts in parallel (`GetLayoutSettingsList`, `GetSystemFonts` → fed to `FontPicker`s). Escape closes (window keydown listener).
+- On mount loads layout presets, system fonts and the two `timelinePrefs` values (colour swatches, default LOD mask) in parallel (`GetLayoutSettingsList`, `GetSystemFonts`, `GetMiscSetting`×2). Escape closes (window keydown listener).
+- **Colour Swatches** is a chip of 12 dots (`.swatch-preview`) that opens `SwatchEditorModal`; **New Items Visible At** is a summary chip (`.lod-summary`, text from `lodMaskSummary`) that opens `LodMaskModal`. Both modals hand a value back only on Apply; the settings Save then persists it.
 - Switching preset (`selectedLayoutId` watcher) fetches that preset's values via `GetLayoutSettingsById` and `Object.assign`s them into `localLayout`. "New preset" clones the current one via `CreateLayoutPreset(name, sourceId)` and auto-selects it. Built-in presets (`ls_default`, `ls_dark`) show a "Reset to defaults" button → `ResetLayoutPreset` (errors are alert()-ed with details).
 - **Search**: a watcher on `searchQuery` does direct DOM classwork — removes all `.search-hl`, then adds it to `.section-title` and `.s-label` elements whose text matches, and smooth-scrolls the first match into view. No virtualization; purely cosmetic.
 - **Data-range color + alpha**: `TimelineDataRangeColor` supports `#RGBA`/`#RRGGBBAA`; `parseHexAlpha`/`buildHexAlpha` split it into an RGB color input + a 0–100% opacity slider that recombine via a watcher.
-- **Save** runs `SaveSettings` (per-timeline) and `SaveLayoutSettings(localLayout)` in parallel; on double success it writes the values back into `store.settings`, sets `store.setLayoutSettings(...)` (which triggers the canvas's nuclear layout watcher), and closes. Filter display mode radios write to the store immediately (not part of Save).
+- **Save** runs `SaveSettings` (per-timeline), `SaveLayoutSettings(localLayout)` and the two `timelinePrefs` writes (`SetMiscSetting` for `color_swatches` / `default_lod_mask`) in parallel; when all succeed it writes the values back into `store.settings`, sets `store.setLayoutSettings(...)` (which triggers the canvas's nuclear layout watcher), and closes. Any failure is `console.error`-ed with every result and shown as "Save failed". Filter display mode radios write to the store immediately (not part of Save).
 
 **Used by** — `pages/TimelineApp.vue`; tested in `TimelineSettingsModal.test.ts`.
 
@@ -713,7 +817,7 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 
 **Key behaviour** — toggle adds/removes the index and emits a sorted copy (never mutates the prop). Labels fall back to `D1…Dn`. `weekLength === 0` renders an italic "No week defined" note.
 
-**Used by** — `RelativeRuleEditor.vue`, `pages/CalendarApp.vue`; tested in `WeekDayPicker.test.ts`.
+**Used by** — `RelativeRuleEditor.vue`, `MemorableDaysModal.vue`; tested in `WeekDayPicker.test.ts`.
 
 ---
 
@@ -745,22 +849,28 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 |---|---|
 | AppSettingsModal | App.vue |
 | AuthorReminderModal | App.vue |
-| CalendarDayPicker | pages/CalendarApp.vue |
+| CalendarDayPicker | MemorableDaysModal |
 | CalendarManagerModal | App.vue |
 | CalendarMonthGrid | CalendarYearView |
 | CalendarViewModal | CalendarManagerModal |
 | CalendarYearView | CalendarViewModal |
 | ConfirmDeleteModal | ProjectContainer |
+| ConfirmModal | pages/EditItem.vue, MassAddItemsModal |
 | DuplicateTimelineModal | ProjectContainer |
 | EditTimelineModal | ProjectContainer |
 | ExportTimelineModal | ProjectContainer |
 | FontPicker | TimelineSettingsModal |
 | ImagePickerModal | pages/EditItem.vue |
 | LodDateInput | pages/EditItem.vue |
+| LodMaskModal | TimelineSettingsModal, TimelineActionsMenu |
+| LodMaskToggles | pages/EditItem.vue |
+| MassAddItemsModal | pages/TimelineApp.vue |
+| MemorableDaysModal | pages/CalendarApp.vue |
 | ProjectContainer | App.vue |
-| RelativeRuleEditor | pages/CalendarApp.vue |
+| RelativeRuleEditor | MemorableDaysModal |
 | SelectCalendarModal | App.vue |
 | SplashTitle | App.vue |
+| SwatchEditorModal | TimelineSettingsModal |
 | TimelineActionsMenu | pages/TimelineApp.vue (in TimelineActivityStrip `actions` slot) |
 | TimelineActivityStrip | pages/TimelineApp.vue |
 | TimelineCanvas | pages/TimelineApp.vue |
@@ -772,5 +882,5 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 | TimelineMinimap | pages/TimelineApp.vue |
 | TimelineNotesPanel | pages/TimelineApp.vue |
 | TimelineSettingsModal | pages/TimelineApp.vue |
-| WeekDayPicker | RelativeRuleEditor, pages/CalendarApp.vue |
+| WeekDayPicker | RelativeRuleEditor, MemorableDaysModal |
 | WindowTitleBar | pages/TimelineApp.vue, pages/EditItem.vue, pages/CalendarApp.vue |

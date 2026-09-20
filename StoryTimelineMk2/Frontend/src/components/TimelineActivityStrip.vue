@@ -12,6 +12,7 @@ import {
     PhArrowsOut,
     PhCalendarDots,
     PhTag,
+    PhListPlus,
     PhBookOpen,
     PhInfo,
 } from '@phosphor-icons/vue'
@@ -31,6 +32,7 @@ const emit = defineEmits<{
     'toggle-mini': []
     'toggle-year-calendar': []
     'open-tags': []
+    'open-mass-add': []
 }>()
 
 const helpMenuOpen = ref(false)
@@ -87,6 +89,11 @@ const navItems = [
         <!-- ── Tags ───────────────────────────────────────────────── -->
         <button class="strip-btn strip-btn--tags" title="Tags" @click="emit('open-tags')">
             <PhTag :size="20" />
+        </button>
+
+        <!-- ── Mass add ───────────────────────────────────────────── -->
+        <button class="strip-btn strip-btn--mass-add" title="Mass add items" @click="emit('open-mass-add')">
+            <PhListPlus :size="20" />
         </button>
 
         <!-- ── gap + separator ───────────────────────────────────── -->

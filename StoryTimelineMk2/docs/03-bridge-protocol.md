@@ -76,10 +76,15 @@ message event →
 
 ## 3. C#-to-Vue Push Mechanism
 
-- `MessageRouter.SendToVue(action, payload)` (public) serializes `{ action, payload }` and
-  calls `_webView.PostWebMessageAsJson()`. Used for unsolicited pushes.
+- `MessageRouter.SendToVue(action, payload)` (public) serializes `{ action, payload }`.
+  Used for unsolicited pushes. Returns `false` when the page could not be reached.
 - `MessageRouter.ReplyToVue(messageId, payload)` (private) serializes `{ messageId, payload }`.
   Used by every request handler.
+- Both go through the private `Post(response, context)`, the only caller of
+  `_webView.PostWebMessageAsJson()`. Once the WebView2 control is disposed (browser process
+  killed, window torn down) that throws `InvalidOperationException`; `Post` logs it
+  (`Logger.Error`) and returns `false` instead of letting it escape into callers such as
+  `f_Timeline`'s `FormClosing`, where it used to leave a black window that could not be closed.
 
 ### Push actions currently sent
 
@@ -114,13 +119,14 @@ lowercase while serialized domain models keep their C# PascalCase names.
 | `SaveTimelineInfo` | req | `SaveTimelineInfo(id, title, author, description, startYear, color, calendarId?)` | `{ id, title, author, description, startYear, color, calendarId }` | `HandleSaveTimelineInfo` | `{ status: "ok" }` | `color` and `calendarId` optional (`TryGetProperty`). |
 | `ExportTimeline` | req | `ExportTimeline(id, includeIds)` | `{ id, includeIds }` | `HandleExportTimeline` | `{ status: "ok" }` \| `{ status: "cancelled" }` | Opens native `SaveFileDialog`, writes JSON (`exportVersion: 1`). `cancelled` when the user dismisses the dialog. |
 | `ShiftTimelineItems` | req | `ShiftTimelineItems(timelineId, delta)` | `{ timelineId, delta }` | `HandleShiftTimelineItems` | `{ status: "ok", affected }` \| `{ status: "error", message }` | `delta == 0` short-circuits with `affected: 0`. |
+| `SetTimelineItemsLodMask` | req | `SetTimelineItemsLodMask(timelineId, mask)` | `{ timelineId, mask }` | `HandleSetTimelineItemsLodMask` | `{ status: "ok", affected }` \| `{ status: "error", message }` | `ItemRepo.SetLodMask` — one `UPDATE` of `lod_visibility_mask` for every item of the timeline. Caller reloads the timeline. |
 
 ### 4.2 Edit item window
 
 | Action | Dir | Frontend method | Payload | Backend handler | Response | Notes |
 |--------|-----|-----------------|---------|-----------------|----------|-------|
 | `OpenAddEditItemWindow` | f&f | — (`BackendAPI.send(...)` directly from `pages/TimelineApp.vue`) | `{ timelineId, itemId, typeId, year?, granularity? }` (all optional on the C# side; defaults: `timelineId=0`, `itemId=null`, `typeId=1`) | `HandleOpenAddEditItemWindow` | none | Opens `f_AddEditItem` via `Show()` (not `ShowDialog()` — nested COM loop breaks `EnsureCoreWebView2Async`). Wires `NotifyCallback` so the child window can push `ItemSaved` back to this WebView2. |
-| `GetItemForEdit` | req | `GetItemForEdit(timelineId, itemId, typeId = 1)` | `{ timelineId, itemId, typeId }` | `HandleGetItemForEdit` | `{ Item, Tags, Characters, StoryRefs, ChapterRefs, Calendar, Pictures }` (PascalCase) | `itemId` null/empty → returns a fresh unsaved `TimelineItem` with the given `TimelineId`/`TypeId`. `Calendar` comes from the timeline. |
+| `GetItemForEdit` | req | `GetItemForEdit(timelineId, itemId, typeId = 1)` | `{ timelineId, itemId, typeId }` | `HandleGetItemForEdit` | `{ Item, Tags, Characters, StoryRefs, ChapterRefs, Calendar, Pictures }` (PascalCase) | `itemId` null/empty → returns a fresh unsaved `TimelineItem` with the given `TimelineId`/`TypeId`, the timeline's `DefaultItemColor` and its `default_lod_mask` misc setting (255 when unset). `Calendar` comes from the timeline. |
 | `SaveItem` | req | `SaveItem(item, tagNames, characterAppearances, storyRefs, chapterRefs)` | `{ item: TimelineItem, tagNames: string[], characterAppearances: { CharacterId, Role }[], storyRefs: string[], chapterRefs: string[] }` | `HandleSaveItem` | `{ status: "ok", itemId }` \| `{ status: "error", message, detail }` | Deserialized case-insensitively into `SaveItemPayload`. On success also pushes `ItemSaved` to the opener window via `NotifyCallback` (see §3). |
 | `DeleteItem` | req | `DeleteItem(itemId)` | `{ itemId }` | `HandleDeleteItem` | `{ status: "ok" }` | No try/catch. |
 | `SearchTags` | req | `SearchTags(query)` | `{ query }` | `HandleSearchTags` | `Tag[]` | |
@@ -141,6 +147,8 @@ lowercase while serialized domain models keep their C# PascalCase names.
 | `SaveCalendar` | req | `SaveCalendar(calendar)` | the **calendar object itself** (not wrapped) — deserialized into `CalendarItem` | `HandleSaveCalendar` | `{ status: "ok" }` \| `{ status: "error", message }` | Saves calendar + its LOD profile (`SaveCalendarWithLod`). |
 | `CreateCalendar` | req | `CreateCalendar(cloneFrom = 'cal_default_gregorian')` | `{ cloneFrom }` | `HandleCreateCalendar` | `{ status: "ok", calendarId }` \| `{ status: "error", message }` | Clones the source calendar *and* its LOD profile with new GUIDs; name is `"New Calendar"`. |
 | `DeleteCalendar` | req | `DeleteCalendar(id)` | `{ id }` | `HandleDeleteCalendar` | `{ status: "ok", reassigned }` \| `{ status: "error", message }` | Timelines that used it switch to the default Gregorian calendar (`reassigned` = how many); the default calendar itself cannot be deleted. Only offered from `CalendarManagerModal`. |
+| `ExportCalendar` | req | `ExportCalendar({ id } \| { calendar })` | `{ id }` (stored calendar) or `{ calendar }` (a `SaveCalendar`-shaped object — the editor's unsaved state) | `HandleExportCalendar` | `{ status: "ok", path }` \| `{ status: "cancelled" }` \| `{ status: "error", message }` | Native `SaveFileDialog`; writes `CalendarExporter.ToJson` (calendar names + `yearDefinition` object + `lodProfile { name, profile[] }`, nested JSON inlined). |
+| `ImportCalendar` | req | `ImportCalendar()` | `{}` | `HandleImportCalendar` | `{ status: "ok", calendarId, name, nameCollision }` \| `{ status: "cancelled" }` \| `{ status: "error", message }` | Native `OpenFileDialog`; `CalendarExporter.Import` validates the file (format tag, name, year definition, LOD profile with a YEARS level) and saves a **new** calendar + LOD profile (new ids, name kept). `nameCollision` = another calendar already had that name (case-insensitive). |
 | `OpenCalendarEditorWindow` | f&f | — (`send()` from `SelectCalendarModal.vue`, `CalendarManagerModal.vue`, `EditTimelineModal.vue`) | `{ calendarId }` (nullable) | `HandleOpenCalendarEditorWindow` | none | Opens `f_Calendar`. |
 
 ### 4.4 Settings, fonts, layout presets

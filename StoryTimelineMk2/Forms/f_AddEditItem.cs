@@ -134,6 +134,9 @@ namespace StoryTimelineMk2.Forms
                     return;
                 }
                 _closeConfirmed = false;
+                // Hide() lets Windows activate the next window in Z-order, which after an Alt+Tab
+                // round trip is some other app — activate the owner (timeline) first.
+                Owner?.Activate();
                 Hide();
                 return;
             }

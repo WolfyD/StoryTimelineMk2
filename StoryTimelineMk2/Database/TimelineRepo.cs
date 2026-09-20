@@ -209,16 +209,16 @@ namespace StoryTimelineMk2.Database
                         INSERT INTO items (id, title, description, content, story_id, type_id,
                             year, end_year, absolute_start, absolute_end,
                             book_title, chapter, page, color,
-                            creation_granularity, timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement)
+                            creation_granularity, timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement, centered, show_title, item_notes)
                         VALUES (@NewId, @title, @description, @content, @story_id, @type_id,
                             @year, @end_year, @absolute_start, @absolute_end,
                             @book_title, @chapter, @page, @color,
-                            @creation_granularity, @NewTimelineId, @item_index, @show_in_notes, @importance, @min_lod_level, @lod_visibility_mask, @placement)",
+                            @creation_granularity, @NewTimelineId, @item_index, @show_in_notes, @importance, @min_lod_level, @lod_visibility_mask, @placement, @centered, @show_title, @item_notes)",
                         new {
                             NewId = newItemId, item.title, item.description, item.content, item.story_id,
                             item.type_id, item.year, item.end_year, item.absolute_start, item.absolute_end,
                             item.book_title, item.chapter, item.page, item.color, item.creation_granularity,
-                            NewTimelineId = newId, item.item_index, item.show_in_notes, item.importance, item.min_lod_level, item.lod_visibility_mask, item.placement
+                            NewTimelineId = newId, item.item_index, item.show_in_notes, item.importance, item.min_lod_level, item.lod_visibility_mask, item.placement, item.centered, item.show_title, item.item_notes
                         }, tx);
                 }
 

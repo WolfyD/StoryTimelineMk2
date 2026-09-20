@@ -454,6 +454,30 @@ public class ItemRepoTests
         Assert.False(links.HasPicture);
     }
 
+    // ── SetLodMask ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SetLodMask_OverwritesEveryItemOfThatTimelineOnly_AndReturnsCount()
+    {
+        using var ctx = new DbTestContext();
+        int tl1 = SeedTimeline(ctx, "TL One");
+        int tl2 = SeedTimeline(ctx, "TL Two");
+        var repo = new ItemRepo();
+        var a = MakeItem(tl1); a.LodVisibilityMask = 255;
+        var b = MakeItem(tl1); b.LodVisibilityMask = 1;
+        var c = MakeItem(tl2); c.LodVisibilityMask = 255;
+        repo.SaveItemFull(a, [], [], [], []);
+        repo.SaveItemFull(b, [], [], [], []);
+        repo.SaveItemFull(c, [], [], [], []);
+
+        int affected = repo.SetLodMask(tl1, 0b1001000);
+
+        Assert.Equal(2, affected);
+        Assert.Equal(0b1001000, repo.GetItemById(a.Id).LodVisibilityMask);
+        Assert.Equal(0b1001000, repo.GetItemById(b.Id).LodVisibilityMask);
+        Assert.Equal(255, repo.GetItemById(c.Id).LodVisibilityMask);
+    }
+
     // ── ShiftItems ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -542,7 +566,7 @@ public class ItemRepoTests
     }
 
     [Fact]
-    public void SaveItemFull_KeepsPlacement_OnUpdate_AndHonoursExplicitSide()
+    public void SaveItemFull_HonoursExplicitSide_AndRepicksForAuto()
     {
         using var ctx = new DbTestContext();
         int tlId = SeedTimeline(ctx);
@@ -552,17 +576,49 @@ public class ItemRepoTests
         repo.SaveItemFull(first, [], [], [], []);
         Assert.Equal(1, repo.GetItemById(first.Id).Placement);
 
-        // Re-saving with Placement 0 (frontend never sends it back) keeps the stored side.
-        var again = MakeItem(tlId, first.Id);
-        again.Title = "Renamed";
-        repo.SaveItemFull(again, [], [], [], []);
-        Assert.Equal(1, repo.GetItemById(first.Id).Placement);
-
         // An explicit side wins over auto-assignment.
-        var forced = MakeItem(tlId);
-        forced.Placement = 1;
-        repo.SaveItemFull(forced, [], [], [], []);
-        Assert.Equal(1, repo.GetItemById(forced.Id).Placement);
+        first.Placement = 2;
+        repo.SaveItemFull(first, [], [], [], []);
+        Assert.Equal(2, repo.GetItemById(first.Id).Placement);
+
+        // Placement 0 ("Auto" in the edit window) makes the backend pick again.
+        first.Placement = 0;
+        repo.SaveItemFull(first, [], [], [], []);
+        Assert.Equal(1, repo.GetItemById(first.Id).Placement);
+    }
+
+    [Fact]
+    public void SaveItemFull_PersistsCentered()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var item = MakeItem(tlId);
+        repo.SaveItemFull(item, [], [], [], []);
+        Assert.False(repo.GetItemById(item.Id).Centered);
+
+        item.Centered = true;
+        item.ShowTitle = true;
+        repo.SaveItemFull(item, [], [], [], []);
+        Assert.True(repo.GetItemById(item.Id).Centered);
+        Assert.True(repo.GetItemById(item.Id).ShowTitle);
+    }
+
+    [Fact]
+    public void SaveItemFull_PersistsItemNotes_AndNullIsAllowed()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var item = MakeItem(tlId);
+        repo.SaveItemFull(item, [], [], [], []);
+        Assert.Null(repo.GetItemById(item.Id).ItemNotes);
+
+        item.ItemNotes = "remember: foreshadows the coup\nline two";
+        repo.SaveItemFull(item, [], [], [], []);
+        Assert.Equal("remember: foreshadows the coup\nline two", repo.GetItemById(item.Id).ItemNotes);
     }
 
     [Fact]

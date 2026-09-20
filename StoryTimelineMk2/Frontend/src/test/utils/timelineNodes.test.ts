@@ -43,6 +43,8 @@ vi.mock('konva', () => {
       Text: makeClass('Text'),
       Image: makeClass('Image'),
       Circle: makeClass('Circle'),
+      Label: makeClass('Label'),
+      Tag: makeClass('Tag'),
       Group,
       Easings: { EaseOut: 'easeOut' },
     },
@@ -170,6 +172,13 @@ describe('buildNode', () => {
     expect(() => buildNode('id-1', 'Event', 'Title', '#fff', stems as any, boxes as any, ls)).not.toThrow()
   })
 
+  it('builds a Picture caption only when showTitle is set', () => {
+    expect(buildNode('p1', 'Picture', 'Pic', '#aaa', stems as any, boxes as any, ls).label).toBeUndefined()
+    const el = buildNode('p1', 'Picture', 'Pic', '#aaa', stems as any, boxes as any, ls, true)
+    expect(el.label).toBeDefined()
+    expect(el.label.add).toHaveBeenCalledTimes(2)   // Tag + Text
+  })
+
   it('builds a Period node with only a box (no stem, no label)', () => {
     const el = buildNode('id-2', 'Period', 'A Period', '#aaa', stems as any, boxes as any, ls)
     expect(el.box).toBeDefined()
@@ -287,6 +296,25 @@ describe('updateAbsolutePositions', () => {
     expect(box.position).toHaveBeenCalled()
     expect(label.position).toHaveBeenCalled()
     expect(stem.points).toHaveBeenCalled()
+  })
+
+  it('Picture caption is positioned at the image left edge', () => {
+    const box = makeKonvaShape('box')
+    const stem = makeKonvaShape('stem')
+    const label = makeKonvaShape('label')
+    ;(label.height as any).mockReturnValue(20)
+    updateAbsolutePositions({ box, stem, label }, 'Picture', 200, 200, 100, 60, true, 400, ls)
+    expect(box.position).toHaveBeenCalledWith({ x: 170, y: 100 })
+    expect(label.position).toHaveBeenCalledWith({ x: 170, y: 140 })
+  })
+
+  it('centered Event straddles the anchor and its stem goes straight up', () => {
+    const box = makeKonvaShape('box')
+    const stem = makeKonvaShape('stem')
+    const label = makeKonvaShape('label')
+    updateAbsolutePositions({ box, stem, label }, 'Event', 200, 200, 100, 130, true, 400, ls, true)
+    expect(box.position).toHaveBeenCalledWith({ x: 200 - 65, y: 100 })
+    expect(stem.points).toHaveBeenCalledWith([200, 400, 200, 100])
   })
 
   it('does not throw for any type', () => {

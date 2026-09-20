@@ -25,6 +25,12 @@ namespace StoryTimelineMk2.Database
         public int ItemIndex { get; set; }
         /// <summary>0 = unassigned, 1 = above the axis, 2 = below. Picked on first save, then sticky.</summary>
         public int Placement { get; set; }
+        /// <summary>Box centered on its stem instead of offset to one side (events and notes).</summary>
+        public bool Centered { get; set; }
+        /// <summary>Draw the title as a caption strip on the canvas (pictures only).</summary>
+        public bool ShowTitle { get; set; }
+        /// <summary>Writer's private notes — stored and exported, never rendered on the canvas, data panel or view modal.</summary>
+        public string? ItemNotes { get; set; }
         public bool ShowInNotes { get; set; } = true;
         public int MinLodLevel { get; set; }
         public int LodVisibilityMask { get; set; } = 255;

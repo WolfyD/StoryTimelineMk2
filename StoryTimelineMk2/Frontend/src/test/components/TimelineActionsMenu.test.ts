@@ -10,6 +10,7 @@ vi.mock('@/bridge/api', () => ({
     SaveHiddenRange: vi.fn(),
     DeleteHiddenRange: vi.fn(),
     ShiftTimelineItems: vi.fn(),
+    SetTimelineItemsLodMask: vi.fn(),
     request: vi.fn(),
     send: vi.fn(),
   },
@@ -70,7 +71,7 @@ describe('TimelineActionsMenu', () => {
    * setup, so the store must be populated BEFORE calling this.
    */
   async function mountOpen() {
-    const wrapper = mount(TimelineActionsMenu, { global: { plugins: [pinia] } })
+    const wrapper = mount(TimelineActionsMenu, { global: { plugins: [pinia], stubs: { teleport: true } } })
     await wrapper.find('.actions-trigger').trigger('click')
     await wrapper.vm.$nextTick()
     return wrapper
@@ -188,6 +189,62 @@ describe('TimelineActionsMenu', () => {
     await flushPromises()
 
     expect(BackendAPI.DeleteHiddenRange).toHaveBeenCalledWith(99)
+    wrapper.unmount()
+  })
+
+  // ── LOD visibility of all items ───────────────────────────────────────────
+
+  it('the LOD mask lives in a modal whose own button applies it to every item and reloads', async () => {
+    store.lodProfile = [
+      { index: 3, formatKey: 'Years', stepFraction: 1 },
+      { index: 5, formatKey: 'Months', stepFraction: 1 / 12 },
+    ]
+    store.items = [{}, {}, {}, {}] as any
+    ;(BackendAPI.SetTimelineItemsLodMask as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok', affected: 4 })
+    const reload = vi.spyOn(store, 'loadTimelineData').mockResolvedValue(undefined)
+
+    const wrapper = await mountOpen()
+    expect(wrapper.find('.lod-row').exists()).toBe(false)   // nothing to click by accident in the popover
+
+    await wrapper.find('.lod-open').trigger('click')
+    const rows = wrapper.findAll('.lod-row')
+    expect(rows.map(r => r.find('.lod-name').text())).toEqual(['Years', 'Months'])
+    expect(rows.map(r => (r.find('input').element as HTMLInputElement).checked)).toEqual([true, true])   // starts at "all levels"
+    await rows[1]!.find('input').trigger('change')
+    await wrapper.find('.bm-footer .btn-secondary').trigger('click')   // Cancel
+    expect(BackendAPI.SetTimelineItemsLodMask).not.toHaveBeenCalled()
+    expect(wrapper.find('.bm-panel').exists()).toBe(false)
+
+    await wrapper.find('.lod-open').trigger('click')
+    await wrapper.findAll('.lod-row')[1]!.find('input').trigger('change')   // drop Months → 255 & ~32
+    const apply = wrapper.find('.bm-footer .lod-apply')
+    expect(apply.classes()).toContain('btn-danger')
+    expect(apply.text()).toBe('Apply to 4 items')
+    await apply.trigger('click')
+    await flushPromises()
+
+    expect(BackendAPI.SetTimelineItemsLodMask).toHaveBeenCalledWith(1, 255 & ~32)
+    expect(reload).toHaveBeenCalledWith(1)
+    expect(wrapper.find('.bm-panel').exists()).toBe(false)   // closed itself on success
+    expect(wrapper.find('.lod-ok').text()).toBe('Updated 4 items.')
+    wrapper.unmount()
+  })
+
+  it('a failed LOD update keeps the modal open and shows the error in it', async () => {
+    store.lodProfile = [{ index: 3, formatKey: 'Years', stepFraction: 1 }]
+    ;(BackendAPI.SetTimelineItemsLodMask as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'error', message: 'locked' })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const wrapper = await mountOpen()
+    await wrapper.find('.lod-open').trigger('click')
+    await wrapper.find('.bm-footer .lod-apply').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.bm-panel').exists()).toBe(true)
+    expect(wrapper.find('.lod-error').text()).toBe('Update failed: locked')
+    expect(wrapper.find('.lod-ok').exists()).toBe(false)
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
     wrapper.unmount()
   })
 

@@ -268,6 +268,7 @@ test.describe('Calendar creation and timeline switching — real backend', () =>
     await expect(modal).toBeVisible({ timeout: 3000 })
 
     const calSelect = modal.locator('select.cal-select')
+    await expect(calSelect).toBeEnabled({ timeout: 5000 })   // disabled until the calendar list has loaded
     const options = calSelect.locator('option')
     const count = await options.count()
 

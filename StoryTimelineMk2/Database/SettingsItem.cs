@@ -20,6 +20,8 @@ namespace StoryTimelineMk2.Database
         public int DisplayRadius { get; set; }
         public string CanvasSettings { get; set; } = null!;
         public bool TimelineMinimised { get; set; } = false;
+        /// <summary>Title strip of the timeline window: 0 = full, 1 = compact (title only), 2 = hidden.</summary>
+        public int HeaderMode { get; set; }
         public float PanSpeedMultiplier { get; set; } = 5.0f;
         public int PanDeadzone { get; set; } = 100;
         public string DefaultItemColor { get; set; } = "#000000";
