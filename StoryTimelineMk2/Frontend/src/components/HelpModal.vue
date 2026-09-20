@@ -103,11 +103,11 @@ defineEmits<{ close: [] }>()
             <!-- KEYBOARD -->
             <section>
                 <h2>Keyboard shortcuts</h2>
+                <p>Press <kbd>F2</kbd> (or <strong>?</strong> → <strong>Shortcuts</strong>) for the full list: panning and stepping with the arrow keys, <kbd>N</kbd> for a new item, one key per panel, <kbd>F1</kbd> for this help.</p>
                 <table>
-                    <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Undo last item deletion</td></tr>
                     <tr><td><kbd>Ctrl</kbd> + <kbd>Enter</kbd></td><td>Save note</td></tr>
                     <tr><td><kbd>Shift</kbd> + click</td><td>Open the item in the edit window</td></tr>
-                    <tr><td><kbd>Esc</kbd></td><td>Close modals and context menus</td></tr>
+                    <tr><td><kbd>Esc</kbd></td><td>Leave a text field; close modals and context menus</td></tr>
                 </table>
             </section>
 

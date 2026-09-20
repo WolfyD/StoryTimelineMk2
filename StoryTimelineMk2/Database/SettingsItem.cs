@@ -24,6 +24,8 @@ namespace StoryTimelineMk2.Database
         public int HeaderMode { get; set; }
         public float PanSpeedMultiplier { get; set; } = 5.0f;
         public int PanDeadzone { get; set; } = 100;
+        /// <summary>← / → hold-to-pan speed in px/s (Shift = 3×).</summary>
+        public float KeyboardPanSpeed { get; set; } = 400f;
         public string DefaultItemColor { get; set; } = "#000000";
         public int YearCalendarPositionX { get; set; }
         public int YearCalendarPositionY { get; set; }

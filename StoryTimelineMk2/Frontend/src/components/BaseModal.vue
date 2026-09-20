@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
+import { useModalGuard } from '@/utils/shortcuts'
 
 const props = withDefaults(defineProps<{
     title?: string
@@ -13,6 +14,8 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{ close: [] }>()
+
+useModalGuard()
 
 function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') emit('close')

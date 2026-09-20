@@ -283,6 +283,8 @@ namespace StoryTimelineMk2.Bridge
             JsonElement ot_pl_id = message.Payload.GetProperty("id");
             if (ot_pl_id.TryGetInt32(out int ot_timeline_id))
                 TimelineForm.TimelineId = ot_timeline_id;
+            // BL-66: a reference window — opened from a timeline, shown next to it, no edit affordances
+            TimelineForm.ReadOnly = message.Payload.TryGetProperty("readOnly", out var ro) && ro.ValueKind == JsonValueKind.True;
 
             TimelineForm.Show();
             if (TimelineForm.Visible && mainForm != null)
@@ -646,6 +648,7 @@ namespace StoryTimelineMk2.Bridge
             if (p.TryGetProperty("customScale",          out var e8)) settings.CustomScale          = e8.GetSingle();
             if (p.TryGetProperty("panSpeedMultiplier",   out var e9)) settings.PanSpeedMultiplier   = e9.GetSingle();
             if (p.TryGetProperty("panDeadzone",          out var ea)) settings.PanDeadzone          = ea.GetInt32();
+            if (p.TryGetProperty("keyboardPanSpeed",     out var ed)) settings.KeyboardPanSpeed     = ed.GetSingle();
             if (p.TryGetProperty("defaultItemColor",     out var eb)) settings.DefaultItemColor     = eb.GetString() ?? "#000000";
             if (p.TryGetProperty("headerMode",           out var ec)) settings.HeaderMode           = ec.GetInt32();
 
@@ -674,7 +677,7 @@ namespace StoryTimelineMk2.Bridge
             }
 
             double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
-            _ = _webView.ExecuteScriptAsync($"document.documentElement.style.zoom = '{zoom:F2}'");
+            (_parentForm as f_Timeline)?.SetZoom(zoom);
 
             ReplyToVue(message.MessageId, new { status = "ok" });
         }
@@ -771,7 +774,7 @@ namespace StoryTimelineMk2.Bridge
             settingsRepo.SaveSettings(settings);
 
             double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
-            _ = _webView.ExecuteScriptAsync($"document.documentElement.style.zoom = '{zoom:F2}'");
+            (_parentForm as f_Timeline)?.SetZoom(zoom);
         }
 
         // ── Borderless window chrome ───────────────────────────────────────────

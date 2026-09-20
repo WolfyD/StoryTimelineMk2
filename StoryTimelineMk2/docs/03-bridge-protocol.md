@@ -94,6 +94,7 @@ message event →
 | `ItemSaved` | `HandleSaveItem` in the **edit window's** router, relayed through `f_AddEditItem.NotifyCallback` — a delegate wired in `HandleOpenAddEditItemWindow` as `(action, payload) => SendToVue(action, payload)` so the push lands in the **opener's** (timeline's) WebView2 | `{ Item: TimelineItem }` (PascalCase — C# serialization) | `timelineStore.upsertItem(payload.Item)` — updates the canvas without a full reload |
 | `CalendarsChanged` | `HandleOpenCalendarEditorWindow`: the opener's router sends it when the `f_Calendar` editor closes | `{}` | `api.ts` re-dispatches it as a `calendars-changed` window event; `SelectCalendarModal`, `EditTimelineModal` and `CalendarManagerModal` reload their calendar lists |
 | `CloseRequested` | `f_AddEditItem.OnFormClosing` (user pressed the window's X, Alt+F4, …) — sent to the **edit window's own** WebView2 | `{}` | `EditItem.vue` runs its dirty check: clean → `WindowClose`; dirty → "Discard changes?" modal. WinForms only hides the form once `WindowClose` arrives (`ConfirmedClose`) |
+| `ZoomChanged` | `f_Timeline.OnZoomFactorChanged` — every WebView2 `ZoomFactorChanged` (Ctrl+wheel, F10, settings Save) after it has been persisted to the timeline's `UseCustomScaling` / `CustomScale` (100% only clears the flag; the last real scale is kept so F10 can restore it) | `{ useCustomScaling, customScale }` | `TimelineApp.onHostPush` copies both into `store.settings` so a later settings Save does not put the old zoom back |
 
 Any other pushed action is logged to the console and otherwise ignored.
 
@@ -111,7 +112,7 @@ lowercase while serialized domain models keep their C# PascalCase names.
 | `GetAllTimelines` | req | `GetAllTimelines()` (also called by `ImportDatabase()`) | `{ args: [] }` (payload ignored) | `HandleGetAllTimelines` | `{ status: "ok", data: TimelineInfo[] }` | |
 | `ImportDB` | req | `ImportDatabase()` | `{ args: [] }` (ignored) | `HandleImportDB` | `{ status: "ok" }` | Runs `DatabaseImporter.HandleDBImport()` (native file dialog). Always replies `ok`. Frontend then re-fetches `GetAllTimelines`. |
 | `CreateProject` | req | `CreateNewProject(title, author?, calendarId?)` | `{ title, author, calendarId }` | `HandleCreateProject` | `number` — new timeline id, or `-1` if title empty | Response is a bare number, not an object. |
-| `OpenTimeline` | f&f | `OpenTimeline(id)` | `{ id }` | `HandleOpenTimeline` | none | Opens `f_Timeline` window, hides `f_Main`. |
+| `OpenTimeline` | f&f | `OpenTimeline(id)` / `send('OpenTimeline', { id, readOnly: true })` | `{ id, readOnly? }` | `HandleOpenTimeline` | none | Opens `f_Timeline` window, hides `f_Main`. `readOnly: true` (BL-66, from `ReferenceTimelineModal`) opens a second, read-only timeline window next to the active one — the page gets `&readOnly=1` or `readOnly` in the `SetTimelineId` push. |
 | `GetTimelineData` | req | `LoadTimelineData(id)` | `{ id }` | `HandleGetTimelineData` | `FullTimelineProject` (`Project`, `Items`, `Notes`, `HiddenRanges`, `ItemTags`, `ItemCharacters`, `Characters`, `ItemStoryRefs`, `ItemsWithPictures`) or `null` if `id` isn't an int | The big "load everything" call for the timeline canvas. |
 | `GetTimelineItems` | req | — (no frontend caller) | `{ timelineId }` | `HandleGetTimelineItems` | `TimelineItem[]` | Routed and handled, but unused by current frontend code. |
 | `DeleteTimeline` | req | `DeleteTimeline(id)` | `{ id }` | `HandleDeleteTimeline` | `{ status: "ok" }` | No try/catch — an exception surfaces as a MessageBox and the promise never resolves (see §5). |
@@ -155,7 +156,7 @@ lowercase while serialized domain models keep their C# PascalCase names.
 
 | Action | Dir | Frontend method | Payload | Backend handler | Response | Notes |
 |--------|-----|-----------------|---------|-----------------|----------|-------|
-| `SaveSettings` | req | `SaveSettings(payload)` | `{ timelineId, font, fontSizeScale, pixelsPerSubtick, showGuides, displayRadius, isFullscreen, useCustomScaling, customScale, layoutPresetId }` | `HandleSaveSettings` | `{ status: "ok" }` | Every field except `timelineId` is optional on the C# side (`TryGetProperty`, merged into existing settings). Side effects: applies fullscreen state to the parent form and injects `document.documentElement.style.zoom` via `ExecuteScriptAsync`. |
+| `SaveSettings` | req | `SaveSettings(payload)` | `{ timelineId, font, fontSizeScale, pixelsPerSubtick, showGuides, displayRadius, isFullscreen, useCustomScaling, customScale, layoutPresetId }` | `HandleSaveSettings` | `{ status: "ok" }` | Every field except `timelineId` is optional on the C# side (`TryGetProperty`, merged into existing settings). Side effects: applies fullscreen state to the parent form and sets the WebView2 `ZoomFactor` via `f_Timeline.SetZoom` (saved scale, or 1.0 when off). |
 | `GetSystemFonts` | req | `GetSystemFonts()` | `{}` | `HandleGetSystemFonts` | `string[]` (sorted font family names) | |
 | `GetLayoutSettingsList` | req | `GetLayoutSettingsList()` | `{}` | `HandleGetLayoutSettingsList` | `{ Id, Name }[]` | |
 | `GetLayoutSettingsById` | req | `GetLayoutSettingsById(id)` | `{ id }` (defaults to `"ls_default"`) | `HandleGetLayoutSettingsById` | `LayoutSettings` \| `null` on error | Errors are swallowed into a `null` reply — no error shape. |
@@ -163,7 +164,7 @@ lowercase while serialized domain models keep their C# PascalCase names.
 | `SaveLayoutSettings` | req | `SaveLayoutSettings(ls)` | the **LayoutSettings object itself** (not wrapped) | `HandleSaveLayoutSettings` | `{ status: "ok", layoutSettings }` \| `{ status: "error", message }` | |
 | `ResetLayoutPreset` | req | `ResetLayoutPreset(id)` | `{ id }` | `HandleResetLayoutPreset` | `{ status: "ok", layoutSettings }` \| `{ status: "error", message, detail }` | Calls `DbInitializer.ResetBuiltinPreset(id)` then re-reads. |
 | `ToggleFullscreen` | f&f | — (`send()` from `TimelineApp.vue`, keybinding) | `{ timelineId }` | `HandleToggleFullscreen` | none | Flips + persists `IsFullscreen`, applies window state. No-op if `timelineId` is 0 or no parent form. |
-| `ToggleCustomScaling` | f&f | — (`send()` from `TimelineApp.vue`, keybinding) | `{ timelineId }` | `HandleToggleCustomScaling` | none | Flips + persists `UseCustomScaling`, re-injects CSS zoom. |
+| `ToggleCustomScaling` | f&f | — (`send()` from `TimelineApp.vue`, keybinding) | `{ timelineId }` | `HandleToggleCustomScaling` | none | Flips + persists `UseCustomScaling`, then `f_Timeline.SetZoom` (saved scale or 1.0) — native browser zoom, the same one Ctrl+wheel drives. |
 
 ### 4.5 Filter rules & presets
 

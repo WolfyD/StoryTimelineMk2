@@ -15,6 +15,8 @@ import {
     PhListPlus,
     PhBookOpen,
     PhInfo,
+    PhKeyboard,
+    PhBooks,
 } from '@phosphor-icons/vue'
 import { ref } from 'vue'
 
@@ -22,6 +24,10 @@ defineProps<{
     filterActive: boolean
     miniMode: boolean
     yearCalendarOpen: boolean
+    /** BL-66 reference window: hides everything that edits or opens child windows */
+    readOnly?: boolean
+    /** BL-66 underlay: a reference timeline is drawn underneath this one */
+    referenceActive?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,10 +35,12 @@ const emit = defineEmits<{
     'open-settings': []
     'open-about': []
     'open-help': []
+    'open-shortcuts': []
     'toggle-mini': []
     'toggle-year-calendar': []
     'open-tags': []
     'open-mass-add': []
+    'open-reference': []
 }>()
 
 const helpMenuOpen = ref(false)
@@ -50,7 +58,7 @@ const navItems = [
     <nav class="activity-strip" aria-label="App navigation">
 
         <!-- ── 3-dot actions ─────────────────────────────────────── -->
-        <slot name="actions" />
+        <slot v-if="!readOnly" name="actions" />
 
         <!-- ── small gap ─────────────────────────────────────────── -->
         <div class="strip-gap strip-gap--sm" />
@@ -78,6 +86,7 @@ const navItems = [
 
         <!-- ── Year calendar ──────────────────────────────────────── -->
         <button
+            v-if="!readOnly"
             class="strip-btn strip-btn--year-cal"
             :class="{ 'strip-btn--tool-active': yearCalendarOpen }"
             title="Year calendar"
@@ -87,13 +96,18 @@ const navItems = [
         </button>
 
         <!-- ── Tags ───────────────────────────────────────────────── -->
-        <button class="strip-btn strip-btn--tags" title="Tags" @click="emit('open-tags')">
+        <button v-if="!readOnly" class="strip-btn strip-btn--tags" title="Tags" @click="emit('open-tags')">
             <PhTag :size="20" />
         </button>
 
         <!-- ── Mass add ───────────────────────────────────────────── -->
-        <button class="strip-btn strip-btn--mass-add" title="Mass add items" @click="emit('open-mass-add')">
+        <button v-if="!readOnly" class="strip-btn strip-btn--mass-add" title="Mass add items" @click="emit('open-mass-add')">
             <PhListPlus :size="20" />
+        </button>
+
+        <!-- ── Reference timeline (BL-66) ─────────────────────────── -->
+        <button v-if="!readOnly" class="strip-btn strip-btn--reference" :class="{ 'strip-btn--tool-active': referenceActive }" title="Reference timeline (R)" @click="emit('open-reference')">
+            <PhBooks :size="20" :weight="referenceActive ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── gap + separator ───────────────────────────────────── -->
@@ -134,6 +148,9 @@ const navItems = [
                     <button class="flyout-item" @click="emit('open-help'); helpMenuOpen = false">
                         <PhBookOpen :size="15" /> Help
                     </button>
+                    <button class="flyout-item" @click="emit('open-shortcuts'); helpMenuOpen = false">
+                        <PhKeyboard :size="15" /> Shortcuts
+                    </button>
                     <button class="flyout-item" @click="emit('open-about'); helpMenuOpen = false">
                         <PhInfo :size="15" /> About
                     </button>
@@ -147,6 +164,7 @@ const navItems = [
 
         <!-- ── Gear — alone at bottom ────────────────────────────── -->
         <button
+            v-if="!readOnly"
             class="strip-btn strip-btn--settings"
             title="Settings"
             @click="emit('open-settings')"

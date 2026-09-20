@@ -99,6 +99,8 @@ It is the snapshot kept for the 30-second "undo delete" window.
 | `filterDisplayMode` | `'hidden' \| 'dimmed'` | Whether filtered-out items disappear or render dimmed (global setting, timeline id `0`) |
 | `filterPanelOpen` | `boolean` | Persisted open/closed state of the filter panel |
 | `filterPresets` | `FilterPreset[]` | Saved global rule sets |
+| `readOnly` | `boolean` | BL-66: this window is a read-only reference window — set by `TimelineApp` from the URL / `SetTimelineId`; canvas, item view modal and notes panel hide their edit affordances on it |
+| `reference` | `{ project: TimelineProject; items: TimelineItem[]; shift: number } \| null` | BL-66 underlay: another timeline drawn under this one. Session-only. `loadReference(id)` (same `GetTimelineData` read, boundaries dropped, throws on an error reply) / `clearReference()`. `shift` is display-only years, written directly by `ReferenceTimelineModal`'s input |
 
 ### 1.6 Getters (computed)
 
@@ -492,6 +494,27 @@ Both are edited in `TimelineSettingsModal.vue` (General section) and consumed by
 Two pure helpers for showing a mask to humans: `lodLevelLabel(lod)` (title-cased `formatKey`,
 e.g. `Years`) and `lodMaskSummary(mask, profile)` → `'No calendar'` / `'All levels'` /
 `'No levels'` / `'Years, Months'`. Used by `LodMaskModal.vue` and the settings summary chip.
+
+---
+
+## 6c. `utils/shortcuts.ts` — keyboard shortcut registry (BL-39)
+
+One registry, one listener per window, one modal that renders the registry. Keys are fixed for
+now; when remapping arrives the `keys` become defaults and overrides live in app settings.
+
+| Export | Role |
+|---|---|
+| `SHORTCUTS: Shortcut[]` | `{ id, keys, group, label, context, inInputs?, repeat? }`; `keys` is a normalised chord or a list (`'Ctrl+Shift+A'`, `'F2'`, `['ArrowLeft','ArrowRight']`, `'+'`); `context` is `'timeline' \| 'edit' \| 'calendar'` |
+| `shortcutsFor(context)` | the registry filtered by window |
+| `chordOf(e)` | `KeyboardEvent` → chord: `Ctrl+` (Meta counts) `Alt+` `Shift+` then the key; letters upper-cased, Shift dropped for single non-letter characters (`+`, `?`) because it already produced them, `' '` → `Space` |
+| `chordParts(chord)` | for `<kbd>` rendering: `['Ctrl','Shift','A']`, arrows → `← → ↑ ↓`, `Escape` → `Esc`, handles the bare `+` and `Ctrl++` |
+| `isTextTarget(el)` | textarea / select / contenteditable / any input except checkbox, radio, button, submit |
+| `useModalGuard()` / `isModalOpen()` | mount/unmount counter; `BaseModal`, `TimelineItemViewModal` and `LightboxOverlay` call it, so window shortcuts are off while anything modal is open |
+| `useShortcuts(context, handlers)` | registers one window `keydown` listener for the component's lifetime and returns it (tests). Rules, in order: `Esc` in a text field → blur + `preventDefault` + `stopImmediatePropagation`, done; modal open → nothing; unknown chord → nothing; `e.repeat` only for `repeat: true` entries; text field → only `inInputs`, defaulting to Ctrl/Alt chords and F-keys; handler returning `false` = not handled (no `preventDefault`) |
+
+Handlers are the existing functions (`store.lodZoomIn`, `toggleMiniMode`, `save`…); see the page
+docs for each window's map. `ShortcutsModal.vue` renders the table. The `escape` entry in the
+timeline context is informational only (no handler) — modals and menus own their own `Esc`.
 
 ---
 

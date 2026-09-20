@@ -4,6 +4,7 @@ import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
 import type { LayoutSettings, TimelineItem, MediaItem } from '@/types/models';
 import { useLightbox } from '@/composables/useLightbox';
+import { PhEye } from '@phosphor-icons/vue';
 import LightboxOverlay from '@/components/LightboxOverlay.vue';
 import TimelineItemViewModal from '@/components/TimelineItemViewModal.vue';
 
@@ -20,6 +21,7 @@ const pictureCache = reactive(new WeakMap<TimelineItem, string | null>());
 const { lightboxSrc, lightboxCollection, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext, onLbBeforeEnter, onLbEnter, onLbBeforeLeave, onLbLeave } = useLightbox()
 
 const viewingItem = ref<TimelineItem | null>(null)
+const viewingRefItem = ref<TimelineItem | null>(null)   // BL-66 underlay: view only, no locate / pulse
 const highlightedItemId = ref<string | null>(null)
 
 function focusItem(item: TimelineItem) {
@@ -40,7 +42,7 @@ function distanceFromCenter(item: TimelineItem): number {
     return Math.abs(item.AbsoluteStart - center);
 }
 
-function inRange(item: TimelineItem): boolean {
+function inRange(item: TimelineItem, shift = 0): boolean {
     if (!props.layoutSettings) return false;
     const tickDist = props.layoutSettings.TimelineTickDistance || 100;
     const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
@@ -48,13 +50,23 @@ function inRange(item: TimelineItem): boolean {
     const center = store.centerAbsoluteTime;
     const rangeStart = center - halfAbsolute;
     const rangeEnd   = center + halfAbsolute;
-    if (item.AbsoluteEnd > item.AbsoluteStart) {
-        return item.AbsoluteStart <= rangeEnd && item.AbsoluteEnd >= rangeStart;
+    const start = item.AbsoluteStart + shift, end = item.AbsoluteEnd + shift;
+    if (end > start) {
+        return start <= rangeEnd && end >= rangeStart;
     }
-    return item.AbsoluteStart >= rangeStart && item.AbsoluteStart <= rangeEnd;
+    return start >= rangeStart && start <= rangeEnd;
 }
 
 const inRangeItems = computed(() => store.filteredItems.filter(i => i.ShowInNotes !== false && inRange(i)));
+
+// BL-66 underlay: the reference timeline's in-range items (shifted, unfiltered) — its own section below ours
+const refItems = computed(() => {
+    const ref = store.reference;
+    if (!ref) return [];
+    return ref.items
+        .filter(i => i.TypeId !== 6 && i.ShowInNotes !== false && inRange(i, ref.shift))
+        .sort((a, b) => a.AbsoluteStart - b.AbsoluteStart);
+});
 
 const ages = computed(() =>
     inRangeItems.value
@@ -169,6 +181,24 @@ function picUrl(item: TimelineItem): string | null {
             </template>
         </template>
 
+        <!-- Reference underlay (BL-66) — the other timeline's in-range items, view only -->
+        <template v-if="store.reference">
+            <div class="data-ref-head">
+                <span class="data-ref-title">Reference — {{ store.reference.project.Title || 'Untitled' }}</span>
+                <span v-if="store.reference.shift" class="data-ref-shift">shifted {{ store.reference.shift > 0 ? '+' : '' }}{{ store.reference.shift }} years</span>
+            </div>
+            <div v-if="refItems.length === 0" class="data-empty data-ref-empty">Nothing in range</div>
+            <div v-for="item in refItems" :key="'ref:' + item.Id" class="data-ref-item">
+                <button class="data-item-focus-btn" title="View" @click.stop="viewingRefItem = item">
+                    <PhEye :size="14" />
+                </button>
+                <div class="data-item-body">
+                    <div class="data-ref-item-title">{{ item.Title }}</div>
+                    <div v-if="item.Description" class="data-item-desc">{{ item.Description }}</div>
+                </div>
+            </div>
+        </template>
+
         <!-- Bottom spacer — padding-bottom is eaten by Chromium on overflow flex containers -->
         <div class="data-panel-spacer" aria-hidden="true"></div>
 
@@ -179,6 +209,14 @@ function picUrl(item: TimelineItem): string | null {
             :timeline-id="viewingItem.TimelineId"
             :layout-settings="props.layoutSettings"
             @close="viewingItem = null"
+        />
+        <TimelineItemViewModal
+            v-if="viewingRefItem"
+            :item-id="viewingRefItem.Id"
+            :timeline-id="viewingRefItem.TimelineId"
+            :layout-settings="props.layoutSettings"
+            view-only
+            @close="viewingRefItem = null"
         />
 
         <!-- Lightbox -->
@@ -345,10 +383,42 @@ function picUrl(item: TimelineItem): string | null {
 
 .data-item:hover > .data-item-focus-btn,
 .data-age:hover > .data-item-focus-btn,
-.data-period:hover > .data-item-focus-btn {
+.data-period:hover > .data-item-focus-btn,
+.data-ref-item:hover > .data-item-focus-btn {
     visibility: visible;
     opacity: 1;
 }
+
+// Reference underlay (BL-66) — muted and dashed off from the active items
+.data-ref-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px dashed color-mix(in srgb, var(--dp-h4) 45%, transparent);
+    opacity: 0.8;
+}
+.data-ref-title {
+    font-size: 0.8em;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--dp-h2);
+}
+.data-ref-shift { font-size: 0.75em; font-style: italic; }
+.data-ref-empty { margin-top: 0; }
+.data-ref-item {
+    position: relative;
+    display: flex;
+    gap: 10px;
+    padding: 6px 8px 6px 26px;
+    border: 1px dashed color-mix(in srgb, var(--dp-h4) 30%, transparent);
+    border-radius: 4px;
+    opacity: 0.75;
+}
+.data-ref-item-title { font-weight: 600; color: var(--dp-h3); }
+.data-ref-item > .data-item-focus-btn { left: 4px; top: 6px; }
 
 .data-item-desc {
     font-size: 0.82em;

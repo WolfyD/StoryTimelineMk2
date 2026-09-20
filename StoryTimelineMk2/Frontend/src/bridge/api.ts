@@ -213,6 +213,7 @@ export const BackendAPI = {
 		layoutPresetId: string;
 		panSpeedMultiplier: number;
 		panDeadzone: number;
+		keyboardPanSpeed: number;
 		defaultItemColor: string;
 		headerMode: number;
 	}) {

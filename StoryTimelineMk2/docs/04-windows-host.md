@@ -198,6 +198,14 @@ the form, so it can desync if the window is restored by other means (e.g. F11 ex
             SendToVue returned false): Application.Exit()
 ```
 
+**Reference windows (BL-66).** `OpenTimeline` with `readOnly: true` opens a second
+`f_Timeline` with `ReadOnly = true` (`HandleOpenTimeline`): the page gets `&readOnly=1` (cold
+start) or `readOnly` in the `SetTimelineId` push (pre-warmed), the update check is skipped and
+`PersistWindowState` never writes that timeline's geometry. In `FormClosing`, a read-only window
+skips `NotifyTimelineClosing()` (it has no child windows; the active timeline's stay open), and
+*any* timeline window returns early while another visible `f_Timeline` is still open — `f_Main`
+only comes back (and the next pre-warm starts) when the last timeline window closes.
+
 Main's page being gone means there is nothing to return to (showing it would be a black
 window), so the app ends instead.
 
@@ -232,8 +240,15 @@ Windows only sends `WM_GETMINMAXINFO` on the transition, so a window that is alr
 work-area-maximized must restore first for the unclamped (full-screen) bounds to take
 effect. The same pattern appears in `HandleSaveSettings` (`MessageRouter.cs:499-509`).
 On next launch, `f_Timeline.RestoreWindowState` re-enters fullscreen from the
-persisted flag (`f_Timeline.cs:94-98`). F10 similarly toggles custom CSS scaling
-(`TimelineApp.vue:149-152` → `MessageRouter.cs:583`).
+persisted flag (`f_Timeline.cs:94-98`).
+
+**Custom scaling** is the native WebView2 `ZoomFactor` — the same zoom Ctrl+wheel drives
+(CSS `zoom` on `<html>` used to scale the page but not the viewport, cutting off the bottom).
+`f_Timeline` applies the saved scale once after CoreWebView2 init and subscribes to
+`ZoomFactorChanged`: every change is persisted to the timeline's `UseCustomScaling` /
+`CustomScale` (100% only clears the flag, the last real scale stays) and pushed to the page as
+`ZoomChanged`. F10 (`ToggleCustomScaling`) and the settings Save go through
+`f_Timeline.SetZoom`, so they land in the same handler.
 
 ### 3.4 Window-state persistence
 

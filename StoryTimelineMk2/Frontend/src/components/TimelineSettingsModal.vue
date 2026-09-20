@@ -29,6 +29,7 @@ const local = reactive({
     CustomScale: props.settings?.CustomScale ?? 1.0,
     PanSpeedMultiplier: props.settings?.PanSpeedMultiplier ?? 5.0,
     PanDeadzone: props.settings?.PanDeadzone ?? 100,
+    KeyboardPanSpeed: props.settings?.KeyboardPanSpeed ?? 400,
     DefaultItemColor: props.settings?.DefaultItemColor ?? '#000000',
     HeaderMode: props.settings?.HeaderMode ?? 0,
     selectedLayoutId: props.layoutSettings?.Id ?? 'ls_default',
@@ -352,6 +353,7 @@ async function save() {
             layoutPresetId: local.selectedLayoutId,
             panSpeedMultiplier: local.PanSpeedMultiplier,
             panDeadzone: local.PanDeadzone,
+            keyboardPanSpeed: local.KeyboardPanSpeed,
             defaultItemColor: local.DefaultItemColor,
             headerMode: local.HeaderMode,
         }),
@@ -370,6 +372,7 @@ async function save() {
             store.settings.CustomScale = local.CustomScale
             store.settings.PanSpeedMultiplier = local.PanSpeedMultiplier
             store.settings.PanDeadzone = local.PanDeadzone
+            store.settings.KeyboardPanSpeed = local.KeyboardPanSpeed
             store.settings.DefaultItemColor = local.DefaultItemColor
             store.settings.HeaderMode = local.HeaderMode
         }
@@ -423,6 +426,9 @@ async function save() {
                     <span class="s-label">Pan Deadzone (px) <SettingHint tip="Width of the neutral zone at screen center where middle-mouse does not pan; cursor shows ↔ but no movement occurs" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.PanDeadzone" :step="1" min="0" max="500" />
 
+                    <span class="s-label">Keyboard Pan Speed (px/s) <SettingHint tip="How fast ← / → pan the timeline while held; Shift triples it" /></span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="local.KeyboardPanSpeed" :step="50" min="50" max="5000" />
+
                     <span class="s-label">Default Item Color <SettingHint tip="Colour pre-filled for every new item on this timeline" /></span>
                     <input class="s-color" type="color" v-model="local.DefaultItemColor" />
 
@@ -467,7 +473,7 @@ async function save() {
                         <option :value="2">Hidden</option>
                     </select>
 
-                    <span class="s-label">Custom Scaling <SettingHint tip="Override the system DPI scaling for this window" /></span>
+                    <span class="s-label">Custom Scaling <SettingHint tip="Zoom this window — the same zoom Ctrl+mouse wheel drives, remembered per timeline. F10 toggles it." /></span>
                     <button class="toggle" :class="{ 'is-on': local.UseCustomScaling }" type="button" @click="local.UseCustomScaling = !local.UseCustomScaling">
                         <span class="toggle-thumb" />
                     </button>

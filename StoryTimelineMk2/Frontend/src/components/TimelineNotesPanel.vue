@@ -230,7 +230,7 @@ function formatApproximate(dist: number): string {
                  :key remounts the Teleport so the target is resolved after the modal exists (Vue caches it per mount) -->
             <Teleport :key="String(notesModalOpen)" to="#notes-modal-body" :disabled="!notesModalOpen">
             <div v-show="notesMode !== 'tiny' || notesModalOpen" class="notes-tab" :class="notesMode === 'short' ? 'mode-short' : 'mode-tall'">
-            <div class="notes-input-row">
+            <div v-if="!store.readOnly" class="notes-input-row">
                 <textarea
                     v-model="newNoteText"
                     class="notes-textarea"
@@ -260,13 +260,13 @@ function formatApproximate(dist: number): string {
                         <div v-else class="note-content">{{ note.NoteContents }}</div>
                     </div>
                     <div class="note-actions" v-if="editingId !== note.Id">
-                        <button class="note-action-btn" @click="startEdit(note)" title="Edit">
+                        <button v-if="!store.readOnly" class="note-action-btn" @click="startEdit(note)" title="Edit">
                             <i class="ri-edit-line" /><span>Edit</span>
                         </button>
                         <button class="note-action-btn" @click="viewingNote = note" title="View">
                             <i class="ri-eye-line" /><span>View</span>
                         </button>
-                        <button class="note-action-btn danger" @click="deleteNote(note.Id)" title="Delete">
+                        <button v-if="!store.readOnly" class="note-action-btn danger" @click="deleteNote(note.Id)" title="Delete">
                             <i class="ri-delete-bin-line" /><span>Trash</span>
                         </button>
                     </div>

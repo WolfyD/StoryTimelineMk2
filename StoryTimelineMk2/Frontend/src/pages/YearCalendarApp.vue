@@ -3,11 +3,19 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import { dayOfYearToMonthDay } from '@/utils/calendarMath'
 import { useAppTheme } from '@/utils/useAppTheme'
+import { useShortcuts } from '@/utils/shortcuts'
+import HelpModal from '@/components/HelpModal.vue'
+import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import CalendarMonthGrid, { type ItemDot } from '@/components/CalendarMonthGrid.vue'
 import type { TimelineItem, MemDayMarker } from '@/types/models'
 
 useAppTheme()
+
+// F1 / F2 (BL-39)
+const showHelp      = ref(false)
+const showShortcuts = ref(false)
+useShortcuts('calendar', { help: () => { showHelp.value = true }, shortcuts: () => { showShortcuts.value = true } })
 
 // ── Query params ──────────────────────────────────────────────────────────────
 const params     = new URLSearchParams(window.location.search)
@@ -187,6 +195,8 @@ const effectiveDayLabels = computed(() =>
             </div>
         </div>
     </div>
+    <HelpModal v-if="showHelp" @close="showHelp = false" />
+    <ShortcutsModal v-if="showShortcuts" context="calendar" @close="showShortcuts = false" />
 </template>
 
 <style scoped lang="scss">

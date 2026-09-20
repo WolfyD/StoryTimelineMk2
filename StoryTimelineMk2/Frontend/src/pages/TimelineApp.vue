@@ -17,6 +17,10 @@ import AboutModal from "@/components/AboutModal.vue";
 import TagManagerModal from "@/components/TagManagerModal.vue";
 import MassAddItemsModal from "@/components/MassAddItemsModal.vue";
 import HelpModal from "@/components/HelpModal.vue";
+import ShortcutsModal from "@/components/ShortcutsModal.vue";
+import ItemTypePickerModal from "@/components/ItemTypePickerModal.vue";
+import ReferenceTimelineModal from "@/components/ReferenceTimelineModal.vue";
+import { useShortcuts, type ShortcutHandler } from '@/utils/shortcuts';
 import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
 import TimelineDataPanel from "@/components/TimelineDataPanel.vue";
 import TimelineGalleryPanel from "@/components/TimelineGalleryPanel.vue";
@@ -36,6 +40,11 @@ const showAbout = ref(false);
 const showTags = ref(false);
 const showMassAdd = ref(false);
 const showHelp = ref(false);
+const showShortcuts = ref(false);
+const showTypePicker = ref(false);
+const showReference = ref(false);
+const lastTypeId = ref<number | null>(null);   // the `N` flow remembers the last type per session
+const actionsMenuRef = ref<InstanceType<typeof TimelineActionsMenu> | null>(null);
 const showFilterSetup = ref(false);
 const flashedRuleId = ref<string | null>(null);
 let _flashTimer = 0;
@@ -45,6 +54,7 @@ function onAlreadyExists(id: string) {
     _flashTimer = window.setTimeout(() => { flashedRuleId.value = null }, 900)
 }
 const viewItemId = ref<string | null>(null);
+const refViewItemId = ref<string | null>(null);   // BL-66 underlay: Alt+click / data panel → view only
 const lightboxUrl = ref<string | null>(null);
 
 const isMinimised = ref(false)
@@ -53,10 +63,15 @@ const yearCalendarOpen = ref(false)
 
 const updateBanner = ref<{ version: string; url: string } | null>(null)
 
-function onUpdatePush(e: MessageEvent) {
+function onHostPush(e: MessageEvent) {
     let msg: any
     try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data } catch { return }
     if (msg?.action === 'UpdateAvailable') updateBanner.value = { version: msg.payload.version, url: msg.payload.url }
+    // Host persisted a Ctrl+wheel / F10 zoom — keep the store in step so a settings Save keeps it
+    if (msg?.action === 'ZoomChanged' && store.settings) {
+        store.settings.UseCustomScaling = !!msg.payload.useCustomScaling
+        store.settings.CustomScale = msg.payload.customScale
+    }
 }
 async function dismissUpdate() { updateBanner.value = null }
 async function skipUpdate() {
@@ -87,7 +102,8 @@ watch(() => store.filterPanelOpen, (open) => { if (!open) showFilterSetup.value 
 
 watch(() => store.centerAbsoluteTime, (t) => {
     const year = Math.floor(t)
-    if (year === _lastSentYear) return
+    // The year-calendar slot is the active timeline's; a reference window must not steer it.
+    if (store.readOnly || year === _lastSentYear) return
     clearTimeout(_yearSendTimer)
     _yearSendTimer = window.setTimeout(() => {
         _lastSentYear = year
@@ -97,7 +113,7 @@ watch(() => store.centerAbsoluteTime, (t) => {
 
 async function toggleMiniMode() {
     isMinimised.value = !isMinimised.value
-    if (store.currentProject?.Id) {
+    if (store.currentProject?.Id && !store.readOnly) {
         await BackendAPI.SaveTimelineMinimised(store.currentProject.Id, isMinimised.value)
     }
 }
@@ -110,6 +126,7 @@ const jumpYear = ref(Math.round(store.currentNowYear))
 const jumpInputRef = ref<HTMLInputElement | null>(null)
 
 function onItemClick(itemId: string) {
+    if (store.readOnly) { onViewItem(itemId); return }   // reference window: Shift+click / Edit → view only
     BackendAPI.send('OpenAddEditItemWindow', {
         timelineId: store.currentProject?.Id,
         itemId,
@@ -128,12 +145,20 @@ async function onViewItem(itemId: string) {
 }
 
 function onAddItem(typeId: number, absoluteTime: number, lodIndex: number) {
+    if (store.readOnly) return
     BackendAPI.send('OpenAddEditItemWindow', {
         timelineId: store.currentProject?.Id,
         typeId,
         year: absoluteTime,
         granularity: lodIndex,
     })
+}
+
+// `N` (picker) / `Shift+N` (last type): a new item at the NOW line, at the current level of detail.
+function onTypePicked(typeId: number) {
+    showTypePicker.value = false
+    lastTypeId.value = typeId
+    onAddItem(typeId, store.centerAbsoluteTime, store.currentLodIndex)
 }
 
 async function undoDelete() {
@@ -150,6 +175,7 @@ async function undoDelete() {
 async function HandleLoadTimeline() {
 	const urlParams = new URLSearchParams(window.location.search)
 	const id = parseInt(urlParams.get('id') ?? '0', 10)
+	store.readOnly = urlParams.get('readOnly') === '1'   // BL-66 reference window (cold-start path)
 
 	if (id > 0) {
 		await store.loadTimelineData(id)
@@ -168,11 +194,26 @@ function jump() {
     // Number.isFinite: v-model.number yields '' when cleared, and global
     // isFinite('') coerces to 0 → jumped to year 0 on empty input.
     if (!Number.isFinite(year)) return
+    jumpTo(year)
+}
+
+function jumpTo(year: number) {
     if (store.layoutSettings?.TimelineAnimateOnJumpToYear) {
-        timelineCanvasRef.value?.animateJumpToYear(year, store.layoutSettings.TimelineJumpToYearAnimationLength)
+        timelineCanvasRef.value?.animateJumpToYear(year, store.layoutSettings.TimelineJumpToYearAnimationLength);
     } else {
-        timelineCanvasRef.value?.jumpToYear(year)
+        timelineCanvasRef.value?.jumpToYear(year);
     }
+}
+
+// Home / End: the start / end boundary when the timeline has one, otherwise the first / last item.
+function jumpToEdge(end: boolean) {
+    const boundary = store.items.find(i => i.TypeId === (end ? 9 : 8))
+    const rest = store.items.filter(i => i.TypeId !== 8 && i.TypeId !== 9)
+    const target = boundary ? boundary.AbsoluteStart
+        : !rest.length ? null
+        : end ? Math.max(...rest.map(i => i.AbsoluteEnd ?? i.AbsoluteStart))
+        : Math.min(...rest.map(i => i.AbsoluteStart))
+    if (target != null && Number.isFinite(target)) jumpTo(target)
 }
 
 const navStyle = computed(() => {
@@ -210,29 +251,61 @@ function handleResizeEvent(){
 	}
 }
 
-function onMinimapJump(year: number) {
-    if (store.layoutSettings?.TimelineAnimateOnJumpToYear) {
-        timelineCanvasRef.value?.animateJumpToYear(year, store.layoutSettings.TimelineJumpToYearAnimationLength);
-    } else {
-        timelineCanvasRef.value?.jumpToYear(year);
-    }
-}
-
 async function onShiftComplete(delta: number) {
     const targetYear = store.currentNowYear + delta;
     await store.loadTimelineData(store.currentProject!.Id);
     timelineCanvasRef.value?.animateJumpToYear(targetYear, store.layoutSettings?.TimelineJumpToYearAnimationLength ?? 600);
 }
 
-function onHotkey(e: KeyboardEvent) {
-    if (e.key === 'F11') {
-        e.preventDefault()
-        BackendAPI.send('ToggleFullscreen', { timelineId: store.currentProject?.Id })
-    } else if (e.key === 'F10') {
-        e.preventDefault()
-        BackendAPI.send('ToggleCustomScaling', { timelineId: store.currentProject?.Id })
-    }
+// ← / → pan at a constant px/s while held (Shift = 3×); keydown auto-repeat keeps `fast` current.
+const keyPan = { dir: 0, fast: false, raf: 0, last: 0 }
+function panFrame(t: number) {
+    if (!keyPan.dir) { keyPan.raf = 0; return }
+    const dt = keyPan.last ? (t - keyPan.last) / 1000 : 0
+    keyPan.last = t
+    const speed = (store.settings?.KeyboardPanSpeed ?? 400) * (keyPan.fast ? 3 : 1)
+    timelineCanvasRef.value?.applyPan(keyPan.dir * speed * dt)
+    keyPan.raf = requestAnimationFrame(panFrame)
 }
+function startPan(e: KeyboardEvent) {
+    keyPan.dir = e.key === 'ArrowLeft' ? 1 : -1   // positive deltaX drags the view towards earlier years
+    keyPan.fast = e.shiftKey
+    if (!keyPan.raf) { keyPan.last = 0; keyPan.raf = requestAnimationFrame(panFrame) }
+}
+function stopPan(e?: KeyboardEvent) {
+    if (!e || e.key === 'ArrowLeft' || e.key === 'ArrowRight') keyPan.dir = 0
+}
+const onWindowBlur = () => stopPan()
+
+// Anything that edits or opens a child window is off in a reference window (BL-66).
+const rw = (fn: ShortcutHandler): ShortcutHandler => e => store.readOnly ? false : fn(e)
+
+useShortcuts('timeline', {
+    pan: startPan,
+    panFast: startPan,
+    stepTick: e => timelineCanvasRef.value?.stepTick(e.key === 'ArrowUp'),
+    stepYear: e => timelineCanvasRef.value?.stepTick(e.key === 'ArrowUp', true),
+    zoomIn: () => store.lodZoomIn(),
+    zoomOut: () => store.lodZoomOut(),
+    jumpStart: () => jumpToEdge(false),
+    jumpEnd: () => jumpToEdge(true),
+    focusJump: () => { jumpInputRef.value?.focus(); jumpInputRef.value?.select() },
+    addItem: rw(() => { showTypePicker.value = true }),
+    addItemLast: rw(() => { if (lastTypeId.value) onTypePicked(lastTypeId.value); else showTypePicker.value = true }),
+    undoDelete: rw(() => { undoDelete() }),
+    filter: () => { store.setFilterPanelOpen(!store.filterPanelOpen) },
+    tags: rw(() => { showTags.value = true }),
+    yearCalendar: rw(() => { toggleYearCalendar() }),
+    miniMode: () => { toggleMiniMode() },
+    massAdd: rw(() => { showMassAdd.value = true }),
+    settings: rw(() => { showSettings.value = true }),
+    actionsMenu: rw(() => actionsMenuRef.value?.openMenu()),
+    reference: rw(() => { showReference.value = true }),
+    help: () => { showHelp.value = true },
+    shortcuts: () => { showShortcuts.value = true },
+    customScaling: () => BackendAPI.send('ToggleCustomScaling', { timelineId: store.currentProject?.Id }),
+    fullscreen: () => BackendAPI.send('ToggleFullscreen', { timelineId: store.currentProject?.Id }),
+})
 
 let _setIdListener: ((e: MessageEvent) => void) | null = null
 
@@ -249,7 +322,8 @@ onMounted(async () => {
 		waitingForId.value = false
 		const id = msg.payload?.id
 		if (id > 0) {
-			history.replaceState(null, '', '?id=' + id) // pre-warmed URL has no ?id; F5 must still work
+			store.readOnly = !!msg.payload?.readOnly
+			history.replaceState(null, '', '?id=' + id + (store.readOnly ? '&readOnly=1' : '')) // pre-warmed URL has no ?id; F5 must still work
 			store.loadTimelineData(id)
 			BackendAPI.GetAppConfig().then(cfg => {
 				if (cfg) store.setPerformantPanning(cfg.performantPanning ?? true)
@@ -268,16 +342,20 @@ onMounted(async () => {
 	}
 
 	window.addEventListener('resize', handleResizeEvent)
-    window.addEventListener('keydown', onHotkey)
+    window.addEventListener('keyup', stopPan)
+    window.addEventListener('blur', onWindowBlur)
     window.chrome?.webview?.addEventListener('message', onYearCalendarClosePush)
-    window.chrome?.webview?.addEventListener('message', onUpdatePush)
+    window.chrome?.webview?.addEventListener('message', onHostPush)
 })
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', handleResizeEvent)
-    window.removeEventListener('keydown', onHotkey)
+    window.removeEventListener('keyup', stopPan)
+    window.removeEventListener('blur', onWindowBlur)
+    stopPan()
+    if (keyPan.raf) cancelAnimationFrame(keyPan.raf)
     window.chrome?.webview?.removeEventListener('message', onYearCalendarClosePush)
-    window.chrome?.webview?.removeEventListener('message', onUpdatePush)
+    window.chrome?.webview?.removeEventListener('message', onHostPush)
     if (_setIdListener) {
         window.chrome.webview.removeEventListener('message', _setIdListener)
         _setIdListener = null
@@ -289,7 +367,7 @@ onBeforeUnmount(() => {
 
 <template>
 	<div id="timeline-center">
-		<WindowTitleBar :title="store.title || 'Story Timeline'" />
+		<WindowTitleBar :title="(store.title || 'Story Timeline') + (store.readOnly ? ' (reference)' : '')" />
 		<div v-if="(store.isLoading || waitingForId) && !loadError" id="status-container">
 			<PhSpinner class="spinner-icon" :size="48" color="#79876b" />
 			<h2>Loading Timeline Data...</h2>
@@ -305,17 +383,21 @@ onBeforeUnmount(() => {
                 :filter-active="store.filterPanelOpen"
                 :mini-mode="isMinimised"
                 :year-calendar-open="yearCalendarOpen"
+                :read-only="store.readOnly"
+                :reference-active="!!store.reference"
                 @toggle-filter="store.setFilterPanelOpen(!store.filterPanelOpen)"
                 @toggle-mini="toggleMiniMode"
                 @open-settings="showSettings = true"
                 @open-about="showAbout = true"
                 @open-tags="showTags = true"
                 @open-mass-add="showMassAdd = true"
+                @open-reference="showReference = true"
                 @open-help="showHelp = true"
+                @open-shortcuts="showShortcuts = true"
                 @toggle-year-calendar="toggleYearCalendar"
             >
                 <template #actions>
-                    <TimelineActionsMenu @shift-complete="onShiftComplete" />
+                    <TimelineActionsMenu ref="actionsMenuRef" @shift-complete="onShiftComplete" />
                 </template>
             </TimelineActivityStrip>
 
@@ -355,6 +437,9 @@ onBeforeUnmount(() => {
     <TagManagerModal v-if="showTags" @close="showTags = false" />
     <MassAddItemsModal v-if="showMassAdd" @close="showMassAdd = false" />
     <HelpModal v-if="showHelp" @close="showHelp = false" />
+    <ShortcutsModal v-if="showShortcuts" context="timeline" @close="showShortcuts = false" />
+    <ItemTypePickerModal v-if="showTypePicker" :last-type-id="lastTypeId" @pick="onTypePicked" @close="showTypePicker = false" />
+    <ReferenceTimelineModal v-if="showReference" :current-id="store.currentProject?.Id" @close="showReference = false" />
 
     <div v-if="store.filterPanelOpen" class="filter-area">
         <TimelineFilterPanel :flashed-rule-id="flashedRuleId" :setup-open="showFilterSetup" @open-setup="showFilterSetup = !showFilterSetup" />
@@ -395,6 +480,7 @@ onBeforeUnmount(() => {
 				:mini-mode="false"
 				@item-click="onItemClick"
 				@view-item="onViewItem"
+				@view-reference-item="refViewItemId = $event"
 				@add-item="onAddItem"
 			></TimelineCanvas>
         </Pane>
@@ -437,7 +523,7 @@ onBeforeUnmount(() => {
     </template>
 
     <div id="timeline-overview">
-        <TimelineMinimap @jump-to-year="onMinimapJump" />
+        <TimelineMinimap @jump-to-year="jumpTo" />
     </div>
 
     <!-- Item view modal -->
@@ -447,6 +533,14 @@ onBeforeUnmount(() => {
         :timeline-id="store.currentProject.Id"
         :layout-settings="store.layoutSettings ?? null"
         @close="viewItemId = null"
+    />
+    <TimelineItemViewModal
+        v-if="refViewItemId && store.reference"
+        :item-id="refViewItemId"
+        :timeline-id="store.reference.project.Id"
+        :layout-settings="store.layoutSettings ?? null"
+        view-only
+        @close="refViewItemId = null"
     />
 
     <!-- Picture lightbox -->

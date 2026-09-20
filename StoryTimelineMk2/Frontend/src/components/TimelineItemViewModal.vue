@@ -2,14 +2,21 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { BackendAPI } from '@/bridge/api';
 import type { ItemForEdit, LayoutSettings } from '@/types/models';
+import { useModalGuard } from '@/utils/shortcuts';
+import { useTimelineStore } from '@/stores/timelineStore';
 
 const props = defineProps<{
     itemId: string;
     timelineId: number;
     layoutSettings?: LayoutSettings | null;
+    /** BL-66 underlay: an item from the reference timeline — no Edit button, badge says so */
+    viewOnly?: boolean;
 }>();
 
 const emit = defineEmits<{ close: [] }>();
+
+useModalGuard();
+const store = useTimelineStore();
 
 const data = ref<ItemForEdit | null>(null);
 const loading = ref(true);
@@ -64,7 +71,7 @@ const panelStyle = computed(() => ({
                     <div class="vm-header">
                         <div class="vm-color-strip"></div>
                         <div class="vm-title-block">
-                            <span class="vm-type-badge">{{ TYPE_NAMES[data.Item.TypeId] || 'Item' }}</span>
+                            <span class="vm-type-badge">{{ TYPE_NAMES[data.Item.TypeId] || 'Item' }}<template v-if="viewOnly"> · reference</template></span>
                             <h2 class="vm-title">{{ data.Item.Title || 'Untitled' }}</h2>
                         </div>
                     </div>
@@ -135,7 +142,7 @@ const panelStyle = computed(() => ({
                         </div>
                     </div>
 
-                    <div class="vm-footer">
+                    <div v-if="!store.readOnly && !viewOnly" class="vm-footer">
                         <button class="vm-edit-btn" @click="openEdit">
                             Edit item <i class="ri-arrow-right-line"></i>
                         </button>

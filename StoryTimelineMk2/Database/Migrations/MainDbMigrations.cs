@@ -20,6 +20,7 @@ namespace StoryTimelineMk2.Database.Migrations
             new(4, "centered item boxes", "1.0.3", V4_ItemCentered),
             new(5, "picture title", "1.0.3", V5_ShowTitle),
             new(6, "item notes", "1.0.3", V6_ItemNotes),
+            new(7, "keyboard pan speed", "1.0.3", V7_KeyboardPanSpeed),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1027,6 +1028,14 @@ namespace StoryTimelineMk2.Database.Migrations
         private static void V6_ItemNotes(MigrationDb db)
         {
             db.Execute("ALTER TABLE items ADD COLUMN item_notes TEXT");
+        }
+
+        // ── 7: keyboard pan speed ────────────────────────────────────────────────────────────────
+
+        /// <summary>← / → hold-to-pan speed per timeline, in px/s (BL-39).</summary>
+        private static void V7_KeyboardPanSpeed(MigrationDb db)
+        {
+            db.Execute("ALTER TABLE settings ADD COLUMN keyboard_pan_speed REAL NOT NULL DEFAULT 400");
         }
     }
 }

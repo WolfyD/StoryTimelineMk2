@@ -460,4 +460,31 @@ describe('timelineStore (extended)', () => {
       expect(store.futureItems).toHaveLength(1)
     })
   })
+
+  // ── reference underlay (BL-66 step 2) ──────────────────────────────────────
+
+  describe('loadReference / clearReference', () => {
+    it('keeps the project and items (minus boundaries) with a zero shift, and does not touch the active state', async () => {
+      const store = useTimelineStore()
+      store.title = 'Active'
+      ;(BackendAPI.LoadTimelineData as any).mockResolvedValueOnce({
+        Project: { Id: 9, Title: 'Ref' },
+        Items: [{ Id: 'a', TypeId: 2 }, { Id: 's', TypeId: 8 }, { Id: 'e', TypeId: 9 }],
+      })
+      await store.loadReference(9)
+      expect(store.reference).toEqual({ project: { Id: 9, Title: 'Ref' }, items: [{ Id: 'a', TypeId: 2 }], shift: 0 })
+      expect(store.title).toBe('Active')
+      expect(store.items).toHaveLength(0)
+
+      store.clearReference()
+      expect(store.reference).toBeNull()
+    })
+
+    it('throws on an error reply so the caller can show it', async () => {
+      const store = useTimelineStore()
+      ;(BackendAPI.LoadTimelineData as any).mockResolvedValueOnce({ status: 'error', message: 'nope' })
+      await expect(store.loadReference(9)).rejects.toThrow('nope')
+      expect(store.reference).toBeNull()
+    })
+  })
 })

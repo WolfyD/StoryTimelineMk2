@@ -68,6 +68,8 @@ export interface TimelineSettings {
     HeaderMode: number;
     PanSpeedMultiplier: number;
     PanDeadzone: number;
+    /** ← / → hold-to-pan speed in px/s (Shift = 3×) */
+    KeyboardPanSpeed: number;
     DefaultItemColor: string;
 }
 

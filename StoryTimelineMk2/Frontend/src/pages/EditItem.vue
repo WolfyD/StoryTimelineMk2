@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { BackendAPI } from '@/bridge/api'
+import { useShortcuts } from '@/utils/shortcuts'
+import HelpModal from '@/components/HelpModal.vue'
+import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { DEFAULT_SWATCHES, loadSwatches } from '@/utils/timelinePrefs'
@@ -366,6 +369,8 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   } finally {
     cleanSnapshot = snapshot()
     isLoading.value = false
+    await nextTick()
+    titleRef.value?.focus()
   }
 }
 
@@ -396,18 +401,42 @@ function discard() {
   BackendAPI.WindowClose()
 }
 
-function onKeydown(e: KeyboardEvent) {
-  if (e.ctrlKey && e.key.toLowerCase() === 's') {
-    e.preventDefault()
-    if (!isSaving.value) save()
-  } else if (e.key === 'Escape' && !showDiscard.value && !lightboxSrc.value) {
+// ---------------------------------------------------------------------------
+// Keyboard (BL-39) — the registry in utils/shortcuts.ts is the source of truth
+// ---------------------------------------------------------------------------
+const showHelp      = ref(false)
+const showShortcuts = ref(false)
+const titleRef      = ref<HTMLInputElement | null>(null)
+const descRef       = ref<HTMLTextAreaElement | null>(null)
+const endDateRef    = ref<InstanceType<typeof LodDateInput> | null>(null)
+const tagInputRef   = ref<HTMLInputElement | null>(null)
+
+// Tab walks the writer's path; anywhere else Tab keeps its native order.
+function tabPath(e: KeyboardEvent) {
+  const endYear = (endDateRef.value?.$el as HTMLElement | undefined)?.querySelector<HTMLInputElement>('input')
+  const path = [titleRef.value, descRef.value, endYear, tagInputRef.value].filter((el): el is HTMLInputElement | HTMLTextAreaElement => !!el)
+  const i = path.indexOf(document.activeElement as HTMLInputElement)
+  const next = i < 0 ? undefined : path[i + (e.shiftKey ? -1 : 1)]
+  if (!next) return false
+  next.focus()
+  if (next.type !== 'number') next.select()
+}
+
+function saveShortcut() { if (!isSaving.value) save() }
+useShortcuts('edit', {
+  save: saveShortcut,
+  saveEnter: saveShortcut,
+  cancel: () => {
     if (showImagePicker.value || showCharPicker.value || showStoryPicker.value) {
       showImagePicker.value = showCharPicker.value = showStoryPicker.value = false
     } else {
       requestClose()
     }
-  }
-}
+  },
+  tabPath,
+  help: () => { showHelp.value = true },
+  shortcuts: () => { showShortcuts.value = true },
+})
 
 // Receives push messages from C# when the window is reused without page reload.
 function handlePushMessage(event: MessageEvent) {
@@ -440,13 +469,11 @@ onMounted(() => {
   loadData(timelineId, itemId, defaultType, defaultAbsoluteTime, defaultGranularity)
   window.chrome?.webview?.addEventListener('message', handlePushMessage)
   document.addEventListener('mousedown', closePaletteOutside)
-  window.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   window.chrome?.webview?.removeEventListener('message', handlePushMessage)
   document.removeEventListener('mousedown', closePaletteOutside)
-  window.removeEventListener('keydown', onKeydown)
 })
 
 // ---------------------------------------------------------------------------
@@ -689,13 +716,13 @@ async function removeImage(pictureId: string) {
 
       <div class="field">
         <label>Title</label>
-        <input type="text" v-model="item.Title" placeholder="Item title" />
+        <input ref="titleRef" type="text" v-model="item.Title" placeholder="Item title" />
       </div>
 
       <div class="row">
         <div class="field flex-1">
           <label>Description</label>
-          <textarea rows="7" v-model="item.Description" placeholder="Short description" />
+          <textarea ref="descRef" rows="7" v-model="item.Description" placeholder="Short description" />
         </div>
         <div class="field color-field">
           <label>Color</label>
@@ -770,6 +797,7 @@ async function removeImage(pictureId: string) {
         <!-- End date (only for Period / Age) -->
         <div v-if="isRangeType" class="date-row">
           <LodDateInput
+            ref="endDateRef"
             label="End"
             :lodIndex="item.CreationGranularity"
             :lodProfile="lodProfile"
@@ -846,6 +874,7 @@ async function removeImage(pictureId: string) {
                 <button class="chip-remove" @click="removeTag(i)">×</button>
               </span>
               <input
+                ref="tagInputRef"
                 type="text"
                 class="tag-inline-input"
                 v-model="tagInputValue"
@@ -1103,6 +1132,8 @@ async function removeImage(pictureId: string) {
     confirm-label="Discard" cancel-label="Keep editing" danger
     @confirm="discard" @cancel="showDiscard = false"
   />
+  <HelpModal v-if="showHelp" @close="showHelp = false" />
+  <ShortcutsModal v-if="showShortcuts" context="edit" @close="showShortcuts = false" />
   <NotificationContainer />
 </template>
 

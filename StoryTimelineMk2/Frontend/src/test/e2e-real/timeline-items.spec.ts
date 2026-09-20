@@ -176,6 +176,8 @@ test.describe('Timeline items — real backend', () => {
     await expect(headerButtons.nth(1)).toContainText('Cancel')
 
     await editRoot.locator('input[placeholder="Item title"]').fill('E2E dirty item')
+    await editPage.keyboard.press('Escape')                                // BL-39: first Esc only leaves the text field
+    await expect(editRoot.locator('input[placeholder="Item title"]')).not.toBeFocused()
     await editPage.keyboard.press('Escape')
     await expect(editPage.locator('.bm-panel')).toContainText('Discard changes?')
 

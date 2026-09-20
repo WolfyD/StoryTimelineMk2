@@ -13,6 +13,7 @@ vi.mock('@/bridge/api', () => ({
     GetItemForEdit: vi.fn().mockResolvedValue(null),
     LoadTimelineData: vi.fn().mockResolvedValue(null),
     GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
+    GetAllTimelines: vi.fn().mockResolvedValue({ data: [] }),
     OpenYearCalendarWindow: vi.fn().mockResolvedValue({ status: 'opened' }),
     SetCalendarYear: vi.fn(),
     // WindowTitleBar (child of TimelineApp) calls these on mount
@@ -32,11 +33,13 @@ vi.mock('@/components/TimelineCanvas.vue', () => ({
     name: 'TimelineCanvas',
     template: '<div class="timeline-canvas-stub"></div>',
     props: ['timelineItems', 'timelineSettings', 'timelineInfo', 'layoutSettings'],
-    emits: ['item-click', 'view-item', 'add-item'],
+    emits: ['item-click', 'view-item', 'view-reference-item', 'add-item'],
     // Expose methods that TimelineApp calls via the canvas ref
     methods: {
       animateJumpToYear: vi.fn(),
       jumpToYear: vi.fn(),
+      stepTick: vi.fn(),
+      applyPan: vi.fn(),
       updateStageSize: vi.fn(),
     },
   },
@@ -87,7 +90,7 @@ vi.mock('@/components/TimelineItemViewModal.vue', () => ({
   default: {
     name: 'TimelineItemViewModal',
     template: '<div class="item-view-modal-stub"></div>',
-    props: ['itemId', 'timelineId'],
+    props: { itemId: String, timelineId: Number, viewOnly: Boolean },
     emits: ['close'],
   },
 }))
@@ -663,6 +666,138 @@ describe('TimelineApp', () => {
     expect(BackendAPI.SetCalendarYear).not.toHaveBeenCalled()
 
     vi.useRealTimers()
+    wrapper.unmount()
+  })
+
+  // ── Keyboard shortcuts (BL-39) ──────────────────────────────────────────────
+
+  const press = (key: string, init: KeyboardEventInit = {}) =>
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }))
+
+  async function mountReady(items: any[] = [], params: Record<string, string> = { id: '1' }) {
+    setUrlParams(params)
+    store.isLoading = false
+    store.layoutSettings = makeLayoutSettings({ TimelineAnimateOnJumpToYear: false })
+    store.currentProject = { Id: 42, Title: 'T', Author: '', Description: '', StartYear: 0, Color: null, CalendarId: 'cal_x' } as any
+    store.items = items
+    const wrapper = mountApp()
+    await flushPromises()
+    return wrapper
+  }
+
+  it('N opens the type picker; the pick opens the edit window at the NOW line; Shift+N repeats it', async () => {
+    const wrapper = await mountReady()
+    store.centerAbsoluteTime = 1234.5
+    store.currentLodIndex = 3
+    press('n')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent({ name: 'ItemTypePickerModal' }).exists()).toBe(true)
+
+    ;(wrapper.vm as any).onTypePicked(5)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent({ name: 'ItemTypePickerModal' }).exists()).toBe(false)
+    expect(BackendAPI.send).toHaveBeenCalledWith('OpenAddEditItemWindow', { timelineId: 42, typeId: 5, year: 1234.5, granularity: 3 })
+
+    press('N', { shiftKey: true })
+    expect((BackendAPI.send as any).mock.calls.filter((c: any[]) => c[0] === 'OpenAddEditItemWindow')).toHaveLength(2)
+    expect(wrapper.findComponent({ name: 'ItemTypePickerModal' }).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('Home / End jump to the boundary when present, else to the first / last item', async () => {
+    const wrapper = await mountReady([
+      { Id: 'a', TypeId: 1, AbsoluteStart: 100, AbsoluteEnd: 100 },
+      { Id: 'b', TypeId: 2, AbsoluteStart: 300, AbsoluteEnd: 450 },
+    ])
+    const jumpSpy = vi.fn()
+    ;(wrapper.vm as any).timelineCanvasRef = { jumpToYear: jumpSpy, animateJumpToYear: vi.fn(), stepTick: vi.fn(), applyPan: vi.fn() }
+    press('Home'); press('End')
+    expect(jumpSpy.mock.calls.map(c => c[0])).toEqual([100, 450])
+
+    store.items = [...store.items, { Id: 's', TypeId: 8, AbsoluteStart: -50, AbsoluteEnd: -50 } as any]
+    press('Home')
+    expect(jumpSpy).toHaveBeenLastCalledWith(-50)
+    wrapper.unmount()
+  })
+
+  it('↑ / ↓ step a tick, Shift steps a year; F2 opens the shortcuts list; keys are dead while a modal is open', async () => {
+    const wrapper = await mountReady()
+    const stepTick = vi.fn()
+    ;(wrapper.vm as any).timelineCanvasRef = { jumpToYear: vi.fn(), animateJumpToYear: vi.fn(), stepTick, applyPan: vi.fn() }
+    press('ArrowUp'); press('ArrowDown', { shiftKey: true })
+    expect(stepTick.mock.calls).toEqual([[true], [false, true]])
+
+    press('F2')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent({ name: 'ShortcutsModal' }).exists()).toBe(true)
+    press('ArrowUp')
+    expect(stepTick).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  // ── Reference window (BL-66) ──────────────────────────────────────────────
+
+  it('R opens the reference picker', async () => {
+    const wrapper = await mountReady()
+    press('r')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent({ name: 'ReferenceTimelineModal' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('?readOnly=1 marks the window, hides the edit affordances and routes edits to the view popup', async () => {
+    const wrapper = await mountReady([], { id: '1', readOnly: '1' })
+    expect(store.readOnly).toBe(true)
+    expect(wrapper.find('.title-bar__name').text()).toMatch(/ \(reference\)$/)
+    for (const cls of ['settings', 'tags', 'mass-add', 'reference', 'year-cal'])
+      expect(wrapper.find(`.strip-btn--${cls}`).exists(), cls).toBe(false)
+    expect(wrapper.find('.strip-btn--filter').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'TimelineActionsMenu' }).exists()).toBe(false)
+
+    press('n'); press('N', { shiftKey: true }); press('r'); press(',', { ctrlKey: true }); press('t'); press('M', { shiftKey: true })
+    await wrapper.vm.$nextTick()
+    for (const name of ['ItemTypePickerModal', 'ReferenceTimelineModal', 'TimelineSettingsModal', 'TagManagerModal', 'MassAddItemsModal'])
+      expect(wrapper.findComponent({ name }).exists(), name).toBe(false)
+
+    ;(wrapper.vm as any).onItemClick('item-1')
+    ;(wrapper.vm as any).onAddItem(1, 100, 0)
+    await flushPromises()
+    expect(BackendAPI.send).not.toHaveBeenCalledWith('OpenAddEditItemWindow', expect.anything())
+    expect(wrapper.findComponent({ name: 'TimelineItemViewModal' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('a ZoomChanged push keeps the store settings in step with the host', async () => {
+    const wrapper = await mountReady()
+    store.settings = { UseCustomScaling: false, CustomScale: 1 } as any
+    const listeners = (window.chrome.webview.addEventListener as any).mock.calls.filter((c: any[]) => c[0] === 'message').map((c: any[]) => c[1])
+    for (const l of listeners) l({ data: JSON.stringify({ action: 'ZoomChanged', payload: { useCustomScaling: true, customScale: 1.3 } }) })
+    expect(store.settings!.UseCustomScaling).toBe(true)
+    expect(store.settings!.CustomScale).toBe(1.3)
+    wrapper.unmount()
+  })
+
+  it('a reference item from the canvas opens the view modal on the reference timeline, view only', async () => {
+    const wrapper = await mountReady()
+    store.reference = { project: { Id: 42, Title: 'Ref' } as any, items: [], shift: 0 }
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.strip-btn--reference').classes()).toContain('strip-btn--tool-active')
+
+    wrapper.findComponent({ name: 'TimelineCanvas' }).vm.$emit('view-reference-item', 'ref-item')
+    await wrapper.vm.$nextTick()
+    const modal = wrapper.findComponent({ name: 'TimelineItemViewModal' })
+    expect(modal.props()).toMatchObject({ itemId: 'ref-item', timelineId: 42, viewOnly: true })
+    wrapper.unmount()
+  })
+
+  it('the pre-warm SetTimelineId push carries readOnly', async () => {
+    store.isLoading = false
+    const wrapper = mountApp()
+    await flushPromises()
+    const listener = (window.chrome.webview.addEventListener as any).mock.calls.find((c: any[]) => c[0] === 'message')[1]
+    listener({ data: JSON.stringify({ action: 'SetTimelineId', payload: { id: 7, readOnly: true } }) })
+    expect(store.readOnly).toBe(true)
+    expect(BackendAPI.LoadTimelineData).toHaveBeenCalledWith(7)
     wrapper.unmount()
   })
 })

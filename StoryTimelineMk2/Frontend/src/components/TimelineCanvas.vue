@@ -55,6 +55,15 @@ const miniNodeCache = new Map<string, MiniNodeElements>();
 const miniPinLanes = new Map<string, { absKey: number; idx: number }>();
 const miniBarLanes = new Map<string, { rowIdx: number; absStart: number; absEnd: number; typeName: string }>();
 const boundaryOverlayLayer = new Konva.Layer();
+// BL-66 underlay: another timeline's items, ghosted under the active ones, on the active time→x mapping.
+// Own groups / caches / lanes so the active layout never moves for it. Not on the minimap, ignores filters.
+const referenceLayer = new Konva.Layer({ opacity: 0.4 });
+const refStems = new Konva.Group();
+const refBoxes = new Konva.Group();
+referenceLayer.add(refStems, refBoxes);
+const refNodeCache = new Map<string, any>();
+const refLanes = new Map<string, LaneLock>();
+let refRenderedFor: object | null = null;   // store.reference object last drawn — a new one means rebuild
 const tooltip = ref({ visible: false, text: '', x: 0, y: 0 });
 const cursor = ref({ visible: false, x: 0, lineY0: 0, lineY1: 0, labelRight: true, labelY: 0, labelText: '', fracText: '' });
 
@@ -73,6 +82,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     itemClick: [itemId: string]
     viewItem: [itemId: string]
+    viewReferenceItem: [itemId: string]
     addItem: [typeId: number, absoluteTime: number, lodIndex: number]
     miniHover: [payload: { item: TimelineItem; x: number; y: number } | null]
 }>();
@@ -334,9 +344,15 @@ watch(() => props.layoutSettings, (newLs) => {
     lockedLanes.clear();
     stemsMaster.destroyChildren();
     boxesMaster.destroyChildren();
+    clearReferenceNodes();
     renderGrid(gridLayer, newLs);
     RenderUiLayer(uiLayer, newLs);
     renderWithDimming(newLs);
+});
+
+// --- REFERENCE UNDERLAY WATCHER (BL-66) ---
+watch([() => store.reference, () => store.reference?.shift], () => {
+    if (stage && props.layoutSettings) renderWithDimming(props.layoutSettings);
 });
 
 // --- MINI MODE WATCHER ---
@@ -1060,7 +1076,87 @@ const renderWithDimming = (ls: LayoutSettings) => {
     } else {
         renderItems(visible, ls);
     }
+    renderReference(ls);
 };
+
+function clearReferenceNodes() {
+    refNodeCache.clear();
+    refLanes.clear();
+    refStems.destroyChildren();
+    refBoxes.destroyChildren();
+}
+
+// Same placement math as renderItems, minus everything the ghost doesn't need: no dimming,
+// no bookmarks, no picture loading, no visible-count. Node ids are `ref:<id>` so clicks can tell them apart.
+function renderReference(ls: LayoutSettings) {
+    const ref = store.reference;
+    if (!ref) {
+        if (refNodeCache.size) clearReferenceNodes();
+        refRenderedFor = null;
+    }
+    if (!ref || props.miniMode) { referenceLayer.visible(false); return; }
+    if (refRenderedFor !== ref) { clearReferenceNodes(); refRenderedFor = ref; }
+    referenceLayer.visible(true);
+
+    const screenBuffer = 400;
+    const stageCenterY = viewport.height / 2;
+    const activeStep = viewport.lodStepFraction;
+    const ranges = getActiveRanges();
+    const { min: bMin, max: bMax } = getBoundaries();
+    // ponytail: the active LOD index against the reference items' own masks — a reference with a
+    // different LOD profile shows whatever its mask says at this index. Map profiles if it ever matters.
+    const lodBit = 1 << store.currentLodIndex;
+    const shown = new Set<string>();
+
+    for (const item of ref.items) {
+        const typeId = getTypeId(item);
+        if (typeId === 6 || typeId === 8 || typeId === 9) continue;
+        if (!(getLodMask(item) & lodBit)) continue;
+        const id = 'ref:' + getId(item);
+        const absoluteStart = getAbsoluteStart(item) + ref.shift;
+        const absoluteEnd = getAbsoluteEnd(item) + ref.shift;
+        if (ranges.some(r => absoluteStart >= r.StartYear && absoluteEnd <= r.EndYear)) { refLanes.delete(id); continue; }
+        if (absoluteEnd < bMin || absoluteStart > bMax) { refLanes.delete(id); continue; }
+
+        const typeName = getTypeName(item);
+        const isAgeOrPeriod = typeName === 'Age' || typeName === 'Period';
+        const itemX = getXFromTime(absoluteStart, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+        let endX = itemX;
+        if (isAgeOrPeriod) {
+            const absEnd = absoluteEnd > absoluteStart ? absoluteEnd : absoluteStart + activeStep;
+            endX = getXFromTime(absEnd, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+        }
+        if (Math.max(itemX, endX) < -screenBuffer || Math.min(itemX, endX) > viewport.width + screenBuffer) { refLanes.delete(id); continue; }
+        shown.add(id);
+
+        let elements = refNodeCache.get(id);
+        if (!elements) {
+            elements = buildNode(id, typeName, getTitle(item), getColor(item), refStems, refBoxes, ls, false);
+            refNodeCache.set(id, elements);
+            const tip = `${getTitle(item)} — ${ref.project.Title || 'Untitled'} (reference · Alt+click to view)`;
+            elements.box.on('mouseenter', () => { const pos = stage?.getPointerPosition(); if (pos) showTooltip(tip, pos.x, pos.y); });
+            elements.box.on('mouseleave', hideTooltip);
+        }
+        setNodeVisibility(elements, true);
+
+        const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX)
+            : typeName === 'Picture' ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
+            : ls.TimelineEventBoxWidth;
+        let targetY = stageCenterY - ls.TimelineAgeHeight / 2;
+        if (typeName !== 'Age') {
+            const isAboveLine = item.Placement ? item.Placement === 1 : getItemIndex(item) % 2 !== 0;
+            targetY = stageCenterY + getAssignedLane(
+                id, itemX, boxWidth, isAboveLine, isAgeOrPeriod,
+                absoluteStart, absoluteEnd, viewport.centerTime, activeStep,
+                viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, refLanes, ls, ranges
+            );
+        }
+        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeftOfNow(itemX, viewport.width), stageCenterY, ls, !!item.Centered);
+    }
+
+    for (const [id, elements] of refNodeCache) if (!shown.has(id)) setNodeVisibility(elements, false);
+    referenceLayer.batchDraw();
+}
 
 function RenderUiLayer(ui_layer: Konva.Layer, ls: LayoutSettings) {
     ui_layer.destroyChildren();
@@ -1368,6 +1464,38 @@ function skipHiddenRange(targetYear: number, positive: boolean): number {
 		: (Math.ceil(hit.StartYear / frac) - 1) * frac;
 }
 
+/** One tick forward / back (wheel, ↑ / ↓); `byYear` = whole years below the Years LOD (Shift). */
+function stepTick(positive: boolean, byYear = false) {
+	const raw = byYear && viewport.lodStepFraction < 1
+		? (positive ? Math.floor(viewport.centerTime) + 1 : Math.ceil(viewport.centerTime) - 1)
+		: findNearestTick(positive);
+	jumpToYear(skipHiddenRange(raw, positive));
+}
+
+// --- Shared pan logic: left-drag, middle-mouse velocity pan and the ← / → keys ---
+function applyPan(deltaX: number) {
+    const _ranges = getActiveRanges();
+    const _step   = viewport.lodStepFraction;
+    const _vc     = absoluteToVisual(viewport.centerTime, _ranges, _step);
+    viewport.centerTime = clampToBoundaries(visualToAbsolute(
+        _vc - (deltaX / store.layoutSettings!.TimelineTickDistance) * _step,
+        _ranges, _step
+    ));
+    gridPanOffset += deltaX;
+    if (!store.performantPanning || Math.abs(gridPanOffset) > DRIFT_THRESHOLD) {
+        renderGrid(gridLayer, props.layoutSettings!);
+        renderWithDimming(props.layoutSettings!);
+    } else {
+        gridLayer.x(gridPanOffset);
+        boundaryOverlayLayer.x(gridPanOffset);
+        gridLayer.batchDraw();
+        renderWithDimming(props.layoutSettings!);
+    }
+    hideTooltip();
+    updateCurrentYearInStore();
+    hideCursor();
+}
+
 // --- INITIALIZATION ---
 onMounted(() => {
     let block_index = 1;
@@ -1405,6 +1533,7 @@ onMounted(() => {
     itemLayer.add(boxesMaster);
 
 	stage.add(uiLayer);
+	stage.add(referenceLayer); // BL-66 underlay — below the grid and the active items
 
 	if(store.layoutSettings?.TimelineTickMarkerTextAlwaysOnTop) {
 		stage.add(itemLayer);
@@ -1450,15 +1579,16 @@ onMounted(() => {
         contextMenu.displayFraction = fraction;
 
         const targetId = e.target.id();
+        const isRefHit = targetId.includes('-ref:');   // BL-66 underlay: right-click falls through to the add menu
 
-        if (targetId && targetId.startsWith('boundary-')) {
+        if (targetId && targetId.startsWith('boundary-') && !store.readOnly) {
             const itemId = targetId.slice('boundary-'.length);
             const bItem = (store.items || []).find(i => getId(i) === itemId);
             contextMenu.type = 'boundary';
             contextMenu.itemId = itemId;
             contextMenu.boundaryLabel = bItem && getTypeId(bItem) === 8 ? 'Timeline Start' : 'Timeline End';
             positionMenu(e.evt.clientX, e.evt.clientY, 200, 120);
-        } else if (targetId && (targetId.startsWith('box-') || targetId.startsWith('label-') || targetId.startsWith('stem-') || targetId.startsWith('bookmark-'))) {
+        } else if (targetId && !isRefHit && (targetId.startsWith('box-') || targetId.startsWith('label-') || targetId.startsWith('stem-') || targetId.startsWith('bookmark-'))) {
             const itemId = targetId.split('-').slice(1).join('-');
             const clickedItem = store.items.find(i => getId(i) === itemId);
             contextMenu.type = 'item';
@@ -1491,9 +1621,12 @@ onMounted(() => {
         const targetId = e.target.id();
         if (targetId && (targetId.startsWith('box-') || targetId.startsWith('label-') || targetId.startsWith('stem-') || targetId.startsWith('bookmark-'))) {
             const itemId = targetId.split('-').slice(1).join('-');
-            if (e.evt.shiftKey) emit('itemClick', itemId);   // Shift+click → straight to the edit window
+            if (itemId.startsWith('ref:')) {   // BL-66 underlay: Alt+click views the reference item, a plain click is inert
+                if (e.evt.altKey) emit('viewReferenceItem', itemId.slice(4));
+            }
+            else if (e.evt.shiftKey) emit('itemClick', itemId);   // Shift+click → straight to the edit window
             else emit('viewItem', itemId);
-        } else if (targetId && targetId.startsWith('boundary-')) {
+        } else if (targetId && targetId.startsWith('boundary-') && !store.readOnly) {
             // Left-click on boundary flag → show remove menu
             const itemId = targetId.slice('boundary-'.length);
             const bItem = (store.items || []).find(i => getId(i) === itemId);
@@ -1516,30 +1649,6 @@ onMounted(() => {
     let hasDragged = false;
     let lastPointerX = 0;
     let dragStartX = 0;
-
-    // --- Shared pan logic used by both left-drag and middle-mouse velocity pan ---
-    function applyPan(deltaX: number) {
-        const _ranges = getActiveRanges();
-        const _step   = viewport.lodStepFraction;
-        const _vc     = absoluteToVisual(viewport.centerTime, _ranges, _step);
-        viewport.centerTime = clampToBoundaries(visualToAbsolute(
-            _vc - (deltaX / store.layoutSettings!.TimelineTickDistance) * _step,
-            _ranges, _step
-        ));
-        gridPanOffset += deltaX;
-        if (!store.performantPanning || Math.abs(gridPanOffset) > DRIFT_THRESHOLD) {
-            renderGrid(gridLayer, props.layoutSettings!);
-            renderWithDimming(props.layoutSettings!);
-        } else {
-            gridLayer.x(gridPanOffset);
-            boundaryOverlayLayer.x(gridPanOffset);
-            gridLayer.batchDraw();
-            renderWithDimming(props.layoutSettings!);
-        }
-        hideTooltip();
-        updateCurrentYearInStore();
-        hideCursor();
-    }
 
     // --- Left-click drag ---
     stage.on('mousedown', (e) => {
@@ -1651,20 +1760,8 @@ onMounted(() => {
     stage.on('wheel', (event) => {
         const e = event.evt as WheelEvent;
         if (!e) return;
-		if (e.deltaY) {
-			const positive = e.deltaY < 0;
-			if (e.shiftKey) {
-				const raw = viewport.lodStepFraction < 1
-					? (positive ? Math.floor(viewport.centerTime) + 1 : Math.ceil(viewport.centerTime) - 1)
-					: findNearestTick(positive);
-				jumpToYear(skipHiddenRange(raw, positive));
-			} else {
-				jumpToYear(skipHiddenRange(findNearestTick(positive), positive));
-			}
-		} else if (e.deltaX) {
-			const positive = e.deltaX > 0;
-			jumpToYear(skipHiddenRange(findNearestTick(positive), positive));
-		}
+		if (e.deltaY) stepTick(e.deltaY < 0, e.shiftKey);
+		else if (e.deltaX) stepTick(e.deltaX > 0);
     });
 
     RenderUiLayer(uiLayer, props.layoutSettings!);
@@ -1716,6 +1813,8 @@ function refreshItems() {
 defineExpose({
     animateJumpToYear,
 	jumpToYear,
+    stepTick,
+    applyPan,
     updateStageSize,
     gridLayer,
     uiLayer,
@@ -1791,6 +1890,7 @@ defineExpose({
 
             <!-- Right-click on empty canvas: add item types + special submenu -->
             <template v-if="contextMenu.type === 'addItems'">
+                <template v-if="!store.readOnly">
                 <button class="menu-item" @click="emit('addItem', 1, contextMenu.absoluteTime, store.currentLodIndex); closeContextMenu()">
                     <i class="ri-calendar-event-fill"></i> Event
                 </button>
@@ -1807,12 +1907,14 @@ defineExpose({
                     <i class="ri-sticky-note-fill"></i> Note
                 </button>
                 <div class="menu-separator"></div>
+                </template>
                 <button class="menu-item dist-from" @click="setCanvasDistancePoint('from')">
                     <i class="ri-map-pin-2-fill"></i> Distance – From
                 </button>
                 <button class="menu-item dist-to" @click="setCanvasDistancePoint('to')">
                     <i class="ri-map-pin-time-fill"></i> Distance – To
                 </button>
+                <template v-if="!store.readOnly">
                 <div class="menu-separator"></div>
                 <!-- Special flyout submenu -->
                 <div class="has-submenu">
@@ -1832,6 +1934,7 @@ defineExpose({
                         </button>
                     </div>
                 </div>
+                </template>
             </template>
 
             <!-- Right-click / left-click on boundary flag: remove -->
@@ -1845,10 +1948,12 @@ defineExpose({
             <!-- Right-click on item -->
             <template v-else-if="contextMenu.type === 'item'">
                 <div class="menu-header" :title="contextMenu.itemTitle">{{ contextMenu.itemTitle }}</div>
+                <template v-if="!store.readOnly">
                 <button class="menu-item" @click="emit('itemClick', contextMenu.itemId!); closeContextMenu()">
                     <i class="ri-edit-line"></i> Edit
                 </button>
                 <div class="menu-separator"></div>
+                </template>
                 <button class="menu-item dist-from" @click="setItemDistancePoint('from')">
                     <i class="ri-map-pin-2-fill"></i> Distance – From
                 </button>
@@ -1860,10 +1965,12 @@ defineExpose({
                         <i class="ri-ruler-2-line"></i> Calculate Distance
                     </button>
                 </template>
+                <template v-if="!store.readOnly">
                 <div class="menu-separator"></div>
                 <button class="menu-item danger" @click="deleteItem(contextMenu.itemId!)">
                     <i class="ri-delete-bin-line"></i> Delete
                 </button>
+                </template>
             </template>
 
         </div>

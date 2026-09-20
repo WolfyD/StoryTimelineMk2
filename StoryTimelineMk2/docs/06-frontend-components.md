@@ -299,6 +299,22 @@ Conventions used throughout this document:
 
 ---
 
+## ItemTypePickerModal.vue
+
+**Purpose** — The `N` flow (BL-39): a `BaseModal` listing Event / Period / Age / Picture / Note in canvas-menu order with `<kbd>` hints.
+
+| Contract | Details |
+|---|---|
+| Props | `lastTypeId: number \| null` (highlighted, repeated by `N`) |
+| Emits | `pick: [typeId]`, `close: []` |
+| Slots / Expose | *(none)* |
+
+**Used by** — `pages/TimelineApp.vue` (`N`; the pick calls `onAddItem` at the NOW line).
+
+**Gotchas** — window `keydown`: `1`–`5` or `E P A I O` (Note is `O` because `N` = last type and `P` = Period); ignores Ctrl/Alt/Meta chords; `stopImmediatePropagation` so the page's shortcut listener never sees the letter. No last type → `N` does nothing.
+
+---
+
 ## LodDateInput.vue
 
 **Purpose** — LOD-aware date entry: renders exactly the fields relevant to the current zoom level (Year always; Season, Month, Day, or Week depending on `lodIndex`) and encodes the sub-year portion into a single `subtick` value.
@@ -452,6 +468,36 @@ Conventions used throughout this document:
 
 ---
 
+## ReferenceTimelineModal.vue
+
+**Purpose** — BL-66: pick another timeline and either draw it underneath this one (`PhStack` button → `store.loadReference(id)`, closes on success; a failed load stays open with the error inline + `console.error`) or open it read-only in its own window (`PhAppWindow` button → `OpenTimeline { id, readOnly: true }`). Loads `GetAllTimelines` and drops the current one. While `store.reference` is set, a card at the top shows "Underneath: <title>", a calendar-mismatch warning (`CalendarId` differs — warn, never block), a "Shift by N years" number input bound straight to `store.reference.shift` (display only, not saved) and a Remove button (`store.clearReference()`).
+
+| Contract | Details |
+|---|---|
+| Props | `currentId: number \| undefined` — excluded from the list |
+| Emits | `close: []` |
+| Slots / Expose | *(none; wraps `BaseModal`)* |
+
+**Gotchas** — untitled timelines show as "Untitled"; the colour swatch falls back to the border colour. Opened by the strip's Reference button or `R` (`TimelineApp`). The underlay is session state — reopening the timeline window starts without one.
+
+---
+
+## ShortcutsModal.vue
+
+**Purpose** — The keyboard-shortcut list (`F2`, `?` flyout → Shortcuts), rendered straight from `SHORTCUTS` in `utils/shortcuts.ts` so it cannot drift from what fires.
+
+| Contract | Details |
+|---|---|
+| Props | `context: 'timeline' \| 'edit' \| 'calendar'` — that window's section comes first (`.sc-current`), the others follow |
+| Emits | `close: []` |
+| Slots / Expose | *(none)* |
+
+**Used by** — `pages/TimelineApp.vue`, `pages/EditItem.vue`, `pages/CalendarApp.vue`, `pages/YearCalendarApp.vue`.
+
+**Gotchas** — one `<tbody>` per `group`, a `.sc-group` header row only when a context has more than one group; `chordParts` gives one `<kbd>` per part (`←`, `Esc`, the bare `+`). Footer tip states the text-field rule.
+
+---
+
 ## SplashTitle.vue
 
 **Purpose** — The animated "Story Timeline" heading on the start screen: a 5-stop gradient clipped to the text, cycling positions over 12 s.
@@ -509,12 +555,12 @@ Conventions used throughout this document:
 
 ## TimelineActivityStrip.vue
 
-**Purpose** — The 48 px vertical VS Code-style navigation strip on the left edge of the timeline window: actions slot (3-dot menu), filter toggle, year calendar, Tags, Mass add items, nav icons (Timeline active; Characters/Map/Search/Statistics ghosted "coming soon"), help flyout and a settings gear pinned to the bottom.
+**Purpose** — The 48 px vertical VS Code-style navigation strip on the left edge of the timeline window: actions slot (3-dot menu), filter toggle, year calendar, Tags, Mass add items, Reference timeline, nav icons (Timeline active; Characters/Map/Search/Statistics ghosted "coming soon"), help flyout and a settings gear pinned to the bottom.
 
 | Contract | Details |
 |---|---|
-| Props | `filterActive: boolean` (green "tool active" styling on the funnel), `miniMode: boolean`, `yearCalendarOpen: boolean` |
-| Emits | `toggle-filter`, `toggle-mini`, `toggle-year-calendar`, `open-tags`, `open-mass-add`, `open-help`, `open-about`, `open-settings` (all `[]`) |
+| Props | `filterActive: boolean` (green "tool active" styling on the funnel), `miniMode: boolean`, `yearCalendarOpen: boolean`, `readOnly?: boolean` (BL-66 reference window: hides the actions slot, year calendar, Tags, Mass add, Reference and Settings — filter, mini mode, nav and help stay), `referenceActive?: boolean` (BL-66 underlay on: tool-active styling + filled icon on the Reference button) |
+| Emits | `toggle-filter`, `toggle-mini`, `toggle-year-calendar`, `open-tags`, `open-mass-add`, `open-reference`, `open-help`, `open-shortcuts`, `open-about`, `open-settings` (all `[]`) |
 | Slots | `actions` — rendered at the very top (TimelineApp puts `TimelineActionsMenu` here) |
 | Expose | *(none)* |
 
@@ -535,7 +581,7 @@ Conventions used throughout this document:
 | Contract | Details |
 |---|---|
 | Props | `timelineItems: TimelineItem[] \| null` (the visible/filtered set), `dimmableItems?: TimelineItem[]`, `timelineSettings: TimelineSettings \| null`, `layoutSettings: LayoutSettings \| null`, `timelineInfo: TimelineProject` |
-| Emits | `itemClick: [itemId: string]` (context-menu **Edit**), `viewItem: [itemId: string]` (left-click on an item), `addItem: [typeId: number, absoluteTime: number, lodIndex: number]` (context-menu add) |
+| Emits | `itemClick: [itemId: string]` (context-menu **Edit**), `viewItem: [itemId: string]` (left-click on an item), `viewReferenceItem: [itemId: string]` (Alt+click on a BL-66 underlay ghost), `addItem: [typeId: number, absoluteTime: number, lodIndex: number]` (context-menu add) |
 | Slots | *(none)* |
 | Expose | `animateJumpToYear(targetYear, durationMs = 600)`, `jumpToYear(targetYear)`, `updateStageSize()`, `refreshItems()`, plus raw `gridLayer` and `uiLayer` Konva layers |
 
@@ -546,6 +592,7 @@ Created at module scope and stacked at mount time:
 ```
 Stage (fills containerRef)
  ├─ uiLayer               NOW line + labels, center axis, data-range band (RenderUiLayer)
+ ├─ referenceLayer        BL-66 underlay: refStems + refBoxes groups, opacity 0.4 (renderReference)
  ├─ gridLayer             ticks + tick labels, break strips, expanded-range stripes, note dots
  ├─ cursorLayer           snapping cursor line + year/fraction labels
  ├─ itemLayer             stemsMaster (Konva.Group) + boxesMaster (Konva.Group) + bookmark groups
@@ -640,6 +687,7 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 **Key behaviour**
 
 - "In range" = item intersects the data-range band around `store.centerAbsoluteTime` (see conventions above); source is `store.filteredItems`, so the panel respects active filters.
+- **Reference section (BL-66 underlay)** — when `store.reference` is set, a dashed-off "Reference — <title>" section below the active items lists that timeline's in-range items (`inRange(item, shift)`, unfiltered, bookmarks excluded, sorted by start) as muted rows with a `PhEye` View button → `TimelineItemViewModal` with the item's own `TimelineId` and `view-only`. No locate / pulse for reference items.
 - Three sorted groups: Ages (TypeId 3), Periods (2), Others (everything except 2/3/6/8/9), each ordered by `Importance` desc, then distance from center asc.
 - **Picture fetch is debounced 300 ms** after the in-range set changes (drag protection). Cache semantics: `Map<itemId, string | null>` where a temporary `undefined as any` sentinel marks "fetch in flight", `null` means "no picture". Fetches use `GetItemForEdit` and take the first picture.
 - Theming: 8 CSS custom properties (`--dp-bg`, `--dp-card`, `--dp-h1..h4`, `--dp-ff`, `--dp-fs`) fed from `DataPanel*` LayoutSettings with warm parchment defaults.
@@ -718,11 +766,11 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 
 ## TimelineItemViewModal.vue
 
-**Purpose** — Read-only item detail modal (opened by left-clicking an item on the canvas): type badge, color strip, dates, description, notes, tags, characters (with role + color dot), story refs, chapter refs, and image thumbnails.
+**Purpose** — Read-only item detail modal (opened by left-clicking an item on the canvas): type badge, color strip, dates, description, notes, tags, characters (with role + color dot), story refs, chapter refs, and image thumbnails. The "Edit item" footer is hidden when `store.readOnly` (BL-66 reference window) or `viewOnly` (BL-66 underlay item — the badge also reads "· reference").
 
 | Contract | Details |
 |---|---|
-| Props | `itemId: string`, `timelineId: number` |
+| Props | `itemId: string`, `timelineId: number`, `layoutSettings?: LayoutSettings \| null`, `viewOnly?: boolean` |
 | Emits | `close: []` |
 | Slots / Expose | *(none; teleports to `body`, z-index 9000)* |
 
@@ -760,7 +808,7 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 
 ## TimelineNotesPanel.vue
 
-**Purpose** — Two-tab side panel: **Notes** (create/edit/view/delete free-floating notes pinned to the current center time, listing only notes in range) and **Distance** (shows the From/To measurement points set from canvas context menus, with approximate or specific-breakdown formatting). Theme-able via `NotesPanel*` LayoutSettings.
+**Purpose** — Two-tab side panel: **Notes** (create/edit/view/delete free-floating notes pinned to the current center time, listing only notes in range; in a `store.readOnly` reference window the input row and the Edit / Delete buttons are hidden, View stays) and **Distance** (shows the From/To measurement points set from canvas context menus, with approximate or specific-breakdown formatting). Theme-able via `NotesPanel*` LayoutSettings.
 
 | Contract | Details |
 |---|---|

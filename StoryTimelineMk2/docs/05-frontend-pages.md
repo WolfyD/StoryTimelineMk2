@@ -146,13 +146,12 @@ The main timeline workspace: the Konva canvas plus surrounding panels (gallery /
 | Activity strip: open settings | — | `showSettings = true` → `TimelineSettingsModal` |
 | `TimelineActionsMenu` emits `shift-complete(delta)` | `onShiftComplete` | reload via `store.loadTimelineData(id)` then `animateJumpToYear(currentNowYear + delta)` |
 | `TimelineFilterPanel` emits `open-setup` | — | `showFilterSetup = true` → `TimelineFilterSetupModal` |
-| Jump-to-year input: Enter, or `→` button | `jump` | `timelineCanvasRef.animateJumpToYear(year)` if `layoutSettings.TimelineAnimateOnJumpToYear`, else `jumpToYear(year)` |
-| Minimap emits `jump-to-year` | `onMinimapJump` | same animate/plain jump logic |
+| Jump-to-year input: Enter, or `→` button | `jump` → `jumpTo(year)` | `timelineCanvasRef.animateJumpToYear(year)` if `layoutSettings.TimelineAnimateOnJumpToYear`, else `jumpToYear(year)` |
+| Minimap emits `jump-to-year` | `jumpTo` | same animate/plain jump logic |
 | LoD `-` / `+` buttons | — | `store.lodZoomOut` / `store.lodZoomIn` (store mutations changing current LOD level) |
 | Undo bar "↩ Undo" (visible when `store.lastDeleted`) | `undoDelete` | `BackendAPI.SaveItem(deleted item + tags/chars/stories/chapters)`; on `ok` → `store.addItem(item)` + `store.clearLastDeleted()` |
 | Undo bar "✕" | — | `store.clearLastDeleted()` |
-| **F11** keydown | `onHotkey` | `BackendAPI.send('ToggleFullscreen', { timelineId })` |
-| **F10** keydown | `onHotkey` | `BackendAPI.send('ToggleCustomScaling', { timelineId })` |
+| Keyboard shortcuts (BL-39) | `useShortcuts('timeline', …)` | one handler per registry id in `utils/shortcuts.ts` (see doc 07 §6c): `←`/`→` hold-to-pan (`keyPan` rAF loop → `canvas.applyPan`, `settings.KeyboardPanSpeed` px/s, Shift ×3, `keyup`/window `blur` stop it), `↑`/`↓` → `canvas.stepTick`, `+`/`-` LOD zoom, `Home`/`End` → `jumpToEdge` (boundary item 8/9 else first/last item), `G` focus jump box, `N` → `ItemTypePickerModal` → `onTypePicked` → `onAddItem(type, store.centerAbsoluteTime, store.currentLodIndex)`, `Shift+N` last type, `Ctrl+Z` undo, `F`/`T`/`Y`/`M`/`Shift+M`/`Ctrl+,`/`Ctrl+Shift+A` panels, `F1`/`F2` help/shortcuts, `F10`/`F11` bridge `ToggleCustomScaling`/`ToggleFullscreen` |
 | Splitpane splitter drag / window resize | `handleResizeEvent` | rAF + throttle (100 ms) + debounce (100 ms) calls to `timelineCanvasRef.updateStageSize(gridLayer, uiLayer)` |
 | Lightbox backdrop click | — | `lightboxUrl = null` (image itself uses `@click.stop`) |
 
@@ -164,12 +163,21 @@ The main timeline workspace: the Konva canvas plus surrounding panels (gallery /
 | `TimelineFilterSetupModal` | filter panel "setup" | create/edit filter rules |
 | `TimelineItemViewModal` | canvas view-item on non-picture items | read-only item view |
 | Picture lightbox (Teleport to body) | view-item on a Picture item | full-screen image |
+| `ShortcutsModal` (`context="timeline"`) | `F2`, `?` flyout → Shortcuts | the registry, current window first |
+| `ItemTypePickerModal` | `N` | pick a type by click / `1`–`5` / `E P A I O`; `N` repeats `lastTypeId` |
+| `ReferenceTimelineModal` | `R`, strip "Reference timeline" | lists the other timelines; each row can be drawn underneath this one (`store.loadReference`) or opened read-only in a new window (`OpenTimeline { id, readOnly: true }`); shows the active underlay (calendar warning, display-only shift, Remove) |
+
+### Read-only reference window (BL-66)
+`store.readOnly` is set from `?readOnly=1` (cold start) or the `SetTimelineId` push's `readOnly` (pre-warmed; the URL is rewritten to include it so F5 keeps it). Effects: title bar suffix " (reference)"; `TimelineActivityStrip` gets `readOnly` and hides the actions slot, year calendar, Tags, Mass add, Reference and Settings; `onItemClick` (Shift+click / context-menu Edit) routes to `onViewItem`; `onAddItem` is a no-op; the `rw()` wrapper makes `N`, `Shift+N`, `Ctrl+Z`, `T`, `Y`, `Shift+M`, `Ctrl+,`, `Ctrl+Shift+A` and `R` return `false`; mini mode is not persisted; the `SetCalendarYear` watcher is silent (the year-calendar slot belongs to the active timeline). `TimelineCanvas`, `TimelineItemViewModal` and `TimelineNotesPanel` read `store.readOnly` themselves (context menus keep only the distance tools, boundary flags are inert, no Edit button, no note input / edit / delete). Filters still work and still persist — they are view preferences.
+
+### Reference underlay (BL-66 step 2)
+`store.reference` (`{ project, items, shift }`, session-only) is set by `ReferenceTimelineModal` via `store.loadReference(id)` — the same `GetTimelineData` read, boundaries dropped, nothing on the active state touched. `TimelineCanvas` draws those items ghosted (opacity 0.4) on a `referenceLayer` under the grid and the active items, on the active timeline's time→x mapping plus `shift` years; they ignore filters, the minimap and mini mode. Alt+click on a ghost emits `viewReferenceItem` → `refViewItemId` → `TimelineItemViewModal` with the reference timeline's id and `view-only` (no Edit button, badge says "· reference"); a plain click or right-click on a ghost behaves like empty canvas. `TimelineDataPanel` lists the in-range reference items in its own "Reference — <title>" section below the active ones (View button → the same view-only modal, no locate/pulse). The strip's Reference button gets the green tool-active styling while an underlay is on. A different calendar is a warning in the modal, never a block.
 
 ### Data Flow on Load
-1. `onMounted` → `HandleLoadTimeline()`: parse `?id`; if missing → `loadError = true` (error screen).
+1. `onMounted` → `HandleLoadTimeline()`: parse `?id` (and `?readOnly=1` → `store.readOnly`); if missing → `loadError = true` (error screen).
 2. `store.loadTimelineData(id)` → bridge **`GetTimelineData`** — populates title, author, items, settings, layoutSettings, currentProject, calendar, hiddenRanges, notes, and builds tag/character/story/picture filter maps.
 3. Then, inside the store, a `Promise.all` of four bridge calls: **`GetFilterRules(id)`**, **`GetMiscSetting('filter_and_mode', id)`**, **`GetMiscSetting('filter_panel_open', id)`**, **`GetMiscSetting('filter_display_mode', 0)`**; finally the LOD profile is parsed from `Project.Calendar.LodProfile.Profile` and the current LOD index is set to the YEARS level.
-4. `onMounted` also registers `window.onresize` and the `keydown` hotkey listener (removed in `onBeforeUnmount`).
+4. `onMounted` also registers `window.onresize` plus the `keyup` / `blur` listeners that stop hold-to-pan (removed in `onBeforeUnmount`); the shortcut `keydown` listener is owned by `useShortcuts`.
 
 ---
 
@@ -236,6 +244,7 @@ No Pinia store is used — this page is fully self-contained over the bridge.
 |---|---|---|
 | **Save** button | `save(true)` | writes `startYear/endYear` back to item; computes `AbsoluteStart/AbsoluteEnd = Year + subYear × stepFraction` (from the LOD level matching `CreationGranularity`); bridge **`SaveItem`** with tag names, `{CharacterId, Role}` pairs, story ids, chapter ids. On `status==='ok'` → `window.close()`; else shows `saveError` |
 | **Cancel** button / window X (`CloseRequested` push) / Escape | `requestClose` | `BackendAPI.WindowClose()` when clean; otherwise a `ConfirmModal` ("Discard changes?") whose Discard sends `WindowClose` |
+| Keyboard (BL-39) | `useShortcuts('edit', …)` | `Ctrl+S` / `Ctrl+Enter` save, `Esc` closes an open picker overlay else `requestClose` (in a text field the first `Esc` only blurs), `Tab` / `Shift+Tab` walk `titleRef → descRef → endDateRef` (first input, Period/Age only) `→ tagInputRef` and return `false` (native Tab) from anywhere else, `F1` / `F2` open `HelpModal` / `ShortcutsModal`. `loadData` focuses the title after `nextTick` |
 | Title / Description / Content / Color / Importance slider / "Show in notes" checkbox / Item Notes textarea | `v-model` | direct `item` field edits |
 | Side segmented buttons / Centered / Show title (own row; each only for the types it applies to) | `item.Placement` / `v-model` | Auto sends 0 and the backend picks the emptier side on save |
 | Type select | `v-model item.TypeId` | switching to Period/Age reveals the End date row |

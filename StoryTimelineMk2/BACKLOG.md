@@ -9,6 +9,52 @@ free one whatever group it lands in. Move an item between groups by moving its s
 
 What is left of the 1.0.3 pass; finished items are under Done.
 
+## [BL-66] Reference timeline — read-only window or underlay
+
+**Status:** Step 1 done for 1.0.3 (2026-09-20): `ReferenceTimelineModal` (strip button + `R`)
+sends `OpenTimeline { id, readOnly: true }`; `f_Timeline.ReadOnly` → `&readOnly=1` / `SetTimelineId`
+payload → `store.readOnly`, which hides every add / edit / delete affordance (strip, context
+menus, boundary flags, item view Edit, note input), routes Shift+click / Edit to the view popup,
+keeps filters and the distance tools, skips the update check and window-state persistence, and
+never steers the active timeline's year calendar. Host: `FormClosing` returns early while another
+visible `f_Timeline` is open, and a read-only window skips `NotifyTimelineClosing`.
+Step 2 done for 1.0.3 (2026-09-20): `store.reference` (`loadReference` / `clearReference`,
+session-only) → `TimelineCanvas.referenceLayer` (ghosts at 0.4 under grid + items, active time→x
+mapping + display-only `shift`, own lanes/caches, no filters / minimap / mini mode, Alt+click →
+`viewReferenceItem` → view-only `TimelineItemViewModal`, plain / right-click inert), a
+"Reference — <title>" section in `TimelineDataPanel`, calendar-mismatch warning (never blocks) and
+Remove in `ReferenceTimelineModal`, tool-active Reference button on the strip. Not done: shift is
+not persisted; ghost pictures are frames without images; no locate / pulse for reference items.
+
+Writers often need a second timeline for reference while working in one. New activity-strip icon
+**Open reference timeline** (and `R`): a modal lists the other timelines and offers two ways to
+open the chosen one.
+
+### Step 1 — read-only window
+
+A second `f_Timeline` opened with a `readOnly` flag (URL param → `TimelineApp`): no add / edit
+affordances, no drag, no context-menu add, items open in the view popup only. Host fixes needed:
+`F_Timeline_FormClosing` must not return to `f_Main` / prewarm while another timeline window is
+still open, and `NotifyTimelineClosing` must only close the closing window's own children.
+
+### Step 2 — underlay
+
+The reference timeline's items are drawn on their own Konva layer under the active timeline's
+items, semi-transparent, through the active timeline's time → x mapping (so hidden ranges and
+zoom apply to them too). Rules:
+
+- Different calendars are **allowed**, with a warning in the modal that the data may come out
+  misaligned (different year lengths, week structure, year 0). The user decides — they may only
+  use the Years LOD, or have near-identical calendars.
+- Optional **shift by N years** in the modal: display-only offset applied when opened, never
+  saved to the reference timeline.
+- Reference items ignore the active timeline's filters and are not on the minimap.
+- Hover shows the tooltip; `Alt`+click opens the item in the view popup (never the edit window).
+- The data panel gets a separate **Reference** section below the active timeline's data.
+- Closing the underlay = a button in the strip icon's flyout / the same modal.
+
+---
+
 ## [BL-60] Calendar window — more functionality
 
 **Status:** First item done (1.0.3): the month grids (`CalendarMonthGrid.vue`, used by the
@@ -26,49 +72,89 @@ need more than they have today; ideas to be collected here as they come up.
 
 ## [BL-39] Extended keyboard shortcuts
 
-**Status:** Deferred — the user will supply a revised shortcut list to review before anything is
-built; the set below is superseded by it. Ctrl+S / Esc exist in the edit item window (1.0.2) and
-`HelpModal` (BL-38) already has a shortcuts section to document them in. When the shortcuts land,
-the `?` flyout on the activity strip gets a third entry next to **Help** and **About** —
-**Shortcuts** — opening a modal that explains every shortcut (decided 2026-09-20).
+**Status:** Done for 1.0.3 (2026-09-20); `R` landed with BL-66 step 1. Shipped as designed with
+two deviations: the type picker's Note key is `O` (`N` = last type, `P` = Period), and the pan
+speed setting lives in Timeline settings → **General** next to the mouse pan settings
+(`settings.keyboard_pan_speed`, migration 7). Also added: the `?` flyout's Shortcuts entry, F1 /
+F2 in the edit and both calendar windows, title autofocus on open, and Ctrl+Z actually wired
+(it was documented in Help but never implemented). Power-user set still empty.
 
 Common timeline actions should have keyboard shortcuts so power users never need to reach for
 the mouse for routine operations.
 
-### Proposed shortcuts (baseline set)
+### Architecture — fixed keys now, user-remappable later
 
-| Action | Shortcut |
-| ------ | -------- |
-| Scroll forward one tick | `→` or `L` |
-| Scroll back one tick | `←` or `H` |
-| Zoom in (LOD finer) | `+` / `=` |
-| Zoom out (LOD coarser) | `-` |
-| Jump to year (focus input) | `G` |
-| New Event at current position | `E` |
-| New Period | `P` |
-| New Age | `A` |
-| Toggle mini mode | `M` |
-| Toggle performant panning | `Shift+P` |
-| Toggle filter panel | `F` |
-| Toggle data panel | `D` |
-| Open Help | `?` |
-| Open item in edit window | `Shift` + click (done, BL-56) |
-| Close modal / panel | `Escape` |
+- `utils/shortcuts.ts` is the single registry: `{ id, keys, group, label, context, inInputs? }`
+  per shortcut (`keys` is a normalised chord such as `Ctrl+Shift+S`, `F2`, `ArrowLeft`).
+- Each window calls `useShortcuts(context, handlers)`: one `keydown` listener that normalises
+  the chord, looks it up, applies the focus rule and calls `handlers[id]`. Handlers are the
+  functions that already exist (`store.lodZoomIn`, `toggleMiniMode`, `showSettings = true` …).
+- The **Shortcuts** modal (F2, and the third entry in the `?` flyout beside Help / About)
+  renders straight from the registry, grouped, so it can never drift from what fires.
+- Later: the registry's `keys` become defaults, user overrides live in app settings, the same
+  modal gets an edit mode. No handler changes.
 
-### Shortcut implementation notes
+### Focus rules
 
-- Most of these map to existing functions already callable from the canvas or toolbar.
-- Add a `keydown` listener in `TimelineCanvas.vue` (already exists for `Shift`) extended to
-  the new keys, guarded against firing when a text input has focus.
-- Third `?` flyout entry **Shortcuts** (`TimelineActivityStrip.vue`, beside Help / About) opening
-  a dedicated modal that lists and explains every shortcut, grouped by window / context; the
-  `HelpModal` shortcuts section then just points there.
-- Consider a shortcut cheat-sheet overlay triggered by `?` when no modal is open — a
-  semi-transparent overlay listing all shortcuts, dismissed by any key.
+- While an input / textarea / select / contenteditable has focus only Ctrl/Alt chords and
+  F-keys fire; bare letters, digits, Space and arrows belong to the field.
+- `Esc` in a field blurs it (next key is a timeline shortcut again); elsewhere it closes the
+  topmost modal / menu as today.
+- While a modal is open, timeline shortcuts are off except `Esc` (`BaseModal` keeps an open
+  counter).
+
+### Shortcuts
+
+**Timeline window**
+
+| Group | Shortcut | Action |
+| ----- | -------- | ------ |
+| Navigation | `←` / `→` | pan at a constant pace while held (setting: Timeline settings → General → Keyboard Pan Speed, px/s) |
+| | `Shift+←` / `Shift+→` | pan 3× faster |
+| | `↑` / `↓` | forward / back one tick (same code as the wheel) |
+| | `Shift+↑` / `Shift+↓` | forward / back one year (same as Shift+wheel) |
+| | `+` / `-` | zoom in / out one LOD |
+| | `Home` / `End` | jump to the timeline start / end boundary if the timeline has them, otherwise to the first / last item |
+| | `G` | focus the jump-to-year box |
+| Items | `N` | new item — opens the type picker (see flow below) |
+| | `Shift+N` | new item of the last used type, no picker |
+| | `Ctrl+Z` | undo last deletion (was documented, now implemented) |
+| Panels / windows | `F` | filter panel |
+| | `T` | tags |
+| | `Y` | year calendar |
+| | `M` | mini mode |
+| | `Shift+M` | mass add items |
+| | `R` | open a reference timeline (BL-66 step 1 — done) |
+| | `Ctrl+,` | timeline settings |
+| | `Ctrl+Shift+A` | actions menu |
+| App | `F1` / `F2` | Help / Shortcuts |
+| | `F10` / `F11` | custom scaling / fullscreen (exist) |
+| | `Esc` | close / blur |
+
+**Edit item window**
+
+| Shortcut | Action |
+| -------- | ------ |
+| `Ctrl+S` | save and close (exists); `Ctrl+Enter` inside a text field does the same |
+| `Esc` | cancel (exists) |
+| `Tab` power path | title → description → end date (Period / Age only) → tags; Shift+Tab reverses it; after tags Tab follows normal order |
+| `F1` / `F2` | Help / Shortcuts (also from the calendar windows) |
+
+### Streamlined add flow
+
+`N` opens a small type picker (Event / Period / Age / Picture / Note, canvas-menu order) with key
+hints: `1`–`5` or `E P A I O` (Note is `O`); `N` again = last used type; `Esc` cancels. The choice opens the
+edit window through the existing `OpenAddEditItemWindow` with `typeId`, `year` = current NOW
+year and `granularity` = current LOD. The title is focused and selected on open, the Tab power
+path leads through the fields that matter, `Ctrl+S` saves and closes, focus returns to the
+timeline (1.0.3 fix). `Shift+N` skips the picker. The last type is remembered per session.
+
+Space was rejected as the add key: it re-fires whichever button last had focus and every
+checkbox / button would need guarding.
 
 ### Power-user set
 
-A second, larger tier of shortcuts for power users, on top of the baseline table. List to be
+A second, larger tier of shortcuts for power users, on top of the table above. List to be
 filled in as they come up (2026-09-19):
 
 - _(none yet)_

@@ -19,6 +19,11 @@ namespace StoryTimelineMk2.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int TimelineId { get; set; }
 
+        /// <summary>BL-66: a reference window — same page, opened next to the active timeline; the
+        /// frontend hides every edit affordance and the host never writes this timeline's window state.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool ReadOnly { get; set; }
+
         private readonly System.Windows.Forms.Timer _moveTimer = new() { Interval = 500 };
 
         public f_Timeline()
@@ -135,7 +140,13 @@ namespace StoryTimelineMk2.Forms
 
                 _messageRouter ??= new MessageRouter(coreWV, this);
                 coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
-                _ = FireUpdateCheckAsync();
+                if (!ReadOnly) _ = FireUpdateCheckAsync();
+
+                // Native browser zoom (what Ctrl+wheel drives). CSS zoom on <html> scaled the page
+                // but not the viewport, so the bottom of the window was cut off.
+                if (_savedSettings is { UseCustomScaling: true, CustomScale: > 0 })
+                    wv_Timeline.ZoomFactor = _savedSettings.CustomScale;
+                wv_Timeline.ZoomFactorChanged += OnZoomFactorChanged;
 
                 string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
 
@@ -143,19 +154,12 @@ namespace StoryTimelineMk2.Forms
                 {
                     // Vue is already bootstrapping in the background.
                     // Send the real timeline ID — Vue is listening for this push.
-                    string idMsg = JsonSerializer.Serialize(new { action = "SetTimelineId", payload = new { id = TimelineId } });
-
-                    void ApplyZoom()
-                    {
-                        if (_savedSettings is { UseCustomScaling: true, CustomScale: > 0 })
-                            _ = coreWV.ExecuteScriptAsync($"document.documentElement.style.zoom = '{_savedSettings.CustomScale:F2}'");
-                    }
+                    string idMsg = JsonSerializer.Serialize(new { action = "SetTimelineId", payload = new { id = TimelineId, readOnly = ReadOnly } });
 
                     void SendId()
                     {
                         Logger.Info("f_Timeline.Load", $"Sending SetTimelineId={TimelineId} to pre-warmed page");
                         coreWV.PostWebMessageAsString(idMsg);
-                        ApplyZoom();
                     }
 
                     if (_preNavComplete)
@@ -179,7 +183,7 @@ namespace StoryTimelineMk2.Forms
                     coreWV.NavigationCompleted += OnNavigationCompleted;
 
                     Logger.Info("f_Timeline.Load", "Navigate starting");
-                    string query = $"?id={TimelineId}";
+                    string query = $"?id={TimelineId}" + (ReadOnly ? "&readOnly=1" : "");
                     if (Directory.Exists(distPath))
                     {
                         coreWV.SetVirtualHostNameToFolderMapping("app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
@@ -226,8 +230,27 @@ namespace StoryTimelineMk2.Forms
             // Fire only once (the initial page load)
             wv_Timeline.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
             Logger.Info("f_Timeline.Load", $"NavigationCompleted (success={e.IsSuccess})");
-            if (_savedSettings != null && _savedSettings.UseCustomScaling && _savedSettings.CustomScale > 0)
-                _ = wv_Timeline.CoreWebView2.ExecuteScriptAsync($"document.documentElement.style.zoom = '{_savedSettings.CustomScale:F2}'");
+        }
+
+        internal void SetZoom(double zoom) => wv_Timeline.ZoomFactor = zoom;
+
+        private void OnZoomFactorChanged(object? sender, EventArgs e)
+        {
+            // Ctrl+wheel, F10 and the settings field all land here — remember the zoom per timeline.
+            // 100% only clears the flag; the last real scale stays so F10 can bring it back.
+            if (TimelineId == 0) return;
+            double zoom = Math.Round(wv_Timeline.ZoomFactor, 2);
+            var repo = new SettingsRepo();
+            var s = repo.GetOrCreateSettings(TimelineId);
+            s.UseCustomScaling = zoom != 1.0;
+            if (zoom != 1.0) s.CustomScale = (float)zoom;
+            repo.SaveSettings(s);
+            // Keep the page's copy in step, or the next settings Save would put the old zoom back.
+            wv_Timeline.CoreWebView2?.PostWebMessageAsString(JsonSerializer.Serialize(new
+            {
+                action = "ZoomChanged",
+                payload = new { useCustomScaling = s.UseCustomScaling, customScale = s.CustomScale }
+            }));
         }
 
         private void RestoreWindowState()
@@ -270,7 +293,7 @@ namespace StoryTimelineMk2.Forms
 
         private void PersistWindowState()
         {
-            if (this.WindowState != FormWindowState.Normal || IsManuallyMaximized) return;
+            if (ReadOnly || this.WindowState != FormWindowState.Normal || IsManuallyMaximized) return;
             new SettingsRepo().SaveWindowState(TimelineId, this.Left, this.Top, this.Width, this.Height);
         }
 
@@ -279,8 +302,14 @@ namespace StoryTimelineMk2.Forms
             _moveTimer.Stop();
             PersistWindowState();
 
-            // Close all connected child windows (year calendar, calendar editor, edit item)
-            MessageRouter.NotifyTimelineClosing();
+            // Close all connected child windows (year calendar, calendar editor, edit item).
+            // A reference window (BL-66) has none of its own — the active timeline's stay open.
+            if (!ReadOnly) MessageRouter.NotifyTimelineClosing();
+
+            // Another timeline window is still up (a reference, or the active one when a reference
+            // closes): just close — main comes back when the last one goes.
+            foreach (Form f in Application.OpenForms)
+                if (f is f_Timeline other && other != this && other.Visible) return;
 
             f_Main? mainForm = null;
             foreach (Form f in Application.OpenForms)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
+import { useModalGuard } from '@/utils/shortcuts'
 
 const props = defineProps<{
     src: string
@@ -12,6 +13,8 @@ const emit = defineEmits<{
     prev: []
     next: []
 }>()
+
+useModalGuard()
 
 function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape')     { e.preventDefault(); emit('close') }

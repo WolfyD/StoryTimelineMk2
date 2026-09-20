@@ -165,7 +165,7 @@ Specs import `test`/`expect` from `./fixtures`, not from `@playwright/test`.
 | Suite | Spec files |
 |---|---|
 | Mocked (`test/e2e/`) | `timeline-app.spec.ts`, `timeline-canvas.spec.ts`, `edit-item.spec.ts`, `settings.spec.ts` |
-| Real (`test/e2e-real/`) | `main-app.spec.ts`, `main-management.spec.ts`, `timeline.spec.ts`, `timeline-navigation.spec.ts`, `timeline-items.spec.ts`, `timeline-actions.spec.ts`, `timeline-canvas.spec.ts`, `timeline-canvas-interaction.spec.ts`, `timeline-filter.spec.ts`, `timeline-settings.spec.ts`, `timeline-gallery.spec.ts`, `timeline-notes.spec.ts`, `calendar.spec.ts`, `calendar-switching.spec.ts` |
+| Real (`test/e2e-real/`) | `main-app.spec.ts`, `main-management.spec.ts`, `timeline.spec.ts`, `timeline-navigation.spec.ts`, `timeline-items.spec.ts`, `timeline-actions.spec.ts`, `timeline-canvas.spec.ts`, `timeline-canvas-interaction.spec.ts`, `timeline-filter.spec.ts`, `timeline-settings.spec.ts`, `timeline-gallery.spec.ts`, `timeline-notes.spec.ts`, `timeline-reference.spec.ts`, `calendar.spec.ts`, `calendar-switching.spec.ts` |
 
 ## Conventions for New Tests
 
@@ -193,3 +193,4 @@ Specs import `test`/`expect` from `./fixtures`, not from `@playwright/test`.
 - The `pageErrors` fixture surfaces console errors / uncaught exceptions — reference it in tests that open new windows so failures carry diagnostics.
 - Seed-data changes go in `scripts/e2e-seed.sql` (plain `INSERT`s against the frozen 1.0.1 schema — keep them generic, the specs only assume "at least one timeline with a few items around year 0"); the DB is rebuilt on each `Start-E2EApp.ps1` run, use `-KeepData` while iterating to skip that.
 - Selector conventions: modals rendered through `BaseModal` expose `.bm-backdrop`, `.bm-panel`, `.bm-header`, `.bm-title`, `.bm-close`, `.bm-footer`; a component's own body stays `.modal-body`. `CalendarManagerModal` uses the `#header` slot, so it keeps `.modal-title` and its own `.icon-btn[title="Close"]`.
+- Keyboard (BL-39): while focus is in a text / number field the first `Escape` only leaves the field (`useShortcuts`) — press it twice to cancel the edit window or close a modal after `fill()`. The data panel's per-row View / Locate buttons are hover-revealed, so `hover()` the row before clicking.

@@ -61,6 +61,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const viewportWidthPx = ref<number>(0); // pixel width of the main timeline canvas, used by minimap
 	const pulseItemId = ref<string | null>(null);
 	const performantPanning = ref<boolean>(true);
+	const readOnly = ref<boolean>(false); // BL-66: reference window — view only, no edit affordances
+	// BL-66 step 2: another timeline drawn underneath this one. Session-only; `shift` is display-only years.
+	const reference = ref<{ project: TimelineProject; items: TimelineItem[]; shift: number } | null>(null);
 	let _undoTimer: ReturnType<typeof setTimeout> | null = null;
 	let _pulseTimer: ReturnType<typeof setTimeout> | null = null;
 	//const konvaItems = ref<KonvaGroupObject[]>([]);
@@ -113,6 +116,18 @@ export const useTimelineStore = defineStore('timeline', () => {
 	}
 
 	let _loadSeq = 0;
+
+	async function loadReference(id: number) {
+		const response: FullTimelineProject = await BackendAPI.LoadTimelineData(id);
+		if (!response?.Project) throw new Error((response as any)?.message ?? `Timeline ${id} returned no data`);
+		reference.value = {
+			project: response.Project,
+			items: (response.Items ?? []).filter(i => i.TypeId !== 8 && i.TypeId !== 9),   // boundaries are the active timeline's business
+			shift: 0,
+		};
+	}
+
+	function clearReference() { reference.value = null; }
 
 	async function loadTimelineData (id:number) {
 		const seq = ++_loadSeq;
@@ -521,10 +536,10 @@ export const useTimelineStore = defineStore('timeline', () => {
 		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
-		pulseItemId, performantPanning,
+		pulseItemId, performantPanning, readOnly, reference,
 
 		// functions
-		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, setFpsDisplay, lodZoomIn, lodZoomOut,
+		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,
 		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setShowMeasureInTimeline, setHiddenRanges, setLayoutSettings,
 		pulseItem,
 		addNote, updateNote, removeNote,

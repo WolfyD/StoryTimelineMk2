@@ -2,12 +2,20 @@
 import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import { useAppTheme } from '@/utils/useAppTheme'
+import { useShortcuts } from '@/utils/shortcuts'
+import HelpModal from '@/components/HelpModal.vue'
+import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import type { LodLevel } from '@/types/models'
 import MemorableDaysModal, { type MemorableDay } from '@/components/MemorableDaysModal.vue'
 import { defaultRelativeRule, type RelativeRule } from '@/utils/relativeRule'
 
 useAppTheme()
+
+// F1 / F2 (BL-39)
+const showHelp      = ref(false)
+const showShortcuts = ref(false)
+useShortcuts('calendar', { help: () => { showHelp.value = true }, shortcuts: () => { showShortcuts.value = true } })
 
 const params = new URLSearchParams(window.location.search)
 const calendarIdParam = params.get('calendarId')
@@ -960,6 +968,8 @@ function toggleWeekend(d: number) {
   </div>
 
   <div v-else class="loading-screen">Loading…</div>
+  <HelpModal v-if="showHelp" @close="showHelp = false" />
+  <ShortcutsModal v-if="showShortcuts" context="calendar" @close="showShortcuts = false" />
 </template>
 
 <style scoped lang="scss">
