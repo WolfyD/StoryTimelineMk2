@@ -131,6 +131,7 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
     border: 1px solid var(--app-border, #2d3a56);
     border-radius: var(--app-radius-sm, 6px);
     overflow: visible; // allow tooltips to escape
+    user-select: none; // a display, not text — dragging across days must not highlight them
 }
 
 .month-name {

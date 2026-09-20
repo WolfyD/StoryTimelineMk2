@@ -12,6 +12,8 @@ param(
     [Parameter(ParameterSetName = 'Build')] [string]$Notes = "",
     [Parameter(ParameterSetName = 'Build')] [switch]$TestRelease,
 
+    [Parameter(ParameterSetName = 'Dev', Mandatory)] [switch]$Dev,
+
     [Parameter(ParameterSetName = 'Help', Mandatory)] [Alias("h")] [switch]$Help
 )
 
@@ -25,6 +27,7 @@ if ($Help) {
     .\release.ps1 1.2.0                 same, version given up front
     .\release.ps1 1.2.0 -CreateRelease  build everything, then tag + push + publish to GitHub
     .\release.ps1 1.2.0 -TestRelease    build test installers (see below), never publishes
+    .\release.ps1 -Dev                  one self-contained app folder for testing changes
     .\release.ps1 -Help                 this text
 
   WHAT A BUILD DOES
@@ -48,6 +51,9 @@ if ($Help) {
                      runtime page and downloads the runtime even if it is installed, and
                      writes log.txt next to the installer exe. Cannot combine with
                      -CreateRelease. Pass the current version to leave source files unchanged.
+    -Dev             publishes only the offline (self-contained) app, unzipped, into
+                     release\dev\ and stops: no version bump, no installer, no zip, nothing
+                     published. Takes no version and no other flags. Run release\dev\StoryTimeline.exe.
     -Help, -h        this text
 
 '@
@@ -70,6 +76,47 @@ function Fail([string]$msg) { Write-Host "" ; Write-Host "  ERROR: $msg" -Foregr
 
 function WriteUtf8([string]$path, [string]$content) {
     [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
+}
+
+# dotnet publish of the app, one flavour. The csproj's PublishFrontend target runs
+# `npm run build-only` and copies Frontend\dist next to the exe.
+function PublishApp([string]$name, [string]$selfContained, [string]$outDir) {
+    Log "dotnet publish app ($name)..."
+    Remove-Item $outDir -Recurse -Force -ErrorAction SilentlyContinue
+    dotnet publish "$Root\StoryTimelineMk2.csproj" `
+        -c Release -r win-x64 -o $outDir `
+        --self-contained $selfContained `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:EnableCompressionInSingleFile=$selfContained `
+        -p:DebugType=none `
+        -p:DebugSymbols=false `
+        --nologo -v minimal
+    if ($LASTEXITCODE -ne 0) { Fail "dotnet publish (app, $name) failed" }
+    if (-not (Test-Path "$outDir\StoryTimeline.exe")) { Fail "StoryTimeline.exe not found in $outDir" }
+}
+
+function NpmInstall {
+    Log "npm install..."
+    Push-Location "$Root\Frontend"
+    npm install --silent
+    if ($LASTEXITCODE -ne 0) { Pop-Location; Fail "npm install failed" }
+    Pop-Location
+}
+
+if ($Dev) {
+    # Version comes from the csproj - source files are never touched in a dev build.
+    $Version = [regex]::Match((Get-Content "$Root\StoryTimelineMk2.csproj" -Raw), '<Version>([^<]+)</Version>').Groups[1].Value
+    $DevDir  = "$Root\release\dev"
+    Write-Host ""
+    Write-Host "  Story Timeline dev build (v$Version, offline flavour, unzipped)" -ForegroundColor Magenta
+    Write-Host ""
+    NpmInstall
+    PublishApp "dev" "true" $DevDir
+    Write-Host ""
+    Write-Host "  Ready: $DevDir\StoryTimeline.exe" -ForegroundColor Green
+    Write-Host ""
+    exit 0
 }
 
 Write-Host ""
@@ -128,11 +175,7 @@ Ok "Installer/InstallerContext.cs"
 # --------------------------------------------------------------------------
 Write-Host "[2/3] Building app + installer for each flavour" -ForegroundColor Yellow
 
-Log "npm install..."
-Push-Location "$Root\Frontend"
-npm install --silent
-if ($LASTEXITCODE -ne 0) { Pop-Location; Fail "npm install failed" }
-Pop-Location
+NpmInstall
 
 $ReleaseDir = "$Root\release\v$Version"
 Remove-Item $ReleaseDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -151,20 +194,8 @@ foreach ($flavour in @(
     $offline = $flavour.SelfContained -eq "true"
 
     # --- app ---
-    Log "dotnet publish app ($name)..."
     $AppPublish = "$Root\bin\publish\$name"
-    Remove-Item $AppPublish -Recurse -Force -ErrorAction SilentlyContinue
-    dotnet publish "$Root\StoryTimelineMk2.csproj" `
-        -c Release -r win-x64 -o $AppPublish `
-        --self-contained $flavour.SelfContained `
-        -p:PublishSingleFile=true `
-        -p:IncludeNativeLibrariesForSelfExtract=true `
-        -p:EnableCompressionInSingleFile=$($flavour.SelfContained) `
-        -p:DebugType=none `
-        -p:DebugSymbols=false `
-        --nologo -v minimal
-    if ($LASTEXITCODE -ne 0) { Fail "dotnet publish (app, $name) failed" }
-    if (-not (Test-Path "$AppPublish\StoryTimeline.exe")) { Fail "StoryTimeline.exe not found in $AppPublish" }
+    PublishApp $name $flavour.SelfContained $AppPublish
 
     # --- portable zip ---
     $PortableZip = "$ReleaseDir\StoryTimeline-v$Version-portable$suffix$TestSuffix.zip"

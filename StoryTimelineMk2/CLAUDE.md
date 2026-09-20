@@ -95,8 +95,8 @@ SQLite database lives at `%LOCALAPPDATA%\StoryTimelineMk2_Data\timeline.sqlite`.
 
 ## Icon Convention
 
-- **Remix Icons** (`<i class="ri-*">`) — UI chrome: buttons, close/open controls, form actions, inline panel decorations.
-- **Phosphor** (`@phosphor-icons/vue` components) — Feature/section icons: navigation strip, domain concepts (Characters, Map, Statistics, Timeline), and any icon that represents an app section.
+- **Phosphor** (`@phosphor-icons/vue` components) is the icon set for everything new: UI chrome (close, add, delete, edit, form actions), the navigation strip, section icons and domain concepts.
+- **Remix Icons** (`<i class="ri-*">`) survive only in older components (`TimelineCanvas` context menu, `TimelineNotesPanel`, `WindowTitleBar`, `LightboxOverlay`, `AboutModal`, a few others). Do not add new Remix uses; swap to Phosphor when you are editing one of those icons anyway.
 
 ## Workflow
 

@@ -9,46 +9,18 @@ free one whatever group it lands in. Move an item between groups by moving its s
 
 What is left of the 1.0.3 pass; finished items are under Done.
 
-## [BL-58] Custom dictionary for spellcheck
-
-**Status:** Investigated (2026-09-20), deliberately not built yet. WebView2 on Windows uses the
-*Windows* spellchecker, not Hunspell: right-click **Add to dictionary** already exists in every
-window and writes to `%APPDATA%\Microsoft\Spelling\<lang>\default.dic` (UTF-16LE, `#LID <lcid>`
-header, one word per line). That dictionary is shared by all windows of the app and by every
-other app using the Windows spellchecker; no `Custom Dictionary.txt` is ever created under
-`%LOCALAPPDATA%\StoryTimelineMk2_Cache`. Building an app-owned list would mean pushing words
-through the Windows Spell Checking API (`ISpellChecker.Add`/`ISpellChecker2.Remove`, COM
-interop) at startup and on change. Options were put to the user; decision: skip for now.
-
-Writers use invented names and archaic words; the WebView2 (Chromium) spellchecker underlines
-them everywhere. Add a user dictionary of words that are not misspelled, just uncommon, and feed
-it to the spellchecker. Options to evaluate: Chromium's `Custom Dictionary.txt` in the WebView2
-user data folder (`%LOCALAPPDATA%\StoryTimelineMk2_Cache`), or the right-click "Add to
-dictionary" flow if WebView2 exposes it. Managed from Settings; exported with the data folder.
-
----
-
-## [BL-53] Power-user console
-
-**Status:** Step 1 started (1.0.3) — `__stl.lodLevels()` and `__stl.setAllLodMask(levels)` (BL-54)
-joined the `__stl` helpers and `__stl.help()` lists them; levels are named (`['years','decades']`
-or `'all'`, prefixes accepted), never a raw bitmask. Step 2 (in-app console) pending.
-
-Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two steps:
-
-1. Grow that into a documented power-user namespace (`__stl.<command>`), starting with BL-54.
-2. Later: an in-app toggleable command console (hotkey, small overlay at the bottom of the
-   timeline window) that runs the same commands without DevTools, with completion and history.
-
----
-
 ## [BL-60] Calendar window — more functionality
 
-**Status:** Pending. Placeholder — scope to be defined. (1.0.3 already added **Export** to the
-editor header via BL-59.)
+**Status:** First item done (1.0.3): the month grids (`CalendarMonthGrid.vue`, used by the
+year-calendar window and the timeline's calendar overlay) are `user-select: none`, so dragging
+across days no longer highlights the numbers. Open for more; nothing else defined yet. (1.0.3
+also added **Export** to the editor header via BL-59.)
 
-The calendar editor window (`f_Calendar` / `CalendarApp.vue`) needs more than it has today;
-ideas to be collected here as they come up.
+The calendar windows (`f_YearCalendar` / `YearCalendarApp.vue`, `f_Calendar` / `CalendarApp.vue`)
+need more than they have today; ideas to be collected here as they come up.
+
+- ~~Day numbers should not be selectable as text~~ — done (1.0.3).
+- Later: click events on days (open / add items on that date, jump the timeline there).
 
 ---
 
@@ -56,7 +28,9 @@ ideas to be collected here as they come up.
 
 **Status:** Deferred — the user will supply a revised shortcut list to review before anything is
 built; the set below is superseded by it. Ctrl+S / Esc exist in the edit item window (1.0.2) and
-`HelpModal` (BL-38) already has a shortcuts section to document them in.
+`HelpModal` (BL-38) already has a shortcuts section to document them in. When the shortcuts land,
+the `?` flyout on the activity strip gets a third entry next to **Help** and **About** —
+**Shortcuts** — opening a modal that explains every shortcut (decided 2026-09-20).
 
 Common timeline actions should have keyboard shortcuts so power users never need to reach for
 the mouse for routine operations.
@@ -86,8 +60,9 @@ the mouse for routine operations.
 - Most of these map to existing functions already callable from the canvas or toolbar.
 - Add a `keydown` listener in `TimelineCanvas.vue` (already exists for `Shift`) extended to
   the new keys, guarded against firing when a text input has focus.
-- Document the full shortcut table in the Help system (BL-38 / BL-34) under a dedicated
-  "Keyboard shortcuts" section.
+- Third `?` flyout entry **Shortcuts** (`TimelineActivityStrip.vue`, beside Help / About) opening
+  a dedicated modal that lists and explains every shortcut, grouped by window / context; the
+  `HelpModal` shortcuts section then just points there.
 - Consider a shortcut cheat-sheet overlay triggered by `?` when no modal is open — a
   semi-transparent overlay listing all shortcuts, dismissed by any key.
 
@@ -100,15 +75,35 @@ filled in as they come up (2026-09-19):
 
 ---
 
+## [BL-23] App icon
+
+**Status:** Placeholder in place. Pending commission of final artwork.
+
+The application currently uses a placeholder icon. A proper icon (`.ico` with
+16/32/48/256px variants, plus a matching `favicon` for the WebView2 shell) should be
+provided.
+
+> In the `.csproj`, set `<ApplicationIcon>` to the `.ico` path. The icon will appear in the
+> taskbar, Alt-Tab switcher, and the title bar of any non-borderless window. For the
+> borderless windows a small SVG/PNG version can be shown in the Vue title bar next to the
+> window title.
+
+---
+
+# Major — 1.1.0
+
+New moving parts; each needs its own design pass before code.
+
 ## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
 
-**Status:** Substantially resolved. All 10 planned items addressed; since then also done: 30 s
-bridge request timeout (FC-C1, `api.ts`), deleted items' Konva nodes destroyed (TC-H1), minimap
-static + dynamic layers (TC-H2). Still open, none user-visible (re-checked in the 1.0.3 pass,
-unchanged): status-discriminated bridge response types (FC-C1 deeper fix), heavy handlers on the
-UI thread (H1 — only `CheckForUpdates` uses `Task.Run`), gallery panel re-fetching
-`GetItemForEdit` (TC-H5), z-index token scale, icon convention sweep (the 1.0.3 modals follow the
-existing Phosphor-for-chrome practice, so the CLAUDE.md rule is still the odd one out).
+**Status:** Substantially resolved; moved to 1.1.0 (2026-09-20) because what is left is
+internal. All 10 planned items addressed; since then also done: 30 s bridge request timeout
+(FC-C1, `api.ts`), deleted items' Konva nodes destroyed (TC-H1), minimap static + dynamic layers
+(TC-H2), icon convention settled — CLAUDE.md now says Phosphor for everything new, Remix only
+survives in the older components, no sweep. Still open, none user-visible: status-discriminated
+bridge response types (FC-C1 deeper fix), heavy handlers on the UI thread (H1 — only
+`CheckForUpdates` uses `Task.Run`), gallery panel re-fetching `GetItemForEdit` (TC-H5), z-index
+token scale.
 
 ### Data integrity — RESOLVED
 
@@ -175,37 +170,10 @@ existing Phosphor-for-chrome practice, so the CLAUDE.md rule is still the odd on
   with inconsistent Escape/backdrop/z-index behaviour.~~ **DONE** — `BaseModal.vue` created; 12 of 13
   modals converted (backdrop + panel + Escape key + `#header`/`#footer` slots). `TimelineItemViewModal`
   intentionally skipped (themed viewer, incompatible design).
-- **Icon convention**: 19 of 20 modal/picker files contradict the CLAUDE.md Remix-vs-Phosphor
-  rule — at this scale, decide whether to fix the components or change the convention.
-
----
-
-## [BL-23] App icon
-
-**Status:** Placeholder in place. Pending commission of final artwork.
-
-The application currently uses a placeholder icon. A proper icon (`.ico` with
-16/32/48/256px variants, plus a matching `favicon` for the WebView2 shell) should be
-provided.
-
-> In the `.csproj`, set `<ApplicationIcon>` to the `.ico` path. The icon will appear in the
-> taskbar, Alt-Tab switcher, and the title bar of any non-borderless window. For the
-> borderless windows a small SVG/PNG version can be shown in the Vue title bar next to the
-> window title.
-
----
-
-# Major — 1.1.0
-
-New moving parts; each needs its own design pass before code.
-
-## [BL-14] Top-level menu system
-
-**Status:** Pending. Architectural feature.
-
-A persistent top-of-screen menu bar (or equivalent) providing navigation to all screens: item management, search, export options, map screen, characters, statistics, etc.
-
-> **Aside:** This is an architectural decision as much as a feature. Currently the app uses separate WinForms windows for different views, which means each has its own WebView2 instance, its own state, and its own load time. A top menu that navigates within a single SPA would be faster and more cohesive, but requires collapsing the multi-window model. I'd suggest a hybrid: keep separate windows for the timeline canvas (which genuinely benefits from being its own resizable window) but move everything else into a single SPA shell with in-page navigation. The menu itself: a thin horizontal bar at the top with icon + label buttons (Timeline, Characters, Map, Search, Statistics, Export). This is a prerequisite for several other BL items that need a "home" screen.
+- ~~**Icon convention**: 19 of 20 modal/picker files contradict the CLAUDE.md Remix-vs-Phosphor
+  rule — at this scale, decide whether to fix the components or change the convention.~~
+  **Settled (2026-09-20)** — the convention changed to match the code: Phosphor for everything
+  new, Remix stays in the older components until touched. No sweep.
 
 ---
 
@@ -326,6 +294,21 @@ Remaining: fill in real achievement definitions (flavor text, trigger criteria),
 ---
 
 # Long-term / deferred
+
+## [BL-53] Power-user console
+
+**Status:** Deferred (2026-09-20) — no console-only features exist yet, so step 2 waits until
+there are commands worth a console. Step 1 stays as is: `__stl.lodLevels()` and
+`__stl.setAllLodMask(levels)` (BL-54) joined the `__stl` helpers and `__stl.help()` lists them;
+levels are named (`['years','decades']` or `'all'`, prefixes accepted), never a raw bitmask.
+
+Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two steps:
+
+1. Grow that into a documented power-user namespace (`__stl.<command>`), starting with BL-54.
+2. Later: an in-app toggleable command console (hotkey, small overlay at the bottom of the
+   timeline window) that runs the same commands without DevTools, with completion and history.
+
+---
 
 ## [BL-16] The Map feature
 
@@ -725,6 +708,19 @@ After saving a new item in the EditItem window, it should appear on the timeline
 A sticky search/filter input at the top of the settings page that helps the user locate a specific setting by name.
 
 > **Aside:** Option C (highlight + scroll to match) is the best UX for a settings panel with many sections. Option B (hide non-matching) is faster for power users but disorienting in a settings context because the user loses the structural overview — they don't know what they're *not* seeing. A hybrid is ideal: show all sections always, but scroll to and visually highlight (animated border or background pulse — gentle, not flashy given the migraine consideration) the first matching setting, with prev/next arrows if there are multiple matches. Minimum viable version: just a simple `Ctrl+F`-style filter that scrolls to section headers containing the search term. Sticky positioning is CSS `position: sticky; top: 0` on the input — trivial to implement.
+
+---
+
+## [BL-14] Top-level menu system
+
+**Status:** Closed (2026-09-20) — superseded by the icon sidebar. The left activity strip
+(`TimelineActivityStrip.vue`, BL-38 era) is the app's navigation: Timeline active, Characters /
+Map / Search / Statistics ghosted until their modules exist, help flyout and settings at the
+bottom. No top menu bar is planned; new sections get a sidebar icon instead.
+
+A persistent top-of-screen menu bar (or equivalent) providing navigation to all screens: item management, search, export options, map screen, characters, statistics, etc.
+
+> **Aside:** This is an architectural decision as much as a feature. Currently the app uses separate WinForms windows for different views, which means each has its own WebView2 instance, its own state, and its own load time. A top menu that navigates within a single SPA would be faster and more cohesive, but requires collapsing the multi-window model. I'd suggest a hybrid: keep separate windows for the timeline canvas (which genuinely benefits from being its own resizable window) but move everything else into a single SPA shell with in-page navigation. The menu itself: a thin horizontal bar at the top with icon + label buttons (Timeline, Characters, Map, Search, Statistics, Export). This is a prerequisite for several other BL items that need a "home" screen.
 
 ---
 

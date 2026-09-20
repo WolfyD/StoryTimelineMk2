@@ -116,8 +116,9 @@ Conventions used throughout this document:
 - Rows always start at column 0 (no year-offset alignment — unlike CalendarDayPicker).
 - `markersForCell(day, col)` matches: **fixed** single dates, **fixed ranges** as packed `month*10000 + day` (including year-wrapping ranges where `start > end`), and **weekly** markers by column index. **`relative` markers are never shown** (they need a year anchor to resolve).
 - Tooltip is pure CSS (`.cell-wrap:hover .cell-tooltip`), positioned above the cell.
+- The whole card is `user-select: none` — dragging across days must not highlight the numbers (BL-60). Day click events are a future addition.
 
-**Used by** — `CalendarYearView.vue` only.
+**Used by** — `CalendarYearView.vue` (calendar overlay in the timeline window) and `pages/YearCalendarApp.vue` (year-calendar window, with `itemDots`).
 
 **Gotchas** — `markersForCell` is called three times per cell in the template (visibility check, dots, tooltip); fine for a 12-month grid but worth knowing. Weekly matching uses `colIndex % weekLength`, which is just `colIndex` given the table layout.
 
@@ -851,7 +852,7 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 | AuthorReminderModal | App.vue |
 | CalendarDayPicker | MemorableDaysModal |
 | CalendarManagerModal | App.vue |
-| CalendarMonthGrid | CalendarYearView |
+| CalendarMonthGrid | CalendarYearView, pages/YearCalendarApp.vue |
 | CalendarViewModal | CalendarManagerModal |
 | CalendarYearView | CalendarViewModal |
 | ConfirmDeleteModal | ProjectContainer |
