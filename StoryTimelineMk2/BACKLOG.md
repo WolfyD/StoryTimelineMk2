@@ -251,8 +251,9 @@ on how the virtualised `%LOCALAPPDATA%` behaves (the app writes `StoryTimelineMk
 **Status:** In progress (2026-09-21). Licence prerequisite done (AGPL-3.0); the CI half is in —
 `.github/workflows/build.yml` runs the tests and then `release.ps1 <version>` (without
 `-CreateRelease`) on `windows-latest` and uploads all four artifacts, triggered by hand or by a
-`v*` tag. Left: one green run, then the SignPath application, then uncomment the signing step at
-the bottom of that file and fill in the org / project / policy slugs and `SIGNPATH_API_TOKEN`.
+`v*` tag. First run green (4m23s, all 950 tests, four artifacts). Left: the SignPath application,
+then uncomment the signing step at the bottom of that file and fill in the org / project / policy
+slugs and `SIGNPATH_API_TOKEN`.
 
 Get `StoryTimelineSetup.exe` signed with a free OV certificate from SignPath Foundation so the
 installer stops showing "unknown publisher". Their conditions:
