@@ -248,7 +248,11 @@ on how the virtualised `%LOCALAPPDATA%` behaves (the app writes `StoryTimelineMk
 
 ## [BL-70] Signed installer — SignPath Foundation + CI build
 
-**Status:** Pending. Licence prerequisite done (AGPL-3.0, 2026-09-21); the CI move is the real work.
+**Status:** In progress (2026-09-21). Licence prerequisite done (AGPL-3.0); the CI half is in —
+`.github/workflows/build.yml` runs the tests and then `release.ps1 <version>` (without
+`-CreateRelease`) on `windows-latest` and uploads all four artifacts, triggered by hand or by a
+`v*` tag. Left: one green run, then the SignPath application, then uncomment the signing step at
+the bottom of that file and fill in the org / project / policy slugs and `SIGNPATH_API_TOKEN`.
 
 Get `StoryTimelineSetup.exe` signed with a free OV certificate from SignPath Foundation so the
 installer stops showing "unknown publisher". Their conditions:
@@ -257,14 +261,14 @@ installer stops showing "unknown publisher". Their conditions:
   and every dependency is compatible (Dapper, Microsoft.Data.Sqlite, WebView2, Vue, Pinia, Konva
   and Phosphor are MIT-ish; Remixicon is Apache-2.0, compatible with v3).
 - Public repository and a maintainer account with MFA.
-- **Artifacts must be built by a CI pipeline**, not on a developer machine. `release.ps1` builds the
-  installer locally today, so the build has to move into GitHub Actions (`windows-latest`,
-  `dotnet publish` + `npm run build-only` + the existing payload / zip steps) with SignPath pulling
-  the artifact from the workflow run.
+- **Artifacts must be built by a CI pipeline**, not on a developer machine — **done**:
+  `.github/workflows/build.yml` calls the same `release.ps1` on `windows-latest`, so there is one
+  build definition rather than two, and SignPath pulls the artifact from the workflow run.
 
-Sequence: move the build to Actions first, apply to SignPath second, then have `release.ps1` publish
-the CI-built signed artifacts instead of local ones. Certum Open Source (~€69 first year, ~€29/yr
-after) is the paid fallback if SignPath declines.
+Sequence: Actions build (done), apply to SignPath, then have releases use the CI-built signed
+artifacts instead of local ones — `release.ps1 -CreateRelease` still builds and publishes locally,
+so the last step is teaching it (or a second workflow) to attach the signed artifacts to the tag.
+Certum Open Source (~€69 first year, ~€29/yr after) is the paid fallback if SignPath declines.
 
 ---
 

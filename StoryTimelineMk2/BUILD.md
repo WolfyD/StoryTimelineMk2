@@ -54,6 +54,22 @@ Output is ~100 MB larger (~50 MB with `-p:PublishSingleFile=true -p:EnableCompre
 
 ---
 
+## CI build (GitHub Actions)
+
+`.github/workflows/build.yml` produces the same four artifacts on a `windows-latest` runner. It runs
+the frontend and .NET unit tests, then calls `release.ps1 <version>` **without** `-CreateRelease`, so
+nothing is tagged or published from CI — the artifacts are attached to the workflow run instead.
+
+- **Trigger:** Actions → Build → Run workflow (optional version box), or push a `v*` tag.
+- **Version:** the tag wins, then the manual input, then whatever `<Version>` the csproj holds.
+- **Why it exists:** SignPath Foundation only signs artifacts built by a pipeline (BL-70). The
+  signing step is scaffolded as a comment at the bottom of the workflow.
+
+Local releases are unchanged: `release.ps1 <version> -CreateRelease` still builds, tags and publishes
+from your machine.
+
+---
+
 ## Output folder structure
 
 ```

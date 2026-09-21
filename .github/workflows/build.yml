@@ -1,0 +1,94 @@
+# Builds the four release artifacts on a GitHub runner instead of a developer machine.
+# Same steps as release.ps1 (it *is* release.ps1) minus the publishing half: nothing is
+# tagged here and nothing is uploaded to a GitHub release.
+#
+# SignPath Foundation (BL-70) only signs artifacts a CI pipeline produced, which is what
+# this workflow exists for. Run it by hand (Actions -> Build -> Run workflow) or let a
+# v* tag trigger it.
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp (blank = whatever the csproj already says)"
+        required: false
+        type: string
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: StoryTimelineMk2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: StoryTimelineMk2/Frontend/package-lock.json
+
+      # Tag wins, then the manual input, then the version already in the csproj.
+      - name: Resolve version
+        id: v
+        run: |
+          $v = '${{ inputs.version }}'
+          if ('${{ github.ref_type }}' -eq 'tag') { $v = '${{ github.ref_name }}' -replace '^v', '' }
+          if (-not $v) {
+              $v = [regex]::Match((Get-Content StoryTimelineMk2.csproj -Raw), '<Version>([^<]+)</Version>').Groups[1].Value
+          }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Not a version: '$v'" }
+          Write-Host "Building v$v"
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: npm ci
+        working-directory: StoryTimelineMk2/Frontend
+        run: npm ci
+
+      - name: Frontend unit tests
+        working-directory: StoryTimelineMk2/Frontend
+        run: npm test
+
+      - name: .NET unit tests
+        run: |
+          dotnet test StoryTimelineMk2.Tests/StoryTimelineMk2.Tests.csproj -c Release --nologo
+          dotnet test StoryTimelineInstaller.Tests/StoryTimelineInstaller.Tests.csproj -c Release --nologo
+
+      # Builds both flavours of app + installer into release\v<version>\.
+      - name: Build artifacts
+        run: ./release.ps1 ${{ steps.v.outputs.version }}
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: StoryTimeline-v${{ steps.v.outputs.version }}
+          path: StoryTimelineMk2/release/v${{ steps.v.outputs.version }}/*
+          if-no-files-found: error
+
+      # --- Signing, once the SignPath project exists (BL-70) ----------------
+      # Needs `permissions: { contents: read, actions: read, id-token: write }` above,
+      # the org / project / policy slugs from the SignPath dashboard, and SIGNPATH_API_TOKEN
+      # in the repository secrets.
+      #
+      # - uses: signpath/github-action-submit-signing-request@v1
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: "<org id>"
+      #     project-slug: storytimelinemk2
+      #     signing-policy-slug: release-signing
+      #     github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: signed
