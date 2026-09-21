@@ -178,12 +178,105 @@ provided.
 
 # Major — 1.1.0
 
-New moving parts; each needs its own design pass before code.
+Refocused on 2026-09-21: get the app onto Mac (and Linux) through the browser, and get the Windows
+installer signed. Plus minor fixes and small additions. Everything that used to sit here moved to
+1.2.0.
+
+## [BL-67] Cross-platform data layer
+
+**Status:** Pending. Prerequisite for BL-68; no open design questions, just the extraction.
+
+Move `Database/` out of the WinForms project into a class library targeting plain `net10.0` (no
+`-windows`), so the same repositories run on macOS and Linux. The layer is ~5,600 LOC and only two
+files are OS-bound:
+
+- `Database/MediaRepo.cs` — `System.Drawing.Drawing2D` / `.Imaging` for thumbnailing. Replace with
+  ImageSharp or SkiaSharp (both cross-platform and AGPL-compatible).
+- `Database/StatsDbInitializer.cs:10` — `Application.StartupPath` → `AppContext.BaseDirectory`.
+
+Dapper and Microsoft.Data.Sqlite are already cross-platform; SQLitePCLRaw ships its native bundle
+per-RID, so a self-contained publish per platform covers it.
+
+> **Aside:** do this first and alone. It is a mechanical move with `StoryTimelineMk2.Tests` behind
+> it, so it can land and be verified before any server work starts — the WinForms app keeps
+> referencing the library and should not notice the difference.
+
+---
+
+## [BL-68] Local server + browser build (Mac / Linux support)
+
+**Status:** Pending. Shape agreed (2026-09-21); needs its own design pass before code.
+
+Ship a second host: an ASP.NET Core binary the user runs locally that serves the built SPA and
+answers the same action names the WebView2 bridge answers today. Data stays on the user's machine
+— this is not hosted SaaS. Driver: a $99/yr Apple developer certificate is not affordable, so a
+native Mac build is out.
+
+Known shape of the work:
+
+- `Bridge/MessageRouter.cs` has 94 actions. ~64 are pure data (timelines, items, tags, calendars,
+  settings, search) and port unchanged once BL-67 lands. ~30 are host-bound: window chrome
+  (`Window*`, `ToggleFullscreen`, `OpenTimeline`, `Open*Window`), file dialogs (`Browse*`, import /
+  export / backup), data-folder moves, `GetSystemFonts`, `OpenExternalUrl`, the updater. Splitting
+  the router into a data half and a host half is its own step.
+- `Frontend/src/bridge/api.ts` gains a second transport (HTTP or WebSocket) picked at runtime when
+  `window.chrome.webview` is absent. Only three frontend files touch the WebView2 object directly
+  (`bridge/api.ts`, `pages/TimelineApp.vue`, `pages/YearCalendarApp.vue`), so the seam is narrow.
+- Browser substitutes needed for: multi-window (the five Vite entry points map onto `window.open`),
+  native file dialogs (`<input type="file">` plus downloads), the custom title bars, the system
+  font list.
+- AGPL §13: a server build is network-interactive, so the UI has to offer its source — a "Source"
+  link to the repo at the running version's tag is enough.
+
+---
+
+## [BL-69] Microsoft Store channel (MSIX)
+
+**Status:** Pending. The free route to a warning-free install on Windows.
+
+Package the app as MSIX and publish it to the Microsoft Store. Individual developer registration is
+free (since late 2025) and the Store re-signs submissions with its own certificate, so Store
+installs raise no SmartScreen warning and updates arrive through the Store. Needs no licence of any
+particular kind and does not replace BL-70 — the GitHub installer stays the primary channel, the
+Store is the frictionless one.
+
+Work: an MSIX packaging project, Store account and name reservation, package identity plus a check
+on how the virtualised `%LOCALAPPDATA%` behaves (the app writes `StoryTimelineMk2_Data` and
+`_Cache`), and a decision on whether the in-app updater hides itself in a Store build.
+
+---
+
+## [BL-70] Signed installer — SignPath Foundation + CI build
+
+**Status:** Pending. Licence prerequisite done (AGPL-3.0, 2026-09-21); the CI move is the real work.
+
+Get `StoryTimelineSetup.exe` signed with a free OV certificate from SignPath Foundation so the
+installer stops showing "unknown publisher". Their conditions:
+
+- An OSI-approved licence with no commercial dual-licensing — **satisfied**: the repo is AGPL-3.0
+  and every dependency is compatible (Dapper, Microsoft.Data.Sqlite, WebView2, Vue, Pinia, Konva
+  and Phosphor are MIT-ish; Remixicon is Apache-2.0, compatible with v3).
+- Public repository and a maintainer account with MFA.
+- **Artifacts must be built by a CI pipeline**, not on a developer machine. `release.ps1` builds the
+  installer locally today, so the build has to move into GitHub Actions (`windows-latest`,
+  `dotnet publish` + `npm run build-only` + the existing payload / zip steps) with SignPath pulling
+  the artifact from the workflow run.
+
+Sequence: move the build to Actions first, apply to SignPath second, then have `release.ps1` publish
+the CI-built signed artifacts instead of local ones. Certum Open Source (~€69 first year, ~€29/yr
+after) is the paid fallback if SignPath declines.
+
+---
+
+# Major — 1.2.0
+
+New moving parts; each needs its own design pass before code. This group was 1.1.0 until
+2026-09-21, when 1.1.0 was refocused on the browser build and signing.
 
 ## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
 
-**Status:** Substantially resolved; moved to 1.1.0 (2026-09-20) because what is left is
-internal. All 10 planned items addressed; since then also done: 30 s bridge request timeout
+**Status:** Substantially resolved; moved to 1.1.0 (2026-09-20), then to 1.2.0 (2026-09-21),
+because what is left is internal. All 10 planned items addressed; since then also done: 30 s bridge request timeout
 (FC-C1, `api.ts`), deleted items' Konva nodes destroyed (TC-H1), minimap static + dynamic layers
 (TC-H2), icon convention settled — CLAUDE.md now says Phosphor for everything new, Remix only
 survives in the older components, no sweep. Still open, none user-visible: status-discriminated

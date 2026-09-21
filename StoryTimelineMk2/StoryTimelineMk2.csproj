@@ -28,6 +28,11 @@
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
+  <!-- The installer's licence page promises a copy next to the exe -->
+  <ItemGroup>
+    <Content Include="..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>StoryTimelineMk2.Tests</_Parameter1>

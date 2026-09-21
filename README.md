@@ -66,4 +66,8 @@ The app is a hybrid: a WinForms shell hosts a Chromium browser (WebView2) render
 
 ## License
 
-GNU General Public License v3.0 — see [LICENSE](LICENSE) for details.
+GNU Affero General Public License v3.0 — see [LICENSE](LICENSE) for details.
+
+In short: use it for anything, study it, share it, change it. If you distribute it — or run a
+modified version as a network service — the people who receive it get the source and the same
+licence.

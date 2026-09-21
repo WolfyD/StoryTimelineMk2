@@ -47,6 +47,7 @@ function openUrl() {
             <p class="about-desc" style="white-space: nowrap;">A timeline management tool for creative writers.</p>
             <p class="about-copy"><span style="vertical-align: super; font-size:smaller">&copy;</span> 2026 WolfyD</p>
             <p class="about-copy">All art by Dergderg Dorgness &mdash; dergdergdorgness@gmail.com</p>
+            <p class="about-copy">Free software under the GNU AGPL v3 &mdash; source at github.com/WolfyD/StoryTimelineMk2</p>
 
             <div class="update-section">
                 <button

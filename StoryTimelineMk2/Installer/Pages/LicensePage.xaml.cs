@@ -6,15 +6,15 @@ namespace StoryTimelineInstaller.Pages;
 public partial class LicensePage : UserControl
 {
     private const string LicenseText =
-        "GNU GENERAL PUBLIC LICENSE\r\n" +
-        "Version 3, 29 June 2007\r\n" +
+        "GNU AFFERO GENERAL PUBLIC LICENSE\r\n" +
+        "Version 3, 19 November 2007\r\n" +
         "\r\n" +
         "Story Timeline  -  Copyright (C) 2026 WolfyD\r\n" +
         "https://github.com/WolfyD/StoryTimelineMk2\r\n" +
         "\r\n" +
         "This program is free software: you can redistribute it and/or modify\r\n" +
-        "it under the terms of the GNU General Public License as published by\r\n" +
-        "the Free Software Foundation, either version 3 of the License, or\r\n" +
+        "it under the terms of the GNU Affero General Public License as published\r\n" +
+        "by the Free Software Foundation, either version 3 of the License, or\r\n" +
         "(at your option) any later version.\r\n" +
         "\r\n" +
         "This program is distributed in the hope that it will be useful,\r\n" +
@@ -22,7 +22,7 @@ public partial class LicensePage : UserControl
         "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\r\n" +
         "\r\n" +
         "======================================================================\r\n" +
-        "  YOUR RIGHTS UNDER THE GNU GENERAL PUBLIC LICENSE v3\r\n" +
+        "  YOUR RIGHTS UNDER THE GNU AFFERO GENERAL PUBLIC LICENSE v3\r\n" +
         "======================================================================\r\n" +
         "\r\n" +
         "You are free to:\r\n" +
@@ -37,7 +37,12 @@ public partial class LicensePage : UserControl
         "  SOURCE  - Copies and derivatives must include the source code or\r\n" +
         "            a written offer to provide it on request.\r\n" +
         "\r\n" +
-        "  LICENSE - Copies and derivatives must carry this same GPL v3 license.\r\n" +
+        "  NETWORK - If you run a modified version on a server and let other\r\n" +
+        "            people use it over a network, you must offer them the\r\n" +
+        "            source code of your modified version as well.\r\n" +
+        "\r\n" +
+        "  LICENSE - Copies and derivatives must carry this same AGPL v3\r\n" +
+        "            license.\r\n" +
         "\r\n" +
         "  NOTICE  - Modified works must carry prominent notices stating that\r\n" +
         "            you changed the files and the date of any changes.\r\n" +
@@ -66,14 +71,14 @@ public partial class LicensePage : UserControl
         "  FULL LICENSE TEXT\r\n" +
         "======================================================================\r\n" +
         "\r\n" +
-        "The complete GNU General Public License v3 is available at:\r\n" +
-        "  https://www.gnu.org/licenses/gpl-3.0.txt\r\n" +
+        "The complete GNU Affero General Public License v3 is available at:\r\n" +
+        "  https://www.gnu.org/licenses/agpl-3.0.txt\r\n" +
         "\r\n" +
         "A copy is also included in the installation directory as LICENSE.txt.\r\n" +
         "\r\n" +
         "Note: The author reserves the right to release future versions of\r\n" +
         "Story Timeline under different license terms. Any version already\r\n" +
-        "released under GPL v3 remains under GPL v3.\r\n";
+        "released under AGPL v3 remains under AGPL v3.\r\n";
 
     public LicensePage()
     {
