@@ -11,10 +11,8 @@ public static class UpdateChecker
     private const string GitHubOwner = "WolfyD";
     private const string GitHubRepo  = "StoryTimelineMk2";
 
-    public static string CurrentVersion { get; } =
-        Assembly.GetExecutingAssembly().GetName().Version is { } v
-            ? $"{v.Major}.{v.Minor}.{v.Build}"
-            : "0.0.0";
+    /// <summary>The app-side name for <see cref="AppInfo.Version"/>; one source of truth.</summary>
+    public static string CurrentVersion => AppInfo.Version;
 
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
 

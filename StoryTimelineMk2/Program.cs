@@ -30,6 +30,13 @@ namespace StoryTimelineMk2
                     Logger.Error("UnhandledDomain", ex);
             };
 
+            // AppConfig lives in the UI-less data library; give it a way to show its own failures.
+            // GetAppConfig reports the OS theme preference, which only the host can read.
+            Bridge.DataActions.SystemPrefersDark = Bridge.MessageRouter.OsPrefersDark;
+
+            AppConfig.OnLoadError = (message, _) => MessageBox.Show(
+                message, "Configuration error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
             try
             {
                 DbInitializer.Initialize();

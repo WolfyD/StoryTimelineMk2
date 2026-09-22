@@ -49,8 +49,8 @@ function apply() {
             <p v-if="error" class="lod-error">{{ error }}</p>
         </div>
         <template #footer>
-            <button class="btn btn-secondary" type="button" :disabled="busy" @click="emit('close')">Cancel</button>
-            <button class="btn lod-apply" :class="danger ? 'btn-danger' : 'btn-primary'" type="button" :disabled="busy" @click="apply">
+            <button class="btn btn-secondary" type="button" data-cancel :disabled="busy" @click="emit('close')">Cancel</button>
+            <button class="btn lod-apply" :class="danger ? 'btn-danger' : 'btn-primary'" type="button" data-primary :disabled="busy" @click="apply">
                 {{ busy ? '…' : applyLabel }}
             </button>
         </template>

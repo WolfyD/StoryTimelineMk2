@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="StoryTimelineMk2/StoryTimelineMk2.csproj" />
+  <Project Path="StoryTimelineMk2/StoryTimeline.Data/StoryTimeline.Data.csproj" />
+  <Project Path="StoryTimelineMk2/StoryTimeline.Server/StoryTimeline.Server.csproj" />
 </Solution>

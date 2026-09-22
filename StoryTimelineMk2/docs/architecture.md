@@ -67,7 +67,7 @@ All routing logic lives in `Bridge/MessageRouter.cs`. Supported actions:
 
 **Known inconsistency:** `timelineStore.loadTimelines()` sends the action `"GetTimelines"`, but `MessageRouter` only handles `"GetAllTimelines"`. These are mismatched and the store call will silently fail.
 
-## Database layer (`Database/`)
+## Database layer (`StoryTimeline.Data/Database/`)
 
 All data access goes through repository classes. Each repo uses `Dapper` for SQL execution against the SQLite file located at:
 

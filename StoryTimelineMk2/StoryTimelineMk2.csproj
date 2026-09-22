@@ -15,10 +15,14 @@
     <AssemblyName>StoryTimeline</AssemblyName>
     <RootNamespace>StoryTimelineMk2</RootNamespace>
     <Product>Story Timeline</Product>
-    <Version>1.0.3</Version>
-    <AssemblyVersion>1.0.3.0</AssemblyVersion>
-    <FileVersion>1.0.3.0</FileVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="StoryTimeline.Data\StoryTimeline.Data.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.79" />
@@ -64,6 +68,14 @@
     <Compile Remove="Frontend\**" />
     <EmbeddedResource Remove="Frontend\**" />
     <None Remove="Frontend\**" />
+    <Content Remove="StoryTimeline.Data\**" />
+    <Compile Remove="StoryTimeline.Data\**" />
+    <EmbeddedResource Remove="StoryTimeline.Data\**" />
+    <None Remove="StoryTimeline.Data\**" />
+    <Content Remove="StoryTimeline.Server\**" />
+    <Compile Remove="StoryTimeline.Server\**" />
+    <EmbeddedResource Remove="StoryTimeline.Server\**" />
+    <None Remove="StoryTimeline.Server\**" />
     <Content Remove="StoryTimelineMk2.Tests\**" />
     <Compile Remove="StoryTimelineMk2.Tests\**" />
     <EmbeddedResource Remove="StoryTimelineMk2.Tests\**" />

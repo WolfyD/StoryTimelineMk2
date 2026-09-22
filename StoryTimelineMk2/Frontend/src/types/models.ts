@@ -479,6 +479,84 @@ export interface TimelineImportPreview {
 	timelineId: number | null;
 }
 
+// ── BL-33: session changes (.stlc) ──────────────────────────────────────────
+
+/** One item in the My work tab's list of what the ticked days touched. */
+export interface SessionEntry {
+	id: string;
+	op: 'insert' | 'update' | 'delete';
+	title: string;
+}
+
+/** One day the timeline was worked on, as the export screen lists it. */
+export interface SessionDaySummary {
+	day: string;
+	startedAt: string;
+	added: number;
+	changed: number;
+	removed: number;
+	/** Today: still being written to, so its counts are computed live. */
+	open: boolean;
+}
+
+export interface SessionHistory {
+	timelineTitle: string;
+	lastExportedAt: string | null;
+	/** The newest day the last export covered; “everything since” starts the day after. */
+	lastExportDay: string | null;
+	days: SessionDaySummary[];
+}
+
+export interface SessionChangeSummary {
+	sessionStartedAt: string;
+	timelineTitle: string;
+	added: number;
+	changed: number;
+	removed: number;
+	entries: SessionEntry[];
+}
+
+/** One column of the side-by-side comparison. Already formatted for display. */
+export interface SessionSide {
+	title: string;
+	when: string;
+	description: string;
+	tags: string;
+	updatedAt: string;
+}
+
+export interface SessionChangeEntryPreview {
+	id: string;
+	op: 'insert' | 'update' | 'delete';
+	title: string;
+	/** This copy edited the same item, so taking the incoming version overwrites work. */
+	collision: boolean;
+	/** No such item here: an update lands as a new one, a delete does nothing. */
+	missingLocally: boolean;
+	incoming: SessionSide | null;
+	local: SessionSide | null;
+}
+
+export interface SessionChangePreview {
+	sourcePath: string;
+	timelineTitle: string;
+	exportedAt: string;
+	targetTimelineId: number;
+	targetTimelineTitle: string;
+	added: number;
+	changed: number;
+	removed: number;
+	collisions: number;
+	entries: SessionChangeEntryPreview[];
+}
+
+export interface SessionApplyResult {
+	applied: number;
+	kept: number;
+	/** Links to characters, stories or chapters this copy does not have. */
+	dropped: number;
+}
+
 export interface MemDayMarker {
     id: string
     name: string

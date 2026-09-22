@@ -17,8 +17,8 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
             <p class="sub">{{ sub }}</p>
         </div>
         <template #footer>
-            <button class="btn btn-cancel" @click="emit('close')">Cancel</button>
-            <button class="btn btn-danger" @click="emit('confirm')">Delete</button>
+            <button class="btn btn-cancel" data-cancel @click="emit('close')">Cancel</button>
+            <button class="btn btn-danger" data-primary @click="emit('confirm')">Delete</button>
         </template>
     </BaseModal>
 </template>

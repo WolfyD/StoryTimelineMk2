@@ -21,6 +21,7 @@ namespace StoryTimelineMk2.Database.Migrations
             new(5, "picture title", "1.0.3", V5_ShowTitle),
             new(6, "item notes", "1.0.3", V6_ItemNotes),
             new(7, "keyboard pan speed", "1.0.3", V7_KeyboardPanSpeed),
+            new(8, "session day log", "1.1.0", V8_SessionDays),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1036,6 +1037,40 @@ namespace StoryTimelineMk2.Database.Migrations
         private static void V7_KeyboardPanSpeed(MigrationDb db)
         {
             db.Execute("ALTER TABLE settings ADD COLUMN keyboard_pan_speed REAL NOT NULL DEFAULT 400");
+        }
+
+        // ── 8: session day log ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-33: one row per day a timeline was worked on. The day currently open holds a
+        /// <c>baseline</c> — the signature of every item as it stood that morning — and nothing
+        /// else; sealing the day replaces it with that day's net <c>changes</c> and their counts,
+        /// which is what a range export merges. Only one baseline exists per timeline at a time,
+        /// so the log stays small however long the history gets.
+        /// </summary>
+        private static void V8_SessionDays(MigrationDb db)
+        {
+            // ponytail: no FK to timelines — foreign keys are off by default on these connections,
+            // so it would not cascade anyway. Orphan rows are unreachable, not harmful.
+            db.Execute(@"
+                CREATE TABLE session_days (
+                    timeline_id INTEGER NOT NULL,
+                    day         TEXT    NOT NULL,
+                    started_at  TEXT    NOT NULL,
+                    baseline    TEXT,
+                    changes     TEXT,
+                    added       INTEGER NOT NULL DEFAULT 0,
+                    changed     INTEGER NOT NULL DEFAULT 0,
+                    removed     INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (timeline_id, day)
+                )");
+
+            db.Execute(@"
+                CREATE TABLE session_exports (
+                    timeline_id INTEGER PRIMARY KEY,
+                    exported_at TEXT NOT NULL,
+                    through_day TEXT NOT NULL
+                )");
         }
     }
 }

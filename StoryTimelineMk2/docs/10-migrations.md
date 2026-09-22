@@ -6,13 +6,13 @@ is a numbered step, because any install may still be running a database written 
 
 | Database | Path | Migration list | Entry point |
 |----------|------|----------------|-------------|
-| Timeline data | `<DataRoot>/timeline.sqlite` | `Database/Migrations/MainDbMigrations.cs` | `DbInitializer.Initialize()` |
-| Usage statistics | `<exe folder>/usage.sqlite` | `Database/Migrations/StatsDbMigrations.cs` | `StatsDbInitializer.Initialize()` |
+| Timeline data | `<DataRoot>/timeline.sqlite` | `StoryTimeline.Data/Database/Migrations/MainDbMigrations.cs` | `DbInitializer.Initialize()` |
+| Usage statistics | `<exe folder>/usage.sqlite` | `StoryTimeline.Data/Database/Migrations/StatsDbMigrations.cs` | `StatsDbInitializer.Initialize()` |
 
 ## How it works
 
 `SchemaMigrator.Migrate(db, dbPath, steps, dbLabel, backupFirst, backupSuffix = "")`
-(`Database/Migrations/SchemaMigrator.cs`) runs these stages, in order, and logs each one to `app.log`
+(`StoryTimeline.Data/Database/Migrations/SchemaMigrator.cs`) runs these stages, in order, and logs each one to `app.log`
 under the `SchemaMigrator` tag:
 
 1. **version check** — reads `PRAGMA user_version` (a database written before versioning existed,

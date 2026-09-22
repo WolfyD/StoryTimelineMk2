@@ -22,9 +22,11 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
 <template>
     <BaseModal :title="title" width="min(400px, 92vw)" :z-index="1100" @close="emit('cancel')">
         <p v-if="message" class="confirm-msg">{{ message }}</p>
+        <!-- For the odd yes/no that needs one extra choice — see the media option on Export Database. -->
+        <slot />
         <template #footer>
-            <button class="btn btn-secondary" @click="emit('cancel')">{{ cancelLabel }}</button>
-            <button class="btn" :class="danger ? 'btn-danger' : 'btn-primary'" @click="emit('confirm')">{{ confirmLabel }}</button>
+            <button class="btn btn-secondary" data-cancel @click="emit('cancel')">{{ cancelLabel }}</button>
+            <button class="btn" :class="danger ? 'btn-danger' : 'btn-primary'" data-primary @click="emit('confirm')">{{ confirmLabel }}</button>
         </template>
     </BaseModal>
 </template>

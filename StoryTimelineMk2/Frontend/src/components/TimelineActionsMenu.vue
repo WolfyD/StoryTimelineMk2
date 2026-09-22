@@ -176,6 +176,7 @@ async function applyLodMask(mask: number) {
                         type="text"
                         v-model="newLabel"
                         placeholder="Label (optional)"
+                        data-enter-self
                         @keydown.enter="addRange"
                     />
                     <button class="icon-btn icon-btn--ok" @click="addRange">
@@ -198,6 +199,7 @@ async function applyLodMask(mask: number) {
                         type="number"
                         v-model.number="shiftDelta"
                         placeholder="Years (e.g. −500)"
+                        data-enter-self
                         @keydown.enter="shiftItems"
                     />
                     <button

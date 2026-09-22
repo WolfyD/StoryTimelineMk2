@@ -10,9 +10,6 @@ function onSet() {
 	emit('set', authorInput.value)
 }
 
-function onKeydown(e: KeyboardEvent) {
-	if (e.key === 'Enter') onSet()
-}
 </script>
 
 <template>
@@ -26,14 +23,13 @@ function onKeydown(e: KeyboardEvent) {
 					type="text"
 					placeholder="Author name…"
 					v-model="authorInput"
-					@keydown="onKeydown"
 					autofocus
 				/>
 			</div>
 		</div>
 		<template #footer>
-			<button class="btn btn-cancel" @click="emit('skip')">Keep Empty</button>
-			<button class="btn btn-primary" @click="onSet">Set Author</button>
+			<button class="btn btn-cancel" data-cancel @click="emit('skip')">Keep Empty</button>
+			<button class="btn btn-primary" data-primary @click="onSet">Set Author</button>
 		</template>
 	</BaseModal>
 </template>

@@ -37,7 +37,7 @@ WinForms (f_Main, f_Timeline, f_AddEditItem)
   └── WebView2 (Chromium)
         └── Vue 3 SPA (Pinia + Konva.js)
               └── bridge/api.ts  ← JSON messaging ↔  Bridge/MessageRouter.cs
-                                                            └── Database/ (SQLite + Dapper)
+                                                            └── StoryTimeline.Data/ (SQLite + Dapper)
 ```
 
 ### Bridge / Messaging
@@ -71,9 +71,10 @@ The build produces three HTML files, each loaded by a different WinForms window:
 
 | Path | Purpose |
 |------|---------|
-| `Database/*Repo.cs` | Repository pattern over SQLite via Dapper (ItemRepo, TimelineRepo, CharacterRepo, …) |
-| `Database/*Item.cs` | Domain model classes |
-| `Database/DbInitializer.cs` | Schema creation on first run |
+| `StoryTimeline.Data/` | Class library on plain `net10.0` — the whole data layer plus `Logger` and `AppConfig`. No WinForms dependency: it has to run on macOS and Linux for the browser build (BL-68). |
+| `StoryTimeline.Data/Database/*Repo.cs` | Repository pattern over SQLite via Dapper (ItemRepo, TimelineRepo, CharacterRepo, …) |
+| `StoryTimeline.Data/Database/*Item.cs` | Domain model classes |
+| `StoryTimeline.Data/Database/DbInitializer.cs` | Schema creation on first run |
 | `Bridge/MessageRouter.cs` | Routes WebView2 messages to handlers |
 | `Forms/` | WinForms windows (f_Main, f_Timeline, f_AddEditItem) |
 | `Program.cs` | Entry point |

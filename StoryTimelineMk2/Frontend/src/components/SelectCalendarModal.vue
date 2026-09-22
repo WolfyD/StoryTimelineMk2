@@ -62,8 +62,8 @@ onUnmounted(() => window.removeEventListener('calendars-changed', refresh))
 			</div>
 		</div>
 		<template #footer>
-			<button class="btn btn-cancel" @click="emit('skipped')">Skip</button>
-			<button class="btn btn-primary" :disabled="!selectedId" @click="emit('selected', selectedId)">
+			<button class="btn btn-cancel" data-cancel @click="emit('skipped')">Skip</button>
+			<button class="btn btn-primary" data-primary :disabled="!selectedId" @click="emit('selected', selectedId)">
 				Select
 			</button>
 		</template>

@@ -170,10 +170,10 @@ describe('TimelineItemViewModal', () => {
     await flushPromises()
     await wrapper.vm.$nextTick()
 
-    // @click.self fires when the backdrop itself (not a child) is clicked.
-    // We dispatch a native click on the backdrop element.
+    // The press has to land on the backdrop too, so a drag out of the panel cannot close it.
     const backdrop = bodyQ('.view-modal-backdrop') as HTMLElement
     expect(backdrop).not.toBeNull()
+    backdrop.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
     backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await wrapper.vm.$nextTick()
 

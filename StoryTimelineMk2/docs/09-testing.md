@@ -113,31 +113,31 @@ Specs import `test`/`expect` from `./fixtures`, not from `@playwright/test`.
 
 | Source | Test file |
 |---|---|
-| `Database/ItemRepo.cs` | `StoryTimelineMk2.Tests/Database/ItemRepoTests.cs` |
-| `Database/TimelineRepo.cs` | `TimelineRepoTests.cs` |
-| `Database/CalendarRepo.cs` | `CalendarRepoTests.cs` |
-| `Database/LodRepo.cs` | `LodRepoTests.cs` |
-| `Database/NoteRepo.cs` | `NoteRepoTests.cs` |
-| `Database/HiddenRangeRepo.cs` | `HiddenRangeRepoTests.cs` |
-| `Database/StoryRepo.cs` | `StoryRepoTests.cs` |
-| `Database/BookRepo.cs` | `BookRepoTests.cs` |
-| `Database/SettingsRepo.cs` | `SettingsRepoTests.cs` |
-| `Database/LayoutSettingsRepo.cs` | `LayoutSettingsRepoTests.cs` |
-| `Database/CharacterRepo.cs` | `CharacterRepoTests.cs` |
-| `Database/TagRepo.cs` | `TagRepoTests.cs` |
-| `Database/MediaRepo.cs` | `MediaRepoTests.cs` — incl. import/copy, thumbnail generation (256px cap, no upscale, webp skipped, fallback to original), lazy thumb backfill, delete cleanup |
-| `Database/MiscSettingsRepo.cs` | `MiscSettingsRepoTests.cs` |
-| `Database/FilterRuleRepo.cs` | `FilterRuleRepoTests.cs` |
-| `Database/FilterPresetRepo.cs` | `FilterPresetRepoTests.cs` |
-| `Database/StatsRepo.cs`, `Database/StatsDbInitializer.cs` | `StatsRepoTests.cs` (uses its own `StatsDbContext`, see above) |
-| `Database/BackupService.cs` | `BackupServiceTests.cs` — manual + auto backup, restore, retention |
-| `Database/TimelineExporter.cs` | `TimelineExporterTests.cs` |
-| `Database/DbInitializer.cs` | `DbInitializerTests.cs` — schema, seeds, migrations, `ResetBuiltinPreset` |
-| `Database/Migrations/*` (`SchemaMigrator`, `MainDbMigrations`, `StatsDbMigrations`) | `SchemaMigratorTests.cs` — chain numbering + release tags, `AppVersionOf`, fresh DB stamped, idempotent re-run, newer-version refusal (file untouched), v0 fixture → same schema as fresh (columns, FKs, indexes) with rows kept + legacy NULLs normalised, pre-1.0.0 dev schema (subtick, INTEGER note ids, missing columns), verified restorable pre-migration backup with the `pre v1.0.1-v{current} …` name, prune exemption, `VerifyBackup` rejects garbage / wrong version / missing tables, abort-before-change on `quick_check` failure and on unwritable backup, every stage logged to `app.log`, failing-step rollback/resume, failure report carries backup + old version, stats DB: fixture → fresh schema with `(usage stats)` backup, newer-version refusal. Fixtures in `StoryTimelineMk2.Tests/Fixtures/*.sql` are frozen 1.0.1 dumps (copied to the output dir by the csproj) — never edit them by hand |
-| `Database/DatabaseImporter.cs` | `DatabaseImporterTests.cs` — v1 legacy import, preview, v2 migrate-then-merge (old-schema backup gets new-column defaults, real `CreateBackup` round-trip, newer-version backup refused as `MigrationException` with the picked path and no scratch file left behind, scratch cleaned up on success) |
+| `StoryTimeline.Data/Database/ItemRepo.cs` | `StoryTimelineMk2.Tests/Database/ItemRepoTests.cs` |
+| `StoryTimeline.Data/Database/TimelineRepo.cs` | `TimelineRepoTests.cs` |
+| `StoryTimeline.Data/Database/CalendarRepo.cs` | `CalendarRepoTests.cs` |
+| `StoryTimeline.Data/Database/LodRepo.cs` | `LodRepoTests.cs` |
+| `StoryTimeline.Data/Database/NoteRepo.cs` | `NoteRepoTests.cs` |
+| `StoryTimeline.Data/Database/HiddenRangeRepo.cs` | `HiddenRangeRepoTests.cs` |
+| `StoryTimeline.Data/Database/StoryRepo.cs` | `StoryRepoTests.cs` |
+| `StoryTimeline.Data/Database/BookRepo.cs` | `BookRepoTests.cs` |
+| `StoryTimeline.Data/Database/SettingsRepo.cs` | `SettingsRepoTests.cs` |
+| `StoryTimeline.Data/Database/LayoutSettingsRepo.cs` | `LayoutSettingsRepoTests.cs` |
+| `StoryTimeline.Data/Database/CharacterRepo.cs` | `CharacterRepoTests.cs` |
+| `StoryTimeline.Data/Database/TagRepo.cs` | `TagRepoTests.cs` |
+| `StoryTimeline.Data/Database/MediaRepo.cs` | `MediaRepoTests.cs` — incl. import/copy, thumbnail generation (256px cap, no upscale, webp skipped, fallback to original), lazy thumb backfill, delete cleanup |
+| `StoryTimeline.Data/Database/MiscSettingsRepo.cs` | `MiscSettingsRepoTests.cs` |
+| `StoryTimeline.Data/Database/FilterRuleRepo.cs` | `FilterRuleRepoTests.cs` |
+| `StoryTimeline.Data/Database/FilterPresetRepo.cs` | `FilterPresetRepoTests.cs` |
+| `StoryTimeline.Data/Database/StatsRepo.cs`, `StoryTimeline.Data/Database/StatsDbInitializer.cs` | `StatsRepoTests.cs` (uses its own `StatsDbContext`, see above) |
+| `StoryTimeline.Data/Database/BackupService.cs` | `BackupServiceTests.cs` — manual + auto backup, restore, retention |
+| `StoryTimeline.Data/Database/TimelineExporter.cs` | `TimelineExporterTests.cs` |
+| `StoryTimeline.Data/Database/DbInitializer.cs` | `DbInitializerTests.cs` — schema, seeds, migrations, `ResetBuiltinPreset` |
+| `StoryTimeline.Data/Database/Migrations/*` (`SchemaMigrator`, `MainDbMigrations`, `StatsDbMigrations`) | `SchemaMigratorTests.cs` — chain numbering + release tags, `AppVersionOf`, fresh DB stamped, idempotent re-run, newer-version refusal (file untouched), v0 fixture → same schema as fresh (columns, FKs, indexes) with rows kept + legacy NULLs normalised, pre-1.0.0 dev schema (subtick, INTEGER note ids, missing columns), verified restorable pre-migration backup with the `pre v1.0.1-v{current} …` name, prune exemption, `VerifyBackup` rejects garbage / wrong version / missing tables, abort-before-change on `quick_check` failure and on unwritable backup, every stage logged to `app.log`, failing-step rollback/resume, failure report carries backup + old version, stats DB: fixture → fresh schema with `(usage stats)` backup, newer-version refusal. Fixtures in `StoryTimelineMk2.Tests/Fixtures/*.sql` are frozen 1.0.1 dumps (copied to the output dir by the csproj) — never edit them by hand |
+| `StoryTimeline.Data/Database/DatabaseImporter.cs` | `DatabaseImporterTests.cs` — v1 legacy import, preview, v2 migrate-then-merge (old-schema backup gets new-column defaults, real `CreateBackup` round-trip, newer-version backup refused as `MigrationException` with the picked path and no scratch file left behind, scratch cleaned up on success) |
 | `ErrorReport.cs` | `ErrorReportTests.cs` — migration report lists database, schema/app versions, stage, backup (or "not modified"), log path, inner exception + stack; plain exceptions get type/message/stack |
 | Cross-table scenarios | `DbStressTests.cs` — backup/restore round-trips across every table, cascade deletes, multi-checkpoint restore, full lifecycle |
-| **Gaps** | Every public method on every `Database/*` class is exercised except `DatabaseImporter.HandleDBImport` (opens a file dialog). `Bridge/MessageRouter.cs` and everything under `Forms/` (incl. `f_ErrorReport`) have **no unit tests at all** (covered only indirectly by real E2E). |
+| **Gaps** | Every public method on every `StoryTimeline.Data/Database/*` class is exercised except `DatabaseImporter.HandleDBImport` (opens a file dialog). `Bridge/MessageRouter.cs` and everything under `Forms/` (incl. `f_ErrorReport`) have **no unit tests at all** (covered only indirectly by real E2E). |
 
 ### Frontend (Vitest)
 

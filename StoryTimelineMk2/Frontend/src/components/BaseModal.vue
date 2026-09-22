@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
-import { useModalGuard } from '@/utils/shortcuts'
+import { useModal } from '@/utils/modal'
 
 const props = withDefaults(defineProps<{
     title?: string
@@ -15,18 +14,12 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ close: [] }>()
 
-useModalGuard()
-
-function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') emit('close')
-}
-
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+// Esc closes, Enter clicks the footer's `data-primary` button, the backdrop survives a drag.
+const { root, onMousedown, onClick } = useModal(() => emit('close'))
 </script>
 
 <template>
-    <div class="bm-backdrop" :style="{ zIndex }" @click.self="emit('close')">
+    <div ref="root" class="bm-backdrop" :style="{ zIndex }" @mousedown="onMousedown" @click="onClick">
         <div class="bm-panel" :style="{ width, maxHeight }">
             <div class="bm-header">
                 <slot name="header">
@@ -41,6 +34,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </template>
 
 <style scoped lang="scss">
+// Key hints on the footer buttons — the modals only mark which button is which, the badge and
+// the keyboard handling both come from here. :slotted(), because the buttons come from the caller.
+.bm-footer :slotted([data-primary])::after,
+.bm-footer :slotted([data-cancel])::after {
+    display: inline-block;
+    margin-left: 7px;
+    padding: 0 4px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    font-size: 0.75em;
+    line-height: 1.5;
+    opacity: 0.55;
+    vertical-align: 1px;
+}
+
+.bm-footer :slotted([data-primary])::after { content: '↵'; }
+.bm-footer :slotted([data-cancel])::after { content: 'Esc'; }
+.bm-footer :slotted([data-primary]:disabled)::after { opacity: 0.25; }
+
 .bm-backdrop {
     position: fixed;
     inset: 0;

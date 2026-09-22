@@ -1,5 +1,4 @@
 using Microsoft.Data.Sqlite;
-using System.Windows.Forms;
 using StoryTimelineMk2.Database.Migrations;
 
 namespace StoryTimelineMk2.Database
@@ -7,7 +6,7 @@ namespace StoryTimelineMk2.Database
     internal static class StatsDbInitializer
     {
         public static string GetStatsDbPath() =>
-            Path.Combine(Application.StartupPath, "usage.sqlite");
+            Path.Combine(AppContext.BaseDirectory, "usage.sqlite");
 
         public static string GetConnectionString() =>
             $"Data Source={GetStatsDbPath()}";

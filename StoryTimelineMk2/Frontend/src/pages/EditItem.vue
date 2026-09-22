@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { mediaUrl } from '@/utils/mediaUrl';
 import { BackendAPI } from '@/bridge/api'
-import { useShortcuts } from '@/utils/shortcuts'
+import { useShortcuts, MOD } from '@/utils/shortcuts'
 import HelpModal from '@/components/HelpModal.vue'
 import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
@@ -703,7 +704,7 @@ async function removeImage(pictureId: string) {
         <div class="header-actions">
           <button class="btn btn-primary" :disabled="isSaving" @click="save()">
             {{ isSaving ? 'Saving…' : 'Save' }}
-            <small class="btn-hint">Ctrl+S</small>
+            <small class="btn-hint">{{ MOD }}+S</small>
           </button>
           <button class="btn btn-secondary" @click="cancel">
             Cancel
@@ -912,11 +913,11 @@ async function removeImage(pictureId: string) {
         <div class="image-grid" v-if="images.length">
           <div class="image-thumb" v-for="img in images" :key="img.Id">
             <img
-              :src="`https://media.app/${img.ThumbPath}`"
+              :src="mediaUrl(img.ThumbPath)"
               :alt="img.Title || img.FileName"
               @error="($event.target as HTMLImageElement).src = ''"
               class="image-thumb-img"
-              @click="openLightbox($event, `https://media.app/${img.FilePath}`, images.map(i => `https://media.app/${i.FilePath}`))"
+              @click="openLightbox($event, mediaUrl(img.FilePath), images.map(i => mediaUrl(i.FilePath)))"
             />
             <div class="image-thumb-footer">
               <span class="image-label" :title="img.Title || img.FileName">

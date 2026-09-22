@@ -23,14 +23,14 @@ function confirm() {
                 class="field-input"
                 type="text"
                 v-model="newTitle"
-                @keydown.enter="confirm"
+                data-enter-self @keydown.enter="confirm"
                 @keydown.escape="emit('close')"
                 autofocus
             />
         </div>
         <template #footer>
-            <button class="btn btn-cancel" @click="emit('close')">Cancel</button>
-            <button class="btn btn-primary" :disabled="!newTitle.trim() || isWorking" @click="confirm">
+            <button class="btn btn-cancel" data-cancel @click="emit('close')">Cancel</button>
+            <button class="btn btn-primary" data-primary :disabled="!newTitle.trim() || isWorking" @click="confirm">
                 {{ isWorking ? 'Duplicating…' : 'Duplicate' }}
             </button>
         </template>

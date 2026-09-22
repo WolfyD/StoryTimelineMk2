@@ -193,7 +193,7 @@ function renderStatic() {
     }
 
     // ── 5. Periods (stacked below timeline) ───────────────────────────────
-    const periods = [...visible.filter(i => i.TypeId === 2)]
+    const periods = visible.filter(i => i.TypeId === 2)
         .sort((a, b) => a.AbsoluteStart - b.AbsoluteStart);
     const lanes: number[] = []; // rightmost x-end per lane
 

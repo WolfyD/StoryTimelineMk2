@@ -28,8 +28,8 @@ function apply() {
         </div>
         <template #footer>
             <button class="btn btn-secondary reset-btn" type="button" @click="draft = [...DEFAULT_SWATCHES]">Reset to defaults</button>
-            <button class="btn btn-secondary" type="button" @click="emit('close')">Cancel</button>
-            <button class="btn btn-primary" type="button" @click="apply">Apply</button>
+            <button class="btn btn-secondary" type="button" data-cancel @click="emit('close')">Cancel</button>
+            <button class="btn btn-primary" type="button" data-primary @click="apply">Apply</button>
         </template>
     </BaseModal>
 </template>

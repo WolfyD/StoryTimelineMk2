@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
 vi.mock('@/bridge/api', () => ({
@@ -168,6 +168,97 @@ describe('WindowTitleBar', () => {
     await flushPromises()
 
     expect(wrapper.find('.tb-btn--pin i').classes()).toContain('ri-pushpin-fill')
+    wrapper.unmount()
+  })
+})
+
+// ── Browser build (BL-68) ───────────────────────────────────────
+//
+// No WebView2: the tab is the window, so the bar collapses to a title plus the way back.
+
+describe('WindowTitleBar in a browser', () => {
+  const realChrome = window.chrome
+  const realPath = location.pathname
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.chrome = undefined
+  })
+
+  afterEach(() => {
+    window.chrome = realChrome
+    setOpener(null)
+    history.pushState({}, '', realPath)
+  })
+
+  // window.opener is a getter in happy-dom, so it has to be redefined, not assigned.
+  function setOpener(value: unknown) {
+    Object.defineProperty(window, 'opener', { value, configurable: true, writable: true })
+  }
+
+  function mountAt(path: string, props = {}) {
+    history.pushState({}, '', path)
+    return mount(WindowTitleBar, { props: { title: 'The Long War', ...props } })
+  }
+
+  it('drops the pin, minimize and maximize buttons', async () => {
+    const wrapper = mountAt('/timeline.html')
+    await flushPromises()
+
+    expect(wrapper.find('.tb-btn--pin').exists()).toBe(false)
+    expect(wrapper.find('.tb-btn--min').exists()).toBe(false)
+    expect(wrapper.find('.tb-btn--max').exists()).toBe(false)
+    // Those two only feed buttons that are gone now.
+    expect(BackendAPI.WindowGetMaximized).not.toHaveBeenCalled()
+    expect(BackendAPI.WindowGetTopMost).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('a page that replaced the project list gets Back, which routes through WindowClose', async () => {
+    const wrapper = mountAt('/timeline.html')
+    await flushPromises()
+
+    expect(wrapper.find('.tb-back').text()).toBe('Back')
+    await wrapper.find('.tb-back').trigger('click')
+    expect(BackendAPI.WindowClose).toHaveBeenCalledOnce()
+
+    wrapper.unmount()
+  })
+
+  it('the project list itself has nowhere to go back to', async () => {
+    const wrapper = mountAt('/index.html')
+    await flushPromises()
+
+    expect(wrapper.find('.tb-back').exists()).toBe(false)
+    expect(wrapper.find('.tb-btn--close').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('a pop-up gets a close button instead, and it still defers to closeHandler', async () => {
+    setOpener({})
+    const closeHandler = vi.fn()
+    const wrapper = mountAt('/editItem.html', { closeHandler })
+    await flushPromises()
+
+    expect(wrapper.find('.tb-back').exists()).toBe(false)
+    await wrapper.find('.tb-btn--close').trigger('click')
+    expect(closeHandler).toHaveBeenCalledOnce()
+    expect(BackendAPI.WindowClose).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('the window title becomes the tab title', async () => {
+    const wrapper = mountAt('/timeline.html')
+    await flushPromises()
+
+    expect(document.title).toBe('The Long War — Story Timeline')
+
+    await wrapper.setProps({ title: 'Story Timeline' })
+    expect(document.title).toBe('Story Timeline')
+
     wrapper.unmount()
   })
 })

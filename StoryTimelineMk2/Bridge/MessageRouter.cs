@@ -16,6 +16,8 @@ namespace StoryTimelineMk2.Bridge
     {
         private readonly CoreWebView2 _webView;
         private readonly Form? _parentForm;
+        private readonly IBridgeChannel _channel;
+        private readonly DataActions _data;
         private static readonly JsonSerializerOptions _jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
         // Held so timeline can push year updates to the year-calendar window
@@ -52,8 +54,21 @@ namespace StoryTimelineMk2.Bridge
         {
             _webView = webView;
             _parentForm = parentForm;
+            _channel = new WebViewChannel(webView, parentForm);
+            _data = new DataActions(_channel)
+            {
+                OnSettingsApplied = ApplyWindowSettings,
+                OnChromeThemeApplied = () =>
+                {
+                    foreach (Form f in Application.OpenForms)
+                        (f as BorderlessFormBase)?.ApplyChromeColor();
+                },
+                // A copyable report (schema versions, stage, log path) beats the Vue alert.
+                OnImportMigrationFailed = ex => f_ErrorReport.ShowReport(
+                    "The backup could not be imported. Your current data was not changed.", ex),
+            };
             _webView.WebMessageReceived += OnWebMessageReceived;
-            StatsService.RegisterWebView(webView);
+            BridgeHub.Register(_channel);
         }
 
         public void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -102,44 +117,23 @@ namespace StoryTimelineMk2.Bridge
 
         private void RouteMessage(BridgeMessage message)
         {
+            // Everything that only needs the data layer lives in StoryTimeline.Data so the
+            // browser host (BL-68) can serve it too. What is left below needs a window, a
+            // file dialog or a shell.
+            if (_data.TryHandle(message)) return;
+
             switch (message.Action)
             {
                 case "OpenAddEditItemWindow":   HandleOpenAddEditItemWindow(message); break;
-                case "GetTimelineData":         HandleGetTimelineData(message); break;
                 case "OpenTimeline":            HandleOpenTimeline(message); break;
-                case "CreateProject":           HandleCreateProject(message); break;
-                case "GetAllTimelines":         HandleGetAllTimelines(message); break;
                 case "ImportDB":                HandleImportDB(message); break;
 
                 // EditItem actions
-                case "GetItemForEdit":          HandleGetItemForEdit(message); break;
-                case "SaveItem":                HandleSaveItem(message); break;
-                case "SearchTags":              HandleSearchTags(message); break;
-                case "GetTopTags":              HandleGetTopTags(message); break;
-                case "GetTagList":              HandleGetTagList(message); break;
-                case "RenameTag":               HandleRenameTag(message); break;
-                case "DeleteTag":               HandleDeleteTag(message); break;
-                case "GetTimelineCharacters":   HandleGetTimelineCharacters(message); break;
-                case "GetAllStories":           HandleGetAllStories(message); break;
-                case "SearchBooks":             HandleSearchBooks(message); break;
-                case "GetBookChapters":         HandleGetBookChapters(message); break;
-                case "GetLayoutSettingsList":   HandleGetLayoutSettingsList(message); break;
                 case "AddImageToItem":          HandleAddImageToItem(message); break;
-                case "RemoveImageFromItem":     HandleRemoveImageFromItem(message); break;
-                case "GetAllPictures":          HandleGetAllPictures(message); break;
-                case "LinkImageToItem":         HandleLinkImageToItem(message); break;
-                case "DeleteTimeline":          HandleDeleteTimeline(message); break;
-                case "DuplicateTimeline":       HandleDuplicateTimeline(message); break;
                 case "ExportTimeline":          HandleExportTimeline(message); break;
-                case "SaveTimelineInfo":        HandleSaveTimelineInfo(message); break;
-                case "SaveSettings":            HandleSaveSettings(message); break;
+                case "ExportSessionChanges":    HandleExportSessionChanges(message); break;
+                case "BrowseAndPreviewSessionChanges": HandleBrowseAndPreviewSessionChanges(message); break;
                 case "GetSystemFonts":          HandleGetSystemFonts(message); break;
-                case "GetCalendarList":         HandleGetCalendarList(message); break;
-                case "GetLayoutSettingsById":   HandleGetLayoutSettingsById(message); break;
-                case "CreateLayoutPreset":      HandleCreateLayoutPreset(message); break;
-                case "SaveLayoutSettings":      HandleSaveLayoutSettings(message); break;
-                case "ToggleFullscreen":        HandleToggleFullscreen(message); break;
-                case "ToggleCustomScaling":     HandleToggleCustomScaling(message); break;
 
                 // Window chrome (borderless)
                 case "WindowMinimize":          HandleWindowMinimize(message); break;
@@ -151,84 +145,23 @@ namespace StoryTimelineMk2.Bridge
                 case "WindowSetTopMost":        HandleWindowSetTopMost(message); break;
 
                 // Calendar actions
-                case "GetCalendarById":             HandleGetCalendarById(message); break;
-                case "SaveCalendar":                HandleSaveCalendar(message); break;
-                case "CreateCalendar":              HandleCreateCalendar(message); break;
-                case "DeleteCalendar":              HandleDeleteCalendar(message); break;
                 case "ExportCalendar":              HandleExportCalendar(message); break;
                 case "ImportCalendar":              HandleImportCalendar(message); break;
                 case "OpenCalendarEditorWindow":    HandleOpenCalendarEditorWindow(message); break;
 
                 // Year calendar window
                 case "OpenYearCalendarWindow":      HandleOpenYearCalendarWindow(message); break;
-                case "GetItemsForYear":             HandleGetItemsForYear(message); break;
                 case "SetCalendarYear":             HandleSetCalendarYear(message); break;
 
-                // Item deletion
-                case "DeleteItem":          HandleDeleteItem(message); break;
-
-                // Timeline notes
-                case "SaveNote":            HandleSaveNote(message); break;
-                case "DeleteNote":          HandleDeleteNote(message); break;
-
-                // Hidden ranges
-                case "GetHiddenRanges":     HandleGetHiddenRanges(message); break;
-                case "SaveHiddenRange":     HandleSaveHiddenRange(message); break;
-                case "DeleteHiddenRange":   HandleDeleteHiddenRange(message); break;
-
-                // Timeline actions
-                case "ShiftTimelineItems":      HandleShiftTimelineItems(message); break;
-                case "SetTimelineItemsLodMask": HandleSetTimelineItemsLodMask(message); break;
-                case "ResetLayoutPreset":       HandleResetLayoutPreset(message); break;
-
                 // App-level settings
-                case "GetAppConfig":           HandleGetAppConfig(message); break;
-                case "SaveChromeTheme":        HandleSaveChromeTheme(message); break;
-                case "SavePerformantPanning":  HandleSavePerformantPanning(message); break;
                 case "BrowseDataFolder":  HandleBrowseDataFolder(message); break;
-                case "SetDataRoot":     HandleSetDataRoot(message); break;
-                case "MoveDataFolder":  HandleMoveDataFolder(message); break;
                 case "OpenDataFolder":  HandleOpenDataFolder(message); break;
-                case "CreateBackup":                HandleCreateBackup(message); break;
                 case "ExportFullDB":                HandleExportFullDB(message); break;
                 case "BrowseAndPreviewImport":      HandleBrowseAndPreviewImport(message); break;
-                case "ExecuteImportDB":             HandleExecuteImportDB(message); break;
-                case "GetBackupSettings":           HandleGetBackupSettings(message); break;
-                case "SaveBackupSettings":          HandleSaveBackupSettings(message); break;
                 case "OpenBackupsFolder":           HandleOpenBackupsFolder(message); break;
                 case "BrowseAndPreviewTimelineImport": HandleBrowseAndPreviewTimelineImport(message); break;
-                case "ImportTimeline":              HandleImportTimeline(message); break;
 
-                // Filter rules
-                case "GetFilterRules":      HandleGetFilterRules(message); break;
-                case "SaveFilterRule":      HandleSaveFilterRule(message); break;
-                case "DeleteFilterRule":    HandleDeleteFilterRule(message); break;
-
-                // Filter presets
-                case "GetFilterPresets":    HandleGetFilterPresets(message); break;
-                case "SaveFilterPreset":    HandleSaveFilterPreset(message); break;
-                case "DeleteFilterPreset":  HandleDeleteFilterPreset(message); break;
-
-                // Misc settings
-                case "GetMiscSetting":  HandleGetMiscSetting(message); break;
-                case "SetMiscSetting":  HandleSetMiscSetting(message); break;
-
-                // App-level notification settings
-                case "GetNotificationSettings":  HandleGetNotificationSettings(message); break;
-                case "SaveNotificationSettings": HandleSaveNotificationSettings(message); break;
-
-                // Timeline mini mode
-                case "SaveTimelineMinimised": HandleSaveTimelineMinimised(message); break;
-
-                // Achievement dev tools
-                case "TriggerTestAchievement": HandleTriggerTestAchievement(message); break;
-                case "TriggerRandomAchievement": HandleTriggerRandom(message, "achievement"); break;
-                case "TriggerRandomMilestone":   HandleTriggerRandom(message, "milestone"); break;
-                case "ListAchievementKeys":      HandleListAchievementKeys(message); break;
-
-                // Update checker
-                case "CheckForUpdates":  HandleCheckForUpdates(message); break;
-                case "SkipVersion":      HandleSkipVersion(message); break;
+                // Shell
                 case "OpenExternalUrl":  HandleOpenExternalUrl(message); break;
 
                 default:
@@ -244,32 +177,6 @@ namespace StoryTimelineMk2.Bridge
         // -----------------------------------------------------------------------
         // Existing handlers
         // -----------------------------------------------------------------------
-
-        private void HandleGetTimelineData(BridgeMessage message)
-        {
-            TimelineRepo repo = new TimelineRepo();
-            ItemRepo item_repo = new ItemRepo();
-            NoteRepo notes_repo = new NoteRepo();
-            JsonElement ftd_pl_id = message.Payload.GetProperty("id");
-            if (ftd_pl_id.TryGetInt32(out int gtd_timeline_id))
-            {
-                var timelineObject = new FullTimelineProject()
-                {
-                    Project = repo.GetTimelineById(gtd_timeline_id),
-                    Items = item_repo.GetItemsByTimeline(gtd_timeline_id).ToArray(),
-                    Notes = notes_repo.GetTimelineNotes(gtd_timeline_id).ToArray(),
-                    HiddenRanges = new HiddenRangeRepo().GetByTimeline(gtd_timeline_id).ToArray(),
-                    ItemTags = item_repo.GetAllItemTagsForTimeline(gtd_timeline_id).ToArray(),
-                    ItemCharacters = item_repo.GetAllItemCharactersForTimeline(gtd_timeline_id).ToArray(),
-                    Characters = new CharacterRepo().GetCharactersByTimeline(gtd_timeline_id).ToArray(),
-                    ItemStoryRefs = item_repo.GetAllItemStoryRefsForTimeline(gtd_timeline_id).ToArray(),
-                    ItemsWithPictures = item_repo.GetItemsWithPicturesForTimeline(gtd_timeline_id).ToArray(),
-                };
-                ReplyToVue(message.MessageId, timelineObject);
-                return;
-            }
-            ReplyToVue(message.MessageId, null);
-        }
 
         private void HandleOpenTimeline(BridgeMessage message)
         {
@@ -291,36 +198,9 @@ namespace StoryTimelineMk2.Bridge
                 mainForm.Hide();
         }
 
-        private void HandleCreateProject(BridgeMessage message)
-        {
-            TimelineRepo repo = new TimelineRepo();
-            JsonElement pl = message.Payload.GetProperty("title");
-            var title = pl.GetString();
-
-            string author = "";
-            if (message.Payload.TryGetProperty("author", out var authorEl) && authorEl.GetString() is string a)
-                author = a;
-
-            string? calendarId = null;
-            if (message.Payload.TryGetProperty("calendarId", out var calEl) && calEl.GetString() is string cal)
-                calendarId = cal;
-
-            int ret_id = -1;
-            if (!string.IsNullOrEmpty(title))
-                ret_id = repo.CreateTimeline(title, author, calendarId);
-            ReplyToVue(message.MessageId, ret_id);
-        }
-
-        private void HandleGetAllTimelines(BridgeMessage message)
-        {
-            TimelineRepo repo = new TimelineRepo();
-            IEnumerable<TimelineInfo> timelines = repo.GetAll();
-            ReplyToVue(message.MessageId, new { status = "ok", data = timelines });
-        }
-
         private void HandleImportDB(BridgeMessage message)
         {
-            bool ok = DatabaseImporter.HandleDBImport();
+            bool ok = DatabaseImportUI.HandleDBImport();
             ReplyToVue(message.MessageId, ok
                 ? (object)new { status = "ok" }
                 : new { status = "error", message = "Import failed or was cancelled — see log for details." });
@@ -352,10 +232,6 @@ namespace StoryTimelineMk2.Bridge
             // opens skip WebView2 init — only re-navigate, which hits V8's in-memory bytecode cache.
             var addEditItemWindow = f_AddEditItem.GetOrCreate();
 
-            // Wire a callback so the edit window can push the saved item directly into
-            // this (the caller's) WebView2 without a full timeline reload.
-            addEditItemWindow.NotifyCallback = (action, payload) => SendToVue(action, payload);
-
             // ReopenWithParams sets props and re-navigates in-place if WebView2 is ready;
             // otherwise AddEditItem_Load picks up the params on first Show().
             addEditItemWindow.ReopenWithParams(timelineId, itemId, typeId, year, granularity);
@@ -371,411 +247,6 @@ namespace StoryTimelineMk2.Bridge
         // -----------------------------------------------------------------------
         // EditItem handlers
         // -----------------------------------------------------------------------
-
-        private void HandleGetItemForEdit(BridgeMessage message)
-        {
-            string? itemId = null;
-            if (message.Payload.TryGetProperty("itemId", out var idProp))
-                itemId = idProp.GetString();
-
-            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-            int typeId = 1;
-            if (message.Payload.TryGetProperty("typeId", out var tProp) && tProp.TryGetInt32(out int ty))
-                typeId = ty;
-
-            var itemRepo = new ItemRepo();
-            var timelineRepo = new TimelineRepo();
-
-            TimelineItem item;
-            if (!string.IsNullOrEmpty(itemId))
-            {
-                item = itemRepo.GetItemById(itemId);
-                if (item == null)
-                {
-                    Logger.Warn("Bridge/GetItemForEdit", $"Item not found: {itemId}");
-                    ReplyToVue(message.MessageId, new { status = "error", message = $"Item {itemId} no longer exists." });
-                    return;
-                }
-            }
-            else
-            {
-                item = new TimelineItem
-                {
-                    TimelineId = timelineId,
-                    TypeId = typeId,
-                    Color = new SettingsRepo().GetOrCreateSettings(timelineId).DefaultItemColor,
-                    // Per-timeline preference written by Timeline Settings (frontend timelinePrefs.ts); 255 = every LOD
-                    LodVisibilityMask = int.TryParse(new MiscSettingsRepo().Get("default_lod_mask", timelineId), out int mask) ? mask : 255,
-                };
-            }
-
-            var timeline = timelineRepo.GetTimelineById(timelineId);
-
-            ReplyToVue(message.MessageId, new
-            {
-                Item = item,
-                Tags = itemRepo.GetItemTags(item.Id),
-                Characters = itemRepo.GetItemCharacterAppearances(item.Id),
-                StoryRefs = itemRepo.GetItemStoryRefs(item.Id),
-                ChapterRefs = itemRepo.GetItemChapterRefs(item.Id),
-                Calendar = timeline.Calendar,
-                Pictures = string.IsNullOrEmpty(itemId)
-                    ? new List<MediaItem>()
-                    : new MediaRepo().GetItemPictures(item.Id).ToList(),
-            });
-        }
-
-        private class SaveItemPayload
-        {
-            [JsonPropertyName("item")]
-            public JsonElement Item { get; set; }
-
-            [JsonPropertyName("tagNames")]
-            public List<string> TagNames { get; set; } = null!;
-
-            [JsonPropertyName("characterAppearances")]
-            public List<ItemRepo.CharacterAppearanceInput> CharacterAppearances { get; set; } = null!;
-
-            [JsonPropertyName("storyRefs")]
-            public List<string> StoryRefs { get; set; } = null!;
-
-            [JsonPropertyName("chapterRefs")]
-            public List<string> ChapterRefs { get; set; } = null!;
-        }
-
-        private void HandleSaveItem(BridgeMessage message)
-        {
-            try
-            {
-                var payload = JsonSerializer.Deserialize<SaveItemPayload>(message.Payload.GetRawText(), _jsonOpts);
-                var item = JsonSerializer.Deserialize<TimelineItem>(payload!.Item.GetRawText(), _jsonOpts);
-
-                var itemRepo = new ItemRepo();
-                string savedId = itemRepo.SaveItemFull(item!, payload.TagNames, payload.CharacterAppearances,
-                    payload.StoryRefs, payload.ChapterRefs);
-
-                ReplyToVue(message.MessageId, new { status = "ok", itemId = savedId });
-
-                // Push the saved item directly to the caller (timeline) WebView2 so the
-                // canvas updates without a full reload.
-                if (_parentForm is f_AddEditItem addEdit && addEdit.NotifyCallback != null)
-                {
-                    var savedItem = itemRepo.GetItemById(savedId);
-                    var links = itemRepo.GetItemLinksById(savedId);
-                    addEdit.NotifyCallback("ItemSaved", new { Item = savedItem, Tags = links.Tags, Characters = links.Characters, StoryRefs = links.StoryRefs, HasPicture = links.HasPicture });
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleSaveItem] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message, detail = ex.ToString() });
-            }
-        }
-
-        private void HandleSearchTags(BridgeMessage message)
-        {
-            string query = message.Payload.GetProperty("query").GetString() ?? "";
-            var tags = new TagRepo().SearchTags(query);
-            ReplyToVue(message.MessageId, tags);
-        }
-
-        private void HandleGetTopTags(BridgeMessage message)
-        {
-            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-            int limit = message.Payload.TryGetProperty("limit", out var l) ? l.GetInt32() : 8;
-            ReplyToVue(message.MessageId, new TagRepo().GetTopTags(timelineId, limit));
-        }
-
-        private void HandleGetTagList(BridgeMessage message)
-        {
-            var tags = new TagRepo().GetAllWithUsage().Select(t => new { t.Id, t.Name, t.UsageCount });
-            ReplyToVue(message.MessageId, tags);
-        }
-
-        private void HandleRenameTag(BridgeMessage message)
-        {
-            try
-            {
-                int id = message.Payload.GetProperty("id").GetInt32();
-                string name = message.Payload.GetProperty("name").GetString() ?? "";
-                new TagRepo().RenameTag(id, name);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("RenameTag", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleDeleteTag(BridgeMessage message)
-        {
-            try
-            {
-                int id = message.Payload.GetProperty("id").GetInt32();
-                int unlinked = new TagRepo().DeleteTag(id);
-                ReplyToVue(message.MessageId, new { status = "ok", unlinked });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("DeleteTag", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleGetTimelineCharacters(BridgeMessage message)
-        {
-            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-            var characters = new CharacterRepo().GetCharactersByTimeline(timelineId);
-            ReplyToVue(message.MessageId, characters);
-        }
-
-        private void HandleGetAllStories(BridgeMessage message)
-        {
-            var stories = new StoryRepo().GetAllStories();
-            ReplyToVue(message.MessageId, stories);
-        }
-
-        private void HandleSearchBooks(BridgeMessage message)
-        {
-            string query = message.Payload.GetProperty("query").GetString() ?? "";
-            var books = new BookRepo().SearchBooks(query);
-            ReplyToVue(message.MessageId, books);
-        }
-
-        private void HandleGetBookChapters(BridgeMessage message)
-        {
-            string? bookId = message.Payload.GetProperty("bookId").GetString();
-            var chapters = new BookRepo().GetChaptersForBook(bookId!);
-            ReplyToVue(message.MessageId, chapters);
-        }
-
-        private void HandleGetLayoutSettingsList(BridgeMessage message)
-        {
-            var presets = new LayoutSettingsRepo().GetAll()
-                .Select(ls => new { ls.Id, ls.Name });
-            ReplyToVue(message.MessageId, presets);
-        }
-
-        private void HandleDeleteItem(BridgeMessage message)
-        {
-            string? itemId = message.Payload.GetProperty("itemId").GetString();
-            new ItemRepo().DeleteItem(itemId!);
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleSaveNote(BridgeMessage message)
-        {
-            try
-            {
-                var note = JsonSerializer.Deserialize<NoteItem>(message.Payload.GetRawText(), _jsonOpts);
-                if (note == null) { ReplyToVue(message.MessageId, new { status = "error", message = "Invalid payload" }); return; }
-                string savedId = new NoteRepo().SaveNote(note);
-                ReplyToVue(message.MessageId, new { status = "ok", noteId = savedId });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleDeleteNote(BridgeMessage message)
-        {
-            try
-            {
-                string? noteId = message.Payload.GetProperty("noteId").GetString();
-                new NoteRepo().DeleteNote(noteId!);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleDeleteTimeline(BridgeMessage message)
-        {
-            int id = message.Payload.GetProperty("id").GetInt32();
-            new TimelineRepo().DeleteTimeline(id);
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleDuplicateTimeline(BridgeMessage message)
-        {
-            int id = message.Payload.GetProperty("id").GetInt32();
-            string newTitle = message.Payload.GetProperty("newTitle").GetString() ?? "Duplicate";
-            try
-            {
-                int newId = new TimelineRepo().DuplicateTimeline(id, newTitle);
-                ReplyToVue(message.MessageId, new { status = "ok", newId });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleSaveTimelineInfo(BridgeMessage message)
-        {
-            int id          = message.Payload.GetProperty("id").GetInt32();
-            string title    = message.Payload.GetProperty("title").GetString() ?? "";
-            string author   = message.Payload.GetProperty("author").GetString() ?? "";
-            string desc     = message.Payload.GetProperty("description").GetString() ?? "";
-            int startYear   = message.Payload.GetProperty("startYear").GetInt32();
-            string? color      = message.Payload.TryGetProperty("color", out var cp)  ? cp.GetString()  : null;
-            string? calendarId = message.Payload.TryGetProperty("calendarId", out var cal) ? cal.GetString() : null;
-
-            new TimelineRepo().UpdateTimelineInfo(id, title, author, desc, startYear, color, calendarId);
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleSaveSettings(BridgeMessage message)
-        {
-            var p = message.Payload;
-            int timelineId = p.GetProperty("timelineId").GetInt32();
-
-            string layoutPresetId = "ls_default";
-            if (p.TryGetProperty("layoutPresetId", out var lpEl) && lpEl.GetString() is string lp)
-                layoutPresetId = lp;
-
-            var settingsRepo = new SettingsRepo();
-            var settings = settingsRepo.GetOrCreateSettings(timelineId);
-            if (p.TryGetProperty("pixelsPerSubtick", out var e3)) settings.PixelsPerSubtick = e3.GetInt32();
-            if (p.TryGetProperty("showGuides",       out var e4)) settings.ShowGuides       = e4.GetBoolean();
-            if (p.TryGetProperty("displayRadius",    out var e5)) settings.DisplayRadius    = e5.GetInt32();
-            if (p.TryGetProperty("isFullscreen",     out var e6)) settings.IsFullscreen     = e6.GetBoolean();
-            if (p.TryGetProperty("useCustomScaling",    out var e7)) settings.UseCustomScaling    = e7.GetBoolean();
-            if (p.TryGetProperty("customScale",          out var e8)) settings.CustomScale          = e8.GetSingle();
-            if (p.TryGetProperty("panSpeedMultiplier",   out var e9)) settings.PanSpeedMultiplier   = e9.GetSingle();
-            if (p.TryGetProperty("panDeadzone",          out var ea)) settings.PanDeadzone          = ea.GetInt32();
-            if (p.TryGetProperty("keyboardPanSpeed",     out var ed)) settings.KeyboardPanSpeed     = ed.GetSingle();
-            if (p.TryGetProperty("defaultItemColor",     out var eb)) settings.DefaultItemColor     = eb.GetString() ?? "#000000";
-            if (p.TryGetProperty("headerMode",           out var ec)) settings.HeaderMode           = ec.GetInt32();
-
-            settingsRepo.SaveSettings(settings);
-            new TimelineRepo().SetLayoutPreset(timelineId, layoutPresetId);
-
-            if (_parentForm != null)
-            {
-                _parentForm.BeginInvoke((MethodInvoker)(() =>
-                {
-                    if (_parentForm is Forms.BorderlessFormBase bf)
-                        bf.IsFullscreenMode = settings.IsFullscreen;
-
-                    if (settings.IsFullscreen)
-                    {
-                        if (_parentForm.WindowState == FormWindowState.Maximized)
-                            _parentForm.WindowState = FormWindowState.Normal;
-                        _parentForm.WindowState = FormWindowState.Maximized;
-                    }
-                    else
-                    {
-                        if (_parentForm.WindowState == FormWindowState.Maximized)
-                            _parentForm.WindowState = FormWindowState.Normal;
-                    }
-                }));
-            }
-
-            double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
-            (_parentForm as f_Timeline)?.SetZoom(zoom);
-
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleSaveTimelineMinimised(BridgeMessage message)
-        {
-            var p = message.Payload;
-            int timelineId   = p.GetProperty("timelineId").GetInt32();
-            bool minimised   = p.GetProperty("minimised").GetBoolean();
-
-            var repo     = new SettingsRepo();
-            var settings = repo.GetOrCreateSettings(timelineId);
-            settings.TimelineMinimised = minimised;
-            repo.SaveSettings(settings);
-
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleGetLayoutSettingsById(BridgeMessage message)
-        {
-            try
-            {
-                string id = message.Payload.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "ls_default" : "ls_default";
-                var ls = new LayoutSettingsRepo().GetById(id);
-                ReplyToVue(message.MessageId, ls);
-            }
-            catch (Exception ex)
-            {
-                // Frontend expects LayoutSettings|null here, so keep the null reply —
-                // but never swallow the error silently (project rule).
-                Logger.Error("Bridge/GetLayoutSettingsById", ex);
-                ReplyToVue(message.MessageId, null);
-            }
-        }
-
-        private void HandleCreateLayoutPreset(BridgeMessage message)
-        {
-            try
-            {
-                string name      = message.Payload.TryGetProperty("name",      out var np) ? np.GetString() ?? "New Preset" : "New Preset";
-                string cloneFrom = message.Payload.TryGetProperty("cloneFrom", out var cp) ? cp.GetString() ?? "ls_default" : "ls_default";
-
-                var repo   = new LayoutSettingsRepo();
-                var source = repo.GetById(cloneFrom);
-                source.Id   = Guid.NewGuid().ToString();
-                source.Name = name;
-                repo.SaveLayoutSettings(source);
-
-                ReplyToVue(message.MessageId, new { status = "ok", preset = new { source.Id, source.Name }, layoutSettings = source });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleToggleFullscreen(BridgeMessage message)
-        {
-            int timelineId = message.Payload.TryGetProperty("timelineId", out var tlEl) ? tlEl.GetInt32() : 0;
-            if (timelineId == 0 || _parentForm == null) return;
-
-            var settingsRepo = new SettingsRepo();
-            var settings = settingsRepo.GetOrCreateSettings(timelineId);
-            settings.IsFullscreen = !settings.IsFullscreen;
-            settingsRepo.SaveSettings(settings);
-
-            bool goFullscreen = settings.IsFullscreen;
-            _parentForm.BeginInvoke((MethodInvoker)(() =>
-            {
-                if (_parentForm is Forms.BorderlessFormBase bf)
-                    bf.IsFullscreenMode = goFullscreen;
-
-                if (goFullscreen)
-                {
-                    if (_parentForm.WindowState == FormWindowState.Maximized)
-                        _parentForm.WindowState = FormWindowState.Normal;
-                    _parentForm.WindowState = FormWindowState.Maximized;
-                }
-                else
-                {
-                    _parentForm.WindowState = FormWindowState.Normal;
-                }
-            }));
-        }
-
-        private void HandleToggleCustomScaling(BridgeMessage message)
-        {
-            int timelineId = message.Payload.TryGetProperty("timelineId", out var tlEl) ? tlEl.GetInt32() : 0;
-            if (timelineId == 0) return;
-
-            var settingsRepo = new SettingsRepo();
-            var settings = settingsRepo.GetOrCreateSettings(timelineId);
-            settings.UseCustomScaling = !settings.UseCustomScaling;
-            settingsRepo.SaveSettings(settings);
-
-            double zoom = (settings.UseCustomScaling && settings.CustomScale > 0) ? settings.CustomScale : 1.0;
-            (_parentForm as f_Timeline)?.SetZoom(zoom);
-        }
 
         // ── Borderless window chrome ───────────────────────────────────────────
 
@@ -872,25 +343,6 @@ namespace StoryTimelineMk2.Bridge
                 PropagateTopMostTree(owned, topmost);
         }
 
-        private void HandleSaveLayoutSettings(BridgeMessage message)
-        {
-            try
-            {
-                var ls = JsonSerializer.Deserialize<LayoutSettingsItem>(message.Payload.GetRawText(), _jsonOpts);
-                if (ls == null)
-                {
-                    ReplyToVue(message.MessageId, new { status = "error", message = "Invalid payload" });
-                    return;
-                }
-                new LayoutSettingsRepo().SaveLayoutSettings(ls);
-                ReplyToVue(message.MessageId, new { status = "ok", layoutSettings = ls });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
         private void HandleGetSystemFonts(BridgeMessage message)
         {
             var fonts = System.Drawing.FontFamily.Families
@@ -898,15 +350,6 @@ namespace StoryTimelineMk2.Bridge
                 .OrderBy(n => n)
                 .ToArray();
             ReplyToVue(message.MessageId, fonts);
-        }
-
-        private void HandleGetCalendarList(BridgeMessage message)
-        {
-            var repo = new CalendarRepo();
-            var usage = repo.GetUsageCounts();
-            var calendars = repo.GetAll()
-                .Select(c => new { c.Id, c.Name, UsageCount = usage.GetValueOrDefault(c.Id) });
-            ReplyToVue(message.MessageId, calendars);
         }
 
         private void HandleExportTimeline(BridgeMessage message)
@@ -947,83 +390,77 @@ namespace StoryTimelineMk2.Bridge
             }));
         }
 
+        /// <summary>BL-33: writes the chosen days' net changes to a .stlc file.</summary>
+        private void HandleExportSessionChanges(BridgeMessage message)
+        {
+            int id = message.Payload.GetProperty("timelineId").GetInt32();
+            // Read before the dialog: Payload borrows the parsed document, which is gone by the
+            // time the callback runs.
+            var days = SessionChanges.DaysFrom(message.Payload);
+            var timeline = new TimelineRepo().GetTimelineById(id);
+            string safeName = string.Concat(timeline.Title.Split(Path.GetInvalidFileNameChars()));
+
+            _parentForm!.BeginInvoke((MethodInvoker)(() =>
+            {
+                using var dlg = new SaveFileDialog
+                {
+                    Title      = "Export session changes",
+                    Filter     = "Story Timeline changes (*.stlc)|*.stlc|All files (*.*)|*.*",
+                    FileName   = $"{safeName} - {DateTime.Now:yyyy-MM-dd}.stlc",
+                    DefaultExt = "stlc",
+                };
+
+                if (dlg.ShowDialog() != DialogResult.OK)
+                {
+                    ReplyToVue(message.MessageId, new { status = "cancelled" });
+                    return;
+                }
+
+                try
+                {
+                    SessionChanges.Write(id, dlg.FileName, days);
+                    ReplyToVue(message.MessageId, new { status = "ok", path = dlg.FileName });
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("ExportSessionChanges", ex);
+                    ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+                }
+            }));
+        }
+
+        private void HandleBrowseAndPreviewSessionChanges(BridgeMessage message)
+        {
+            _parentForm!.BeginInvoke((MethodInvoker)(() =>
+            {
+                using var dlg = new OpenFileDialog
+                {
+                    Title  = "Import session changes",
+                    Filter = "Story Timeline changes (*.stlc)|*.stlc|All files (*.*)|*.*",
+                };
+
+                if (dlg.ShowDialog() != DialogResult.OK)
+                {
+                    ReplyToVue(message.MessageId, new { status = "cancelled" });
+                    return;
+                }
+
+                try
+                {
+                    ReplyToVue(message.MessageId,
+                        new { status = "ok", preview = SessionChanges.Preview(dlg.FileName) });
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("BrowseAndPreviewSessionChanges", ex);
+                    ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
+                }
+            }));
+        }
+
         // -----------------------------------------------------------------------
         // Calendar handlers
         // -----------------------------------------------------------------------
-
-        private void HandleGetCalendarById(BridgeMessage message)
-        {
-            try
-            {
-                string? id = message.Payload.GetProperty("id").GetString();
-                var cal = new CalendarRepo().GetCalendarById(id!);
-                ReplyToVue(message.MessageId, cal);
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleSaveCalendar(BridgeMessage message)
-        {
-            try
-            {
-                var cal = JsonSerializer.Deserialize<CalendarItem>(message.Payload.GetRawText(), _jsonOpts);
-                if (cal == null) { ReplyToVue(message.MessageId, new { status = "error", message = "Invalid payload" }); return; }
-                new CalendarRepo().SaveCalendarWithLod(cal);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleCreateCalendar(BridgeMessage message)
-        {
-            try
-            {
-                string cloneFrom = "cal_default_gregorian";
-                if (message.Payload.TryGetProperty("cloneFrom", out var cfProp) && cfProp.GetString() != null)
-                    cloneFrom = cfProp.GetString()!;
-
-                var calRepo = new CalendarRepo();
-                var lodRepo = new LodRepo();
-
-                var source = calRepo.GetCalendarById(cloneFrom);
-
-                var newLod = new LodItem { Id = Guid.NewGuid().ToString(), Name = "Custom LOD Profile", Profile = source.LodProfile?.Profile ?? "[]" };
-                lodRepo.SaveLodProfile(newLod);
-
-                source.Id = Guid.NewGuid().ToString();
-                source.Name = "New Calendar";
-                source.LodProfileId = newLod.Id;
-                source.LodProfile = newLod;
-                calRepo.SaveCalendar(source);
-
-                ReplyToVue(message.MessageId, new { status = "ok", calendarId = source.Id });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleDeleteCalendar(BridgeMessage message)
-        {
-            try
-            {
-                string? id = message.Payload.GetProperty("id").GetString();
-                int reassigned = new CalendarRepo().DeleteCalendar(id!);
-                ReplyToVue(message.MessageId, new { status = "ok", reassigned });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("DeleteCalendar", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
 
         /// <summary>
         /// Payload is either <c>{ id }</c> (manager: export the stored calendar) or
@@ -1148,15 +585,6 @@ namespace StoryTimelineMk2.Bridge
             ReplyToVue(message.MessageId, new { status = "opened" });
         }
 
-        private void HandleGetItemsForYear(BridgeMessage message)
-        {
-            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-            int year       = message.Payload.GetProperty("year").GetInt32();
-
-            var items = new ItemRepo().GetItemsByYear(timelineId, year);
-            ReplyToVue(message.MessageId, new { status = "ok", items });
-        }
-
         private void HandleSetCalendarYear(BridgeMessage message)
         {
             // Fire-and-forget: forward year to the open year-calendar window if any
@@ -1168,37 +596,38 @@ namespace StoryTimelineMk2.Bridge
                 _yearCalendarWindow.SendYearUpdate(year)));
         }
 
+        /// <summary>
+        /// The window half of the settings actions: fullscreen state and zoom. Runs on the UI
+        /// thread because the message arrives on a WebView2 callback thread.
+        /// </summary>
+        private void ApplyWindowSettings(SettingsItem settings)
+        {
+            if (_parentForm == null) return;
+            _parentForm.BeginInvoke((MethodInvoker)(() =>
+            {
+                if (_parentForm is BorderlessFormBase bf)
+                    bf.IsFullscreenMode = settings.IsFullscreen;
+
+                if (_parentForm.WindowState == FormWindowState.Maximized)
+                    _parentForm.WindowState = FormWindowState.Normal;
+                if (settings.IsFullscreen)
+                    _parentForm.WindowState = FormWindowState.Maximized;
+
+                double zoom = settings.UseCustomScaling && settings.CustomScale > 0 ? settings.CustomScale : 1.0;
+                (_parentForm as f_Timeline)?.SetZoom(zoom);
+            }));
+        }
+
         // -----------------------------------------------------------------------
         // Helpers
         // -----------------------------------------------------------------------
 
         /// <returns>false when the page could not be reached (its WebView2 is gone).</returns>
         public bool SendToVue(string action, object? payload = null)
-            => Post(new { action, payload }, $"Bridge/Send:{action}");
+            => _channel.Post(new { action, payload });
 
         private void ReplyToVue(int? messageId, object? payload)
-            => Post(new { messageId, payload }, "Bridge/Reply");
-
-        /// <summary>
-        /// Every message to the page goes through here. Once the WebView2 control is disposed
-        /// (browser process killed, window torn down) posting throws InvalidOperationException,
-        /// and a caller like f_Timeline's FormClosing must not die on it — there is simply nobody
-        /// left to tell, so log it and report failure instead.
-        /// </summary>
-        private bool Post(object response, string context)
-        {
-            string json = JsonSerializer.Serialize(response);
-            try
-            {
-                _webView.PostWebMessageAsJson(json);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(context, ex);
-                return false;
-            }
-        }
+            => _channel.Post(new { messageId, payload });
 
         // -----------------------------------------------------------------------
         // Image handlers
@@ -1243,145 +672,20 @@ namespace StoryTimelineMk2.Bridge
             }));
         }
 
-        private void HandleGetAllPictures(BridgeMessage message)
-        {
-            ReplyToVue(message.MessageId, new MediaRepo().GetAllMedia().ToList());
-        }
-
-        private void HandleLinkImageToItem(BridgeMessage message)
-        {
-            var pictureId = message.Payload.GetProperty("pictureId").GetString()!;
-            var itemId    = message.Payload.GetProperty("itemId").GetString()!;
-            try
-            {
-                new MediaRepo().LinkPictureToItem(pictureId, itemId);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleRemoveImageFromItem(BridgeMessage message)
-        {
-            var pictureId = message.Payload.GetProperty("pictureId").GetString()!;
-            var itemId    = message.Payload.GetProperty("itemId").GetString()!;
-            try
-            {
-                new MediaRepo().UnlinkAndPruneImage(pictureId, itemId);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
         // -----------------------------------------------------------------------
         // Hidden range handlers
         // -----------------------------------------------------------------------
-
-        private void HandleGetHiddenRanges(BridgeMessage message)
-        {
-            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-            ReplyToVue(message.MessageId, new HiddenRangeRepo().GetByTimeline(timelineId).ToList());
-        }
-
-        private void HandleSaveHiddenRange(BridgeMessage message)
-        {
-            try
-            {
-                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-                int startYear  = message.Payload.GetProperty("startYear").GetInt32();
-                int endYear    = message.Payload.GetProperty("endYear").GetInt32();
-                string? label  = message.Payload.TryGetProperty("label", out var lp) ? lp.GetString() : null;
-                int id = 0;
-                if (message.Payload.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out int existingId))
-                    id = existingId;
-
-                var item = new HiddenRangeItem { Id = id, TimelineId = timelineId, StartYear = startYear, EndYear = endYear, Label = label };
-                int savedId = new HiddenRangeRepo().Save(item);
-                item.Id = savedId;
-                ReplyToVue(message.MessageId, new { status = "ok", range = item });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleDeleteHiddenRange(BridgeMessage message)
-        {
-            try
-            {
-                int id = message.Payload.GetProperty("id").GetInt32();
-                new HiddenRangeRepo().Delete(id);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
 
         // -----------------------------------------------------------------------
         // Timeline action handlers
         // -----------------------------------------------------------------------
 
-        private void HandleShiftTimelineItems(BridgeMessage message)
-        {
-            try
-            {
-                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-                int delta      = message.Payload.GetProperty("delta").GetInt32();
-                if (delta == 0) { ReplyToVue(message.MessageId, new { status = "ok", affected = 0 }); return; }
-                int affected = new ItemRepo().ShiftItems(timelineId, delta);
-                ReplyToVue(message.MessageId, new { status = "ok", affected });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleSetTimelineItemsLodMask(BridgeMessage message)
-        {
-            try
-            {
-                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-                int mask       = message.Payload.GetProperty("mask").GetInt32();
-                int affected = new ItemRepo().SetLodMask(timelineId, mask);
-                ReplyToVue(message.MessageId, new { status = "ok", affected });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Bridge/SetTimelineItemsLodMask", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleResetLayoutPreset(BridgeMessage message)
-        {
-            try
-            {
-                var id = message.Payload.GetProperty("id").GetString()!;
-                DbInitializer.ResetBuiltinPreset(id);
-                var fresh = new LayoutSettingsRepo().GetById(id);
-                ReplyToVue(message.MessageId, new { status = "ok", layoutSettings = fresh });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ResetLayoutPreset] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message, detail = ex.ToString() });
-            }
-        }
-
         // -----------------------------------------------------------------------
         // App-level settings handlers
         // -----------------------------------------------------------------------
 
-        private static bool OsPrefersDark()
+        /// <summary>Wired into <see cref="DataActions.SystemPrefersDark"/> at startup.</summary>
+        internal static bool OsPrefersDark()
         {
             try
             {
@@ -1391,87 +695,6 @@ namespace StoryTimelineMk2.Bridge
                 return key?.GetValue("AppsUseLightTheme") is int v ? v == 0 : true;
             }
             catch { return true; }
-        }
-
-        private void HandleGetAppConfig(BridgeMessage message)
-        {
-            var cfg = AppConfig.Instance;
-            ReplyToVue(message.MessageId, new
-            {
-                DataRoot               = cfg.DataRoot,
-                DbPath                 = cfg.GetDbPath(),
-                MediaFolder            = cfg.GetMediaFolder(),
-                chromeTheme            = cfg.ChromeTheme,
-                themeInitialized       = cfg.ThemeInitialized,
-                systemPrefersDark      = OsPrefersDark(),
-                performantPanning      = cfg.PerformantPanning,
-                showAchievementPopups  = cfg.ShowAchievementPopups,
-                achievementSound       = cfg.AchievementSound,
-            });
-        }
-
-        private void HandleGetNotificationSettings(BridgeMessage message)
-        {
-            var cfg = AppConfig.Instance;
-            ReplyToVue(message.MessageId, new
-            {
-                showAchievementPopups = cfg.ShowAchievementPopups,
-                achievementSound      = cfg.AchievementSound,
-            });
-        }
-
-        private void HandleSaveNotificationSettings(BridgeMessage message)
-        {
-            if (message.Payload.TryGetProperty("showAchievementPopups", out var sp))
-                AppConfig.Instance.ShowAchievementPopups = sp.GetBoolean();
-            if (message.Payload.TryGetProperty("achievementSound", out var as_))
-                AppConfig.Instance.AchievementSound = as_.GetBoolean();
-            AppConfig.Instance.Save();
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleTriggerTestAchievement(BridgeMessage message)
-        {
-            string key = message.Payload.GetProperty("key").GetString() ?? "";
-            StatsService.TriggerTestAchievement(key);
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleTriggerRandom(BridgeMessage message, string tier)
-        {
-            StatsService.TriggerRandom(tier);
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleListAchievementKeys(BridgeMessage message)
-        {
-            var keys = StatsService.GetAllKeysSummary().ToList();
-            ReplyToVue(message.MessageId, keys);
-        }
-
-        private void HandleSavePerformantPanning(BridgeMessage message)
-        {
-            var value = message.Payload.GetProperty("value").GetBoolean();
-            AppConfig.Instance.PerformantPanning = value;
-            AppConfig.Instance.Save();
-            ReplyToVue(message.MessageId, new { status = "ok" });
-        }
-
-        private void HandleSaveChromeTheme(BridgeMessage message)
-        {
-            var theme = JsonSerializer.Deserialize<ChromeTheme>(
-                message.Payload.GetRawText(), _jsonOpts);
-            if (theme == null)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = "Invalid theme payload" });
-                return;
-            }
-            AppConfig.Instance.ChromeTheme = theme;
-            AppConfig.Instance.ThemeInitialized = true;
-            AppConfig.Instance.Save();
-            foreach (Form f in Application.OpenForms)
-                (f as BorderlessFormBase)?.ApplyChromeColor();
-            ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
         private void HandleBrowseDataFolder(BridgeMessage message)
@@ -1492,95 +715,28 @@ namespace StoryTimelineMk2.Bridge
             }));
         }
 
-        private void HandleSetDataRoot(BridgeMessage message)
-        {
-            var newPath = message.Payload.GetProperty("path").GetString()?.Trim();
-            if (string.IsNullOrEmpty(newPath))
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = "Invalid path." });
-                return;
-            }
-            try
-            {
-                Directory.CreateDirectory(newPath);
-                string dbPath = Path.Combine(newPath, "timeline.sqlite");
-                bool isNewDb = !File.Exists(dbPath);
-                AppConfig.Instance.DataRoot = newPath;
-                AppConfig.Instance.Save();
-                DbInitializer.Initialize();
-                ReplyToVue(message.MessageId, new { status = "ok", path = newPath, isNewDb });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("SetDataFolder", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleMoveDataFolder(BridgeMessage message)
-        {
-            var newPath = message.Payload.GetProperty("path").GetString()?.Trim();
-            if (string.IsNullOrEmpty(newPath))
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = "Invalid path." });
-                return;
-            }
-            try
-            {
-                Directory.CreateDirectory(newPath);
-
-                string oldDb    = AppConfig.Instance.GetDbPath();
-                string oldMedia = AppConfig.Instance.GetMediaFolder();
-
-                if (File.Exists(oldDb))
-                    new ItemRepo().VacuumInto(Path.Combine(newPath, "timeline.sqlite"));
-
-                if (Directory.Exists(oldMedia))
-                    CopyDirectory(oldMedia, Path.Combine(newPath, "Media"));
-
-                AppConfig.Instance.DataRoot = newPath;
-                AppConfig.Instance.Save();
-                DbInitializer.Initialize();
-                ReplyToVue(message.MessageId, new { status = "ok", path = newPath });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("MoveDataFolder", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
         private void HandleOpenDataFolder(BridgeMessage message)
         {
             System.Diagnostics.Process.Start("explorer.exe", AppConfig.Instance.DataRoot);
         }
 
-        private void HandleCreateBackup(BridgeMessage message)
-        {
-            bool includeMedia = message.Payload.TryGetProperty("includeMedia", out var im) && im.GetBoolean();
-            try
-            {
-                string path = BackupService.CreateBackup(includeMedia);
-                BackupService.PruneOldBackups();
-                ReplyToVue(message.MessageId, new { status = "ok", path });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("CreateBackup", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
         private void HandleExportFullDB(BridgeMessage message)
         {
+            // With media the export is a .stlm archive, the same format a media backup writes;
+            // without it, the plain .sqlite it has always been.
+            bool includeMedia = message.Payload.TryGetProperty("includeMedia", out var im) && im.GetBoolean();
+
             _parentForm!.BeginInvoke((MethodInvoker)(() =>
             {
+                string stamp = $"{DateTime.Now:yyyyMMdd_HHmmss}";
                 using var dlg = new SaveFileDialog
                 {
                     Title      = "Export full database",
-                    Filter     = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
-                    FileName   = $"timeline_export_{DateTime.Now:yyyyMMdd_HHmmss}.sqlite",
-                    DefaultExt = "sqlite",
+                    Filter     = includeMedia
+                        ? "Story Timeline archive (*.stlm)|*.stlm|All files (*.*)|*.*"
+                        : "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
+                    FileName   = includeMedia ? $"timeline_export_{stamp}.stlm" : $"timeline_export_{stamp}.sqlite",
+                    DefaultExt = includeMedia ? "stlm" : "sqlite",
                 };
                 if (dlg.ShowDialog() != DialogResult.OK)
                 {
@@ -1589,7 +745,10 @@ namespace StoryTimelineMk2.Bridge
                 }
                 try
                 {
-                    File.Copy(AppConfig.Instance.GetDbPath(), dlg.FileName, overwrite: true);
+                    if (includeMedia)
+                        BackupService.WriteArchive(dlg.FileName);
+                    else
+                        File.Copy(AppConfig.Instance.GetDbPath(), dlg.FileName, overwrite: true);
                     ReplyToVue(message.MessageId, new { status = "ok", path = dlg.FileName });
                 }
                 catch (Exception ex)
@@ -1607,7 +766,7 @@ namespace StoryTimelineMk2.Bridge
                 using var dlg = new OpenFileDialog
                 {
                     Title  = "Select database to import",
-                    Filter = "Database files|*.sqlite;*.db;*.db3;*.sql;*.sqlite3|All files|*.*",
+                    Filter = "Database files|*.sqlite;*.db;*.db3;*.sql;*.sqlite3;*.stlm|All files|*.*",
                 };
                 if (dlg.ShowDialog() != DialogResult.OK)
                 {
@@ -1625,51 +784,6 @@ namespace StoryTimelineMk2.Bridge
                     ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
                 }
             }));
-        }
-
-        private void HandleExecuteImportDB(BridgeMessage message)
-        {
-            string path = message.Payload.GetProperty("path").GetString()
-                ?? throw new Exception("Missing path parameter.");
-            try
-            {
-                DatabaseImporter.Import(path);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (MigrationException ex)
-            {
-                // The backup could not be brought to the current schema; nothing was merged. Shown as a
-                // copyable report (schema versions, stage, log path) instead of the Vue alert.
-                Logger.Error("ExecuteImportDB", ex);
-                f_ErrorReport.ShowReport("The backup could not be imported. Your current data was not changed.", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message, reported = true });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("ExecuteImportDB", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private void HandleGetBackupSettings(BridgeMessage message)
-        {
-            var cfg    = AppConfig.Instance;
-            var recent = BackupService.GetRecentBackups();
-            ReplyToVue(message.MessageId, new
-            {
-                interval         = cfg.BackupInterval,
-                lastAutoBackupAt = cfg.LastAutoBackupAt?.ToString("O"),
-                backupsFolder    = cfg.GetBackupsFolder(),
-                recentBackups    = recent,
-            });
-        }
-
-        private void HandleSaveBackupSettings(BridgeMessage message)
-        {
-            string interval = message.Payload.GetProperty("interval").GetString() ?? "never";
-            AppConfig.Instance.BackupInterval = interval;
-            AppConfig.Instance.Save();
-            ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
         private void HandleOpenBackupsFolder(BridgeMessage message)
@@ -1706,210 +820,21 @@ namespace StoryTimelineMk2.Bridge
             }));
         }
 
-        private void HandleImportTimeline(BridgeMessage message)
-        {
-            string path = message.Payload.GetProperty("path").GetString()
-                ?? throw new Exception("Missing path parameter.");
-            try
-            {
-                TimelineExporter.ImportFromZip(path);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("ImportTimeline", ex);
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
-
-        private static void CopyDirectory(string src, string dst)
-        {
-            Directory.CreateDirectory(dst);
-            foreach (var file in Directory.GetFiles(src))
-                File.Copy(file, Path.Combine(dst, Path.GetFileName(file)), overwrite: true);
-            foreach (var dir in Directory.GetDirectories(src))
-                CopyDirectory(dir, Path.Combine(dst, Path.GetFileName(dir)));
-        }
-
         // -----------------------------------------------------------------------
         // Filter rules
         // -----------------------------------------------------------------------
-
-        private void HandleGetFilterRules(BridgeMessage message)
-        {
-            try
-            {
-                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-                var rules = new FilterRuleRepo().GetByTimeline(timelineId);
-                ReplyToVue(message.MessageId, new { status = "ok", rules });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleGetFilterRules] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
-
-        private void HandleSaveFilterRule(BridgeMessage message)
-        {
-            try
-            {
-                var rule = JsonSerializer.Deserialize<FilterRuleItem>(message.Payload.GetRawText(), _jsonOpts);
-                new FilterRuleRepo().Save(rule!);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleSaveFilterRule] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
-
-        private void HandleDeleteFilterRule(BridgeMessage message)
-        {
-            try
-            {
-                string? id = message.Payload.GetProperty("id").GetString();
-                new FilterRuleRepo().Delete(id!);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleDeleteFilterRule] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
 
         // -----------------------------------------------------------------------
         // Filter presets
         // -----------------------------------------------------------------------
 
-        private void HandleGetFilterPresets(BridgeMessage message)
-        {
-            try
-            {
-                var presets = new FilterPresetRepo().GetAll();
-                ReplyToVue(message.MessageId, new { status = "ok", presets });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleGetFilterPresets] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
-
-        private void HandleSaveFilterPreset(BridgeMessage message)
-        {
-            try
-            {
-                var preset = JsonSerializer.Deserialize<FilterPresetItem>(message.Payload.GetRawText(), _jsonOpts);
-                new FilterPresetRepo().Save(preset!);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleSaveFilterPreset] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
-
-        private void HandleDeleteFilterPreset(BridgeMessage message)
-        {
-            try
-            {
-                string? id = message.Payload.GetProperty("id").GetString();
-                new FilterPresetRepo().Delete(id!);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleDeleteFilterPreset] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
-
         // -----------------------------------------------------------------------
         // Misc settings
         // -----------------------------------------------------------------------
 
-        private void HandleGetMiscSetting(BridgeMessage message)
-        {
-            try
-            {
-                string? key = message.Payload.GetProperty("key").GetString();
-                int timelineId = message.Payload.TryGetProperty("timelineId", out var tl) ? tl.GetInt32() : 0;
-                string value = new MiscSettingsRepo().Get(key!, timelineId);
-                ReplyToVue(message.MessageId, new { status = "ok", value });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleGetMiscSetting] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
-
-        private void HandleSetMiscSetting(BridgeMessage message)
-        {
-            try
-            {
-                string? key = message.Payload.GetProperty("key").GetString();
-                string? value = message.Payload.GetProperty("value").GetString();
-                int timelineId = message.Payload.TryGetProperty("timelineId", out var tl) ? tl.GetInt32() : 0;
-                new MiscSettingsRepo().Set(key!, value!, timelineId);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[HandleSetMiscSetting] {ex}");
-                ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
-            }
-        }
-
         // -----------------------------------------------------------------------
         // Update checker handlers
         // -----------------------------------------------------------------------
-
-        private void HandleCheckForUpdates(BridgeMessage message)
-        {
-            Task.Run(async () =>
-            {
-                UpdateInfo? info = null;
-                string? error   = null;
-                try   { info  = await UpdateChecker.CheckAsync(forceCheck: true); }
-                catch (Exception ex) { error = ex.Message; }
-
-                _parentForm!.BeginInvoke((MethodInvoker)(() =>
-                {
-                    if (error != null)
-                        ReplyToVue(message.MessageId, new { status = "error", message = error });
-                    else if (info == null)
-                        ReplyToVue(message.MessageId, new { status = "ok", updateAvailable = false });
-                    else
-                        ReplyToVue(message.MessageId, new
-                        {
-                            status          = "ok",
-                            updateAvailable = true,
-                            version         = info.Version,
-                            url             = info.Url,
-                            notes           = info.Notes,
-                        });
-                }));
-            });
-        }
-
-        private void HandleSkipVersion(BridgeMessage message)
-        {
-            try
-            {
-                var version = message.Payload.GetProperty("version").GetString()!;
-                UpdateChecker.SkipVersion(version);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
-        }
 
         private void HandleOpenExternalUrl(BridgeMessage message)
         {

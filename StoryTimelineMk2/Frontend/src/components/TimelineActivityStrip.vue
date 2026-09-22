@@ -17,6 +17,7 @@ import {
     PhInfo,
     PhKeyboard,
     PhBooks,
+    PhExport,
 } from '@phosphor-icons/vue'
 import { ref } from 'vue'
 
@@ -41,6 +42,7 @@ const emit = defineEmits<{
     'open-tags': []
     'open-mass-add': []
     'open-reference': []
+    'open-export': []
 }>()
 
 const helpMenuOpen = ref(false)
@@ -132,6 +134,11 @@ const navItems = [
 
         <!-- ── big spacer ────────────────────────────────────────── -->
         <div class="strip-spacer" />
+
+        <!-- ── Export (whole timeline / my work) ────────────────── -->
+        <button v-if="!readOnly" class="strip-btn strip-btn--export" title="Export…" @click="emit('open-export')">
+            <PhExport :size="20" />
+        </button>
 
         <!-- ── Help / About flyout ──────────────────────────────── -->
         <div class="strip-help-wrap">

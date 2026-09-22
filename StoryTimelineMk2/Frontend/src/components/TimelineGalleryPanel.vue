@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { mediaUrl } from '@/utils/mediaUrl';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
 import type { LayoutSettings, MediaItem } from '@/types/models';
@@ -55,8 +56,8 @@ watch(inRangeItemIds, (items) => {
                 const data = await BackendAPI.GetItemForEdit(timelineId, id);
                 for (const pic of data?.Pictures ?? []) {
                     fetched.push({
-                        url: `https://media.app/${pic.FilePath}`,
-                        thumbUrl: `https://media.app/${pic.ThumbPath}`,
+                        url: mediaUrl(pic.FilePath),
+                        thumbUrl: mediaUrl(pic.ThumbPath),
                         title: pic.Title || pic.FileName,
                         itemTitle: title,
                     });

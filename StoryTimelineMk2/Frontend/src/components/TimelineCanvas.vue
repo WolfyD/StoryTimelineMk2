@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { mediaUrl } from '@/utils/mediaUrl';
 import { useTimelineStore } from '@/stores/timelineStore';
 import Konva from 'konva';
 import 'splitpanes/dist/splitpanes.css';
@@ -414,7 +415,7 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
     const oldStep = store.lodProfile?.[oldIdx]?.stepFraction || 1;
     const targetStep = store.lodProfile?.[newIdx]?.stepFraction || 1;
 
-    if (props.layoutSettings?.TimelineAnimateLodChange) {
+    if (props.layoutSettings?.TimelineAnimateLodChange && !store.lowResourceMode) {
         const duration = props.layoutSettings.TimelineLodChangeAnimationLength || 300;
         const startTime = performance.now();
 
@@ -989,7 +990,7 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
 
         let elements = nodeCache.get(itemIdStr);
         if (!elements) {
-            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls, !!item.ShowTitle);
+            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls, !!item.ShowTitle, store.lowResourceMode);
             nodeCache.set(itemIdStr, elements);
             if (typeName === 'Age' || typeName === 'Period' || typeName === 'Picture') {
                 const itemTitle = getTitle(item);
@@ -1131,7 +1132,7 @@ function renderReference(ls: LayoutSettings) {
 
         let elements = refNodeCache.get(id);
         if (!elements) {
-            elements = buildNode(id, typeName, getTitle(item), getColor(item), refStems, refBoxes, ls, false);
+            elements = buildNode(id, typeName, getTitle(item), getColor(item), refStems, refBoxes, ls, false, store.lowResourceMode);
             refNodeCache.set(id, elements);
             const tip = `${getTitle(item)} — ${ref.project.Title || 'Untitled'} (reference · Alt+click to view)`;
             elements.box.on('mouseenter', () => { const pos = stage?.getPointerPosition(); if (pos) showTooltip(tip, pos.x, pos.y); });
@@ -1272,6 +1273,7 @@ watch(() => store.pulseItemId, (id) => {
 });
 
 function updateCursor(mouseX: number, mouseY: number) {
+    if (store.lowResourceMode) return;   // the marker re-renders an overlay on every mousemove
     if (!store.layoutSettings || !store.lodProfile) return;
 
     const step = viewport.lodStepFraction;
@@ -1338,7 +1340,7 @@ function loadPictureImage(itemId: string) {
         pictureLoadingSet.delete(itemId);
         const filePath = result?.Pictures?.[0]?.ThumbPath;
         if (!filePath) return;
-        const url = `https://media.app/${filePath}`;
+        const url = mediaUrl(filePath);
         // Use Konva's own image loader so WebView2 URL resolution is handled correctly
         Konva.Image.fromURL(url, (konvaImg) => {
             const htmlImg = (konvaImg as Konva.Image).image() as HTMLImageElement;
@@ -1405,6 +1407,7 @@ function trackFps(now: number) {
 }
 
 function animateJumpToYear(targetYear: number, durationMs: number = 600) {
+    if (store.lowResourceMode) { jumpToYear(targetYear); return; }   // every full redraw, skipped
     const startYear = viewport.centerTime;
     const yearDifference = clampToBoundaries(targetYear) - startYear;
     const startTime = performance.now();
@@ -1547,6 +1550,15 @@ onMounted(() => {
     miniLayer.visible(!!props.miniMode);
     itemLayer.visible(!props.miniMode);
     stage.add(miniLayer); // mini mode overlay, above boundaries
+
+    // Low resource mode, biggest win first: a Retina display doubles every canvas in both
+    // directions, so each frame pushes four times the pixels. Drawing at 1:1 costs some crispness
+    // and buys all of that back. The global covers every canvas Konva makes from here on — cache()
+    // bitmaps, the minimap, mini mode; the loop catches the layers, which were built before this.
+    if (store.lowResourceMode) {
+        Konva.pixelRatio = 1;
+        for (const layer of stage.getLayers()) layer.getCanvas().setPixelRatio(1);
+    }
 
     renderWithDimming(props.layoutSettings!);
     updateCurrentYearInStore(true);

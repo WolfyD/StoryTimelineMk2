@@ -90,6 +90,12 @@ namespace StoryTimelineMk2
 
     public class AppConfig
     {
+        /// <summary>
+        /// Set by the host at startup so a config read failure still reaches the user — this
+        /// assembly has no UI of its own. Project rule: errors are logged *and* shown, never swallowed.
+        /// </summary>
+        public static Action<string, Exception>? OnLoadError;
+
         private static readonly string _configDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "StoryTimelineMk2");
@@ -174,13 +180,10 @@ namespace StoryTimelineMk2
                 // makes the user's timelines "disappear" (the app opens a different,
                 // empty database). Surface it loudly instead.
                 Logger.Error("AppConfig.Load", ex);
-                System.Windows.Forms.MessageBox.Show(
+                OnLoadError?.Invoke(
                     $"The settings file could not be read — falling back to the default data folder.\n\n" +
                     $"If your timelines appear to be missing, your data is still at its previous " +
-                    $"location; fix or delete this file and restart:\n{_configPath}\n\nError: {ex.Message}",
-                    "Configuration error",
-                    System.Windows.Forms.MessageBoxButtons.OK,
-                    System.Windows.Forms.MessageBoxIcon.Warning);
+                    $"location; fix or delete this file and restart:\n{_configPath}\n\nError: {ex.Message}", ex);
             }
             return new AppConfig();
         }

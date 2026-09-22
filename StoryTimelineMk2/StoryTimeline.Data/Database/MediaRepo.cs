@@ -2,8 +2,7 @@
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+using SkiaSharp;
 using System.Text;
 
 namespace StoryTimelineMk2.Database
@@ -46,8 +45,6 @@ namespace StoryTimelineMk2.Database
             string rel = $"thumbs/{m.Id}.png";
             string thumbPath = Path.Combine(_mediaFolder, rel);
             m.ThumbPath = m.FilePath;
-            // GDI+ has no WebP decoder; the browser renders the original fine
-            if (m.FileType.Equals("webp", StringComparison.OrdinalIgnoreCase)) return;
             try
             {
                 if (!File.Exists(thumbPath)) WriteThumb(GetFullPath(m.FilePath), thumbPath);
@@ -59,31 +56,47 @@ namespace StoryTimelineMk2.Database
             }
         }
 
-        private static void WriteThumb(string sourcePath, string thumbPath)
+        internal static void WriteThumb(string sourcePath, string thumbPath)
         {
-            using var src = Image.FromFile(sourcePath);
-            // Honour EXIF orientation so the thumb matches what the browser shows for the original
-            if (Array.IndexOf(src.PropertyIdList, 0x112) >= 0)
+            string name = Path.GetFileName(sourcePath);
+            using var codec = SKCodec.Create(sourcePath)
+                ?? throw new InvalidOperationException($"No image decoder for '{name}'");
+            using var src = SKBitmap.Decode(codec)
+                ?? throw new InvalidOperationException($"Could not decode '{name}'");
+
+            // Honour EXIF orientation so the thumb matches what the browser shows for the original.
+            // ponytail: the same three rotations GDI+ handled; mirrored origins stay as-is (vanishingly rare).
+            var origin = codec.EncodedOrigin;
+            bool quarterTurn = origin is SKEncodedOrigin.RightTop or SKEncodedOrigin.LeftBottom;
+            int uprightW = quarterTurn ? src.Height : src.Width;
+            int uprightH = quarterTurn ? src.Width : src.Height;
+
+            double scale = Math.Min(1.0, (double)ThumbSize / Math.Max(uprightW, uprightH));
+            int w = Math.Max(1, (int)Math.Round(uprightW * scale));
+            int h = Math.Max(1, (int)Math.Round(uprightH * scale));
+
+            using var bmp = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using (var canvas = new SKCanvas(bmp))
             {
-                src.RotateFlip(src.GetPropertyItem(0x112)?.Value?[0] switch
+                canvas.Clear(SKColors.Transparent);
+                switch (origin)
                 {
-                    3 => RotateFlipType.Rotate180FlipNone,
-                    6 => RotateFlipType.Rotate90FlipNone,
-                    8 => RotateFlipType.Rotate270FlipNone,
-                    _ => RotateFlipType.RotateNoneFlipNone,
-                });
+                    case SKEncodedOrigin.BottomRight:                       // 180 degrees
+                        canvas.Translate(w, h); canvas.RotateDegrees(180); break;
+                    case SKEncodedOrigin.RightTop:                          // 90 degrees clockwise
+                        canvas.Translate(w, 0); canvas.RotateDegrees(90); break;
+                    case SKEncodedOrigin.LeftBottom:                        // 90 degrees anticlockwise
+                        canvas.Translate(0, h); canvas.RotateDegrees(-90); break;
+                }
+                // After a quarter turn the destination box is measured in the rotated frame
+                var dest = quarterTurn ? new SKRect(0, 0, h, w) : new SKRect(0, 0, w, h);
+                using var img = SKImage.FromBitmap(src);
+                canvas.DrawImage(img, dest, new SKSamplingOptions(SKCubicResampler.Mitchell));
             }
-            double scale = Math.Min(1.0, (double)ThumbSize / Math.Max(src.Width, src.Height));
-            int w = Math.Max(1, (int)Math.Round(src.Width * scale));
-            int h = Math.Max(1, (int)Math.Round(src.Height * scale));
-            using var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
-            using var g = Graphics.FromImage(bmp);
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            using var attrs = new ImageAttributes();
-            attrs.SetWrapMode(WrapMode.TileFlipXY); // stops bicubic sampling bleeding transparent edges
-            g.DrawImage(src, new Rectangle(0, 0, w, h), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel, attrs);
-            bmp.Save(thumbPath, ImageFormat.Png);
+
+            using var data = bmp.Encode(SKEncodedImageFormat.Png, 100);
+            using var fs = File.Create(thumbPath);
+            data.SaveTo(fs);
         }
 
         public MediaItem ImportAndSaveMedia(string sourceFilePath, string title, string description)

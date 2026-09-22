@@ -4,7 +4,7 @@ This document describes the conceptual model of StoryTimelineMk2 — the domain 
 
 Source of truth for everything below:
 
-- `Database/TimelineItem.cs`, `Database/CalendarItem.cs`, `Database/LodItem.cs`, `Database/LayoutSettingsItem.cs`, `Database/FilterRuleItem.cs`, `Database/DbInitializer.cs`
+- `StoryTimeline.Data/Database/TimelineItem.cs`, `StoryTimeline.Data/Database/CalendarItem.cs`, `StoryTimeline.Data/Database/LodItem.cs`, `StoryTimeline.Data/Database/LayoutSettingsItem.cs`, `StoryTimeline.Data/Database/FilterRuleItem.cs`, `StoryTimeline.Data/Database/DbInitializer.cs`
 - `Frontend/src/types/models.ts`, `Frontend/src/utils/timelineLayout.ts`, `Frontend/src/utils/filterMatcher.ts`, `Frontend/src/utils/relativeRule.ts`
 
 ---

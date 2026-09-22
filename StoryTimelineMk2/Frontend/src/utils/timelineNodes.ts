@@ -1,6 +1,12 @@
 import type { LayoutSettings } from '@/types/models';
 import Konva from 'konva';
 
+// Low resource mode's hover: a transform instead of a cached bitmap. Kept slight — the box grows
+// from its anchor corner, not its centre, because centring it needs a position offset that
+// updateAbsolutePositions() overwrites on the next pan frame.
+const GROW = { x: 1.06, y: 1.06 };
+const NO_GROW = { x: 1, y: 1 };
+
 export const buildNode = (
     id: string,
     typeName: string,
@@ -10,6 +16,7 @@ export const buildNode = (
     boxesMaster: Konva.Group,
 	layoutSettings: LayoutSettings,
     showTitle = false,   // pictures: caption strip along the bottom edge (items.show_title)
+    lowRes = false,      // low resource mode: fewer nodes per item, no cached hover bitmap
 ) => {
     const safeColor = color || (typeName === "Event" ? '#ffffff' : '#888888');
     const elements: any = {}; // Standard JS object to hold references
@@ -88,7 +95,12 @@ export const buildNode = (
         stemsMaster.add(elements.stem);
         boxesMaster.add(elements.box, elements.label);
 
-        if (layoutSettings.TimelineEventBoxShowColor) {
+        if (layoutSettings.TimelineEventBoxShowColor && lowRes) {
+            // The colour rides the border the box already has rather than a second Rect per item:
+            // same information, one fewer node to walk and draw on every frame.
+            elements.box.stroke(safeColor);
+            elements.box.strokeWidth(Math.max(2, layoutSettings.TimelineEventBorderWidth));
+        } else if (layoutSettings.TimelineEventBoxShowColor) {
             const stripSize = 5;
             const r = layoutSettings.TimelineEventBorderRadius ?? 4;
             if (layoutSettings.TimelineEventBoxShowColorOnBottom) {
@@ -115,7 +127,16 @@ export const buildNode = (
 	const handleHoverEnter = () => {
         document.body.style.cursor = 'pointer';
         if (typeName === "Age" || typeName === "Period") {
-            elements.box.to({ scaleY: 1.3, duration: 0.15, easing: Konva.Easings.EaseOut });
+            // Same grow either way; low resource mode just doesn't spend 150 ms of frames on it.
+            if (lowRes) { elements.box.scaleY(1.3); elements.box.getLayer()?.batchDraw(); }
+            else elements.box.to({ scaleY: 1.3, duration: 0.15, easing: Konva.Easings.EaseOut });
+        } else if (lowRes) {
+            // What this replaces baked a shadow into a cached bitmap on every mouseenter — two
+            // offscreen canvases per item the pointer crosses. A transform costs nothing to set up.
+            // Box and label share an origin, so scaling both keeps the text where it sits.
+            elements.box.scale(GROW);
+            if (typeName !== "Picture") elements.label?.scale(GROW);   // a caption hangs off the bottom edge, not the box origin
+            elements.box.getLayer()?.batchDraw();
         } else if (layoutSettings.TimelineEventHasHoverHighlight) {
             const hoverColor = layoutSettings.TimelineEventHoverColor || '#ffffff';
             // Box: bake shadow into a cached bitmap — paid once, drawn as a cheap blit on every subsequent redraw
@@ -133,7 +154,12 @@ export const buildNode = (
     const handleHoverLeave = () => {
         document.body.style.cursor = 'default';
         if (typeName === "Age" || typeName === "Period") {
-            elements.box.to({ scaleY: 1, duration: 0.15, easing: Konva.Easings.EaseOut });
+            if (lowRes) { elements.box.scaleY(1); elements.box.getLayer()?.batchDraw(); }
+            else elements.box.to({ scaleY: 1, duration: 0.15, easing: Konva.Easings.EaseOut });
+        } else if (lowRes) {
+            elements.box.scale(NO_GROW);
+            if (typeName !== "Picture") elements.label?.scale(NO_GROW);
+            elements.box.getLayer()?.batchDraw();
         } else if (layoutSettings.TimelineEventHasHoverHighlight) {
             elements.box.clearCache();
             elements.box.shadowBlur(0);

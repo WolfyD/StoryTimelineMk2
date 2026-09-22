@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { injectBridgeMock } from './bridge-mock'
 
 /**
@@ -123,28 +123,51 @@ test.describe('DB import flow', () => {
 })
 
 test.describe('DB export flow', () => {
-  test('clicking Export Database triggers ExportFullDB', async ({ page }) => {
-    const messages: string[] = []
+  /** Opens the DB menu, clicks Export Database, and returns every action the page then posted. */
+  async function openExportModal(page: Page) {
+    const sent: { action: string; payload?: { includeMedia?: boolean } }[] = []
     await injectBridgeMock(page, { ExportFullDB: { status: 'ok', path: 'C:/test/export.sqlite' } })
     await page.goto('/')
     await page.waitForLoadState('networkidle')
 
-    // Intercept postMessage calls to verify ExportFullDB was sent
-    await page.exposeFunction('_captureAction', (action: string) => { messages.push(action) })
+    // Intercept postMessage calls to verify what ExportFullDB was sent with
+    await page.exposeFunction('_captureAction', (action: string, payload: { includeMedia?: boolean }) => {
+      sent.push({ action, payload })
+    })
     await page.evaluate(() => {
       const orig = window.chrome.webview.postMessage.bind(window.chrome.webview)
       window.chrome.webview.postMessage = (msg: unknown) => {
         const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg
-        if (parsed?.action) (window as unknown as { _captureAction: (a: string) => void })._captureAction(parsed.action)
+        if (parsed?.action) (window as unknown as { _captureAction: (a: string, p: unknown) => void })
+          ._captureAction(parsed.action, parsed.payload)
         orig(msg)
       }
     })
 
     await page.locator('#db-menu-btn').click()
     await page.getByText('Export Database').click()
+    return sent
+  }
+
+  test('clicking Export Database triggers ExportFullDB without media', async ({ page }) => {
+    const sent = await openExportModal(page)
+
+    // The export asks about media first — confirming without ticking the box means database only.
+    await page.getByRole('button', { name: 'Choose destination & export' }).click()
     await page.waitForTimeout(300)
 
-    expect(messages).toContain('ExportFullDB')
+    expect(sent.map(m => m.action)).toContain('ExportFullDB')
+    expect(sent.find(m => m.action === 'ExportFullDB')?.payload?.includeMedia).toBe(false)
+  })
+
+  test('ticking the media option sends includeMedia', async ({ page }) => {
+    const sent = await openExportModal(page)
+
+    await page.locator('.export-db-option input[type="checkbox"]').check()
+    await page.getByRole('button', { name: 'Choose destination & export' }).click()
+    await page.waitForTimeout(300)
+
+    expect(sent.find(m => m.action === 'ExportFullDB')?.payload?.includeMedia).toBe(true)
   })
 })
 

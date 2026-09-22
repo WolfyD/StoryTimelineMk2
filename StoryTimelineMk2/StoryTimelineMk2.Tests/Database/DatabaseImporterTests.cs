@@ -1,6 +1,8 @@
+using StoryTimelineMk2;
 using StoryTimelineMk2.Database;
 using StoryTimelineMk2.Database.Migrations;
 using Microsoft.Data.Sqlite;
+using System.IO.Compression;
 using Dapper;
 
 namespace StoryTimelineMk2.Tests.Database;
@@ -670,4 +672,109 @@ public class DatabaseImporterTests
     }
 
     private static string[] ScratchFiles() => Directory.GetFiles(Path.GetTempPath(), "stl_import_*.sqlite");
+
+    // ─────────────────────────── .stlm archives ───────────────────────────────
+
+    /// <summary>Puts a picture and its thumbnail in the media folder so an archive carries both.</summary>
+    private static (string Picture, string Thumb) SeedMedia()
+    {
+        string media = AppConfig.Instance.GetMediaFolder();
+        Directory.CreateDirectory(Path.Combine(media, "thumbs"));
+        string picture = Path.Combine(media, "6f1a.png");
+        string thumb   = Path.Combine(media, "thumbs", "6f1a.png");
+        File.WriteAllText(picture, "original");
+        File.WriteAllText(thumb, "thumbnail");
+        return (picture, thumb);
+    }
+
+    [Fact]
+    public void Import_ReadsStlmArchive_AndRestoresMediaAndThumbs()
+    {
+        using var ctx = new DbTestContext();
+        int timelineId = InsertTimeline(ctx, "Archived Timeline");
+        var (picture, thumb) = SeedMedia();
+
+        string archive = Path.Combine(ctx.TempDir, "export.stlm");
+        BackupService.WriteArchive(archive);
+
+        // Wipe both halves, so anything found afterwards came out of the archive.
+        using (var db = ctx.OpenConnection())
+            db.Execute("DELETE FROM timelines WHERE id = @timelineId", new { timelineId });
+        File.Delete(picture);
+        File.Delete(thumb);
+
+        DatabaseImporter.Import(archive);
+
+        using var check = ctx.OpenConnection();
+        Assert.Equal("Archived Timeline", check.QuerySingle<string>(
+            "SELECT title FROM timelines WHERE id = @timelineId", new { timelineId }));
+        Assert.Equal("original", File.ReadAllText(picture));
+        Assert.Equal("thumbnail", File.ReadAllText(thumb));
+    }
+
+    [Fact]
+    public void Import_FromStlm_KeepsTheLocalCopyOfAMediaFileThatAlreadyExists()
+    {
+        using var ctx = new DbTestContext();
+        InsertTimeline(ctx, "Archived Timeline");
+        var (picture, _) = SeedMedia();
+
+        string archive = Path.Combine(ctx.TempDir, "export.stlm");
+        BackupService.WriteArchive(archive);
+        File.WriteAllText(picture, "edited since the export");
+
+        DatabaseImporter.Import(archive);
+
+        Assert.Equal("edited since the export", File.ReadAllText(picture));
+    }
+
+    [Fact]
+    public void GetImportPreview_ReadsStlmArchive()
+    {
+        using var ctx = new DbTestContext();
+        InsertTimeline(ctx, "Archived Timeline");
+
+        string archive = Path.Combine(ctx.TempDir, "export.stlm");
+        BackupService.WriteArchive(archive);
+
+        var preview = DatabaseImporter.GetImportPreview(archive);
+
+        Assert.True(preview.IsV2);
+        Assert.Equal(1, preview.TimelineCount);
+        Assert.Equal(archive, preview.SourcePath);   // the archive, not the copy unpacked out of it
+    }
+
+    [Fact]
+    public void Import_RejectsASingleTimelineStlm_WithAUsefulMessage()
+    {
+        using var ctx = new DbTestContext();
+        string archive = Path.Combine(ctx.TempDir, "one_timeline.stlm");
+        using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))
+        {
+            using var entry = new StreamWriter(zip.CreateEntry("timeline.json").Open());
+            entry.Write("{}");
+        }
+
+        var ex = Assert.Throws<InvalidDataException>(() => DatabaseImporter.Import(archive));
+
+        Assert.Contains("Import Timeline", ex.Message);
+    }
+
+    [Fact]
+    public void Import_FromStlm_LeavesNoTempFolderBehind()
+    {
+        using var ctx = new DbTestContext();
+        InsertTimeline(ctx, "Archived Timeline");
+        SeedMedia();
+
+        string archive = Path.Combine(ctx.TempDir, "export.stlm");
+        BackupService.WriteArchive(archive);
+        int before = UnpackFolders().Length;
+
+        DatabaseImporter.Import(archive);
+
+        Assert.Equal(before, UnpackFolders().Length);
+    }
+
+    private static string[] UnpackFolders() => Directory.GetDirectories(Path.GetTempPath(), "stl_stlm_*");
 }

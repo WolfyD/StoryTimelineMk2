@@ -1,6 +1,6 @@
 # Database Layer
 
-StoryTimelineMk2 persists everything in a single SQLite database accessed via [Dapper](https://github.com/DapperLib/Dapper) (`Microsoft.Data.Sqlite`). All database code lives in `Database/`, organized as one repository class per aggregate (`*Repo.cs`) plus plain POCO domain models (`*Item.cs`). There is no ORM change tracking — every repo opens a short-lived `SqliteConnection` per call.
+StoryTimelineMk2 persists everything in a single SQLite database accessed via [Dapper](https://github.com/DapperLib/Dapper) (`Microsoft.Data.Sqlite`). All database code lives in `StoryTimeline.Data/Database/`, organized as one repository class per aggregate (`*Repo.cs`) plus plain POCO domain models (`*Item.cs`). There is no ORM change tracking — every repo opens a short-lived `SqliteConnection` per call.
 
 All repos set `DefaultTypeMap.MatchNamesWithUnderscores = true` in their constructor so `snake_case` columns map to `PascalCase` properties automatically.
 
@@ -28,7 +28,7 @@ Data-root resolution order (`AppConfig.cs:35-54`):
 
 ### Initialization flow
 
-`DbInitializer.Initialize()` (`Database/DbInitializer.cs`) runs at startup and after a data-folder change:
+`DbInitializer.Initialize()` (`StoryTimeline.Data/Database/DbInitializer.cs`) runs at startup and after a data-folder change:
 
 1. Creates the data-root directory and opens `timeline.sqlite`.
 2. `SchemaMigrator.Migrate(db, path, MainDbMigrations.Steps, "timeline", backupFirst: true)` refuses a
@@ -38,7 +38,7 @@ Data-root resolution order (`AppConfig.cs:35-54`):
    missing numbered step (see [10-migrations.md](10-migrations.md)). Any failure is a
    `MigrationException`, shown by `Program.cs` in the `f_ErrorReport` dialog.
 
-Step 1 (`MainDbMigrations.V1_Baseline`, `Database/Migrations/MainDbMigrations.cs`) is the 1.0.1 initializer:
+Step 1 (`MainDbMigrations.V1_Baseline`, `StoryTimeline.Data/Database/Migrations/MainDbMigrations.cs`) is the 1.0.1 initializer:
 
 1. One large `CREATE TABLE IF NOT EXISTS ...` batch creating all 27 tables.
 2. `ApplyColumnMigrations(db)` — adds columns missing from pre-1.0.1 databases (see §7).
@@ -59,7 +59,7 @@ Step 1 (`MainDbMigrations.V1_Baseline`, `Database/Migrations/MainDbMigrations.cs
 
 ## 2. Full Schema Reference
 
-All tables are created in `Database/Migrations/MainDbMigrations.cs` (step 1; per-table refs below point at that file). Column types below are exactly as declared. SQLite booleans are stored as `INTEGER` 0/1; entity IDs are `TEXT` GUIDs except where noted.
+All tables are created in `StoryTimeline.Data/Database/Migrations/MainDbMigrations.cs` (step 1; per-table refs below point at that file). Column types below are exactly as declared. SQLite booleans are stored as `INTEGER` 0/1; entity IDs are `TEXT` GUIDs except where noted.
 
 ### `timelines` — owner: `TimelineRepo` (`MainDbMigrations.cs`)
 
@@ -510,7 +510,7 @@ Key relationship facts:
 
 Common pattern: each repo holds `_connString = DbInitializer.GetConnectionString()` and opens a fresh connection per method. Writes are single statements unless noted; multi-statement writes use explicit transactions with rollback-and-rethrow.
 
-### `ItemRepo` — `Database/ItemRepo.cs`
+### `ItemRepo` — `StoryTimeline.Data/Database/ItemRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -531,7 +531,7 @@ Common pattern: each repo holds `_connString = DbInitializer.GetConnectionString
 
 Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemStoryRefRow` (`ItemRepo.cs:145-149`), `ItemChapterRefRow` (`ItemRepo.cs:161-168`), `CharacterAppearanceInput` (`ItemRepo.cs:182-186`).
 
-### `TimelineRepo` — `Database/TimelineRepo.cs`
+### `TimelineRepo` — `StoryTimeline.Data/Database/TimelineRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -545,7 +545,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `SetLayoutPreset` | `void (int timelineId, string layoutPresetId)` | Points `layout_settings_id` at a preset (`TimelineRepo.cs:137-142`). |
 | `DuplicateTimeline` | `int DuplicateTimeline(int originalId, string newTitle)` | Deep copy in one transaction (`TimelineRepo.cs:144-270`): clones the timeline row, settings row, characters (new GUIDs, old→new map), items (new GUIDs, old→new map), all four item junctions (remapping character IDs through the map; tag/story/chapter IDs reused since those are global), and notes (remapping `connected_item_id`; unmapped links become NULL). Returns the new timeline ID; rollback+rethrow on failure. |
 
-### `CharacterRepo` — `Database/CharacterRepo.cs`
+### `CharacterRepo` — `StoryTimeline.Data/Database/CharacterRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -554,7 +554,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `GetNetwork` | `IEnumerable<string> GetNetwork(int timelineId, string startCharId, int maxDepth = 2)` | Loads all `character_relationships` edges for the timeline into memory, then runs an in-C# BFS treating edges as undirected; returns the set of reachable character IDs (including the start) within `maxDepth` hops (`CharacterRepo.cs:59-92`). |
 | `DeleteCharacter` | `void DeleteCharacter(string id)` | DELETE; appearances/relationships cleaned by cascades (`CharacterRepo.cs:94-98`). |
 
-### `TagRepo` — `Database/TagRepo.cs`
+### `TagRepo` — `StoryTimeline.Data/Database/TagRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -565,7 +565,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `RenameTag` | `void RenameTag(int id, string name)` | Lower-cases and trims; `ArgumentException` when empty, `InvalidOperationException` when another tag already has the name. |
 | `DeleteTag` | `int DeleteTag(int id)` | Transactional: deletes `item_tags` rows explicitly (FKs are off in the app, nothing cascades), then the tag. Returns how many items were unlinked. |
 
-### `StoryRepo` — `Database/StoryRepo.cs`
+### `StoryRepo` — `StoryTimeline.Data/Database/StoryRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -573,7 +573,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `SaveStory` | `void SaveStory(StoryItem story)` | Upsert on id; bumps `updated_at` (`StoryRepo.cs:24-36`). |
 | `DeleteStory` | `void DeleteStory(string id)` | DELETE; `item_story_refs`/`book_stories` cascade. Note `items.story_id` has **no** cascade — those FKs become dangling references (`StoryRepo.cs:38-42`). |
 
-### `BookRepo` — `Database/BookRepo.cs`
+### `BookRepo` — `StoryTimeline.Data/Database/BookRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -582,7 +582,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `SaveBook` | `string SaveBook(BookItem book)` | Upsert; returns the ID (`BookRepo.cs:30-41`). |
 | `SaveChapter` | `string SaveChapter(ChapterItem chapter)` | Upsert (updates number/title only on conflict); returns the ID (`BookRepo.cs:43-52`). |
 
-### `CalendarRepo` — `Database/CalendarRepo.cs`
+### `CalendarRepo` — `StoryTimeline.Data/Database/CalendarRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -593,7 +593,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `GetUsageCounts` | `Dictionary<string, int> GetUsageCounts()` | Timeline count per `calendar_id`; unused calendars are absent. |
 | `DeleteCalendar` | `int DeleteCalendar(string id)` | Refuses `DefaultCalendarId` (`cal_default_gregorian`). Transactional: timelines using the calendar are moved to the default, the calendar is deleted, and its LOD profile goes too unless another calendar still shares it. Returns the number of reassigned timelines. |
 
-### `LodRepo` — `Database/LodRepo.cs`
+### `LodRepo` — `StoryTimeline.Data/Database/LodRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -602,7 +602,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `SaveLodProfile` | `void SaveLodProfile(LodItem lod)` | Upsert of name + profile JSON (`LodRepo.cs:29-40`). |
 | `DeleteCalendar` | `void DeleteCalendar(string id)` | Misleadingly named — deletes a **LOD profile** row (`LodRepo.cs:42-46`). |
 
-### `SettingsRepo` — `Database/SettingsRepo.cs`
+### `SettingsRepo` — `StoryTimeline.Data/Database/SettingsRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -614,7 +614,7 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | `SaveAppWindowState` | `void (int x, int y, int width, int height)` | Window state on the `timeline_id IS NULL` row (`SettingsRepo.cs:143-155`). |
 | `DeleteSettings` | `void DeleteSettings(string id)` | DELETE by settings `id` (`SettingsRepo.cs:157-161`). |
 
-### `MediaRepo` — `Database/MediaRepo.cs`
+### `MediaRepo` — `StoryTimeline.Data/Database/MediaRepo.cs`
 
 Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`MediaRepo.cs:14-22`).
 
@@ -628,7 +628,7 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | `GetFullPath` | `string GetFullPath(string fileNameOrPath)` | Returns rooted paths as-is (legacy), otherwise joins with the media folder (`MediaRepo.cs:94-99`). |
 | `DeleteMedia` | `void DeleteMedia(string id)` | Deletes the DB row (cascade cleans `item_pictures`) and then deletes the physical file (`MediaRepo.cs:101-116`). |
 
-### `NoteRepo` — `Database/NoteRepo.cs`
+### `NoteRepo` — `StoryTimeline.Data/Database/NoteRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -636,7 +636,7 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | `SaveNote` | `string SaveNote(NoteItem note)` | Generates a GUID if `Id` is empty; upsert updating contents/`nearest_year`/`absolute_time`/`updated_at`. Empty `ConnectedItemId` is normalized to SQL NULL. Returns the ID (`NoteRepo.cs:21-42`). |
 | `DeleteNote` | `void DeleteNote(string id)` | DELETE (`NoteRepo.cs:44-48`). |
 
-### `HiddenRangeRepo` — `Database/HiddenRangeRepo.cs`
+### `HiddenRangeRepo` — `StoryTimeline.Data/Database/HiddenRangeRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -644,7 +644,7 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | `Save` | `int Save(HiddenRangeItem item)` | If `Id == 0`: INSERT and return `last_insert_rowid()`; otherwise UPDATE and return the existing ID (`HiddenRangeRepo.cs:24-44`). |
 | `Delete` | `void Delete(int id)` | DELETE (`HiddenRangeRepo.cs:46-50`). |
 
-### `LayoutSettingsRepo` — `Database/LayoutSettingsRepo.cs`
+### `LayoutSettingsRepo` — `StoryTimeline.Data/Database/LayoutSettingsRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -655,7 +655,7 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | `UpdateDisplayFields` | `void (string id, string fontFamily, int fontSize, string tickTextColor, string bgColor)` | Targeted UPDATE of font family/size (applied to both tick markers and event boxes), tick text color, and canvas background (`LayoutSettingsRepo.cs:303-316`). |
 | `Delete` | `void Delete(string id)` | DELETE (no guard against deleting a preset still referenced by a timeline) (`LayoutSettingsRepo.cs:318-325`). |
 
-### `FilterRuleRepo` — `Database/FilterRuleRepo.cs`
+### `FilterRuleRepo` — `StoryTimeline.Data/Database/FilterRuleRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -664,7 +664,7 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | `Delete` | `void Delete(string id)` | DELETE one rule (`FilterRuleRepo.cs:38-42`). |
 | `DeleteAllForTimeline` | `void DeleteAllForTimeline(int timelineId)` | Clears all rules for a timeline (`FilterRuleRepo.cs:44-49`). |
 
-### `FilterPresetRepo` — `Database/FilterPresetRepo.cs`
+### `FilterPresetRepo` — `StoryTimeline.Data/Database/FilterPresetRepo.cs`
 
 | Method | Signature | Behaviour |
 |---|---|---|
@@ -672,7 +672,7 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | `Save` | `void Save(FilterPresetItem preset)` | Upsert of name/`rules_json`/`and_mode` (`FilterPresetRepo.cs:22-32`). |
 | `Delete` | `void Delete(string id)` | DELETE (`FilterPresetRepo.cs:34-38`). |
 
-### `MiscSettingsRepo` — `Database/MiscSettingsRepo.cs`
+### `MiscSettingsRepo` — `StoryTimeline.Data/Database/MiscSettingsRepo.cs`
 
 The only repo that does **not** set `MatchNamesWithUnderscores` (it only queries scalar strings).
 
@@ -717,7 +717,7 @@ The only repo that does **not** set `MatchNamesWithUnderscores` (it only queries
 
 ## 6. DatabaseImporter
 
-`Database/DatabaseImporter.cs` merges an external SQLite backup **into** the live database (it never replaces the current DB).
+`StoryTimeline.Data/Database/DatabaseImporter.cs` merges an external SQLite backup **into** the live database (it never replaces the current DB).
 
 - `HandleDBImport()` (`DatabaseImporter.cs:13-36`) — shows an `OpenFileDialog` (filters `*.sql;*.sqlite;*.sqlite3;*.db;*.db3`), then calls `Import`. Returns false if anything throws.
 - `Import(string sourceFilePath)` — detects the source version via `CheckIfV2`: **a `calendars` table means v2**, otherwise v1. Dispatches to the matching importer.
@@ -753,7 +753,7 @@ Row-by-row Dapper copy in a single transaction (two connections, source opened r
 ## 7. Migration / Versioning Approach
 
 Since 1.0.2 both databases carry a **`PRAGMA user_version`** and are upgraded by numbered C# steps
-(`Database/Migrations/`). The full procedure, the rules for adding a step and the importer's use of it are in
+(`StoryTimeline.Data/Database/Migrations/`). The full procedure, the rules for adding a step and the importer's use of it are in
 [10-migrations.md](10-migrations.md). In short:
 
 1. `SchemaMigrator.Migrate` runs every step above the file's version, each in its own transaction with the version stamp; a newer file is refused; a failed step is rolled back and reported with the version the file was left at.

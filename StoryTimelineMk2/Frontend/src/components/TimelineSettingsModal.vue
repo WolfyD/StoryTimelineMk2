@@ -4,6 +4,7 @@ import { PhPlus } from '@phosphor-icons/vue'
 import type { TimelineSettings, LayoutSettings } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
+import { MOD } from '@/utils/shortcuts'
 import { DEFAULT_SWATCHES, ALL_LODS_MASK, loadSwatches, saveSwatches, loadDefaultLodMask, saveDefaultLodMask, lodMaskSummary } from '@/utils/timelinePrefs'
 import SwatchEditorModal from './SwatchEditorModal.vue'
 import LodMaskModal from './LodMaskModal.vue'
@@ -473,7 +474,7 @@ async function save() {
                         <option :value="2">Hidden</option>
                     </select>
 
-                    <span class="s-label">Custom Scaling <SettingHint tip="Zoom this window — the same zoom Ctrl+mouse wheel drives, remembered per timeline. F10 toggles it." /></span>
+                    <span class="s-label">Custom Scaling <SettingHint :tip="`Zoom this window — the same zoom ${MOD}+mouse wheel drives, remembered per timeline. F10 toggles it.`" /></span>
                     <button class="toggle" :class="{ 'is-on': local.UseCustomScaling }" type="button" @click="local.UseCustomScaling = !local.UseCustomScaling">
                         <span class="toggle-thumb" />
                     </button>
@@ -521,7 +522,7 @@ async function save() {
                     <template v-if="showNewPreset">
                         <span class="s-label">New Preset Name <SettingHint tip="Name for the new preset, which starts as a copy of the currently active preset" /></span>
                         <div class="preset-row">
-                            <input class="s-input" type="text" v-model="newPresetName" placeholder="My preset…" @keydown.enter="createPreset" @keydown.escape="showNewPreset = false" />
+                            <input class="s-input" type="text" v-model="newPresetName" placeholder="My preset…" data-enter-self @keydown.enter="createPreset" @keydown.escape="showNewPreset = false" />
                             <button class="icon-btn icon-btn--ok" type="button" @click="createPreset">Create</button>
                         </div>
                     </template>
@@ -997,8 +998,8 @@ async function save() {
             </div>
 
         <template #footer>
-            <button class="btn btn-cancel" @click="emit('close')">Cancel</button>
-            <button class="btn btn-save" :disabled="isSaving" @click="save">
+            <button class="btn btn-cancel" data-cancel @click="emit('close')">Cancel</button>
+            <button class="btn btn-save" data-primary :disabled="isSaving" @click="save">
                 {{ isSaving ? 'Saving…' : 'Save Changes' }}
             </button>
         </template>

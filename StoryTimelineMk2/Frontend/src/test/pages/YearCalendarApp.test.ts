@@ -1,9 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
+// The bridge's push seam: components subscribe through BackendAPI, not the pipe, so a
+// browser tab works too. Tests fire pushes by calling the captured listeners.
+const hostListeners = vi.hoisted(() => [] as ((message: { action: string; payload?: any }) => void)[])
+const onHostMessage = vi.hoisted(() => (listener: (message: { action: string; payload?: any }) => void) => {
+  hostListeners.push(listener)
+  return () => { hostListeners.splice(hostListeners.indexOf(listener), 1) }
+})
+
 vi.mock('@/bridge/api', () => ({
   BackendAPI: {
     GetCalendarById:    vi.fn().mockResolvedValue(null),
+    onHostMessage,
     GetItemsForYear:    vi.fn().mockResolvedValue({ status: 'ok', items: [] }),
     WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
     WindowGetTopMost:   vi.fn().mockResolvedValue({ isTopmost: false }),
@@ -218,14 +227,12 @@ describe('YearCalendarApp', () => {
     const wrapper = mountApp()
     await flushPromises()
 
-    // Capture handler BEFORE clearing mocks (clearAllMocks wipes addEventListener call history)
-    const addSpy = window.chrome.webview.addEventListener as ReturnType<typeof vi.fn>
-    const handler = addSpy.mock.calls.find(([evt]: [string]) => evt === 'message')![1]
+    const handlers = hostListeners.slice()
 
     vi.clearAllMocks()
     ;(BackendAPI.GetItemsForYear as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok', items: [] })
 
-    handler({ data: { action: 'SetCalendarYear', payload: { year: 1500 } } })
+    for (const handler of handlers) handler({ action: 'SetCalendarYear', payload: { year: 1500 } })
 
     await flushPromises()
 
@@ -238,13 +245,11 @@ describe('YearCalendarApp', () => {
     const wrapper = mountApp()
     await flushPromises()
 
-    // Capture handler BEFORE clearing mocks
-    const addSpy = window.chrome.webview.addEventListener as ReturnType<typeof vi.fn>
-    const handler = addSpy.mock.calls.find(([evt]: [string]) => evt === 'message')![1]
+    const handlers = hostListeners.slice()
 
     vi.clearAllMocks()
 
-    handler({ data: { action: 'SomethingElse', payload: { year: 9999 } } })
+    for (const handler of handlers) handler({ action: 'SomethingElse', payload: { year: 9999 } })
 
     await flushPromises()
 
@@ -259,9 +264,9 @@ describe('YearCalendarApp', () => {
     const wrapper = mountApp()
     await flushPromises()
 
-    const removeSpy = window.chrome.webview.removeEventListener as ReturnType<typeof vi.fn>
+    const before = hostListeners.length
     wrapper.unmount()
 
-    expect(removeSpy).toHaveBeenCalledWith('message', expect.any(Function))
+    expect(hostListeners.length).toBe(before - 1)
   })
 })

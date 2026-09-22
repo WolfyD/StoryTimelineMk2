@@ -120,7 +120,9 @@ describe('ImportTimelineModal', () => {
 
   it('emits close on backdrop click', async () => {
     const wrapper = mount(ImportTimelineModal, { props: { preview: makePreview() } })
-    await wrapper.find('.bm-backdrop').trigger('click')
+    const backdrop = wrapper.find('.bm-backdrop')
+    await backdrop.trigger('mousedown')
+    await backdrop.trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 

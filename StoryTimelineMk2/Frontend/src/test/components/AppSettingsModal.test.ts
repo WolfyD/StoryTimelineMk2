@@ -16,6 +16,8 @@ vi.mock('@/bridge/api', () => ({
       backupsFolder: 'C:/test/data/backups',
       recentBackups: [],
     }),
+    GetMiscSetting: vi.fn().mockResolvedValue({ value: '0' }),
+    SetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok' }),
     SaveBackupSettings: vi.fn().mockResolvedValue({ status: 'ok' }),
     CreateBackup: vi.fn().mockResolvedValue({ status: 'ok' }),
     OpenBackupsFolder: vi.fn().mockResolvedValue({ status: 'ok' }),

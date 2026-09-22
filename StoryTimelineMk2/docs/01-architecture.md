@@ -42,7 +42,7 @@ There is no web server in production — the frontend is a static Vite build loa
 │              Bridge/MessageRouter.cs  (RouteMessage → ReplyToVue)           │
 │                                │                                            │
 │                                ▼                                            │
-│   Database/*Repo.cs  (ItemRepo, TimelineRepo, CharacterRepo, CalendarRepo,  │
+│   StoryTimeline.Data/ (ItemRepo, TimelineRepo, CharacterRepo, CalendarRepo, │
 │      LodRepo, LayoutSettingsRepo, SettingsRepo, TagRepo, StoryRepo, …)      │
 │                                │  Dapper                                    │
 │                                ▼                                            │
@@ -85,7 +85,7 @@ Note: the `.csproj` explicitly excludes `Frontend\**` from the build (`StoryTime
 
 1. **`Program.cs:11` — `Main()`** (`[STAThread]`):
    1. `ApplicationConfiguration.Initialize()` — standard WinForms bootstrapping (DPI, default font).
-   2. `DbInitializer.Initialize()` (`Database/DbInitializer.cs`) — creates the `DataRoot` directory, opens `timeline.sqlite`, snapshots it to `backups/` if its `PRAGMA user_version` is behind, and runs the numbered schema migrations in `Database/Migrations/MainDbMigrations.cs` (step 1 = full `CREATE TABLE IF NOT EXISTS …` schema + seeds). A database from a newer app version is refused — see [10-migrations.md](10-migrations.md).
+   2. `DbInitializer.Initialize()` (`StoryTimeline.Data/Database/DbInitializer.cs`) — creates the `DataRoot` directory, opens `timeline.sqlite`, snapshots it to `backups/` if its `PRAGMA user_version` is behind, and runs the numbered schema migrations in `StoryTimeline.Data/Database/Migrations/MainDbMigrations.cs` (step 1 = full `CREATE TABLE IF NOT EXISTS …` schema + seeds). A database from a newer app version is refused — see [10-migrations.md](10-migrations.md).
    3. `Application.Run(new Forms.f_Main())` — starts the message loop with the main window.
 2. **`f_Main` constructor** (`Forms/f_Main.cs:18-27`) — `InitializeComponent()`, borderless style (inherits `Forms/BorderlessFormBase.cs`), wires `Load`/resize/move handlers.
 3. **`F_Main_Load`** (`Forms/f_Main.cs:29-47`):
@@ -174,7 +174,7 @@ npm run test:e2e:real     # Playwright against the real WinForms app over CDP
 | `WebView2EnvironmentFactory.cs` | Per-window vs. shared WebView2 environment creation (§6) |
 | `StoryTimelineMk2.csproj` | .NET 10 WinForms project; Dapper, Microsoft.Data.Sqlite, WebView2 packages; excludes `Frontend\**` and `StoryTimelineMk2.Tests\**` from compilation |
 | `Bridge/` | `MessageRouter.cs` (action dispatch + replies) and `BridgeMessage.cs` (message DTO) |
-| `Database/` | Dapper repositories (`*Repo.cs`), domain models (`*Item.cs`, `TimelineInfo.cs`, `FullTimelineProject.cs`), `DbInitializer.cs` (schema), `DatabaseImporter.cs` (legacy DB import) |
+| `StoryTimeline.Data/Database/` | Dapper repositories (`*Repo.cs`), domain models (`*Item.cs`, `TimelineInfo.cs`, `FullTimelineProject.cs`), `DbInitializer.cs` (schema), `DatabaseImporter.cs` (legacy DB import) |
 | `Forms/` | WinForms windows: `f_Main`, `f_Timeline`, `f_AddEditItem`, `f_Calendar`, shared `BorderlessFormBase` + designer files |
 | `Frontend/` | Vue 3 SPA: `src/pages/`, `src/components/`, `src/stores/timelineStore.ts`, `src/bridge/api.ts`, `src/types/models.ts`, `src/utils/` (canvas math + Konva builders), `src/test/` (unit + `e2e/` + `e2e-real/`); five HTML entries; Vite/Vitest/Playwright/ESLint configs |
 | `docs/` | Project documentation (this file, `architecture.md`, `bridge-api.md`, `data-model.md`, `development.md`, `frontend.md`, `overview.md`, feature specs) |

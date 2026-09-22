@@ -27,21 +27,28 @@ if ($Help) {
     .\release.ps1 1.2.0                 same, version given up front
     .\release.ps1 1.2.0 -CreateRelease  build everything, then tag + push + publish to GitHub
     .\release.ps1 1.2.0 -TestRelease    build test installers (see below), never publishes
-    .\release.ps1 -Dev                  one self-contained app folder for testing changes
+    .\release.ps1 -Dev                  self-contained Windows + browser (win/linux) builds
     .\release.ps1 -Help                 this text
 
   WHAT A BUILD DOES
     1. Writes the version into StoryTimelineMk2.csproj, app.manifest,
        Frontend/package.json and Installer/InstallerContext.cs
-    2. Builds all four artifacts into release\v<version>\
+    2. Builds all eight artifacts into release\v<version>\
          StoryTimeline-v<x>-setup.exe              installer, ~5 MB, fetches .NET 10 runtime if missing
          StoryTimeline-v<x>-setup-offline.exe      installer, ~50 MB, runtime bundled
          StoryTimeline-v<x>-portable.zip           app only, ~5 MB, needs .NET 10 runtime
          StoryTimeline-v<x>-portable-offline.zip   app only, ~50 MB, self-contained
+         StoryTimeline-v<x>-web-win-x64.zip        browser build, ~60 MB, self-contained
+         StoryTimeline-v<x>-web-linux-x64.tar.gz   browser build, ~60 MB, self-contained
+         StoryTimeline-v<x>-web-osx-arm64.tar.gz   browser build, ~60 MB, Apple Silicon
+         StoryTimeline-v<x>-web-osx-x64.tar.gz     browser build, ~60 MB, Intel Macs
+       The browser builds are self-contained only - a framework-dependent one would
+       mean asking a Mac or Linux user to install .NET first. They are unsigned, so
+       macOS needs:  xattr -dr com.apple.quarantine StoryTimeline.Server
     Nothing leaves your machine unless you pass -CreateRelease.
 
   FLAGS
-    -CreateRelease   git tag v<x>, push the tag, create the GitHub release with all four files
+    -CreateRelease   git tag v<x>, push the tag, create the GitHub release with all eight files
     -PreRelease      mark that GitHub release as a pre-release (the in-app update checker
                      ignores pre-releases). Only meaningful with -CreateRelease.
     -Notes "..."     release notes for the GitHub release. Default: releases\<version>.md
@@ -51,9 +58,17 @@ if ($Help) {
                      runtime page and downloads the runtime even if it is installed, and
                      writes log.txt next to the installer exe. Cannot combine with
                      -CreateRelease. Pass the current version to leave source files unchanged.
-    -Dev             publishes only the offline (self-contained) app, unzipped, into
-                     release\dev\ and stops: no version bump, no installer, no zip, nothing
-                     published. Takes no version and no other flags. Run release\dev\StoryTimeline.exe.
+    -Dev             publishes only the offline (self-contained) builds, unarchived, and
+                     stops: no version bump, no installer, no archive, nothing published.
+                     Takes no version and no other flags.
+                       release\dev\win\StoryTimeline.exe             the WinForms app
+                       release\dev\web-win\StoryTimeline.Server.exe  the browser build
+                                                                     (BL-68) - run it, then
+                                                                     open the address it prints
+                       release\dev\web-linux\StoryTimeline.Server    the same, for WSL:
+                                                                     wsl ./StoryTimeline.Server
+                     No macOS build here: it cannot be run on this machine anyway, so it is
+                     built only for a real release.
     -Help, -h        this text
 
 '@
@@ -96,6 +111,28 @@ function PublishApp([string]$name, [string]$selfContained, [string]$outDir) {
     if (-not (Test-Path "$outDir\StoryTimeline.exe")) { Fail "StoryTimeline.exe not found in $outDir" }
 }
 
+# The browser build (BL-68): Kestrel serving the same SPA over a WebSocket bridge.
+# SkipFrontendBuild is safe because the app publish above has just rebuilt Frontend\dist.
+function PublishServer([string]$rid, [string]$outDir) {
+    Log "dotnet publish server ($rid)..."
+    Remove-Item $outDir -Recurse -Force -ErrorAction SilentlyContinue
+    dotnet publish "$Root\StoryTimeline.Server\StoryTimeline.Server.csproj" `
+        -c Release -r $rid -o $outDir `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:EnableCompressionInSingleFile=true `
+        -p:DebugType=none `
+        -p:DebugSymbols=false `
+        -p:SkipFrontendBuild=true `
+        --nologo -v minimal
+    if ($LASTEXITCODE -ne 0) { Fail "dotnet publish (server, $rid) failed" }
+    # Only Windows gets the .exe suffix; the Unix RIDs produce a bare binary.
+    $ServerExe = if ($rid -like "win-*") { "StoryTimeline.Server.exe" } else { "StoryTimeline.Server" }
+    if (-not (Test-Path "$outDir\$ServerExe")) { Fail "$ServerExe not found in $outDir" }
+    if (-not (Test-Path "$outDir\wwwroot\index.html")) { Fail "wwwroot\index.html not found in $outDir" }
+}
+
 function NpmInstall {
     Log "npm install..."
     Push-Location "$Root\Frontend"
@@ -112,9 +149,29 @@ if ($Dev) {
     Write-Host "  Story Timeline dev build (v$Version, offline flavour, unzipped)" -ForegroundColor Magenta
     Write-Host ""
     NpmInstall
-    PublishApp "dev" "true" $DevDir
+    # Wipe the whole folder: anything from before the win/web split would sit next to the two
+    # new folders looking current.
+    Remove-Item $DevDir -Recurse -Force -ErrorAction SilentlyContinue
+    # A dev build still running holds its own .exe open, and the publish then dies minutes later
+    # with an MSB4018 that names nothing useful. Say which process to close instead.
+    if (Test-Path $DevDir) {
+        $Holders = Get-Process -Name StoryTimeline, StoryTimeline.Server -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -and $_.Path.StartsWith($DevDir, 'OrdinalIgnoreCase') }
+        if ($Holders) {
+            Write-Host "  ERROR: a previous dev build is still running - close it and run again:" -ForegroundColor Red
+            $Holders | ForEach-Object { Write-Host "         $($_.ProcessName) (PID $($_.Id))" -ForegroundColor Red }
+        } else {
+            Write-Host "  ERROR: could not clear $DevDir - something has a file in it open." -ForegroundColor Red
+        }
+        exit 1
+    }
+    PublishApp "dev" "true" "$DevDir\win"
+    PublishServer "win-x64"   "$DevDir\web-win"
+    PublishServer "linux-x64" "$DevDir\web-linux"
     Write-Host ""
-    Write-Host "  Ready: $DevDir\StoryTimeline.exe" -ForegroundColor Green
+    Write-Host "  Ready: $DevDir\win\StoryTimeline.exe" -ForegroundColor Green
+    Write-Host "         $DevDir\web-win\StoryTimeline.Server.exe (then open the address it prints)" -ForegroundColor Green
+    Write-Host "         $DevDir\web-linux\StoryTimeline.Server  (wsl ./StoryTimeline.Server)" -ForegroundColor Green
     Write-Host ""
     exit 0
 }
@@ -129,7 +186,7 @@ Write-Host ""
 # --------------------------------------------------------------------------
 # 1. Bump version everywhere
 # --------------------------------------------------------------------------
-Write-Host "[1/3] Bumping version to $Version" -ForegroundColor Yellow
+Write-Host "[1/4] Bumping version to $Version" -ForegroundColor Yellow
 
 $AssemblyVersion = "$Version.0"
 
@@ -173,7 +230,7 @@ Ok "Installer/InstallerContext.cs"
 #    The installer itself targets .NET Framework 4.8 (ships with Windows), so
 #    it is the same tiny exe in both cases - only the embedded AppFiles.zip differs.
 # --------------------------------------------------------------------------
-Write-Host "[2/3] Building app + installer for each flavour" -ForegroundColor Yellow
+Write-Host "[2/4] Building app + installer for each flavour" -ForegroundColor Yellow
 
 NpmInstall
 
@@ -225,17 +282,69 @@ foreach ($flavour in @(
 }
 
 # --------------------------------------------------------------------------
-# 3. GitHub release
+# 3. Browser build (BL-68), one self-contained server per platform.
+#
+#    No online/offline split: a framework-dependent build would mean asking a
+#    Mac or Linux user to install .NET first, which is the friction the browser
+#    build exists to avoid.
+#
+#    The Unix ones are .tar.gz, not .zip, because zip carries no executable
+#    bit. Setting that bit needs both tars - see the comment on $GnuTar below.
+# --------------------------------------------------------------------------
+Write-Host "[3/4] Building the browser build for each platform" -ForegroundColor Yellow
+
+# Two tars, because neither does the job alone. Windows' own bsdtar has no
+# --mode, and NTFS has no executable bit for it to carry, so it records 0644
+# and the binary will not run on the other side. Git's GNU tar can force the
+# mode, but it reads C:\ as a remote host without --force-local and has no
+# gzip to shell out to. So GNU tar writes the modes, bsdtar does the gzip.
+if (-not (Get-Command tar -ErrorAction SilentlyContinue)) {
+    Fail "tar not found - needed for the macOS/Linux archives. It ships with Windows 10 1803+."
+}
+$GnuTar = "$env:ProgramFiles\Git\usr\bin\tar.exe"
+if (-not (Test-Path $GnuTar)) {
+    Fail "GNU tar not found at $GnuTar - needed to mark the macOS/Linux binary executable. It ships with Git for Windows."
+}
+
+foreach ($web in @(
+    @{ Rid = "win-x64";   Tar = $false },
+    @{ Rid = "linux-x64"; Tar = $true  },
+    @{ Rid = "osx-arm64"; Tar = $true  },
+    @{ Rid = "osx-x64";   Tar = $true  }
+)) {
+    $rid        = $web.Rid
+    $WebPublish = "$Root\bin\publish\web-$rid"
+    PublishServer $rid $WebPublish
+
+    if ($web.Tar) {
+        $WebArchive = "$ReleaseDir\StoryTimeline-v$Version-web-$rid$TestSuffix.tar.gz"
+        $WebTar     = "$WebPublish.tar"
+        Remove-Item $WebArchive, $WebTar -Force -ErrorAction SilentlyContinue
+        & $GnuTar -cf $WebTar --force-local "--mode=a+rx" "--owner=root:0" "--group=root:0" -C $WebPublish .
+        if ($LASTEXITCODE -ne 0) { Fail "tar (web, $rid) failed" }
+        tar -czf $WebArchive "@$WebTar"
+        if ($LASTEXITCODE -ne 0) { Fail "gzip (web, $rid) failed" }
+        Remove-Item $WebTar -Force
+    } else {
+        $WebArchive = "$ReleaseDir\StoryTimeline-v$Version-web-$rid$TestSuffix.zip"
+        Compress-Archive -Path "$WebPublish\*" -DestinationPath $WebArchive -Force
+    }
+    Ok "Web      ($rid) -> $WebArchive ($([math]::Round((Get-Item $WebArchive).Length / 1MB, 1)) MB)"
+    $Artifacts += $WebArchive
+}
+
+# --------------------------------------------------------------------------
+# 4. GitHub release
 # --------------------------------------------------------------------------
 if (-not $CreateRelease) {
-    Write-Host "[3/3] Skipped (pass -CreateRelease to publish to GitHub)" -ForegroundColor DarkGray
+    Write-Host "[4/4] Skipped (pass -CreateRelease to publish to GitHub)" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  Artifacts ready in: $ReleaseDir" -ForegroundColor Green
     Write-Host ""
     exit 0
 }
 
-Write-Host "[3/3] Creating GitHub release" -ForegroundColor Yellow
+Write-Host "[4/4] Creating GitHub release" -ForegroundColor Yellow
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     Fail "GitHub CLI (gh) not found. Install from https://cli.github.com"

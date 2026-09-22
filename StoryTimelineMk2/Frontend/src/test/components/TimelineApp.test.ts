@@ -5,10 +5,19 @@ import { useTimelineStore } from '@/stores/timelineStore'
 import type { LayoutSettings } from '@/types/models'
 
 // Mock BackendAPI before any imports
+// The bridge's push seam: components subscribe through BackendAPI, not the pipe, so a
+// browser tab works too. Tests fire pushes by calling the captured listeners.
+const hostListeners = vi.hoisted(() => [] as ((message: { action: string; payload?: any }) => void)[])
+const onHostMessage = vi.hoisted(() => (listener: (message: { action: string; payload?: any }) => void) => {
+  hostListeners.push(listener)
+  return () => { hostListeners.splice(hostListeners.indexOf(listener), 1) }
+})
+
 vi.mock('@/bridge/api', () => ({
   BackendAPI: {
     send: vi.fn(),
     request: vi.fn(),
+    onHostMessage,
     SaveItem: vi.fn().mockResolvedValue({ status: 'ok', itemId: 'item-id' }),
     GetItemForEdit: vi.fn().mockResolvedValue(null),
     LoadTimelineData: vi.fn().mockResolvedValue(null),
@@ -16,6 +25,8 @@ vi.mock('@/bridge/api', () => ({
     GetAllTimelines: vi.fn().mockResolvedValue({ data: [] }),
     OpenYearCalendarWindow: vi.fn().mockResolvedValue({ status: 'opened' }),
     SetCalendarYear: vi.fn(),
+    GetMiscSetting: vi.fn().mockResolvedValue({ value: '0' }),
+    SetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok' }),
     // WindowTitleBar (child of TimelineApp) calls these on mount
     WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
     WindowGetTopMost:   vi.fn().mockResolvedValue({ isTopmost: false }),
@@ -770,8 +781,7 @@ describe('TimelineApp', () => {
   it('a ZoomChanged push keeps the store settings in step with the host', async () => {
     const wrapper = await mountReady()
     store.settings = { UseCustomScaling: false, CustomScale: 1 } as any
-    const listeners = (window.chrome.webview.addEventListener as any).mock.calls.filter((c: any[]) => c[0] === 'message').map((c: any[]) => c[1])
-    for (const l of listeners) l({ data: JSON.stringify({ action: 'ZoomChanged', payload: { useCustomScaling: true, customScale: 1.3 } }) })
+    for (const l of hostListeners.slice()) l({ action: 'ZoomChanged', payload: { useCustomScaling: true, customScale: 1.3 } })
     expect(store.settings!.UseCustomScaling).toBe(true)
     expect(store.settings!.CustomScale).toBe(1.3)
     wrapper.unmount()
@@ -794,10 +804,66 @@ describe('TimelineApp', () => {
     store.isLoading = false
     const wrapper = mountApp()
     await flushPromises()
-    const listener = (window.chrome.webview.addEventListener as any).mock.calls.find((c: any[]) => c[0] === 'message')[1]
-    listener({ data: JSON.stringify({ action: 'SetTimelineId', payload: { id: 7, readOnly: true } }) })
+    for (const l of hostListeners.slice()) l({ action: 'SetTimelineId', payload: { id: 7, readOnly: true } })
     expect(store.readOnly).toBe(true)
     expect(BackendAPI.LoadTimelineData).toHaveBeenCalledWith(7)
     wrapper.unmount()
+  })
+
+  it('the pan-speed box clamps what you type before saving it', async () => {
+    const wrapper = await mountReady()
+    const save = vi.spyOn(store, 'savePanSpeed').mockResolvedValue(undefined)
+    const input = wrapper.find('#pan-speed input')
+    const el = input.element as HTMLInputElement
+
+    el.value = '99999'
+    await input.trigger('change')
+    expect(save).toHaveBeenLastCalledWith(5000)
+
+    el.value = ''            // a blank box is not 0 px/s — that would freeze panning outright
+    await input.trigger('change')
+    expect(save).toHaveBeenLastCalledWith(400)
+    expect(el.value).toBe('400')
+    wrapper.unmount()
+  })
+
+  it('low resource mode drops the minimap and is remembered app-wide', async () => {
+    const wrapper = await mountReady()
+    expect(wrapper.findComponent({ name: 'TimelineMinimap' }).exists()).toBe(true)
+
+    await store.setLowResourceMode(true)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent({ name: 'TimelineMinimap' }).exists()).toBe(false)
+    // timelineId 0 = app-wide, not per timeline
+    expect(BackendAPI.SetMiscSetting).toHaveBeenCalledWith('low_resource_mode', '1', 0)
+    wrapper.unmount()
+  })
+
+  it('the on-screen buttons appear only when the setting is on, and pan while held', async () => {
+    const wrapper = await mountReady()
+    expect(wrapper.find('.osc-btn').exists()).toBe(false)
+
+    store.onScreenControls = true
+    await wrapper.vm.$nextTick()
+
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb))
+    const applyPan = vi.fn()
+    ;(wrapper.vm as any).timelineCanvasRef = { applyPan }
+    const btn = wrapper.find('.osc-btn--left')
+    ;(btn.element as HTMLElement).setPointerCapture = vi.fn()
+
+    await btn.trigger('pointerdown', { pointerId: 1, shiftKey: true })
+    frames.shift()!(100)                // the first frame only seeds the clock
+    frames.shift()!(1100)               // a second later: 400 px/s × 3 for Shift
+    expect(applyPan).toHaveBeenLastCalledWith(1200)
+
+    await btn.trigger('pointerup')
+    const panned = applyPan.mock.calls.length
+    frames.shift()!(2100)
+    expect(applyPan.mock.calls.length).toBe(panned)   // the loop stops on the frame after release
+
+    wrapper.unmount()
+    vi.unstubAllGlobals()
   })
 })

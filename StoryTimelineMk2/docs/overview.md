@@ -28,7 +28,7 @@ Story Timeline Mk2 is a Windows desktop application for creating, managing, and 
 StoryTimelineMk2/
 ├── Program.cs              # Entry point
 ├── Bridge/                 # C# ↔ Vue message layer
-├── Database/               # Repos, schema init, data classes
+├── StoryTimeline.Data/      # net10.0 library: repos, schema init, data classes
 ├── Forms/                  # Windows Forms windows
 └── Frontend/               # Vue 3 app (built with Vite)
     └── src/

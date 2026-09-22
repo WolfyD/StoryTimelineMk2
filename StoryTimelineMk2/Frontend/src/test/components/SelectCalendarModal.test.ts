@@ -66,7 +66,9 @@ describe('SelectCalendarModal', () => {
     it('emits skipped when backdrop is clicked', async () => {
         const wrapper = mount(SelectCalendarModal)
         await flushPromises()
-        await wrapper.find('.bm-backdrop').trigger('click')
+        const backdrop = wrapper.find('.bm-backdrop')
+        await backdrop.trigger('mousedown')
+        await backdrop.trigger('click')
         expect(wrapper.emitted('skipped')).toBeTruthy()
         wrapper.unmount()
     })

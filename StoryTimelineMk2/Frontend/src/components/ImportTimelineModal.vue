@@ -57,11 +57,12 @@ function formatPath(p: string) {
             </p>
         </div>
         <template #footer>
-            <button class="btn btn-cancel" :disabled="isWorking" @click="emit('close')">Cancel</button>
+            <button class="btn btn-cancel" data-cancel :disabled="isWorking" @click="emit('close')">Cancel</button>
             <button
                 class="btn"
                 :class="preview.hasConflict && preview.includeIds ? 'btn-danger' : 'btn-primary'"
                 :disabled="isWorking"
+                data-primary
                 @click="confirm"
             >
                 {{ isWorking ? 'Importing…' : (preview.hasConflict && preview.includeIds ? 'Replace & Import' : 'Import') }}

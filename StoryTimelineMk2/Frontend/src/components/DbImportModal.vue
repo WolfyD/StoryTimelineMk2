@@ -51,8 +51,8 @@ function formatPath(p: string) {
             <p v-else class="no-conflict">No conflicts detected — all timelines will be added.</p>
         </div>
         <template #footer>
-            <button class="btn btn-cancel" :disabled="isWorking" @click="emit('close')">Cancel</button>
-            <button class="btn btn-danger" :disabled="isWorking" @click="confirm">
+            <button class="btn btn-cancel" data-cancel :disabled="isWorking" @click="emit('close')">Cancel</button>
+            <button class="btn btn-danger" data-primary :disabled="isWorking" @click="confirm">
                 {{ isWorking ? 'Importing…' : 'Import' }}
             </button>
         </template>

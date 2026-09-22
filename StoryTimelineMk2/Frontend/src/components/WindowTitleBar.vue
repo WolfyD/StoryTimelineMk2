@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { PhArrowLeft, PhX } from '@phosphor-icons/vue'
 import { BackendAPI } from '@/bridge/api'
 
 const props = withDefaults(defineProps<{
@@ -12,6 +13,20 @@ const props = withDefaults(defineProps<{
     showMaximize: true,
 })
 
+// In a browser the tab already has window chrome, so this collapses to a slim header with the
+// one control a page there actually needs. Same host check as utils/mediaUrl.ts.
+const isDesktop = !!window.chrome?.webview
+// A pop-up closes; a page that replaced the project list goes back to it. WindowClose already
+// tells those two apart (see browserHost.closeWindow), so both affordances call the same thing.
+const isPopup  = !isDesktop && !!window.opener
+const showBack = !isDesktop && !isPopup && !/(\/|index\.html)$/.test(location.pathname)
+
+// The window title is the tab title too — nothing else sets it.
+const APP_NAME = 'Story Timeline'
+watch(() => props.title, (t) => {
+    document.title = t && t !== APP_NAME ? `${t} — ${APP_NAME}` : APP_NAME
+}, { immediate: true })
+
 const isMaximized = ref(false)
 const isTopmost   = ref(false)
 
@@ -23,6 +38,8 @@ function onTopMostPush(e: MessageEvent) {
 }
 
 onMounted(async () => {
+    if (!isDesktop) return  // maximize/pin state only drives buttons the browser build hides
+
     const result = await BackendAPI.WindowGetMaximized()
     if (result) isMaximized.value = result.isMaximized
 
@@ -75,12 +92,17 @@ function cancelDrag() {
 </script>
 
 <template>
-    <div class="title-bar">
+    <div class="title-bar" :class="{ 'title-bar--web': !isDesktop }">
+        <button v-if="showBack" class="tb-back" title="Back to the project list" @click="close">
+            <PhArrowLeft :size="15" weight="bold" />
+            <span>Back</span>
+        </button>
+
         <!-- ── Drag region ──────────────────────────────────────────────── -->
         <div
             class="title-bar__drag"
-            @mousedown="onDragMousedown"
-            @dblclick="toggleMaximize"
+            @mousedown="isDesktop && onDragMousedown($event)"
+            @dblclick="isDesktop && toggleMaximize()"
         >
             <span class="title-bar__orb" aria-hidden="true"></span>
             <div class="title-bar__label">
@@ -90,7 +112,7 @@ function cancelDrag() {
         </div>
 
         <!-- ── Window controls ─────────────────────────────────────────── -->
-        <div class="title-bar__controls">
+        <div v-if="isDesktop" class="title-bar__controls">
             <button
                 tabindex="-1"
                 class="tb-btn tb-btn--pin"
@@ -117,6 +139,9 @@ function cancelDrag() {
                 <i class="ri-close-line"></i>
             </button>
         </div>
+        <button v-else-if="isPopup" class="tb-btn tb-btn--close tb-btn--web" title="Close" @click="close">
+            <PhX :size="15" weight="bold" />
+        </button>
     </div>
 </template>
 
@@ -296,6 +321,52 @@ function cancelDrag() {
         }
         &:active { background: rgba(245, 158, 11, 0.06); }
     }
+}
+
+// ── Browser build ───────────────────────────────────────────────────
+//
+// No pin, no minimize, no maximize — the tab does those. What is left is the way back, which
+// the desktop app gets for free by closing the window.
+
+.title-bar--web .title-bar__drag {
+    // One 36px button instead of three, so the title gets the width back.
+    padding: 0 44px 0 12px;
+}
+
+.tb-back {
+    flex-shrink: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 13px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    outline: none;
+    // Reads at title strength rather than the dim control grey: this is the page's one
+    // navigation control, not a window decoration.
+    color: var(--tb-text, #8ea5c0);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: background 0.13s ease, color 0.13s ease;
+
+    &:hover {
+        color: var(--tb-btn-hover-color, #8ca5bc);
+        background: var(--tb-btn-hover-bg, rgba(255, 255, 255, 0.07));
+    }
+
+    &:active { background: rgba(255, 255, 255, 0.03); }
+}
+
+.tb-btn--web {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
 }
 
 // Thin vertical separator between the pin button and the min/max/close group

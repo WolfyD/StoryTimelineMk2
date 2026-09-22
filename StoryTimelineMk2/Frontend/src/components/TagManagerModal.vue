@@ -127,6 +127,7 @@ onMounted(load)
                                 v-model="editName"
                                 class="tag-edit-input"
                                 type="text"
+                                data-enter-self
                                 @keydown.enter.prevent="commitEdit"
                                 @keydown.esc.stop.prevent="editingId = null"
                                 @blur="commitEdit"

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { mediaUrl } from '@/utils/mediaUrl';
 import { PhX, PhUploadSimple, PhCheck } from '@phosphor-icons/vue'
 import type { MediaItem } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
+import { useModal } from '@/utils/modal'
 
 const props = defineProps<{
     itemId: string
@@ -13,6 +15,8 @@ const emit = defineEmits<{
     close: []
     linked: [pictures: MediaItem[]]
 }>()
+
+const { root, onMousedown, onClick } = useModal(() => emit('close'))
 
 const allPictures   = ref<MediaItem[]>([])
 const isLoading     = ref(true)
@@ -96,7 +100,7 @@ function formatSize(bytes: number) {
 </script>
 
 <template>
-    <div class="picker-backdrop" @click.self="emit('close')">
+    <div class="picker-backdrop" ref="root" @mousedown="onMousedown" @click="onClick">
         <div class="picker-panel">
 
             <div class="picker-header">
@@ -138,7 +142,7 @@ function formatSize(bytes: number) {
                     >
                         <div class="thumb-img-wrap">
                             <img
-                                :src="`https://media.app/${pic.ThumbPath}`"
+                                :src="mediaUrl(pic.ThumbPath)"
                                 :alt="pic.Title || pic.FileName"
                                 @error="($event.target as HTMLImageElement).src = ''"
                             />

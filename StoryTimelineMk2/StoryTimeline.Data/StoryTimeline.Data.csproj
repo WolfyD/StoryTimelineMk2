@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Plain net10.0, no -windows: this half has to run on macOS and Linux for the browser build (BL-68). -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>StoryTimelineMk2</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
+    <PackageReference Include="SkiaSharp" Version="4.152.1" />
+    <!-- SkiaSharp pulls its macOS and Win32 natives in transitively but not Linux's, so a
+         linux-x64 publish would build fine and then throw DllNotFoundException the first time
+         MediaRepo makes a thumbnail. This is the only way to get libSkiaSharp.so. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.152.1" />
+    <!-- Pin transitive SQLite native lib to patched version (fixes GHSA-2m69-gcr7-jv3q) -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+  <!-- Repos and migrations are internal; both hosts and the test project need them. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>StoryTimeline</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>StoryTimeline.Server</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>StoryTimelineMk2.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

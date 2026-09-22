@@ -68,7 +68,7 @@ async function save() {
         <div class="modal-body">
             <div class="field">
                 <label>Title</label>
-                <input class="s-input" type="text" v-model="local.title" @keydown.enter="save" />
+                <input class="s-input" type="text" v-model="local.title" data-enter-self @keydown.enter="save" />
             </div>
             <div class="field">
                 <label>Author</label>
@@ -115,8 +115,8 @@ async function save() {
             <p v-if="error" class="error-msg">{{ error }}</p>
         </div>
         <template #footer>
-            <button class="btn btn-cancel" @click="emit('close')">Cancel</button>
-            <button class="btn btn-primary" :disabled="isSaving" @click="save">
+            <button class="btn btn-cancel" data-cancel @click="emit('close')">Cancel</button>
+            <button class="btn btn-primary" data-primary :disabled="isSaving" @click="save">
                 {{ isSaving ? 'Saving…' : 'Save Changes' }}
             </button>
         </template>

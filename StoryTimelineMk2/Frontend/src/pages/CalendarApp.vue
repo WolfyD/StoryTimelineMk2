@@ -3,6 +3,7 @@ import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { useShortcuts } from '@/utils/shortcuts'
+import { backdropClose } from '@/utils/modal'
 import HelpModal from '@/components/HelpModal.vue'
 import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
@@ -235,6 +236,7 @@ const seasonSegments = computed((): SeasonSegment[] => {
 
 // ---- Season DOY modal ----
 const showSeasonDoyModal = ref(false)
+const doyBackdrop = backdropClose(() => { showSeasonDoyModal.value = false })
 const seasonStartInput = ref(1)
 
 function openSeasonDoyModal() {
@@ -947,7 +949,7 @@ function toggleWeekend(d: number) {
     />
 
     <!-- Season DOY modal -->
-    <div v-if="showSeasonDoyModal" class="doy-backdrop" @click.self="showSeasonDoyModal = false">
+    <div v-if="showSeasonDoyModal" class="doy-backdrop" @mousedown="doyBackdrop.onMousedown" @click="doyBackdrop.onClick">
       <div class="doy-panel">
         <h4 class="doy-title">Auto-calculate Season Days</h4>
         <p class="doy-desc">

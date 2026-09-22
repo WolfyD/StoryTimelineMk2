@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // imports
 import { useTimelineStore } from '@/stores/timelineStore'
+import { mediaUrl } from '@/utils/mediaUrl';
 import NotificationContainer from '@/components/NotificationContainer.vue'
-import { PhArrowArcRight, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
+import { PhArrowArcRight, PhCaretLeft, PhCaretRight, PhMinusCircle, PhPlusCircle, PhSpinner, PhWarningCircle } from '@phosphor-icons/vue'
 import TimelineActivityStrip from '@/components/TimelineActivityStrip.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
@@ -17,6 +18,7 @@ import AboutModal from "@/components/AboutModal.vue";
 import TagManagerModal from "@/components/TagManagerModal.vue";
 import MassAddItemsModal from "@/components/MassAddItemsModal.vue";
 import HelpModal from "@/components/HelpModal.vue";
+import ExportTimelineModal from "@/components/ExportTimelineModal.vue";
 import ShortcutsModal from "@/components/ShortcutsModal.vue";
 import ItemTypePickerModal from "@/components/ItemTypePickerModal.vue";
 import ReferenceTimelineModal from "@/components/ReferenceTimelineModal.vue";
@@ -26,7 +28,7 @@ import TimelineDataPanel from "@/components/TimelineDataPanel.vue";
 import TimelineGalleryPanel from "@/components/TimelineGalleryPanel.vue";
 import TimelineMinimap from "@/components/TimelineMinimap.vue";
 import TimelineItemViewModal from "@/components/TimelineItemViewModal.vue";
-import { BackendAPI } from '@/bridge/api';
+import { BackendAPI, type BridgeMessage } from '@/bridge/api';
 import { useAppTheme, applyAppTheme } from '@/utils/useAppTheme';
 
 const store = useTimelineStore()
@@ -41,6 +43,21 @@ const showTags = ref(false);
 const showMassAdd = ref(false);
 const showHelp = ref(false);
 const showShortcuts = ref(false);
+const showExport = ref(false);
+
+async function exportTimeline(includeIds: boolean, includeMedia: boolean) {
+    const id = store.currentProject?.Id
+    if (id == null) return
+    const result = await BackendAPI.ExportTimeline(id, includeIds, includeMedia)
+    showExport.value = false
+    if (result?.status === 'error') {
+        const msg = (result as { message?: string }).message ?? 'No response from the backend — check the application log.'
+        console.error('[ExportTimeline]', msg)
+        alert(`Timeline export failed:
+
+${msg}`)
+    }
+}
 const showTypePicker = ref(false);
 const showReference = ref(false);
 const lastTypeId = ref<number | null>(null);   // the `N` flow remembers the last type per session
@@ -63,9 +80,7 @@ const yearCalendarOpen = ref(false)
 
 const updateBanner = ref<{ version: string; url: string } | null>(null)
 
-function onHostPush(e: MessageEvent) {
-    let msg: any
-    try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data } catch { return }
+function onHostPush(msg: BridgeMessage) {
     if (msg?.action === 'UpdateAvailable') updateBanner.value = { version: msg.payload.version, url: msg.payload.url }
     // Host persisted a Ctrl+wheel / F10 zoom — keep the store in step so a settings Save keeps it
     if (msg?.action === 'ZoomChanged' && store.settings) {
@@ -89,9 +104,7 @@ async function toggleYearCalendar() {
     yearCalendarOpen.value = res?.status === 'opened'
 }
 
-function onYearCalendarClosePush(e: MessageEvent) {
-    let msg: any
-    try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data } catch { return }
+function onYearCalendarClosePush(msg: BridgeMessage) {
     if (msg?.action === 'YearCalendarClosed') yearCalendarOpen.value = false
 }
 
@@ -138,7 +151,7 @@ async function onViewItem(itemId: string) {
     if (storeItem?.TypeId === 4) {
         const data = await BackendAPI.GetItemForEdit(store.currentProject!.Id, itemId, 4);
         const fp = data?.Pictures?.[0]?.FilePath;
-        if (fp) lightboxUrl.value = `https://media.app/${fp}`;
+        if (fp) lightboxUrl.value = mediaUrl(fp);
     } else {
         viewItemId.value = itemId;
     }
@@ -257,7 +270,8 @@ async function onShiftComplete(delta: number) {
     timelineCanvasRef.value?.animateJumpToYear(targetYear, store.layoutSettings?.TimelineJumpToYearAnimationLength ?? 600);
 }
 
-// ← / → pan at a constant px/s while held (Shift = 3×); keydown auto-repeat keeps `fast` current.
+// ← / → and the on-screen buttons pan at a constant px/s while held (Shift = 3×); keydown
+// auto-repeat keeps `fast` current.
 const keyPan = { dir: 0, fast: false, raf: 0, last: 0 }
 function panFrame(t: number) {
     if (!keyPan.dir) { keyPan.raf = 0; return }
@@ -267,13 +281,31 @@ function panFrame(t: number) {
     timelineCanvasRef.value?.applyPan(keyPan.dir * speed * dt)
     keyPan.raf = requestAnimationFrame(panFrame)
 }
-function startPan(e: KeyboardEvent) {
-    keyPan.dir = e.key === 'ArrowLeft' ? 1 : -1   // positive deltaX drags the view towards earlier years
-    keyPan.fast = e.shiftKey
+function panBy(dir: number, fast = false) {
+    keyPan.dir = dir
+    keyPan.fast = fast
     if (!keyPan.raf) { keyPan.last = 0; keyPan.raf = requestAnimationFrame(panFrame) }
+}
+function startPan(e: KeyboardEvent) {
+    panBy(e.key === 'ArrowLeft' ? 1 : -1, e.shiftKey)   // positive deltaX drags the view towards earlier years
 }
 function stopPan(e?: KeyboardEvent) {
     if (!e || e.key === 'ArrowLeft' || e.key === 'ArrowRight') keyPan.dir = 0
+}
+// On-screen controls. Capturing the pointer means the release still lands on the button when the
+// cursor slides off it mid-hold, so a held button can never get stuck panning.
+function oscDown(e: PointerEvent, dir: number) {
+    const el = e.currentTarget as HTMLElement
+    el.setPointerCapture(e.pointerId)
+    panBy(dir, e.shiftKey)
+}
+
+// Quick access to the same per-timeline setting Timeline settings → General owns. Clamped, because
+// a number field will hand you 0 or a stray paste just as happily as a speed.
+function onPanSpeedChange(el: HTMLInputElement) {
+    const speed = Math.min(5000, Math.max(50, Math.round(Number(el.value) || 400)))
+    el.value = String(speed)
+    store.savePanSpeed(speed)
 }
 const onWindowBlur = () => stopPan()
 
@@ -307,18 +339,16 @@ useShortcuts('timeline', {
     fullscreen: () => BackendAPI.send('ToggleFullscreen', { timelineId: store.currentProject?.Id }),
 })
 
-let _setIdListener: ((e: MessageEvent) => void) | null = null
+let _stopListening: (() => void)[] = []
 
 onMounted(async () => {
 	HandleLoadTimeline()
 
 	// Listen for SetTimelineId — sent by C# when the window was pre-warmed
 	// (no ?id in URL, so Vue waited for this push to know which timeline to load)
-	_setIdListener = (e: MessageEvent) => {
-		const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
+	const stopSetId = BackendAPI.onHostMessage((msg: BridgeMessage) => {
 		if (msg.action !== 'SetTimelineId') return
-		window.chrome.webview.removeEventListener('message', _setIdListener!)
-		_setIdListener = null
+		stopSetId()
 		waitingForId.value = false
 		const id = msg.payload?.id
 		if (id > 0) {
@@ -331,8 +361,8 @@ onMounted(async () => {
 				if (cfg?.chromeTheme) applyAppTheme(cfg.chromeTheme)
 			})
 		}
-	}
-	window.chrome.webview.addEventListener('message', _setIdListener)
+	})
+	_stopListening.push(stopSetId)
 
 	// For the cold-start path (id in URL) the bridge is already ready — call GetAppConfig now
 	const urlId = parseInt(new URLSearchParams(window.location.search).get('id') ?? '0', 10)
@@ -344,8 +374,8 @@ onMounted(async () => {
 	window.addEventListener('resize', handleResizeEvent)
     window.addEventListener('keyup', stopPan)
     window.addEventListener('blur', onWindowBlur)
-    window.chrome?.webview?.addEventListener('message', onYearCalendarClosePush)
-    window.chrome?.webview?.addEventListener('message', onHostPush)
+    _stopListening.push(BackendAPI.onHostMessage(onYearCalendarClosePush))
+    _stopListening.push(BackendAPI.onHostMessage(onHostPush))
 })
 
 onBeforeUnmount(() => {
@@ -354,12 +384,8 @@ onBeforeUnmount(() => {
     window.removeEventListener('blur', onWindowBlur)
     stopPan()
     if (keyPan.raf) cancelAnimationFrame(keyPan.raf)
-    window.chrome?.webview?.removeEventListener('message', onYearCalendarClosePush)
-    window.chrome?.webview?.removeEventListener('message', onHostPush)
-    if (_setIdListener) {
-        window.chrome.webview.removeEventListener('message', _setIdListener)
-        _setIdListener = null
-    }
+    for (const stop of _stopListening) stop()
+    _stopListening = []
     clearTimeout(throttleTimer)
     clearTimeout(debounceTimer)
 })
@@ -394,6 +420,7 @@ onBeforeUnmount(() => {
                 @open-reference="showReference = true"
                 @open-help="showHelp = true"
                 @open-shortcuts="showShortcuts = true"
+                @open-export="showExport = true"
                 @toggle-year-calendar="toggleYearCalendar"
             >
                 <template #actions>
@@ -438,6 +465,13 @@ onBeforeUnmount(() => {
     <MassAddItemsModal v-if="showMassAdd" @close="showMassAdd = false" />
     <HelpModal v-if="showHelp" @close="showHelp = false" />
     <ShortcutsModal v-if="showShortcuts" context="timeline" @close="showShortcuts = false" />
+    <ExportTimelineModal
+        v-if="showExport"
+        :title="store.currentProject?.Title ?? ''"
+        :session-timeline-id="store.currentProject?.Id"
+        @close="showExport = false"
+        @confirm="exportTimeline"
+    />
     <ItemTypePickerModal v-if="showTypePicker" :last-type-id="lastTypeId" @pick="onTypePicked" @close="showTypePicker = false" />
     <ReferenceTimelineModal v-if="showReference" :current-id="store.currentProject?.Id" @close="showReference = false" />
 
@@ -483,6 +517,29 @@ onBeforeUnmount(() => {
 				@view-reference-item="refViewItemId = $event"
 				@add-item="onAddItem"
 			></TimelineCanvas>
+
+			<!-- On-screen scroll controls (App settings → Appearance). The wrapper is click-through,
+			     so everything that is not a button still reaches the canvas underneath. -->
+			<div v-if="store.onScreenControls" class="osc">
+				<button
+					class="osc-btn osc-btn--left"
+					aria-label="Scroll towards earlier years"
+					title="Hold to scroll towards earlier years (Shift = 3×)"
+					@pointerdown="oscDown($event, 1)"
+					@pointerup="stopPan()"
+					@pointercancel="stopPan()"
+					@contextmenu.prevent
+				><PhCaretLeft :size="26" weight="bold" /></button>
+				<button
+					class="osc-btn osc-btn--right"
+					aria-label="Scroll towards later years"
+					title="Hold to scroll towards later years (Shift = 3×)"
+					@pointerdown="oscDown($event, -1)"
+					@pointerup="stopPan()"
+					@pointercancel="stopPan()"
+					@contextmenu.prevent
+				><PhCaretRight :size="26" weight="bold" /></button>
+			</div>
         </Pane>
 
     </Splitpanes>
@@ -523,7 +580,7 @@ onBeforeUnmount(() => {
     </template>
 
     <div id="timeline-overview">
-        <TimelineMinimap @jump-to-year="jumpTo" />
+        <TimelineMinimap v-if="!store.lowResourceMode" @jump-to-year="jumpTo" />
     </div>
 
     <!-- Item view modal -->
@@ -595,6 +652,18 @@ onBeforeUnmount(() => {
 		</div>
 
 		<div id="timeline-info-right">
+			<label id="pan-speed" title="How fast ← / → and the on-screen buttons scroll, in pixels per second (Shift = 3×)">
+				<span>Pan</span>
+				<input
+					type="number"
+					min="50"
+					max="5000"
+					step="50"
+					:value="store.settings?.KeyboardPanSpeed ?? 400"
+					@change="onPanSpeedChange($event.target as HTMLInputElement)"
+				/>
+				<span>px/s</span>
+			</label>
 			<p>FPS: {{ store.fps }}</p>
 		</div>
 	</div>
@@ -719,6 +788,55 @@ onBeforeUnmount(() => {
 	height: 100%;
 }
 
+// Splitpanes leaves its panes statically positioned, so the OSC layer needs this to anchor to.
+#timeline-main { position: relative; }
+
+// On-screen scroll controls: two thumb-sized discs over the canvas edges, dim until you reach for
+// them so they read as furniture rather than chrome.
+.osc {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	z-index: 20;
+
+	.osc-btn {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+		pointer-events: auto;
+		touch-action: none;   // a held button must not scroll the page under a finger
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 54px;
+		height: 54px;
+		padding: 0;
+		border-radius: 50%;
+		border: 1px solid color-mix(in srgb, var(--app-accent, #6366f1) 40%, transparent);
+		background: color-mix(in srgb, var(--app-bg, #0f172a) 72%, transparent);
+		backdrop-filter: blur(6px);
+		color: var(--app-text-muted, #94a3b8);
+		cursor: pointer;
+		opacity: 0.32;
+		transition: opacity 0.15s ease, transform 0.1s ease, color 0.15s ease, box-shadow 0.15s ease;
+
+		&--left  { left: 18px; }
+		&--right { right: 18px; }
+
+		&:hover, &:focus-visible {
+			opacity: 1;
+			color: var(--app-text, #e2e8f0);
+		}
+
+		&:active {
+			opacity: 1;
+			transform: translateY(-50%) scale(0.93);
+			color: var(--app-accent-hover, #818cf8);
+			box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-accent, #6366f1) 18%, transparent);
+		}
+	}
+}
+
 .filter-area {
     position: relative;
     flex-shrink: 0;
@@ -809,8 +927,29 @@ onBeforeUnmount(() => {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
+		gap: 12px;
 		margin-right: 10px;
 		color: var(--app-text-muted, #94a3b8);
+
+		#pan-speed {
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			cursor: text;
+
+			input {
+				width: 54px;
+				padding: 0 4px;
+				text-align: right;
+				font: inherit;
+				color: inherit;
+				background: color-mix(in srgb, var(--app-bg, #0f172a) 60%, transparent);
+				border: 1px solid var(--app-border, #2d3a56);
+				border-radius: 3px;
+
+				&:focus { outline: 1px solid var(--app-accent, #6366f1); }
+			}
+		}
 	}
 
 }

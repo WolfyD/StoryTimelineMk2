@@ -190,41 +190,41 @@ All plain setters with no backend calls:
 ## 2. `types/models.ts` — domain interfaces
 
 These interfaces are the JSON contract with the C# backend: property names use C#
-PascalCase and match the Dapper-mapped classes in `Database/` one-to-one, so
+PascalCase and match the Dapper-mapped classes in `StoryTimeline.Data/Database/` one-to-one, so
 `JSON.parse` on the bridge produces correctly typed objects with no mapping layer.
 
 | Interface | Mirrors (C#) | Notes |
 |-----------|--------------|-------|
 | `TimelineProjectContainer` | — (frontend-only wrapper) | `{ data: TimelineProject[] }` — response shape of `GetAllTimelines` |
-| `TimelineProject` | `Database/TimelineInfo.cs` | `Id`, `Title`, `Author`, `Description`, `StartYear`, `Color`, `CalendarId` + nested `Calendar`, `Settings`, `LayoutSettings` |
-| `TimelineSettings` | `Database/SettingsItem.cs` | `Font`, `FontSizeScale`, `PixelsPerSubtick`, `CustomCss`, `UseCustomCss`, `IsFullscreen`, `ShowGuides`, window size/position (4 fields), `UseCustomScaling`, `CustomScale`, `DisplayRadius`, `CanvasSettings` |
+| `TimelineProject` | `StoryTimeline.Data/Database/TimelineInfo.cs` | `Id`, `Title`, `Author`, `Description`, `StartYear`, `Color`, `CalendarId` + nested `Calendar`, `Settings`, `LayoutSettings` |
+| `TimelineSettings` | `StoryTimeline.Data/Database/SettingsItem.cs` | `Font`, `FontSizeScale`, `PixelsPerSubtick`, `CustomCss`, `UseCustomCss`, `IsFullscreen`, `ShowGuides`, window size/position (4 fields), `UseCustomScaling`, `CustomScale`, `DisplayRadius`, `CanvasSettings` |
 | `CanvasSettingsObject` | JSON blob inside `SettingsItem` | `showYearMarkers`, `fontFamily`, `fontSize`, `fontStyle`, `textColor`, `textOffsetX/Y`, `letterSpacing`, `defaultSplitterDistance` (camelCase — serialized as JSON, not a Dapper row) |
-| `TimelineNote` | `Database/NoteItem.cs` | `Id`, `NoteContents`, `ConnectedItemId`, `TimelineId`, `NearestYear`, `AbsoluteTime`, `UpdatedAt` |
-| `HiddenRange` | `Database/HiddenRangeItem.cs` | `Id`, `TimelineId`, `StartYear`, `EndYear`, `Label` |
-| `ItemTagLink` | `ItemTagLink` in `Database/FullTimelineProject.cs` | `ItemId`, `TagId`, `TagName` |
-| `ItemCharacterLink` | `ItemCharacterLink` in `Database/FullTimelineProject.cs` | `ItemId`, `CharacterId`, `CharacterName`, `CharacterColor` |
-| `ItemStoryRefLink` | `ItemStoryRefLink` in `Database/FullTimelineProject.cs` | `ItemId`, `StoryId`, `StoryTitle` |
+| `TimelineNote` | `StoryTimeline.Data/Database/NoteItem.cs` | `Id`, `NoteContents`, `ConnectedItemId`, `TimelineId`, `NearestYear`, `AbsoluteTime`, `UpdatedAt` |
+| `HiddenRange` | `StoryTimeline.Data/Database/HiddenRangeItem.cs` | `Id`, `TimelineId`, `StartYear`, `EndYear`, `Label` |
+| `ItemTagLink` | `ItemTagLink` in `StoryTimeline.Data/Database/FullTimelineProject.cs` | `ItemId`, `TagId`, `TagName` |
+| `ItemCharacterLink` | `ItemCharacterLink` in `StoryTimeline.Data/Database/FullTimelineProject.cs` | `ItemId`, `CharacterId`, `CharacterName`, `CharacterColor` |
+| `ItemStoryRefLink` | `ItemStoryRefLink` in `StoryTimeline.Data/Database/FullTimelineProject.cs` | `ItemId`, `StoryId`, `StoryTitle` |
 | `FilterState` (type alias) | — | `'positive' \| 'negative' \| 'neutral'` |
-| `FilterRule` | `Database/FilterRuleItem.cs` | `Id`, `TimelineId`, `Dimension`, `ParamsJson`, `Label`, `State`, `SortOrder` |
-| `FilterPreset` | `Database/FilterPresetItem.cs` | `Id`, `Name`, `RulesJson`, `AndMode` (0/1), optional `CreatedAt` |
-| `FullTimelineProject` | `Database/FullTimelineProject.cs` | The `LoadTimelineData` payload: `Project`, `Items`, `Notes`, `HiddenRanges`, `ItemTags`, `ItemCharacters`, `Characters`, `ItemStoryRefs`, `ItemsWithPictures` (string ids) |
-| `Calendar` | `Database/CalendarItem.cs` | `Id`, `Name`, `ShortName`, `AlternateName`, `NameBefore0`, `NameAfter0`, `LodProfileId`, `YearDefinition` (JSON string), nested `LodProfile` |
+| `FilterRule` | `StoryTimeline.Data/Database/FilterRuleItem.cs` | `Id`, `TimelineId`, `Dimension`, `ParamsJson`, `Label`, `State`, `SortOrder` |
+| `FilterPreset` | `StoryTimeline.Data/Database/FilterPresetItem.cs` | `Id`, `Name`, `RulesJson`, `AndMode` (0/1), optional `CreatedAt` |
+| `FullTimelineProject` | `StoryTimeline.Data/Database/FullTimelineProject.cs` | The `LoadTimelineData` payload: `Project`, `Items`, `Notes`, `HiddenRanges`, `ItemTags`, `ItemCharacters`, `Characters`, `ItemStoryRefs`, `ItemsWithPictures` (string ids) |
+| `Calendar` | `StoryTimeline.Data/Database/CalendarItem.cs` | `Id`, `Name`, `ShortName`, `AlternateName`, `NameBefore0`, `NameAfter0`, `LodProfileId`, `YearDefinition` (JSON string), nested `LodProfile` |
 | `MonthDef` / `WeekDef` / `SeasonDef` / `YearDefinition` | — (frontend-only) | Typed shape of the `YearDefinition` JSON string (see §6) |
-| `TimelineItem` | `Database/TimelineItem.cs` | See below |
+| `TimelineItem` | `StoryTimeline.Data/Database/TimelineItem.cs` | See below |
 | `KonvaGroupObject` | — (frontend-only) | Pairs a `Konva.Group` with its `TimelineItem` |
-| `LodProfile` | `Database/LodItem.cs` | `Id`, `Name`, `Profile` — over the bridge `Profile` arrives as a JSON *string* that is parsed into `LodLevel[]` |
+| `LodProfile` | `StoryTimeline.Data/Database/LodItem.cs` | `Id`, `Name`, `Profile` — over the bridge `Profile` arrives as a JSON *string* that is parsed into `LodLevel[]` |
 | `LodLevel` | JSON element inside `LodProfile.Profile` | `index`, `formatKey` (e.g. `'YEARS'`), `stepFraction` (years per tick, e.g. `1/365` for days) |
-| `CharacterItem` | `Database/CharacterItem.cs` | `Id`, `Name`, `Nicknames`, `Aliases`, `Race`, `Description`, `Color`, `Importance`, `TimelineId` |
-| `Tag` | `Database/TagItem.cs` | `Id`, `Name` |
-| `Story` | `Database/StoryItem.cs` | `Id`, `Title`, `Description` |
-| `Book` | `Database/BookItem.cs` | `Id`, `Title`, `Author` |
-| `Chapter` | `Database/ChapterItem.cs` | `Id`, `BookId`, `Number`, `Title` |
+| `CharacterItem` | `StoryTimeline.Data/Database/CharacterItem.cs` | `Id`, `Name`, `Nicknames`, `Aliases`, `Race`, `Description`, `Color`, `Importance`, `TimelineId` |
+| `Tag` | `StoryTimeline.Data/Database/TagItem.cs` | `Id`, `Name` |
+| `Story` | `StoryTimeline.Data/Database/StoryItem.cs` | `Id`, `Title`, `Description` |
+| `Book` | `StoryTimeline.Data/Database/BookItem.cs` | `Id`, `Title`, `Author` |
+| `Chapter` | `StoryTimeline.Data/Database/ChapterItem.cs` | `Id`, `BookId`, `Number`, `Title` |
 | `ItemCharacterAppearance` | `ItemRepo.ItemCharacterAppearanceRow` | `CharacterId`, `CharacterName`, `CharacterColor`, `Role` |
 | `ItemChapterRef` | `ItemRepo.ItemChapterRefRow` | `ChapterId`, `ChapterNumber`, `ChapterTitle`, `BookId`, `BookTitle` |
 | `ItemStoryRef` | `ItemRepo.ItemStoryRefRow` | `StoryId`, `StoryTitle` |
-| `MediaItem` | `Database/MediaItem.cs` | `Id`, `FilePath`, `FileName`, `FileSize`, `FileType`, `Width`, `Height`, `Title`, `Description`, `CreatedAt` |
+| `MediaItem` | `StoryTimeline.Data/Database/MediaItem.cs` | `Id`, `FilePath`, `FileName`, `FileSize`, `FileType`, `Width`, `Height`, `Title`, `Description`, `CreatedAt` |
 | `ItemForEdit` | Payload assembled in `Bridge/MessageRouter.cs` (`HandleGetItemForEdit`) | `Item`, `Tags`, `Characters`, `StoryRefs`, `ChapterRefs`, `Calendar`, `Pictures` — everything the edit window needs |
-| `LayoutSettings` | `Database/LayoutSettingsItem.cs` | ~70 styling knobs, see below |
+| `LayoutSettings` | `StoryTimeline.Data/Database/LayoutSettingsItem.cs` | ~70 styling knobs, see below |
 
 ### `TimelineItem` fields
 

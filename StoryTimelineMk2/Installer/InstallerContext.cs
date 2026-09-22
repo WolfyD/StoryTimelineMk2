@@ -34,7 +34,7 @@ public sealed class InstallerContext
     public const string GitHubOwner = "WolfyD";
     public const string GitHubRepo = "StoryTimelineMk2";
     public const string AppName = "Story Timeline";
-    public const string AppVersion = "1.0.3";
+    public const string AppVersion = "1.1.0";
     public const string RegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\StoryTimeline";
     public const string DataDir = "StoryTimelineMk2_Data";
     public const string CacheDir = "StoryTimelineMk2_Cache";

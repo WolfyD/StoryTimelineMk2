@@ -4,6 +4,7 @@ import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
 import BaseModal from '@/components/BaseModal.vue';
 import type { TimelineNote, LayoutSettings } from '@/types/models';
+import { MOD } from '@/utils/shortcuts';
 
 const props = defineProps<{
     layoutSettings: LayoutSettings | null;
@@ -234,7 +235,7 @@ function formatApproximate(dist: number): string {
                 <textarea
                     v-model="newNoteText"
                     class="notes-textarea"
-                    :placeholder="notesMode === 'short' ? 'Write a note for this moment… Ctrl+Enter to send' : 'Write a note for this moment…'"
+                    :placeholder="notesMode === 'short' ? `Write a note for this moment… ${MOD}+Enter to send` : 'Write a note for this moment…'"
                     @keydown.ctrl.enter="addNote"
                 />
                 <div v-if="notesMode !== 'short'" class="notes-input-meta">

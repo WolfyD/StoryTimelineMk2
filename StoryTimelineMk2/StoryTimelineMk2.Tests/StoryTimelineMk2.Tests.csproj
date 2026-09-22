@@ -10,6 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- BridgeServerTests starts a real Kestrel, so it needs the ASP.NET Core types. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
@@ -21,6 +26,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\StoryTimelineMk2.csproj" />
+    <ProjectReference Include="..\StoryTimeline.Data\StoryTimeline.Data.csproj" />
+    <ProjectReference Include="..\StoryTimeline.Server\StoryTimeline.Server.csproj" />
   </ItemGroup>
 
   <ItemGroup>

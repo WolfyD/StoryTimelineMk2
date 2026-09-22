@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
 import CalendarMonthGrid, { type ItemDot } from './CalendarMonthGrid.vue'
 import type { MemDayMarker } from '@/types/models'
+import { useModal } from '@/utils/modal'
 
 const props = defineProps<{
     calendarName: string
@@ -16,6 +17,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: [] }>()
 
+const { root, onMousedown, onClick } = useModal(() => emit('close'))
+
 // Ensure we always have exactly weekLength labels to pass down
 const effectiveLabels = computed(() =>
     props.dayLabels.length === props.weekLength
@@ -26,7 +29,7 @@ const effectiveLabels = computed(() =>
 
 <template>
     <Teleport to="body">
-        <div class="year-backdrop" @click.self="emit('close')">
+        <div class="year-backdrop" ref="root" @mousedown="onMousedown" @click="onClick">
             <div class="year-panel">
 
                 <div class="year-header">

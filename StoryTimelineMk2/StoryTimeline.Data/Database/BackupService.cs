@@ -33,19 +33,7 @@ namespace StoryTimelineMk2.Database
             if (includeMedia)
             {
                 string zipPath = Path.Combine(folder, $"timeline_{timestamp}.stlm");
-                using var zip  = ZipFile.Open(zipPath, ZipArchiveMode.Create);
-
-                if (File.Exists(dbFile))
-                    zip.CreateEntryFromFile(dbFile, "timeline.sqlite");
-
-                string mediaFolder = AppConfig.Instance.GetMediaFolder();
-                if (Directory.Exists(mediaFolder))
-                    foreach (var file in Directory.GetFiles(mediaFolder, "*", SearchOption.AllDirectories))
-                    {
-                        string rel = Path.GetRelativePath(mediaFolder, file).Replace('\\', '/');
-                        zip.CreateEntryFromFile(file, "Media/" + rel);
-                    }
-
+                WriteArchive(zipPath);
                 return zipPath;
             }
             else
@@ -60,6 +48,56 @@ namespace StoryTimelineMk2.Database
                 return sqlitePath;
             }
         }
+
+        /// <summary>
+        /// Writes the database and the whole media folder — originals and the thumbs/ cache — into a
+        /// .stlm, which is a plain zip with a custom extension. Shared by the manual backup and by
+        /// "Export database" with media, so both produce a file <see cref="DatabaseImporter"/> reads back.
+        /// </summary>
+        public static void WriteArchive(string zipPath)
+        {
+            // VACUUM INTO rather than zipping the live file: a database with a -wal alongside it keeps
+            // its newest rows there, and a copy of the main file alone would be missing them. Same
+            // reason the .sqlite branch of CreateBackup uses it.
+            string snapshot = Path.Combine(Path.GetTempPath(), $"stl_archive_{Guid.NewGuid():N}.sqlite");
+            try
+            {
+                // FileMode.Create, not ZipFile.Open: the export dialog has already asked about
+                // overwriting, and ZipArchiveMode.Create alone refuses an existing file.
+                using (var fs  = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
+                {
+                    string dbFile = AppConfig.Instance.GetDbPath();
+                    if (File.Exists(dbFile))
+                    {
+                        using (var conn = new SqliteConnection($"Data Source={dbFile}"))
+                        {
+                            conn.Open();
+                            conn.Execute("VACUUM INTO @path", new { path = snapshot });
+                        }
+                        zip.CreateEntryFromFile(snapshot, ArchiveDbEntry);
+                    }
+
+                    string mediaFolder = AppConfig.Instance.GetMediaFolder();
+                    if (Directory.Exists(mediaFolder))
+                        foreach (var file in Directory.GetFiles(mediaFolder, "*", SearchOption.AllDirectories))
+                        {
+                            string rel = Path.GetRelativePath(mediaFolder, file).Replace('\\', '/');
+                            zip.CreateEntryFromFile(file, MediaEntryPrefix + rel);
+                        }
+                }
+            }
+            finally
+            {
+                try { if (File.Exists(snapshot)) File.Delete(snapshot); } catch { /* best-effort */ }
+            }
+        }
+
+        /// <summary>The database entry inside a .stlm. <see cref="DatabaseImporter"/> looks for exactly this name.</summary>
+        internal const string ArchiveDbEntry = "timeline.sqlite";
+
+        /// <summary>Folder prefix every media entry inside a .stlm carries, thumbs/ included.</summary>
+        internal const string MediaEntryPrefix = "Media/";
 
         /// <summary>
         /// Verified snapshot taken by <see cref="Migrations.SchemaMigrator"/> right before schema migrations

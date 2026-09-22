@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -23,8 +24,11 @@ namespace StoryTimelineMk2.Database
     {
         public static ImportPreview GetImportPreview(string sourceFilePath)
         {
-            bool isV2 = CheckIfV2(sourceFilePath);
-            using var src = new SqliteConnection($"Data Source={sourceFilePath};Mode=ReadOnly;Pooling=False");
+            // Media is not needed to count rows, so the preview only unpacks the database.
+            using var source = ImportSource.Open(sourceFilePath, withMedia: false);
+
+            bool isV2 = CheckIfV2(source.DbPath);
+            using var src = new SqliteConnection($"Data Source={source.DbPath};Mode=ReadOnly;Pooling=False");
             src.Open();
             int tlCount   = src.QuerySingle<int>("SELECT COUNT(*) FROM timelines");
             int itemCount = src.QuerySingle<int>("SELECT COUNT(*) FROM items");
@@ -40,6 +44,8 @@ namespace StoryTimelineMk2.Database
 
             return new ImportPreview
             {
+                // The original path, not the unpacked copy: the confirm step hands this straight
+                // back to Import(), which opens the archive again for real.
                 SourcePath           = sourceFilePath,
                 IsV2                 = isV2,
                 TimelineCount        = tlCount,
@@ -48,49 +54,137 @@ namespace StoryTimelineMk2.Database
             };
         }
 
-        public static bool HandleDBImport()
-        {
-            try
-            {
-                OpenFileDialog ofd = new OpenFileDialog()
-                {
-                    Filter = "SQLite Files|*.sql;*.sqlite;*.sqlite3;*.db;*.db3|All Files|*.*",
-                    Title = "Open DB file for import"
-                };
-
-                if (ofd.ShowDialog() == DialogResult.OK)
-                {
-                    if (File.Exists(ofd.FileName))
-                    {
-                        Import(ofd.FileName);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Project rule: log full stack trace and show to the user — never
-                // swallow. Before this, any import failure was reported as success.
-                Logger.Error("DatabaseImporter", ex);
-                Forms.f_ErrorReport.ShowReport("Database import failed.", ex);
-                return false;
-            }
-            return true;
-        }
-
         public static void Import(string sourceFilePath)
         {
+            using var source = ImportSource.Open(sourceFilePath, withMedia: true);
+
             string targetFilePath = DbInitializer.GetConnectionString().Replace("Data Source=", "");
 
             // Detect Database Version
-            bool isContemporaryV2 = CheckIfV2(sourceFilePath);
+            bool isContemporaryV2 = CheckIfV2(source.DbPath);
 
             if (isContemporaryV2)
             {
-                ImportV2Backup(sourceFilePath, targetFilePath);
+                ImportV2Backup(source.DbPath, targetFilePath);
             }
             else
             {
-                ImportV1Legacy(sourceFilePath, targetFilePath);
+                ImportV1Legacy(source.DbPath, targetFilePath);
+            }
+
+            // Media last: the rows that point at it are in by now, and a file left behind by a
+            // failed row import would be an orphan nothing ever cleans up.
+            if (source.MediaDir != null)
+                CopyMedia(source.MediaDir, AppConfig.Instance.GetMediaFolder());
+        }
+
+        /// <summary>
+        /// Media file names are GUIDs and thumbnails are named after the picture id, so the same name
+        /// on both sides is the same file: anything already present is left alone. Nothing in the
+        /// pictures rows needs rewriting, unlike the single-timeline import, which renames on collision.
+        /// </summary>
+        private static void CopyMedia(string sourceDir, string targetDir)
+        {
+            foreach (string src in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+            {
+                string dest = Path.Combine(targetDir, Path.GetRelativePath(sourceDir, src));
+                if (File.Exists(dest)) continue;
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                File.Copy(src, dest);
+            }
+        }
+
+        /// <summary>
+        /// Both entry points accept either a bare database or a .stlm — a zip holding
+        /// <see cref="BackupService.ArchiveDbEntry"/> and <see cref="BackupService.MediaEntryPrefix"/>.
+        /// Unpacking the archive into temp turns the rest of the import back into the plain-file case;
+        /// a bare database is handed straight through with nothing to clean up afterwards.
+        /// </summary>
+        private sealed class ImportSource : IDisposable
+        {
+            public string  DbPath   { get; }
+            public string? MediaDir { get; }
+            private readonly string? _tempDir;
+
+            private ImportSource(string dbPath, string? mediaDir, string? tempDir)
+            {
+                DbPath   = dbPath;
+                MediaDir = mediaDir;
+                _tempDir = tempDir;
+            }
+
+            public static ImportSource Open(string path, bool withMedia)
+            {
+                if (!IsZip(path)) return new ImportSource(path, null, null);
+
+                string tempDir = Path.Combine(Path.GetTempPath(), $"stl_stlm_{Guid.NewGuid():N}");
+                Directory.CreateDirectory(tempDir);
+                try
+                {
+                    using var zip = ZipFile.OpenRead(path);
+
+                    var dbEntry = zip.GetEntry(BackupService.ArchiveDbEntry)
+                        ?? throw new InvalidDataException(zip.GetEntry("timeline.json") != null
+                            ? "This .stlm holds one exported timeline, not a full database — use Import Timeline for it."
+                            : $"Not a Story Timeline database archive: no '{BackupService.ArchiveDbEntry}' inside.");
+
+                    string dbPath = Path.Combine(tempDir, BackupService.ArchiveDbEntry);
+                    dbEntry.ExtractToFile(dbPath);
+
+                    string? mediaDir = withMedia ? ExtractMedia(zip, tempDir) : null;
+                    return new ImportSource(dbPath, mediaDir, tempDir);
+                }
+                catch
+                {
+                    TryDeleteDir(tempDir);
+                    throw;
+                }
+            }
+
+            private static string? ExtractMedia(ZipArchive zip, string tempDir)
+            {
+                string mediaDir = Path.Combine(tempDir, "Media");
+                string root     = Path.GetFullPath(mediaDir) + Path.DirectorySeparatorChar;
+                bool   any      = false;
+
+                foreach (var e in zip.Entries)
+                {
+                    if (e.Name.Length == 0) continue;   // a directory entry
+                    if (!e.FullName.StartsWith(BackupService.MediaEntryPrefix, StringComparison.Ordinal)) continue;
+
+                    string rel  = e.FullName[BackupService.MediaEntryPrefix.Length..]
+                                   .Replace('/', Path.DirectorySeparatorChar);
+                    string dest = Path.GetFullPath(Path.Combine(mediaDir, rel));
+                    // A ".." in an entry name would otherwise write outside the temp folder.
+                    if (!dest.StartsWith(root, StringComparison.Ordinal)) continue;
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                    e.ExtractToFile(dest, overwrite: true);
+                    any = true;
+                }
+                return any ? mediaDir : null;
+            }
+
+            /// <summary>Magic bytes, not the extension: the file picker's "All files" lets anything through.</summary>
+            private static bool IsZip(string path)
+            {
+                // FileShare.ReadWrite, not File.OpenRead's FileShare.Read: a SQLite file the user
+                // picked may well still be open somewhere, and four bytes are worth no contention.
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                Span<byte> head = stackalloc byte[4];
+                return fs.ReadAtLeast(head, 4, throwOnEndOfStream: false) == 4
+                    && head[0] == (byte)'P' && head[1] == (byte)'K' && head[2] == 3 && head[3] == 4;
+            }
+
+            private static void TryDeleteDir(string dir)
+            {
+                try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { /* best-effort */ }
+            }
+
+            public void Dispose()
+            {
+                if (_tempDir != null) TryDeleteDir(_tempDir);
             }
         }
 

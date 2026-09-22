@@ -2,7 +2,7 @@
 
 ## Database tables
 
-The SQLite schema is created by `Database/DbInitializer.cs` on first launch.
+The SQLite schema is created by `StoryTimeline.Data/Database/DbInitializer.cs` on first launch.
 
 ### Core tables
 

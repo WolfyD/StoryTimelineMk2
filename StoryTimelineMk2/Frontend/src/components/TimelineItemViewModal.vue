@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { mediaUrl } from '@/utils/mediaUrl';
 import { BackendAPI } from '@/bridge/api';
 import type { ItemForEdit, LayoutSettings } from '@/types/models';
-import { useModalGuard } from '@/utils/shortcuts';
+import { useModal } from '@/utils/modal';
 import { useTimelineStore } from '@/stores/timelineStore';
 
 const props = defineProps<{
@@ -15,7 +16,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: [] }>();
 
-useModalGuard();
+const { root, onMousedown, onClick } = useModal(() => emit('close'));
 const store = useTimelineStore();
 
 const data = ref<ItemForEdit | null>(null);
@@ -32,15 +33,6 @@ onMounted(async () => {
     loading.value = false;
 });
 
-function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') { e.preventDefault(); emit('close') }
-}
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
-
-function mediaUrl(fp: string) {
-    return `https://media.app/${fp}`;
-}
 
 function openEdit() {
     BackendAPI.OpenAddEditItemWindow(props.timelineId, props.itemId)
@@ -60,7 +52,7 @@ const panelStyle = computed(() => ({
 
 <template>
     <Teleport to="body">
-        <div class="view-modal-backdrop" @click.self="emit('close')">
+        <div class="view-modal-backdrop" ref="root" @mousedown="onMousedown" @click="onClick">
             <div class="view-modal" :style="panelStyle">
                 <button class="vm-close" title="Close (Esc)" @click="emit('close')">
                     <i class="ri-close-line"></i>

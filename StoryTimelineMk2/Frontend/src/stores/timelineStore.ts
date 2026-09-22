@@ -61,6 +61,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const viewportWidthPx = ref<number>(0); // pixel width of the main timeline canvas, used by minimap
 	const pulseItemId = ref<string | null>(null);
 	const performantPanning = ref<boolean>(true);
+	// App-wide, not per timeline: both live in the misc-settings table under timeline 0.
+	const onScreenControls = ref<boolean>(false);
+	const lowResourceMode = ref<boolean>(false);
 	const readOnly = ref<boolean>(false); // BL-66: reference window — view only, no edit affordances
 	// BL-66 step 2: another timeline drawn underneath this one. Session-only; `shift` is display-only years.
 	const reference = ref<{ project: TimelineProject; items: TimelineItem[]; shift: number } | null>(null);
@@ -191,17 +194,21 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 			// Load filter rules and misc settings for this timeline
 			const tlId = response.Project.Id;
-			const [rulesResult, andModeResult, panelOpenResult, displayModeResult] = await Promise.all([
+			const [rulesResult, andModeResult, panelOpenResult, displayModeResult, oscResult, lowResResult] = await Promise.all([
 				BackendAPI.GetFilterRules(tlId),
 				BackendAPI.GetMiscSetting('filter_and_mode', tlId),
 				BackendAPI.GetMiscSetting('filter_panel_open', tlId),
 				BackendAPI.GetMiscSetting('filter_display_mode', 0),
+				BackendAPI.GetMiscSetting('on_screen_controls', 0),
+				BackendAPI.GetMiscSetting('low_resource_mode', 0),
 			]);
 			if (seq !== _loadSeq) return;
 			filterRules.value = rulesResult?.rules ?? [];
 			filterAndMode.value = andModeResult?.value === '1';
 			filterPanelOpen.value = panelOpenResult?.value === '1';
 			filterDisplayMode.value = displayModeResult?.value === 'dimmed' ? 'dimmed' : 'hidden';
+			onScreenControls.value = oscResult?.value === '1';
+			lowResourceMode.value = lowResResult?.value === '1';
 			const lProf = response.Project.Calendar.LodProfile;
 			const _lp = lProf.Profile;
 			if(_lp){
@@ -357,6 +364,39 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 	function setPerformantPanning(value: boolean) {
 		performantPanning.value = value;
+	}
+
+	async function setOnScreenControls(value: boolean) {
+		onScreenControls.value = value;
+		await BackendAPI.SetMiscSetting('on_screen_controls', value ? '1' : '0', 0);
+	}
+
+	async function setLowResourceMode(value: boolean) {
+		lowResourceMode.value = value;
+		await BackendAPI.SetMiscSetting('low_resource_mode', value ? '1' : '0', 0);
+	}
+
+	// The speed box next to the FPS counter edits the same per-timeline setting the settings modal
+	// owns, and SaveSettings wants the whole row back — everything but the speed is what is loaded.
+	async function savePanSpeed(speed: number) {
+		const s = settings.value;
+		if (!s || !currentProject.value) return;
+		s.KeyboardPanSpeed = speed;
+		await BackendAPI.SaveSettings({
+			timelineId: currentProject.value.Id,
+			pixelsPerSubtick: s.PixelsPerSubtick,
+			showGuides: s.ShowGuides,
+			displayRadius: s.DisplayRadius,
+			isFullscreen: s.IsFullscreen,
+			useCustomScaling: s.UseCustomScaling,
+			customScale: s.CustomScale,
+			layoutPresetId: layoutSettings.value?.Id ?? '',
+			panSpeedMultiplier: s.PanSpeedMultiplier,
+			panDeadzone: s.PanDeadzone,
+			keyboardPanSpeed: speed,
+			defaultItemColor: s.DefaultItemColor,
+			headerMode: s.HeaderMode,
+		});
 	}
 
 	async function setFilterRuleState(id: string, state: FilterState) {
@@ -536,14 +576,14 @@ export const useTimelineStore = defineStore('timeline', () => {
 		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
-		pulseItemId, performantPanning, readOnly, reference,
+		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,
 		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setShowMeasureInTimeline, setHiddenRanges, setLayoutSettings,
 		pulseItem,
 		addNote, updateNote, removeNote,
-		setLastDeleted, clearLastDeleted, setPerformantPanning,
+		setLastDeleted, clearLastDeleted, setPerformantPanning, setOnScreenControls, setLowResourceMode, savePanSpeed,
 		setFilterRuleState, upsertFilterRule, deleteFilterRule, clearAllFilters,
 		setFilterAndMode, setFilterDisplayMode, setFilterPanelOpen,
 		loadFilterPresets, saveFilterPreset, loadFilterPreset, deleteFilterPreset,

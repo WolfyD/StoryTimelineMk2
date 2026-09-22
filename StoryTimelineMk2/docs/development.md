@@ -75,7 +75,7 @@ StoryTimelineMk2/         ← C# project root
 ├── Bridge/
 │   ├── MessageRouter.cs  ← central action dispatcher
 │   └── BridgeMessage.cs  ← message DTO
-├── Database/
+├── StoryTimeline.Data/
 │   ├── DbInitializer.cs  ← schema creation + seed data
 │   ├── *Repo.cs          ← one repo per entity type
 │   └── FullTimelineProject.cs

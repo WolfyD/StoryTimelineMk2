@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Kestrel needs the Web SDK, which neither the data library nor the WinForms host can use. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>StoryTimelineMk2.Server</RootNamespace>
+    <AssemblyName>StoryTimeline.Server</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StoryTimeline.Data\StoryTimeline.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>StoryTimelineMk2.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    Same idea as the WinForms host's PublishFrontend, except the SPA lands in wwwroot.
+    release.ps1 passes SkipFrontendBuild=true for the second publish of a dev build, because
+    the Windows publish that ran first has already rebuilt Frontend\dist.
+  -->
+  <Target Name="PublishFrontend" AfterTargets="Publish">
+    <Message Text="[PublishFrontend] Building Vue frontend..." Importance="high" Condition="'$(SkipFrontendBuild)' != 'true'" />
+    <Exec Command="npm run build-only" WorkingDirectory="$(MSBuildProjectDirectory)\..\Frontend" Condition="'$(SkipFrontendBuild)' != 'true'" />
+    <ItemGroup>
+      <SpaFiles Include="$(MSBuildProjectDirectory)\..\Frontend\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SpaFiles)" DestinationFiles="@(SpaFiles->'$(PublishDir)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Message Text="[PublishFrontend] Copied dist -> $(PublishDir)wwwroot\" Importance="high" />
+  </Target>
+
+</Project>

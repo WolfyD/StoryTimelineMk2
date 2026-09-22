@@ -87,7 +87,7 @@ namespace StoryTimelineMk2.Database.Migrations
         {
             int    latest  = steps[^1].Version;
             int    current = GetVersion(db);
-            var    info    = new MigrationInfo(dbLabel, dbPath, current, latest, AppVersionOf(steps, current), UpdateChecker.CurrentVersion);
+            var    info    = new MigrationInfo(dbLabel, dbPath, current, latest, AppVersionOf(steps, current), AppInfo.Version);
             string stage   = "version check";
             string? backupPath = null;
 

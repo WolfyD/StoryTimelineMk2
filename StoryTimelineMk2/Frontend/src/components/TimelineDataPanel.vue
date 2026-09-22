@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, reactive } from 'vue';
+import { mediaUrl } from '@/utils/mediaUrl';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { BackendAPI } from '@/bridge/api';
 import type { LayoutSettings, TimelineItem, MediaItem } from '@/types/models';
@@ -98,7 +99,7 @@ watch(inRangeItems, (items) => {
             try {
                 const data = await BackendAPI.GetItemForEdit(item.TimelineId, item.Id);
                 const first = data?.Pictures?.[0];
-                pictureCache.set(item, first ? `https://media.app/${first.ThumbPath}` : null);
+                pictureCache.set(item, first ? mediaUrl(first.ThumbPath) : null);
             } catch {
                 pictureCache.set(item, null);
             }

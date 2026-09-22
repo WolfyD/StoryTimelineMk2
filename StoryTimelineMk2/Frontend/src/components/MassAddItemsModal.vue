@@ -247,8 +247,8 @@ function tryClose() {
             </div>
 
             <template #footer>
-                <button class="btn btn-cancel" :disabled="busy" @click="tryClose">Cancel</button>
-                <button class="btn btn-primary ma-finish" :disabled="busy || !queue.length" @click="finish">
+                <button class="btn btn-cancel" data-cancel :disabled="busy" @click="tryClose">Cancel</button>
+                <button class="btn btn-primary ma-finish" data-primary :disabled="busy || !queue.length" @click="finish">
                     {{ busy ? 'Saving…' : `Finished (${queue.length})` }}
                 </button>
             </template>

@@ -1,28 +1,38 @@
 <script setup lang="ts">
-// The `N` flow (BL-39): pick a type by click, digit or letter; `N` again repeats the last type.
-import { onMounted, onBeforeUnmount } from 'vue'
+// The `N` flow (BL-39): pick a type by click, digit or letter; the key that opened the picker,
+// pressed again, repeats the last type. Every letter here is remappable, so they come from the
+// registry rather than from this file — the digits 1–5 always work whatever they are set to.
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { PhCalendarBlank, PhCalendar, PhHourglass, PhImage, PhNote } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
+import { SHORTCUTS, keysOf, chordOf, chordParts } from '@/utils/shortcuts'
 
 const props = defineProps<{ lastTypeId: number | null }>()
 const emit = defineEmits<{ pick: [typeId: number]; close: [] }>()
 
-// Canvas context-menu order. Note is `O`: `N` is taken by "same as last time" and P by Period.
+// Canvas context-menu order. Note defaults to `O`: `N` is "same as last time" and P is Period.
 const ITEM_TYPE_CHOICES = [
-    { id: 1, name: 'Event',   key: 'E', icon: PhCalendarBlank },
-    { id: 2, name: 'Period',  key: 'P', icon: PhCalendar },
-    { id: 3, name: 'Age',     key: 'A', icon: PhHourglass },
-    { id: 4, name: 'Picture', key: 'I', icon: PhImage },
-    { id: 5, name: 'Note',    key: 'O', icon: PhNote },
+    { id: 1, name: 'Event',   shortcut: 'pickEvent',   icon: PhCalendarBlank },
+    { id: 2, name: 'Period',  shortcut: 'pickPeriod',  icon: PhCalendar },
+    { id: 3, name: 'Age',     shortcut: 'pickAge',     icon: PhHourglass },
+    { id: 4, name: 'Picture', shortcut: 'pickPicture', icon: PhImage },
+    { id: 5, name: 'Note',    shortcut: 'pickNote',    icon: PhNote },
 ]
+
+const chordFor = (id: string) => {
+    const s = SHORTCUTS.find(x => x.context === 'timeline' && x.id === id)
+    return s ? keysOf(s)[0] ?? '' : ''
+}
+const choices = computed(() => ITEM_TYPE_CHOICES.map(t => ({ ...t, key: chordFor(t.shortcut) })))
+// Whatever opens the picker repeats the last type when pressed again.
+const repeatChord = computed(() => chordFor('addItem'))
 
 const lastName = () => ITEM_TYPE_CHOICES.find(t => t.id === props.lastTypeId)?.name ?? null
 
 function onKeydown(e: KeyboardEvent) {
-    if (e.ctrlKey || e.altKey || e.metaKey) return
-    const key = e.key.toUpperCase()
-    const choice = ITEM_TYPE_CHOICES.find((t, i) => t.key === key || String(i + 1) === key)
-    const id = choice?.id ?? (key === 'N' ? props.lastTypeId : null)
+    const chord = chordOf(e)
+    const choice = choices.value.find((t, i) => t.key === chord || String(i + 1) === chord)
+    const id = choice?.id ?? (chord === repeatChord.value ? props.lastTypeId : null)
     if (id == null) return
     e.preventDefault()
     e.stopImmediatePropagation()
@@ -37,17 +47,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <BaseModal title="New item" width="min(420px, 92vw)" @close="$emit('close')">
         <div class="tp-body">
             <button
-                v-for="(t, i) in ITEM_TYPE_CHOICES" :key="t.id"
+                v-for="(t, i) in choices" :key="t.id"
                 class="tp-choice" :class="{ 'tp-choice--last': t.id === lastTypeId }"
                 @click="$emit('pick', t.id)"
             >
                 <component :is="t.icon" :size="22" />
                 <span class="tp-name">{{ t.name }}</span>
-                <span class="tp-keys"><kbd>{{ i + 1 }}</kbd><kbd>{{ t.key }}</kbd></span>
+                <span class="tp-keys"><kbd>{{ i + 1 }}</kbd><kbd v-for="part in chordParts(t.key)" :key="part">{{ part }}</kbd></span>
             </button>
             <p class="tp-tip">
-                <template v-if="lastName()"><kbd>N</kbd> again — {{ lastName() }}, same as last time.</template>
-                <template v-else>Press a key or click. <kbd>N</kbd> will repeat your last choice.</template>
+                <template v-if="lastName()"><kbd v-for="part in chordParts(repeatChord)" :key="part">{{ part }}</kbd> again — {{ lastName() }}, same as last time.</template>
+                <template v-else>Press a key or click. <kbd v-for="part in chordParts(repeatChord)" :key="part">{{ part }}</kbd> will repeat your last choice.</template>
             </p>
         </div>
     </BaseModal>

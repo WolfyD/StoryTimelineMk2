@@ -128,7 +128,7 @@ function summary(md: MemorableDay): string {
         <template #footer>
             <button class="btn btn-secondary md-add" type="button" @click="emit('add')">+ Add Day</button>
             <button class="btn btn-danger md-delete" type="button" :disabled="!selected" @click="selected && emit('remove', selected.id)">Delete</button>
-            <button class="btn btn-primary md-close" type="button" @click="emit('close')">Close</button>
+            <button class="btn btn-primary md-close" type="button" data-cancel @click="emit('close')">Close</button>
         </template>
     </BaseModal>
 </template>

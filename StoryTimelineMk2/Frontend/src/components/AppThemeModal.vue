@@ -4,8 +4,11 @@ import type { ChromeTheme } from '@/types/models'
 import { BackendAPI } from '@/bridge/api'
 import { DARK_PRESET, LIGHT_PRESET, applyAppTheme } from '@/utils/useAppTheme'
 import { PhX } from '@phosphor-icons/vue'
+import { useModal } from '@/utils/modal'
 
 const emit = defineEmits<{ close: [] }>()
+
+const { root, onMousedown, onClick } = useModal(() => emit('close'))
 
 // Color fields shown in the "App Colors" section (key → display label)
 const colorFields: Partial<Record<keyof ChromeTheme, string>> = {
@@ -76,7 +79,7 @@ function onColorInput(key: string, e: Event) {
 </script>
 
 <template>
-    <div class="atm-backdrop" @click.self="emit('close')">
+    <div class="atm-backdrop" ref="root" @mousedown="onMousedown" @click="onClick">
         <div class="atm-panel" role="dialog" aria-modal="true">
 
             <div class="atm-header">

@@ -4,7 +4,7 @@
 	import WindowTitleBar from "./components/WindowTitleBar.vue";
 	import { BackendAPI } from "./bridge/api";
 	import { ref, onMounted } from "vue";
-	import { PhTrayArrowUp, PhTrayArrowDown, PhFileArrowDown, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear, PhDatabase } from "@phosphor-icons/vue";
+	import { PhTrayArrowUp, PhTrayArrowDown, PhFileArrowDown, PhGitDiff, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear, PhDatabase } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
 	import AppSettingsModal from './components/AppSettingsModal.vue';
 	import NotificationContainer from './components/NotificationContainer.vue';
@@ -12,8 +12,10 @@
 	import SelectCalendarModal from './components/SelectCalendarModal.vue';
 	import CalendarManagerModal from './components/CalendarManagerModal.vue';
 	import DbImportModal from './components/DbImportModal.vue';
+	import ConfirmModal from './components/ConfirmModal.vue';
 	import ImportTimelineModal from './components/ImportTimelineModal.vue';
-	import type { ImportPreview, TimelineImportPreview } from '@/types/models';
+	import SessionChangesImportModal from './components/SessionChangesImportModal.vue';
+	import type { ImportPreview, TimelineImportPreview, SessionChangePreview } from '@/types/models';
 	import { useAppTheme } from '@/utils/useAppTheme';
 
 	const store = useTimelineStore();
@@ -34,6 +36,10 @@
 
 	const dbImportPreview = ref<ImportPreview | null>(null)
 	const timelineImportPreview = ref<TimelineImportPreview | null>(null)
+	const sessionImportPreview = ref<SessionChangePreview | null>(null)
+
+	const showExportDb = ref(false)
+	const exportDbMedia = ref(false)
 
 	async function HandleImportDatabase() {
 		const result = await BackendAPI.BrowseAndPreviewImport()
@@ -56,8 +62,19 @@
 		}
 	}
 
-	async function HandleExportDatabase() {
-		await BackendAPI.ExportFullDB()
+	function HandleExportDatabase() {
+		exportDbMedia.value = false
+		showExportDb.value = true
+	}
+
+	async function runExportDatabase() {
+		showExportDb.value = false
+		const result = await BackendAPI.ExportFullDB(exportDbMedia.value)
+		if (result?.status === 'error') {
+			const msg = result.message ?? 'No response from the backend — check the application log.'
+			console.error('[ExportFullDB]', msg)
+			alert(`Database export failed:\n\n${msg}`)
+		}
 	}
 
 	async function HandleImportTimeline() {
@@ -76,6 +93,42 @@
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
 			console.error('[ImportTimeline]', msg)
 			alert(`Timeline import failed:\n\n${msg}`)
+		}
+	}
+
+	// BL-33: a co-writer's .stlc file — what a session changed, not a whole timeline.
+	async function HandleImportSessionChanges() {
+		const result = await BackendAPI.BrowseAndPreviewSessionChanges()
+		if (result?.status === 'ok' && result.preview) {
+			sessionImportPreview.value = result.preview
+		} else if (result?.status !== 'cancelled') {
+			const msg = result?.message ?? 'No response from the backend — check the application log.'
+			console.error('[BrowseAndPreviewSessionChanges]', msg)
+			alert(`Could not read that changes file:
+
+${msg}`)
+		}
+	}
+
+	async function executeSessionImport(path: string, decisions: Record<string, string>) {
+		const result = await BackendAPI.ApplySessionChanges(path, decisions)
+		sessionImportPreview.value = null
+		if (result?.status === 'ok' && result.result) {
+			const { applied, kept, dropped } = result.result
+			await HandleGetTimelines()
+			alert(
+				`Applied ${applied} change(s).` +
+					(kept ? `
+Kept ${kept} of your own version(s).` : '') +
+					(dropped ? `
+${dropped} link(s) were dropped — this copy has no matching character, story or chapter.` : ''),
+			)
+		} else {
+			const msg = result?.message ?? 'No response from the backend — check the application log.'
+			console.error('[ApplySessionChanges]', msg)
+			alert(`Applying the changes failed:
+
+${msg}`)
 		}
 	}
 
@@ -180,6 +233,10 @@
 							<PhFileArrowDown class="button-icon" :size="36" color="#79876b" />
 							<span class="menu-label">Import Timeline</span>
 						</div>
+						<div v-on:click="HandleImportSessionChanges()" title="Import session changes (.stlc)">
+							<PhGitDiff class="button-icon" :size="36" color="#79876b" />
+							<span class="menu-label">Import Changes</span>
+						</div>
 					</div>
 				</div>
 				<div @click="showCalendarManager = true" title="Manage Calendars">
@@ -240,11 +297,57 @@
 		@close="timelineImportPreview = null"
 		@confirm="executeTimelineImport"
 	/>
+	<SessionChangesImportModal
+		v-if="sessionImportPreview"
+		:preview="sessionImportPreview"
+		@close="sessionImportPreview = null"
+		@confirm="executeSessionImport"
+	/>
+	<ConfirmModal
+		v-if="showExportDb"
+		title="Export Database"
+		message="Saves a copy of everything — every project, character, calendar and setting."
+		confirm-label="Choose destination & export"
+		@cancel="showExportDb = false"
+		@confirm="runExportDatabase"
+	>
+		<label class="export-db-option">
+			<input type="checkbox" v-model="exportDbMedia" />
+			<span>Include media files
+				<span class="hint">(pictures and their thumbnails; a much bigger <code>.stlm</code> file)</span>
+			</span>
+		</label>
+	</ConfirmModal>
 	<div id="db-menu-backdrop" v-if="dbMenuOpen" @click="dbMenuOpen = false"></div>
 	</div>
 </template>
 
 <style scoped lang="scss">
+
+	/* Slot content inside ConfirmModal — it carries this file's scope id, so it is styled here.
+	   Padding picks up where .confirm-msg leaves off so the checkbox lines up under the message. */
+	.export-db-option {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		padding: 0 20px 16px;
+		cursor: pointer;
+		font-size: 0.82rem;
+		line-height: 1.45;
+		color: var(--app-text, #e2e8f0);
+
+		input[type="checkbox"] {
+			width: 15px;
+			height: 15px;
+			margin-top: 2px;
+			cursor: pointer;
+			accent-color: var(--app-accent, #3b6ec4);
+		}
+
+		.hint {
+			color: var(--app-text-dim, #4a6080);
+		}
+	}
 
 	#center {
 		display: flex;

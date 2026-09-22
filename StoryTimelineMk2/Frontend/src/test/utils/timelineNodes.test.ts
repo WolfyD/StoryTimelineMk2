@@ -18,6 +18,13 @@ function makeKonvaShape(id: string) {
     on: vi.fn(),
     add: vi.fn(),
     padding: vi.fn(),
+    stroke: vi.fn(),
+    strokeWidth: vi.fn(),
+    scale: vi.fn(),
+    scaleY: vi.fn(),
+    cache: vi.fn(),
+    clearCache: vi.fn(),
+    getLayer: vi.fn(),
   }
 }
 
@@ -222,6 +229,30 @@ describe('buildNode', () => {
 
   it('falls back to a safe color when color is empty', () => {
     expect(() => buildNode('id-6', 'Event', 'T', '', stems as any, boxes as any, ls)).not.toThrow()
+  })
+
+  it('low resource mode colours the border instead of adding a strip node', () => {
+    expect(buildNode('c1', 'Event', 'T', '#ff0000', stems as any, boxes as any, ls).colorStrip).toBeDefined()
+
+    const el = buildNode('c2', 'Event', 'T', '#ff0000', stems as any, boxes as any, ls, false, true)
+    expect(el.colorStrip).toBeUndefined()
+    expect(el.box.stroke).toHaveBeenCalledWith('#ff0000')
+    // a layout with no border would otherwise hide the colour entirely
+    expect(el.box.strokeWidth).toHaveBeenCalledWith(2)
+  })
+
+  it('low resource mode hover grows the box instead of caching a shadow', () => {
+    const el = buildNode('h1', 'Event', 'T', '#f00', stems as any, boxes as any, ls, false, true)
+    const handler = (name: string) =>
+      (el.box.on.mock.calls.find((c: unknown[]) => c[0] === name) ?? [])[1]
+
+    handler('mouseenter')()
+    expect(el.box.scale).toHaveBeenLastCalledWith({ x: 1.06, y: 1.06 })
+    expect(el.label.scale).toHaveBeenLastCalledWith({ x: 1.06, y: 1.06 })
+    expect(el.box.cache).not.toHaveBeenCalled()
+
+    handler('mouseleave')()
+    expect(el.box.scale).toHaveBeenLastCalledWith({ x: 1, y: 1 })
   })
 })
 

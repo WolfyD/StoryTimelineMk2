@@ -14,7 +14,7 @@ describe('BackendAPI', () => {
   beforeEach(async () => {
     // Ensure the chrome.webview mock is in place (done by setup.ts)
     // Grab the mock reference
-    postMessageMock = window.chrome.webview.postMessage as ReturnType<typeof vi.fn>
+    postMessageMock = window.chrome!.webview!.postMessage as ReturnType<typeof vi.fn>
     postMessageMock.mockClear()
   })
 
@@ -25,7 +25,7 @@ describe('BackendAPI', () => {
       expect(postMessageMock).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'OpenDataFolder' })
       )
-      const call = postMessageMock.mock.calls[0][0]
+      const call = postMessageMock.mock.calls[0]![0]
       expect(call.messageId).toBeUndefined()
     })
   })
@@ -43,7 +43,7 @@ describe('BackendAPI', () => {
     it('includes a numeric messageId', async () => {
       const { BackendAPI } = await import('@/bridge/api')
       BackendAPI.request('AnyAction', null)
-      const call = postMessageMock.mock.calls[0][0]
+      const call = postMessageMock.mock.calls[0]![0]
       expect(typeof call.messageId).toBe('number')
       expect(call.messageId).toBeGreaterThan(0)
     })
@@ -55,12 +55,12 @@ describe('BackendAPI', () => {
       const promise = BackendAPI.request<{ status: string }>('SaveItem', { item: {} })
 
       // Find the messageId from the last postMessage call
-      const sentMsg = postMessageMock.mock.calls[postMessageMock.mock.calls.length - 1][0]
+      const sentMsg = postMessageMock.mock.calls[postMessageMock.mock.calls.length - 1]![0]
       const msgId = sentMsg.messageId
 
       // Simulate the C# reply arriving via the webview message event
-      const listener = (window.chrome.webview.addEventListener as ReturnType<typeof vi.fn>).mock.calls
-        .find(([event]: [string]) => event === 'message')
+      const listener = (window.chrome!.webview!.addEventListener as ReturnType<typeof vi.fn>).mock.calls
+        .find((args: unknown[]) => args[0] === 'message')
 
       if (listener) {
         // Call the registered listener directly — simulates C# reply
@@ -166,7 +166,7 @@ describe('BackendAPI', () => {
           payload: { year: 1500 },
         })
       )
-      const call = postMessageMock.mock.calls[0][0]
+      const call = postMessageMock.mock.calls[0]![0]
       expect(call.messageId).toBeUndefined()
     })
   })
@@ -196,7 +196,7 @@ describe('BackendAPI', () => {
           payload: { topmost: true },
         })
       )
-      const call = postMessageMock.mock.calls[0][0]
+      const call = postMessageMock.mock.calls[0]![0]
       expect(call.messageId).toBeUndefined()
     })
 
@@ -204,7 +204,7 @@ describe('BackendAPI', () => {
       const { BackendAPI } = await import('@/bridge/api')
       postMessageMock.mockClear()
       BackendAPI.WindowSetTopMost(false)
-      const call = postMessageMock.mock.calls[0][0]
+      const call = postMessageMock.mock.calls[0]![0]
       expect(call.payload.topmost).toBe(false)
     })
   })

@@ -87,7 +87,9 @@ describe('DbImportModal', () => {
 
   it('emits close when backdrop is clicked', async () => {
     const wrapper = mount(DbImportModal, { props: { preview: makePreview() } })
-    await wrapper.find('.bm-backdrop').trigger('click')
+    const backdrop = wrapper.find('.bm-backdrop')
+    await backdrop.trigger('mousedown')
+    await backdrop.trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 

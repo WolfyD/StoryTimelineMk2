@@ -1,36 +1,18 @@
-using Microsoft.Web.WebView2.Core;
+using StoryTimelineMk2.Bridge;
 using StoryTimelineMk2.Database;
-using System.Text.Json;
-using System.Windows.Forms;
 
 namespace StoryTimelineMk2
 {
     /// <summary>
     /// Fire-and-forget usage statistics and achievement service.
     /// All writes are non-blocking (Task.Run); callers never await them.
-    /// Achievement push messages are broadcast to all open WebView2 instances;
+    /// Achievement push messages go to every connected page through <see cref="BridgeHub"/>;
     /// the Vue layer uses document.hasFocus() to avoid duplicate toasts.
     /// </summary>
     internal static class StatsService
     {
         private static long _currentSessionId = -1;
         private static readonly StatsRepo _repo = new();
-
-        // All open WebView2 instances — one per WinForms window.
-        private static readonly List<WeakReference<CoreWebView2>> _webViews = new();
-        private static readonly object _wvLock = new();
-
-        // ── WebView registration ──────────────────────────────────────────────────
-
-        /// <summary>Called by each MessageRouter on construction.</summary>
-        public static void RegisterWebView(CoreWebView2 webView)
-        {
-            lock (_wvLock)
-            {
-                _webViews.RemoveAll(r => !r.TryGetTarget(out _));
-                _webViews.Add(new WeakReference<CoreWebView2>(webView));
-            }
-        }
 
         // ── Session tracking ──────────────────────────────────────────────────────
 
@@ -170,26 +152,8 @@ namespace StoryTimelineMk2
                 characterKey,
                 characterName,
             };
-            string json = JsonSerializer.Serialize(new { action = "AchievementUnlocked", payload });
-
-            List<CoreWebView2> active;
-            lock (_wvLock)
-            {
-                active = _webViews
-                    .Select(r => r.TryGetTarget(out var t) ? t : null)
-                    .Where(t => t != null)
-                    .ToList()!;
-            }
-
-            // PostWebMessageAsJson must run on the UI thread.
-            Application.OpenForms[0]?.BeginInvoke(() =>
-            {
-                foreach (var wv in active)
-                {
-                    try { wv.PostWebMessageAsJson(json); }
-                    catch { /* window may have closed between snapshot and invoke */ }
-                }
-            });
+            // The channel marshals to the UI thread and drops pages that have closed.
+            BridgeHub.Broadcast("AchievementUnlocked", payload);
         }
 
         private static string? LoadImageBase64(string? relativePath)
@@ -197,7 +161,7 @@ namespace StoryTimelineMk2
             if (string.IsNullOrEmpty(relativePath)) return null;
             try
             {
-                string fullPath = Path.Combine(Application.StartupPath, "Resources", relativePath);
+                string fullPath = Path.Combine(AppContext.BaseDirectory, "Resources", relativePath);
                 if (!File.Exists(fullPath)) return null;
                 byte[] bytes = File.ReadAllBytes(fullPath);
                 string ext  = Path.GetExtension(fullPath).TrimStart('.').ToLower();

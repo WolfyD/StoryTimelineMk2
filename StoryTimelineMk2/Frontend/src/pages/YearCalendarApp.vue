@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, type BridgeMessage } from '@/bridge/api'
 import { dayOfYearToMonthDay } from '@/utils/calendarMath'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { useShortcuts } from '@/utils/shortcuts'
@@ -111,14 +111,15 @@ async function loadYear(year: number) {
 }
 
 // ── Backend push listener ─────────────────────────────────────────────────────
-function onBridgeMessage(event: MessageEvent) {
-    const data = event.data
+function onBridgeMessage(data: BridgeMessage) {
     if (data?.action === 'SetCalendarYear' && typeof data.payload?.year === 'number') {
         loadYear(data.payload.year)
     }
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
+let stopListening: (() => void) | null = null
+
 onMounted(async () => {
     loading.value = true
     try {
@@ -137,15 +138,12 @@ onMounted(async () => {
 
     await loadYear(currentYear.value)
 
-    if (window.chrome?.webview) {
-        window.chrome.webview.addEventListener('message', onBridgeMessage)
-    }
+    stopListening = BackendAPI.onHostMessage(onBridgeMessage)
 })
 
 onUnmounted(() => {
-    if (window.chrome?.webview) {
-        window.chrome.webview.removeEventListener('message', onBridgeMessage)
-    }
+    stopListening?.()
+    stopListening = null
 })
 
 const effectiveDayLabels = computed(() =>

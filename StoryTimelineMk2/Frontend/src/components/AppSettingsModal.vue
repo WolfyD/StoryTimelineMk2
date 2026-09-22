@@ -17,6 +17,8 @@ const includeMedia = ref(true)
 const isBusy = ref(false)
 const feedback = ref<{ type: 'success' | 'error'; msg: string } | null>(null)
 const performantPanning = ref(true)
+const onScreenControls = ref(false)
+const lowResourceMode = ref(false)
 
 const backupInterval  = ref('never')
 const backupsFolderPath = ref('')
@@ -60,6 +62,8 @@ onMounted(async () => {
         showAchievementPopups.value = cfg.showAchievementPopups ?? true
         achievementSound.value = cfg.achievementSound ?? true
     }
+    onScreenControls.value = (await BackendAPI.GetMiscSetting('on_screen_controls', 0))?.value === '1'
+    lowResourceMode.value = (await BackendAPI.GetMiscSetting('low_resource_mode', 0))?.value === '1'
     await loadBackupSettings()
 })
 
@@ -67,6 +71,16 @@ async function saveNotificationSettings() {
     await BackendAPI.SaveNotificationSettings(showAchievementPopups.value, achievementSound.value)
     const { useNotificationsStore } = await import('@/stores/notificationsStore')
     useNotificationsStore().setSettings(showAchievementPopups.value, achievementSound.value)
+}
+
+async function toggleLowResourceMode(value: boolean) {
+    lowResourceMode.value = value
+    await store.setLowResourceMode(value)
+}
+
+async function toggleOnScreenControls(value: boolean) {
+    onScreenControls.value = value
+    await store.setOnScreenControls(value)
 }
 
 async function togglePerformantPanning(value: boolean) {
@@ -150,11 +164,34 @@ async function createBackup() {
                     <PhPaintBrush :size="14" />
                     Open theme settings…
                 </button>
+
+                <label class="toggle-label">
+                    <input type="checkbox" :checked="onScreenControls" @change="toggleOnScreenControls(($event.target as HTMLInputElement).checked)" />
+                    On-screen scroll buttons
+                </label>
+                <p class="hint">
+                    Puts a round button on each side of the timeline that scrolls it while you hold
+                    it down — the same thing the ← / → keys do, for when your hands are on the mouse.
+                    Hold Shift for 3× speed; the speed itself is the box next to the FPS counter.
+                </p>
             </section>
 
             <!-- ── Performance ── -->
             <section class="settings-section">
                 <h4 class="section-label">Performance</h4>
+                <label class="toggle-label">
+                    <input type="checkbox" :checked="lowResourceMode" @change="toggleLowResourceMode(($event.target as HTMLInputElement).checked)" />
+                    Low resource mode
+                </label>
+                <p class="hint">
+                    Trades some polish for speed on a busy timeline: the view jumps straight to where
+                    it is going instead of gliding there, changing detail level is instant, the
+                    marker that follows your cursor is switched off, the minimap is hidden, and the
+                    canvas is drawn at 1:1 rather than at your display's full pixel density — sharp
+                    text costs four times the drawing on a high-resolution screen. Reopen the
+                    timeline window for it to take effect; the FPS counter at the bottom will tell
+                    you whether it helped.
+                </p>
                 <label class="toggle-label">
                     <input type="checkbox" :checked="performantPanning" @change="togglePerformantPanning(($event.target as HTMLInputElement).checked)" />
                     Performant panning
@@ -289,7 +326,7 @@ async function createBackup() {
 
         </div>
         <template #footer>
-            <button class="btn btn-cancel" @click="emit('close')">Close</button>
+            <button class="btn btn-cancel" data-cancel @click="emit('close')">Close</button>
         </template>
     </BaseModal>
 
