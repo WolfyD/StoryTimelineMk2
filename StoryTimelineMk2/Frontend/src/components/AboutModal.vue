@@ -33,6 +33,13 @@ async function checkForUpdates() {
 function openUrl() {
     if (foundUrl.value) BackendAPI.OpenExternalUrl(foundUrl.value)
 }
+
+// AGPL §13: anyone using this over a network has to be offered the source of the version
+// they are actually using, so the link carries the running version's tag rather than main.
+const SOURCE_URL = `https://github.com/WolfyD/StoryTimelineMk2/tree/v${version}`
+function openSource() {
+    BackendAPI.OpenExternalUrl(SOURCE_URL)
+}
 </script>
 
 <template>
@@ -47,7 +54,10 @@ function openUrl() {
             <p class="about-desc" style="white-space: nowrap;">A timeline management tool for creative writers.</p>
             <p class="about-copy"><span style="vertical-align: super; font-size:smaller">&copy;</span> 2026 WolfyD</p>
             <p class="about-copy">All art by Dergderg Dorgness &mdash; dergdergdorgness@gmail.com</p>
-            <p class="about-copy">Free software under the GNU AGPL v3 &mdash; source at github.com/WolfyD/StoryTimelineMk2</p>
+            <p class="about-copy">
+                Free software under the GNU AGPL v3 &mdash;
+                <button class="source-link" :title="SOURCE_URL" @click="openSource">source for v{{ version }}</button>
+            </p>
 
             <div class="update-section">
                 <button
@@ -140,6 +150,17 @@ function openUrl() {
     font-size: 12px;
     &.ok   { color: #4ade80; }
     &.found { color: var(--app-accent-hover, #818cf8); }
+}
+
+.source-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--app-accent, #6366f1);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+    &:hover { color: var(--app-text, #e2e8f0); }
 }
 
 .download-link {

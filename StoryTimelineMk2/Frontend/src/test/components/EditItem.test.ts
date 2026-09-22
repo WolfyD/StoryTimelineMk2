@@ -22,6 +22,9 @@ vi.mock('@/bridge/api', () => ({
     request: vi.fn(),
     send: vi.fn(),
   },
+  // The browser build is the only host that needs the beforeunload guard, so the flag is on
+  // here; nothing else in EditItem reads it, and the desktop close paths below are unaffected.
+  IS_BROWSER_HOST: true,
 }))
 
 // Stub child components that are complex or canvas-dependent
@@ -458,6 +461,29 @@ describe('EditItem page', () => {
     expect(BackendAPI.WindowClose).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Discard changes?')
     wrapper.unmount()
+  })
+
+  // The tab's own close never reaches requestClose(), so this listener is the only thing
+  // standing between an unsaved item and a shut window in the browser build.
+  it('closing the tab on a dirty form is blocked; a clean one goes quietly', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] }, attachTo: document.body })
+    await flushPromises()
+
+    const unload = () => {
+      const e = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(e)
+      return e.defaultPrevented
+    }
+
+    expect(unload()).toBe(false)
+
+    await wrapper.find('input[placeholder="Item title"]').setValue('Changed')
+    expect(unload()).toBe(true)
+
+    // Unmounting has to take the listener with it, or a closed window keeps blocking the next.
+    wrapper.unmount()
+    expect(unload()).toBe(false)
   })
 
   it('Escape and a CloseRequested push close a clean form without asking', async () => {

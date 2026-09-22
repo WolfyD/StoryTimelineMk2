@@ -17,6 +17,7 @@ function stepNumberInput(target: EventTarget | null, dir: 1 | -1): boolean {
 export function installNumberInputStepping(doc: Document = document) {
   doc.addEventListener('wheel', (e) => {
     if (e.target !== doc.activeElement || e.deltaY === 0) return
+    if (e.ctrlKey || e.metaKey) return   // that wheel belongs to the zoom gesture, not the input
     if (stepNumberInput(e.target, e.deltaY < 0 ? 1 : -1)) e.preventDefault()
   }, { passive: false })
 

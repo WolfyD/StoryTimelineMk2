@@ -6,6 +6,7 @@ import type { BackupInfo } from '@/types/models'
 import BaseModal from './BaseModal.vue'
 import AppThemeModal from './AppThemeModal.vue'
 import { useTimelineStore } from '@/stores/timelineStore'
+import { FILE_MANAGER } from '@/utils/platform'
 
 const emit = defineEmits<{ close: []; refresh: [] }>()
 const store = useTimelineStore()
@@ -134,7 +135,7 @@ async function justSwitch() {
     }
 }
 
-async function openInExplorer() {
+async function openDataFolder() {
     BackendAPI.OpenDataFolder()
 }
 
@@ -212,7 +213,7 @@ async function createBackup() {
                         <PhFolderOpen :size="14" class="path-icon" />
                         <span class="path-text">{{ currentRoot || '…' }}</span>
                     </div>
-                    <button class="btn btn-ghost" @click="openInExplorer" title="Open in Explorer">
+                    <button class="btn btn-ghost" @click="openDataFolder" :title="`Open in ${FILE_MANAGER}`">
                         <PhArrowSquareOut :size="15" />
                         Open
                     </button>
@@ -270,7 +271,7 @@ async function createBackup() {
                         <PhFloppyDisk :size="15" />
                         Create Backup Now
                     </button>
-                    <button class="btn btn-ghost" @click="BackendAPI.OpenBackupsFolder()" title="Open backups folder in Explorer">
+                    <button class="btn btn-ghost" @click="BackendAPI.OpenBackupsFolder()" :title="`Open backups folder in ${FILE_MANAGER}`">
                         <PhArrowSquareOut :size="14" />
                         Open folder
                     </button>

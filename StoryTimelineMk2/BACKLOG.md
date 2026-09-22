@@ -240,9 +240,9 @@ per-RID, so a self-contained publish per platform covers it.
 ## [BL-68] Local server + browser build (Mac / Linux support)
 
 **Status:** In progress. Design pass done (2026-09-21) — decisions, measured action split and
-phases below. **Phases 1, 2 and 3 done (2026-09-21)**; phase 4 mostly done — packaging landed
-the same day, the launcher and AGPL §13 link have not. Phase 5 (browser fit-and-finish) started
-2026-09-22. A browser now reaches every screen, not
+phases below. **Phases 1 to 4 done**; phase 5 (browser fit-and-finish) started 2026-09-22 and
+closed its audit list on the same day. The macOS artifact has been run on the target Mac, and
+every release is checked there before it is published. A browser now reaches every screen, not
 just the data-only ones: windows open as pop-ups, file dialogs as `<input type="file">`, exports
 as downloads, and a release now produces a self-contained server for Windows, Linux and both
 kinds of Mac.
@@ -344,7 +344,7 @@ server.
    sites across 7 files) — without it every image in the browser build points at a virtual host
    that only WebView2 serves, which would have made a phase-2 test look broken for the wrong
    reason.
-4. **Packaging done (2026-09-21); launcher and AGPL §13 still open.** `release.ps1` no longer
+4. **Done (2026-09-21; launcher and §13 link 2026-09-22).** `release.ps1` no longer
    hardcodes `-r win-x64`: `PublishServer` takes a RID and step 3 runs it for `win-x64`,
    `linux-x64`, `osx-arm64` and `osx-x64`, all cross-published from Windows with no Mac in the
    loop and no code change of any kind. A full release now emits eight artifacts instead of four;
@@ -366,9 +366,17 @@ server.
      `--mode=a+rx --owner=root:0 --group=root:0`, and bsdtar gzips it through its `@archive`
      syntax. Verified: entries come out `-rwxr-xr-x root/root`. This is the one place the release
      needs Git for Windows installed, and the script fails with that message if it is not.
-   - **Still open — a launcher** that opens the default browser (`open` / `xdg-open`). The server
-     only prints its URL today, and there is no `Process.Start` anywhere in the portable half.
-   - **Still open — a Source link** pointing at the repo at the running version's tag (AGPL §13).
+   - **A start shortcut, not an auto-opening launcher (2026-09-22).** `PublishServer` now writes
+     one next to the binary, so every call site — release and `-Dev` — gets it: *Start Story
+     Timeline.command* on macOS (what Finder double-clicks), `start-story-timeline.sh` on Linux,
+     *Start Story Timeline.cmd* on Windows. Each one `cd`s to its own folder and runs the server,
+     which is all the user asked for; opening the browser on top of that (`open` / `xdg-open`) was
+     deliberately left out. The scripts are written LF by a new `WriteLf` — a CRLF shebang reads as
+     "bad interpreter" — and the tar's existing `--mode=a+rx` lands them executable.
+   - **Source link done (2026-09-22).** About now carries a *source for v{version}* link to
+     `github.com/WolfyD/StoryTimelineMk2/tree/v<version>`, the tag of the version actually running,
+     which is what AGPL §13 asks of a program people reach over a network. It goes through
+     `OpenExternalUrl`, so it is a shell open on the desktop and a tab in the browser.
 
    Paths already port: `AppConfig` and `Logger` go through
    `Environment.SpecialFolder.LocalApplicationData`, not `%LOCALAPPDATA%`.
@@ -436,8 +444,23 @@ server.
         is anchored at the node's corner, not its centre: centring needs a position offset that
         `updateAbsolutePositions()` overwrites on the next pan frame. A picture's caption is not
         scaled — it hangs off the bottom edge rather than sharing the box's origin.
-   - Still open from the audit: the `beforeunload` guard on the edit window, Ctrl+wheel
-     double-acting, the "Open in Explorer" wording and the Windows-only fallback font list.
+   - **The audit list is closed (2026-09-22).**
+     - *`beforeunload` on the edit window.* A browser tab's own close, ⌘/Ctrl+W and Back never
+       reached `requestClose()`, so an unsaved item went with them silently. `EditItem` now hangs
+       the existing `isDirty()` off a `beforeunload` listener, registered on mount and removed on
+       unmount, and only under `IS_BROWSER_HOST` (new export from `api.ts`) — the desktop host
+       already routes its X through `requestClose()` and would just stack a second prompt.
+     - *Ctrl+wheel double-acting.* Both wheel listeners — the Konva stage and
+       `numberInputStepping` — acted on a wheel the host was already reading as zoom, so one
+       gesture did two things. Both now ignore a wheel with Ctrl or ⌘ held, which also covers a
+       Mac trackpad pinch (it arrives as `ctrlKey`).
+     - *"Open in Explorer".* New `utils/platform.ts` owns `IS_MAC` (moved from `shortcuts.ts`,
+       which re-exports it), `IS_WINDOWS` and `FILE_MANAGER` — Finder / Explorer / "your file
+       manager". App settings' two folder buttons and the browser host's folder alert read it.
+     - *The Windows-only fallback font list.* `WEB_SAFE_FONTS` offered Segoe UI and Calibri to a
+       Mac that has neither. It is now a common set plus a per-platform one (Mac, Windows or the
+       fontconfig/Liberation families on Linux) plus the generic CSS names. Only the fallback
+       changed; `queryLocalFonts()` still wins where the user grants it.
 
 ---
 

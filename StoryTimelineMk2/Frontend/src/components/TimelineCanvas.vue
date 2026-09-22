@@ -1772,6 +1772,9 @@ onMounted(() => {
     stage.on('wheel', (event) => {
         const e = event.evt as WheelEvent;
         if (!e) return;
+        // Ctrl/⌘+wheel is the host's zoom gesture (and a Mac trackpad pinch arrives as one
+        // too). Stepping ticks on it as well made a single gesture do two things at once.
+        if (e.ctrlKey || e.metaKey) return;
 		if (e.deltaY) stepTick(e.deltaY < 0, e.shiftKey);
 		else if (e.deltaX) stepTick(e.deltaX > 0);
     });

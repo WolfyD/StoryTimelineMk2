@@ -93,6 +93,11 @@ function WriteUtf8([string]$path, [string]$content) {
     [System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($false))
 }
 
+# Shell scripts have to be LF: a CRLF shebang reads as "bad interpreter" on macOS and Linux.
+function WriteLf([string]$path, [string[]]$lines) {
+    [System.IO.File]::WriteAllText($path, ($lines -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
+}
+
 # dotnet publish of the app, one flavour. The csproj's PublishFrontend target runs
 # `npm run build-only` and copies Frontend\dist next to the exe.
 function PublishApp([string]$name, [string]$selfContained, [string]$outDir) {
@@ -131,6 +136,27 @@ function PublishServer([string]$rid, [string]$outDir) {
     $ServerExe = if ($rid -like "win-*") { "StoryTimeline.Server.exe" } else { "StoryTimeline.Server" }
     if (-not (Test-Path "$outDir\$ServerExe")) { Fail "$ServerExe not found in $outDir" }
     if (-not (Test-Path "$outDir\wwwroot\index.html")) { Fail "wwwroot\index.html not found in $outDir" }
+
+    # The server only prints its address, so without this a Mac user has to open Terminal and
+    # type ./StoryTimeline.Server. .command is what Finder double-clicks; a Linux desktop runs
+    # a plain .sh the same way. The tar below marks everything a+rx, so it lands executable.
+    if ($rid -like "win-*") {
+        WriteLf "$outDir\Start Story Timeline.cmd" @(
+            '@echo off',
+            'rem Double-click to start Story Timeline. Closing this window stops it.',
+            'cd /d "%~dp0"',
+            'StoryTimeline.Server.exe %*',
+            'pause'
+        )
+    } else {
+        $LauncherName = if ($rid -like "osx-*") { "Start Story Timeline.command" } else { "start-story-timeline.sh" }
+        WriteLf "$outDir\$LauncherName" @(
+            '#!/bin/sh',
+            '# Double-click to start Story Timeline. Closing this window stops it.',
+            'cd "$(dirname "$0")" || exit 1',
+            './StoryTimeline.Server "$@"'
+        )
+    }
 }
 
 function NpmInstall {

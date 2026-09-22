@@ -2,6 +2,7 @@
 // `keys` are the defaults; a user remap overrides them (see `utils/shortcutOverrides.ts`, which
 // owns loading and saving so this module stays free of the bridge). Handlers never change.
 import { onMounted, onBeforeUnmount, computed, ref } from 'vue'
+import { IS_MAC } from './platform'
 
 export type ShortcutContext = 'timeline' | 'edit' | 'calendar'
 
@@ -25,7 +26,7 @@ export interface Shortcut {
 // Chords are stored in one spelling (`Ctrl+…`) and chordOf() already folds ⌘ into `Ctrl+`, so the
 // keys themselves have always worked on a Mac — only the labels were wrong. Everything on screen
 // goes through chordParts() or these two constants, so this is the only place that has to know.
-export const IS_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent)
+export { IS_MAC }   // lived here before platform.ts; callers still import it from here
 export const MOD = IS_MAC ? '⌘' : 'Ctrl'
 export const ALT = IS_MAC ? '⌥' : 'Alt'
 

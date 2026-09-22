@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { mediaUrl } from '@/utils/mediaUrl';
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, IS_BROWSER_HOST } from '@/bridge/api'
 import { useShortcuts, MOD } from '@/utils/shortcuts'
 import HelpModal from '@/components/HelpModal.vue'
 import ShortcutsModal from '@/components/ShortcutsModal.vue'
@@ -400,6 +400,19 @@ function requestClose() {
 function discard() {
   showDiscard.value = false
   BackendAPI.WindowClose()
+}
+
+// In a browser the tab's own close, Cmd/Ctrl+W and Back never reach requestClose(), so an
+// unsaved item went with them silently. The desktop host routes its X through requestClose
+// already and would only stack a second prompt on top, so this is the browser's guard alone.
+function warnIfDirty(e: BeforeUnloadEvent) {
+  if (!isDirty()) return
+  e.preventDefault()
+  e.returnValue = ''   // Safari and older Chromium still read this rather than preventDefault
+}
+if (IS_BROWSER_HOST) {
+  onMounted(() => window.addEventListener('beforeunload', warnIfDirty))
+  onBeforeUnmount(() => window.removeEventListener('beforeunload', warnIfDirty))
 }
 
 // ---------------------------------------------------------------------------

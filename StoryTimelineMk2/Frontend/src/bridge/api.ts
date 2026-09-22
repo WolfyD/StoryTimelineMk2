@@ -38,6 +38,8 @@ let messageCounter = 0;
 // browser (BL-68). Same JSON both ways, so everything below this block is unaware.
 
 const webview = window.chrome?.webview;
+/** True in the browser build, where the page — not a WinForms form — owns the window. */
+export const IS_BROWSER_HOST = !webview;
 let socket: WebSocket | null = null;
 let socketQueue: string[] = [];
 let socketClosed = false;

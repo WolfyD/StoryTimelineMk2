@@ -8,6 +8,8 @@
  * Only reached when `window.chrome.webview` is absent; see api.ts.
  */
 
+import { IS_MAC, IS_WINDOWS, FILE_MANAGER } from '@/utils/platform'
+
 type Payload = Record<string, unknown>
 type RawRequest = <T>(action: string, payload?: unknown) => Promise<T>
 
@@ -134,17 +136,37 @@ async function pickUploadThen<T>(accept: string, action: string, extra: Payload 
 // ── Fonts ──────────────────────────────────────────────────────────────────
 
 /**
- * What a browser can offer instead of enumerating the OS font list: the families Windows
- * ships plus the generic CSS ones. queryLocalFonts() gives the real list where the user
- * grants it.
+ * What a browser can offer instead of enumerating the OS font list. queryLocalFonts() gives
+ * the real list where the user grants it; this is the fallback, and it has to name families
+ * the machine actually has — a Mac has no Segoe UI and a Linux box has neither set.
  */
-const WEB_SAFE_FONTS = [
-	'Arial', 'Arial Black', 'Calibri', 'Cambria', 'Candara', 'Comic Sans MS', 'Consolas',
-	'Constantia', 'Corbel', 'Courier New', 'Franklin Gothic Medium', 'Gabriola', 'Georgia',
-	'Impact', 'Lucida Console', 'Lucida Sans Unicode', 'Palatino Linotype', 'Segoe Print',
-	'Segoe Script', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana',
-	'cursive', 'monospace', 'sans-serif', 'serif',
+const COMMON_FONTS = [
+	'Arial', 'Comic Sans MS', 'Courier New', 'Georgia', 'Impact', 'Times New Roman',
+	'Trebuchet MS', 'Verdana',
 ]
+const WINDOWS_FONTS = [
+	'Arial Black', 'Calibri', 'Cambria', 'Candara', 'Consolas', 'Constantia', 'Corbel',
+	'Franklin Gothic Medium', 'Gabriola', 'Lucida Console', 'Lucida Sans Unicode',
+	'Palatino Linotype', 'Segoe Print', 'Segoe Script', 'Segoe UI', 'Tahoma',
+]
+const MAC_FONTS = [
+	'American Typewriter', 'Avenir', 'Baskerville', 'Chalkboard', 'Charter', 'Futura',
+	'Geneva', 'Gill Sans', 'Helvetica', 'Helvetica Neue', 'Hoefler Text', 'Menlo', 'Monaco',
+	'Optima', 'Palatino', 'Papyrus', 'Zapfino',
+]
+// What fontconfig has shipped for years, plus the metric-compatible Liberation set.
+const LINUX_FONTS = [
+	'Cantarell', 'DejaVu Sans', 'DejaVu Sans Mono', 'DejaVu Serif', 'FreeMono', 'FreeSans',
+	'FreeSerif', 'Liberation Mono', 'Liberation Sans', 'Liberation Serif', 'Noto Sans',
+	'Noto Serif', 'Ubuntu', 'Ubuntu Mono',
+]
+const GENERIC_FONTS = ['cursive', 'monospace', 'sans-serif', 'serif']
+
+const WEB_SAFE_FONTS = [
+	...COMMON_FONTS,
+	...(IS_MAC ? MAC_FONTS : IS_WINDOWS ? WINDOWS_FONTS : LINUX_FONTS),
+	...GENERIC_FONTS,
+].sort()
 
 async function systemFonts(): Promise<string[]> {
 	const queryLocalFonts = (window as unknown as { queryLocalFonts?: () => Promise<{ family: string }[]> })
@@ -188,7 +210,7 @@ function closeWindow() {
 /** Fire-and-forget actions a browser simply cannot do; saying so beats a silent no-op. */
 async function showFolderPath(which: 'DataRoot' | 'BackupsFolder', label: string) {
 	const config = await backend<Record<string, string>>('GetAppConfig', {})
-	window.alert(`${label}:\n\n${config[which]}\n\nA web page cannot open a folder — copy the path into Explorer.`)
+	window.alert(`${label}:\n\n${config[which]}\n\nA web page cannot open a folder — copy the path into ${FILE_MANAGER}.`)
 }
 
 // ── The actions ────────────────────────────────────────────────────────────
