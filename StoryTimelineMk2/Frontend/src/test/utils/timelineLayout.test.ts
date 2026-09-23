@@ -6,6 +6,8 @@ import {
   BREAK_TICKS,
   getXFromTime,
   isLeftOfNow,
+  getAssignedLane,
+  type LaneLock,
 } from '@/utils/timelineLayout'
 import type { HiddenRange, LayoutSettings } from '@/types/models'
 
@@ -316,5 +318,38 @@ describe('getXFromTime', () => {
     const ls = makeLayoutSettings({ TimelineTickDistance: 100 })
     const result = getXFromTime(999, 1000, 1, 800, ls)
     expect(result).toBeCloseTo(300)
+  })
+})
+
+describe('getAssignedLane avoidLanes (BL-66)', () => {
+  const ls = makeLayoutSettings({ TimelineTickDistance: 100 })
+  // Same anchor, same side, same shape: without help these two land in the same lane.
+  const pack = (
+    id: string,
+    lanes: Map<string, LaneLock>,
+    avoid?: Map<string, LaneLock>,
+  ) => getAssignedLane(id, 500, 130, true, false, 10, 10, 0, 1, 800, 1000, lanes, ls, [], avoid)
+
+  it('puts a ghost in a lane no real item holds', () => {
+    const real = new Map<string, LaneLock>()
+    const ghosts = new Map<string, LaneLock>()
+    const realY = pack('a', real)
+    expect(pack('ref:a', ghosts, real)).not.toBe(realY)
+    expect(ghosts.get('ref:a')!.laneIndex).toBe(real.get('a')!.laneIndex + 1)
+  })
+
+  it('leaves the real lane map untouched', () => {
+    const real = new Map<string, LaneLock>()
+    const ghosts = new Map<string, LaneLock>()
+    pack('a', real)
+    pack('ref:a', ghosts, real)
+    expect([...real.keys()]).toEqual(['a'])
+  })
+
+  it('still collides inside one map when no avoid map is given', () => {
+    const real = new Map<string, LaneLock>()
+    const ghosts = new Map<string, LaneLock>()
+    pack('a', real)
+    expect(pack('ref:a', ghosts)).toBe(pack('a', real))
   })
 })

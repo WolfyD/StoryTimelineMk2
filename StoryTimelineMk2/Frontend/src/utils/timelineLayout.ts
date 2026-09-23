@@ -206,7 +206,11 @@ export const getAssignedLane = (
     viewportWidth: number,
     lockedLanes: Map<string, LaneLock>,
     layoutSettings: LayoutSettings,
-    hiddenRanges: HiddenRange[] = []
+    hiddenRanges: HiddenRange[] = [],
+    // Lanes to pack around but never write to (BL-66): the reference underlay passes the active
+    // timeline's locks here, so a ghost picks a lane no real item holds instead of sliding under
+    // one. One-way on purpose — the active pass never sees ghosts, so its packing is unchanged.
+    avoidLanes?: Map<string, LaneLock>
 ): number => {
 
     // 1. If already locked, return the physical Y offset
@@ -222,7 +226,11 @@ export const getAssignedLane = (
     while (hasOverlap) {
         hasOverlap = false;
 
-        for (const lock of lockedLanes.values()) {
+        const packAround = avoidLanes
+            ? [...lockedLanes.values(), ...avoidLanes.values()]
+            : lockedLanes.values();
+
+        for (const lock of packAround) {
             if (lock.isCenterOut === isCenterOut && lock.isAbove === isAboveLine && lock.laneIndex === laneIndex) {
 
                 // --- PERIOD COLLISION (Exact bounding box) ---

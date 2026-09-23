@@ -3,11 +3,14 @@
 Grouped by size, not by number: BL numbers are permanent and a new item always gets the next
 free one whatever group it lands in. Move an item between groups by moving its section.
 
+Signing and distribution (BL-69 Microsoft Store, BL-70 SignPath) live in
+`BACKLOG_SIGNING.md` — a separate track, picked up separately.
+
 ---
 
-# Small — 1.0.3 candidates
+# Small
 
-What is left of the 1.0.3 pass; finished items are under Done.
+Left over from the 1.0.3 pass and not tied to a version. Finished items are under Done.
 
 ## [BL-66] Reference timeline — read-only window or underlay
 
@@ -23,8 +26,15 @@ session-only) → `TimelineCanvas.referenceLayer` (ghosts at 0.4 under grid + it
 mapping + display-only `shift`, own lanes/caches, no filters / minimap / mini mode, Alt+click →
 `viewReferenceItem` → view-only `TimelineItemViewModal`, plain / right-click inert), a
 "Reference — <title>" section in `TimelineDataPanel`, calendar-mismatch warning (never blocks) and
-Remove in `ReferenceTimelineModal`, tool-active Reference button on the strip. Not done: shift is
-not persisted; ghost pictures are frames without images; no locate / pulse for reference items.
+Remove in `ReferenceTimelineModal`, tool-active Reference button on the strip.
+Step 3 done for 1.1.1 (2026-09-23): ghosts now pack around the active timeline's lanes instead of
+hiding underneath its items (`getAssignedLane` takes a read-only `avoidLanes` map, so the active
+pass packs exactly as before); a real age drawn over a reference age gets diagonal slits in the
+ghost's colour across the overlapping stretch only (`refStripeLayer` in `TimelineCanvas`); and the
+chosen reference plus its shift are remembered per timeline in `misc_settings`
+(`reference_timeline`, restored by `loadTimelineData`, dropped with a message in the modal when it
+will not load). Not done, by decision: ghost pictures are still frames without images; no locate /
+pulse for reference items.
 
 Writers often need a second timeline for reference while working in one. New activity-strip icon
 **Open reference timeline** (and `R`): a modal lists the other timelines and offers two ways to
@@ -55,496 +65,6 @@ zoom apply to them too). Rules:
 
 ---
 
-## [BL-60] Calendar window — more functionality
-
-**Status:** First item done (1.0.3): the month grids (`CalendarMonthGrid.vue`, used by the
-year-calendar window and the timeline's calendar overlay) are `user-select: none`, so dragging
-across days no longer highlights the numbers. Open for more; nothing else defined yet. (1.0.3
-also added **Export** to the editor header via BL-59.)
-
-The calendar windows (`f_YearCalendar` / `YearCalendarApp.vue`, `f_Calendar` / `CalendarApp.vue`)
-need more than they have today; ideas to be collected here as they come up.
-
-- ~~Day numbers should not be selectable as text~~ — done (1.0.3).
-- Later: click events on days (open / add items on that date, jump the timeline there).
-
----
-
-## [BL-39] Extended keyboard shortcuts
-
-**Status:** Done for 1.0.3 (2026-09-20); `R` landed with BL-66 step 1. Shipped as designed with
-two deviations: the type picker's Note key is `O` (`N` = last type, `P` = Period), and the pan
-speed setting lives in Timeline settings → **General** next to the mouse pan settings
-(`settings.keyboard_pan_speed`, migration 7). Also added: the `?` flyout's Shortcuts entry, F1 /
-F2 in the edit and both calendar windows, title autofocus on open, and Ctrl+Z actually wired
-(it was documented in Help but never implemented). Power-user set still empty.
-
-**Remapping done for 1.1.0 (2026-09-22).** `Shortcut.fixed` marks the conventions the user cannot
-take away (Esc, Enter, Ctrl+S, Ctrl+Enter, F1 / F2 / F10 / F11, arrows, Tab, Ctrl+Z); everything
-else is remappable. `keysOf(s)` resolves a shortcut to its chords, an override replacing every
-default chord; `conflictOf` and `rejectChord` validate a new one. Overrides are keyed
-`` `${context}:${id}` `` — `id` alone is not unique (`help`, `save`, `shortcuts` repeat) — and
-`utils/shortcutOverrides.ts` stores the whole table as one JSON blob under the misc setting
-`shortcut_overrides` at timeline 0, so nothing changed on the C# side. `useShortcuts` builds its
-lookup table in a `computed`, so a remap is live on the next key press without a reload. The
-Shortcuts modal grew a **Customise…** mode: click a row, press the chord, Backspace restores the
-default, Esc cancels the capture — the capture listener is capture-phase with
-`stopImmediatePropagation()` so Esc does not reach `BaseModal` and close the list. The type
-picker's letters come from the registry entries `pickEvent` / `pickPeriod` / `pickAge` /
-`pickPicture` / `pickNote`, with 1–5 always working as a fallback, and the "repeat last type"
-key follows whatever `addItem` is mapped to.
-
-Common timeline actions should have keyboard shortcuts so power users never need to reach for
-the mouse for routine operations.
-
-### Architecture — fixed keys now, user-remappable later
-
-- `utils/shortcuts.ts` is the single registry: `{ id, keys, group, label, context, inInputs? }`
-  per shortcut (`keys` is a normalised chord such as `Ctrl+Shift+S`, `F2`, `ArrowLeft`).
-- Each window calls `useShortcuts(context, handlers)`: one `keydown` listener that normalises
-  the chord, looks it up, applies the focus rule and calls `handlers[id]`. Handlers are the
-  functions that already exist (`store.lodZoomIn`, `toggleMiniMode`, `showSettings = true` …).
-- The **Shortcuts** modal (F2, and the third entry in the `?` flyout beside Help / About)
-  renders straight from the registry, grouped, so it can never drift from what fires.
-- Done in 1.1.0: the registry's `keys` are the defaults, user overrides live in app settings
-  (`shortcut_overrides`, timeline 0), and the same modal grew an edit mode. No handler changes.
-
-### Focus rules
-
-- While an input / textarea / select / contenteditable has focus only Ctrl/Alt chords and
-  F-keys fire; bare letters, digits, Space and arrows belong to the field.
-- `Esc` in a field blurs it (next key is a timeline shortcut again); elsewhere it closes the
-  topmost modal / menu as today.
-- While a modal is open, timeline shortcuts are off except `Esc` (`useModalGuard` keeps a stack;
-  see BL-71 for why it is a stack and not a counter).
-
-### Shortcuts
-
-**Timeline window**
-
-| Group | Shortcut | Action |
-| ----- | -------- | ------ |
-| Navigation | `←` / `→` | pan at a constant pace while held (setting: Timeline settings → General → Keyboard Pan Speed, px/s) |
-| | `Shift+←` / `Shift+→` | pan 3× faster |
-| | `↑` / `↓` | forward / back one tick (same code as the wheel) |
-| | `Shift+↑` / `Shift+↓` | forward / back one year (same as Shift+wheel) |
-| | `+` / `-` | zoom in / out one LOD |
-| | `Home` / `End` | jump to the timeline start / end boundary if the timeline has them, otherwise to the first / last item |
-| | `G` | focus the jump-to-year box |
-| Items | `N` | new item — opens the type picker (see flow below) |
-| | `Shift+N` | new item of the last used type, no picker |
-| | `Ctrl+Z` | undo last deletion (was documented, now implemented) |
-| Panels / windows | `F` | filter panel |
-| | `T` | tags |
-| | `Y` | year calendar |
-| | `M` | mini mode |
-| | `Shift+M` | mass add items |
-| | `R` | open a reference timeline (BL-66 step 1 — done) |
-| | `Ctrl+,` | timeline settings |
-| | `Ctrl+Shift+A` | actions menu |
-| App | `F1` / `F2` | Help / Shortcuts |
-| | `F10` / `F11` | custom scaling / fullscreen (exist) |
-| | `Esc` | close / blur |
-
-**Edit item window**
-
-| Shortcut | Action |
-| -------- | ------ |
-| `Ctrl+S` | save and close (exists); `Ctrl+Enter` inside a text field does the same |
-| `Esc` | cancel (exists) |
-| `Tab` power path | title → description → end date (Period / Age only) → tags; Shift+Tab reverses it; after tags Tab follows normal order |
-| `F1` / `F2` | Help / Shortcuts (also from the calendar windows) |
-
-### Streamlined add flow
-
-`N` opens a small type picker (Event / Period / Age / Picture / Note, canvas-menu order) with key
-hints: `1`–`5` or `E P A I O` (Note is `O`); `N` again = last used type; `Esc` cancels. The choice opens the
-edit window through the existing `OpenAddEditItemWindow` with `typeId`, `year` = current NOW
-year and `granularity` = current LOD. The title is focused and selected on open, the Tab power
-path leads through the fields that matter, `Ctrl+S` saves and closes, focus returns to the
-timeline (1.0.3 fix). `Shift+N` skips the picker. The last type is remembered per session.
-
-Space was rejected as the add key: it re-fires whichever button last had focus and every
-checkbox / button would need guarding.
-
-### Power-user set
-
-A second, larger tier of shortcuts for power users, on top of the table above. List to be
-filled in as they come up (2026-09-19):
-
-- _(none yet)_
-
----
-
-## [BL-23] App icon
-
-**Status:** Placeholder in place. Pending commission of final artwork.
-
-The application currently uses a placeholder icon. A proper icon (`.ico` with
-16/32/48/256px variants, plus a matching `favicon` for the WebView2 shell) should be
-provided.
-
-> In the `.csproj`, set `<ApplicationIcon>` to the `.ico` path. The icon will appear in the
-> taskbar, Alt-Tab switcher, and the title bar of any non-borderless window. For the
-> borderless windows a small SVG/PNG version can be shown in the Vue title bar next to the
-> window title.
-
----
-
-# Major — 1.1.0
-
-Refocused on 2026-09-21: get the app onto Mac (and Linux) through the browser, and get the Windows
-installer signed. Plus minor fixes and small additions. Everything that used to sit here moved to
-1.2.0.
-
-**Order settled 2026-09-21:** the browser build (BL-67 → BL-68) comes first. Both signing items
-(BL-69, BL-70) are deferred — they are worth doing but neither blocks a release, and SignPath
-wants a reputation the project has not earned yet. Signing can land in 1.1.0 if it is ready in
-time, or slip to a later version without holding anything up.
-
-## [BL-67] Cross-platform data layer
-
-**Status:** Done (2026-09-21). `StoryTimeline.Data/` is a plain `net10.0` class library holding the
-whole `Database/` tree plus `Logger` and `AppConfig`; the WinForms project references it and both
-build with zero warnings. The five host couplings are resolved:
-
-- Thumbnails run on SkiaSharp (`MediaRepo.WriteThumb`), covered by `MediaRepoThumbTests`. WebP now
-  thumbnails too — the skip existed only because GDI+ had no decoder.
-- `StatsDbInitializer` uses `AppContext.BaseDirectory` instead of `Application.StartupPath`.
-- A failed config read raises `AppConfig.OnLoadError`; `Program.cs` supplies the MessageBox.
-- The import file dialog moved to the host as `Database/DatabaseImportUI.cs`; `DatabaseImporter.Import`
-  stayed in the library.
-- `SchemaMigrator` reads `AppInfo.Version` (entry assembly) rather than the host's `UpdateChecker`,
-  which now delegates to it.
-
-382 .NET tests pass and the app boots and migrates a fresh database unchanged. Left for BL-68:
-`SkiaSharp.NativeAssets.Linux` / `.macOS` once a non-Windows publish exists.
-
-Move `Database/` out of the WinForms project into a class library targeting plain `net10.0` (no
-`-windows`), so the same repositories run on macOS and Linux. The layer is ~5,600 LOC and only two
-files are OS-bound:
-
-- `Database/MediaRepo.cs` — `System.Drawing.Drawing2D` / `.Imaging` for thumbnailing. Replace with
-  ImageSharp or SkiaSharp (both cross-platform and AGPL-compatible).
-- `Database/StatsDbInitializer.cs:10` — `Application.StartupPath` → `AppContext.BaseDirectory`.
-
-Dapper and Microsoft.Data.Sqlite are already cross-platform; SQLitePCLRaw ships its native bundle
-per-RID, so a self-contained publish per platform covers it.
-
-> **Aside:** do this first and alone. It is a mechanical move with `StoryTimelineMk2.Tests` behind
-> it, so it can land and be verified before any server work starts — the WinForms app keeps
-> referencing the library and should not notice the difference.
-
----
-
-## [BL-68] Local server + browser build (Mac / Linux support)
-
-**Status:** In progress. Design pass done (2026-09-21) — decisions, measured action split and
-phases below. **Phases 1 to 4 done**; phase 5 (browser fit-and-finish) started 2026-09-22 and
-closed its audit list on the same day. The macOS artifact has been run on the target Mac, and
-every release is checked there before it is published. A browser now reaches every screen, not
-just the data-only ones: windows open as pop-ups, file dialogs as `<input type="file">`, exports
-as downloads, and a release now produces a self-contained server for Windows, Linux and both
-kinds of Mac.
-
-Ship a second host: an ASP.NET Core binary the user runs locally that serves the built SPA and
-answers the same action names the WebView2 bridge answers today. Data stays on the user's machine
-— this is not hosted SaaS. Driver: a $99/yr Apple developer certificate is not affordable, so a
-native Mac build is out.
-
-### Decisions (2026-09-21)
-
-- **Scope: Mac and Linux only.** Windows keeps the WinForms + WebView2 app unchanged, so the
-  platform that has users carries no regression risk, and a host-bound feature may simply hide in
-  the browser instead of needing a full substitute.
-- **Transport: one WebSocket at `/bridge`.** Every handler already writes to a sink
-  (`ReplyToVue` → `Post` → `PostWebMessageAsJson`), and `StatsService` already keeps a weak-ref
-  registry of live WebViews to broadcast achievements to — so "a client registry with
-  `Post(object)`" is the shape the code already has, and that is a WebSocket hub. Swapping
-  `postMessage` for `ws.send` and the message listener for `ws.onmessage` leaves the correlation
-  map, the 30s timeout and the unprompted-push branch in `api.ts` untouched. Per-action HTTP would
-  need request/response reshaping *plus* a second channel for pushes. Bytes stay on plain HTTP:
-  `POST /upload`, `GET /download/{token}`, `GET /media/*`.
-- **Binding: loopback only (127.0.0.1), no auth.** Nothing on the LAN can reach it, so there is
-  nothing to log in to.
-- **Packaging: self-contained per RID** (osx-arm64, osx-x64, linux-x64). No prerequisite install,
-  at roughly 90–110 MB per download before compression — bigger than the Windows offline
-  installer, and that is accepted.
-- **Windows: `window.open`.** The five Vite entry points already carry their state in query
-  strings. In-page panels are a later item if the popup model proves annoying in practice.
-- **macOS: shipped unsigned, quarantine cleared by hand (2026-09-21).** A binary downloaded
-  through a browser carries `com.apple.quarantine`, and macOS refuses it with "the developer
-  cannot be verified" until it is notarized — which needs the same $99/yr Apple account this
-  whole item exists to avoid. Exactly one person will run the Mac build, so they clear it with
-  `xattr -dr com.apple.quarantine <file>` and the install notes say so. No Apple account, no
-  notarization, no `.app` bundle. Revisit only if the app is ever sold.
-
-### Action split (measured)
-
-63 of the 94 actions are pure data and port unchanged. The 31 host-bound ones are six problems,
-not one:
-
-| Group | Actions | Browser substitute |
-|---|---|---|
-| Window chrome | `WindowMinimize` / `MaximizeRestore` / `GetMaximized` / `Close` / `StartDrag` / `SetTopMost`, `ToggleFullscreen`, `ToggleCustomScaling` | Custom title bar hidden; Fullscreen API; CSS `zoom` for custom scaling; topmost drops |
-| Open a window | `OpenTimeline`, `OpenAddEditItemWindow`, `OpenCalendarEditorWindow`, `OpenYearCalendarWindow` | `window.open` on the matching entry point, same query string the form builds |
-| File in | `AddImageToItem`, `ImportCalendar`, `BrowseAndPreviewImport`, `BrowseAndPreviewTimelineImport`, `ExecuteImportDB` | `<input type="file">` → upload → the *existing* path-taking handler runs unchanged |
-| File out | `ExportTimeline`, `ExportCalendar`, `ExportFullDB` | Write the temp file server-side, reply with a download URL |
-| Folder / shell | `BrowseDataFolder`, `OpenDataFolder`, `OpenBackupsFolder`, `OpenExternalUrl` | `OpenExternalUrl` → `window.open`; the three folder actions have no browser equivalent and hide |
-| Fonts / updater | `GetSystemFonts`, `CheckForUpdates`, `SkipVersion` | `SKFontManager.Default.FontFamilies` — Skia already ships from BL-67. The update *check* is portable HTTP; only installing is not |
-
-Five more are mixed — `SaveItem`, `SaveSettings`, `SaveChromeTheme`, `ToggleCustomScaling` and
-`SetCalendarYear` do real data work plus one host side-effect (`SaveChromeTheme` saves the config,
-then repaints every `BorderlessFormBase`). Each splits cleanly; the side-effect is a no-op on the
-server.
-
-### Phases
-
-1. **Shared bridge core.** ✅ Done (2026-09-21). `StoryTimeline.Data/Bridge/` now holds
-   `IBridgeChannel`, `BridgeHub` and `DataActions` — 57 handlers (798 lines) moved verbatim out of
-   `MessageRouter`, which keeps the 37 that need a window, a dialog or a shell and tries
-   `_data.TryHandle(message)` first. `Post` is gone: replies and pushes both go through
-   `Bridge/WebViewChannel.cs`, and `StatsService` broadcasts achievements through `BridgeHub`
-   instead of its own WebView list. Two host hooks were needed — `DataActions.SystemPrefersDark`
-   (a registry read, wired in `Program.cs`) and `SaveItemPayload`, which stayed with the still
-   host-bound `SaveItem`. No user-visible change. 396 .NET tests pass, 14 of them new
-   (`StoryTimelineMk2.Tests/Bridge/`): hub register/dedupe/unregister/weak-ref/dead-channel
-   behaviour, all 57 data actions still dispatched, all 37 host actions still refused, and
-   round-trips through a fake channel.
-2. **Server host.** ✅ Done (2026-09-21). `StoryTimeline.Server` (`Microsoft.NET.Sdk.Web`,
-   `net10.0`) binds 127.0.0.1 only and serves the built SPA, `/media` and a `/bridge` WebSocket
-   that hands each message to the phase-1 `DataActions`. One `BridgeSession` per open page:
-   an unbounded outbox drains to the socket (a WebSocket allows one send at a time), messages
-   are handled in order, and a host-only action answers `{status:"error"}` rather than leaving
-   the page's promise to time out. `api.ts` picks its transport at load — WebView2 when
-   `window.chrome.webview` exists, the WebSocket otherwise — and rejects everything in flight
-   when that socket closes. `release.ps1 -Dev` now publishes `release\dev\win\` (WinForms) and
-   `release\dev\web\` (server + `wwwroot`). 416 .NET tests pass, 20 of them new
-   (`StoryTimelineMk2.Tests/Server/`: arg parsing, SPA resolution, a real Kestrel on a real
-   socket answering a real `ClientWebSocket`), plus 546 frontend tests, 6 of them new
-   (`src/test/bridge/transport.test.ts`).
-3. **Browser substitutes.** ✅ Done (2026-09-21). `Frontend/src/bridge/browserHost.ts` is the
-   browser's stand-in for the WinForms host: one table keyed by the same 25 action names, which
-   `api.ts` consults before anything reaches the socket. Windows become named `window.open`
-   pop-ups on the matching entry point with the query string the form builds (and a re-open
-   steers the window already there, the way the host reuses its form); window chrome becomes the
-   Fullscreen API plus no-ops for minimise, drag and topmost; file dialogs become a hidden
-   `<input type="file">` whose file goes to `POST /upload` and comes back as a path the existing
-   handler reads unchanged; exports become `POST /export` plus an `<a download>`; fonts come from
-   `queryLocalFonts()` with a web-safe fallback when the user has not granted it; `OpenExternalUrl`
-   is a tab and the three folder actions report the path instead. Cross-window pushes
-   (`CalendarsChanged`, `SetCalendarYear`, `YearCalendarClosed`) travel by `window.postMessage`.
-   Components now subscribe to pushes through the new `BackendAPI.onHostMessage()` rather than
-   `chrome.webview` directly — `TimelineApp.vue` did that unguarded, which threw on mount and was
-   why a browser showed little past the splash screen. 15 actions that needed no window, or only
-   a hook back into one, moved from the host half to `DataActions` along the way. 420 .NET tests
-   and 547 frontend tests pass, 18 of them new (`src/test/bridge/browserHost.test.ts`, upload and
-   export endpoints in `Server/BridgeServerTests.cs`).
-   The `mediaUrl()` helper came forward into phase 2 (`Frontend/src/utils/mediaUrl.ts`, 10 call
-   sites across 7 files) — without it every image in the browser build points at a virtual host
-   that only WebView2 serves, which would have made a phase-2 test look broken for the wrong
-   reason.
-4. **Done (2026-09-21; launcher and §13 link 2026-09-22).** `release.ps1` no longer
-   hardcodes `-r win-x64`: `PublishServer` takes a RID and step 3 runs it for `win-x64`,
-   `linux-x64`, `osx-arm64` and `osx-x64`, all cross-published from Windows with no Mac in the
-   loop and no code change of any kind. A full release now emits eight artifacts instead of four;
-   `-Dev` emits `win`, `web-win` and `web-linux` (no macOS, since it cannot be run here anyway).
-   What the packaging pass settled:
-   - **Nothing for macOS natives.** SkiaSharp 4.152.1 pulls `SkiaSharp.NativeAssets.macOS` in
-     transitively, so `libSkiaSharp.dylib` resolves on its own. (Adding it by hand was a 2.x-era
-     requirement and is not needed here.)
-   - **Linux needed one package ref, now added.** The `linux-x64` restore resolved only
-     `libe_sqlite3.so` — SkiaSharp ships transitive natives for macOS and Win32 only — so
-     `MediaRepo`'s thumbnailing would have thrown `DllNotFoundException` at runtime while the
-     build stayed green. `SkiaSharp.NativeAssets.Linux` 4.152.1 is now in
-     `StoryTimeline.Data.csproj`.
-   - **The executable bit takes two tars.** `.zip` cannot carry it, but `.tar.gz` alone does not
-     solve it either: NTFS has no executable bit to record, and Windows' own bsdtar has no
-     `--mode` to force one, so it writes 0644 and the binary will not start on the other side.
-     Git for Windows' GNU tar does have `--mode`, but it reads `C:\` as a remote host without
-     `--force-local` and has no `gzip` to shell out to. So GNU tar writes a plain `.tar` with
-     `--mode=a+rx --owner=root:0 --group=root:0`, and bsdtar gzips it through its `@archive`
-     syntax. Verified: entries come out `-rwxr-xr-x root/root`. This is the one place the release
-     needs Git for Windows installed, and the script fails with that message if it is not.
-   - **A start shortcut, not an auto-opening launcher (2026-09-22).** `PublishServer` now writes
-     one next to the binary, so every call site — release and `-Dev` — gets it: *Start Story
-     Timeline.command* on macOS (what Finder double-clicks), `start-story-timeline.sh` on Linux,
-     *Start Story Timeline.cmd* on Windows. Each one `cd`s to its own folder and runs the server,
-     which is all the user asked for; opening the browser on top of that (`open` / `xdg-open`) was
-     deliberately left out. The scripts are written LF by a new `WriteLf` — a CRLF shebang reads as
-     "bad interpreter" — and the tar's existing `--mode=a+rx` lands them executable.
-   - **Source link done (2026-09-22).** About now carries a *source for v{version}* link to
-     `github.com/WolfyD/StoryTimelineMk2/tree/v<version>`, the tag of the version actually running,
-     which is what AGPL §13 asks of a program people reach over a network. It goes through
-     `OpenExternalUrl`, so it is a shell open on the desktop and a tab in the browser.
-
-   Paths already port: `AppConfig` and `Logger` go through
-   `Environment.SpecialFolder.LocalApplicationData`, not `%LOCALAPPDATA%`.
-5. **Browser fit-and-finish.** In progress (2026-09-22). The audit that opened this phase is in
-   the 2026-09-22 session notes; what has landed so far:
-   - **Ctrl+C now stops the server.** `/bridge` passed only `context.RequestAborted` to
-     `BridgeSession.RunAsync`, and that token fires on client disconnect, never on shutdown — so
-     an open tab kept its WebSocket in flight and Kestrel waited out the host's full 30s shutdown
-     timeout. Measured at 30,041 ms before, under 1 s after. Fixed by linking
-     `IHostApplicationLifetime.ApplicationStopping` into the token
-     (`StoryTimeline.Server/ServerApp.cs`); regression test
-     `BridgeServerTests.AnOpenPageDoesNotHoldUpShutdown` asserts shutdown-with-an-open-page
-     finishes in under 5 s.
-   - **The title bar knows which host it is in.** `WindowTitleBar.vue` drops pin / minimise /
-     maximise in a browser (the tab does those) and shows instead the one control the page is
-     missing: **Back** on a page that replaced the project list, **×** on a pop-up — both routed
-     through the existing `WindowClose` → `browserHost.closeWindow()`, which already tells those
-     two cases apart. The desktop branch is untouched. Phosphor icons; 5 new tests.
-   - **The window title is the tab title.** Nothing set `document.title` anywhere, so every
-     browser tab read `Story Timeline` (or the file name). The same component now writes
-     `<title> — Story Timeline` from its `title` prop, which every page already passes.
-   - **Shortcuts are labelled the Mac way on a Mac.** `chordOf()` already folded `metaKey` into
-     `Ctrl+`, so ⌘ chords always fired — only the labels lied. `utils/shortcuts.ts` now exports
-     `IS_MAC` / `MOD` / `ALT` and `chordParts()` maps the modifiers to ⌘ / ⌥ / ⇧; the shortcuts
-     list, Help, the notes placeholder, the scaling hint and the Save hint all go through them, so
-     one file knows the key names. The shortcuts list also explains macOS's F-key hijacking.
-   - **On-screen scroll controls** (`store.onScreenControls`, App settings → Appearance, off by
-     default). Two round hold-to-scroll buttons over the canvas edges, driving the same rAF pan
-     loop the arrow keys use — `startPan` was split into `panBy(dir, fast)` so there is still only
-     one loop. Pointer capture on press, so a pointer that slides off a held button cannot leave it
-     panning. The wrapper is `pointer-events: none`, so the canvas underneath is untouched.
-   - **The pan speed sits next to the FPS counter**, editing the existing per-timeline
-     `KeyboardPanSpeed` (clamped 50–5000) through a new `store.savePanSpeed()` — the settings modal
-     still owns the same value, so the two cannot drift apart.
-     Both new settings are app-wide and ride the existing `SetMiscSetting(key, value, 0)`
-     key-value store, so **no C# changes were needed**.
-   - **Low resource mode** (`store.lowResourceMode`, App settings → Performance, off by default).
-     Named after JetBrains' Power Saver mode — deliberately not a judgement on the machine. Four
-     gates, chosen for what actually costs frames on the 2020 Intel MacBook Air:
-     1. the canvas layers are drawn at `pixelRatio` 1 instead of the display's (a Retina screen
-        doubles both axes, so a frame pushes 4× the pixels) — by far the biggest win;
-     2. `updateCursor()` returns early, so the marker that follows the pointer stops re-rendering
-        a Vue overlay on every `mousemove`;
-     3. `animateJumpToYear()` falls through to `jumpToYear()` — gated inside the canvas rather
-        than at the call sites, so every caller gets it;
-     4. a LOD change skips its tween, which re-packed lanes and redrew the grid every frame;
-     plus the minimap is not rendered (it redrew its dynamic layer on every pan frame).
-     The pixel ratio is set once the layers exist, so the setting needs the timeline window
-     reopened — App Settings lives in the project-list window and the two have separate stores.
-     Not done: `perfectDrawEnabled(false)` / `shadowForStrokeEnabled(false)`, which are per-shape
-     and would mean touching every builder in `timelineNodes.ts`. Worth measuring against the FPS
-     counter before paying for it.
-   - **Simpler items in low resource mode** — `buildNode()` takes a trailing `lowRes` flag (a
-     param, not a store import, so the util stays pure; two production call sites):
-     1. `Konva.pixelRatio = 1` alongside the per-layer clamp. The clamp only covered the layers
-        that existed at setup; `cache()` passes `Konva.pixelRatio` to the two offscreen canvases
-        it allocates, so cached bitmaps were still 4× on a Retina screen. The global closes that
-        and covers the minimap and mini-mode stages too.
-     2. The item colour is painted onto the event box's existing stroke (min width 2, so a
-        zero-border layout still shows it) instead of a second `Konva.Rect` per item — events
-        drop from 4 nodes to 3. `updateAbsolutePositions()` already guards on `elements.colorStrip`,
-        so it needed no change.
-     3. Hover is an instant 1.06× grow on the box and its label instead of the shadow-plus-`cache()`
-        highlight, and Age/Period's `scaleY: 1.3` is set directly rather than tweened. The growth
-        is anchored at the node's corner, not its centre: centring needs a position offset that
-        `updateAbsolutePositions()` overwrites on the next pan frame. A picture's caption is not
-        scaled — it hangs off the bottom edge rather than sharing the box's origin.
-   - **The audit list is closed (2026-09-22).**
-     - *`beforeunload` on the edit window.* A browser tab's own close, ⌘/Ctrl+W and Back never
-       reached `requestClose()`, so an unsaved item went with them silently. `EditItem` now hangs
-       the existing `isDirty()` off a `beforeunload` listener, registered on mount and removed on
-       unmount, and only under `IS_BROWSER_HOST` (new export from `api.ts`) — the desktop host
-       already routes its X through `requestClose()` and would just stack a second prompt.
-     - *Ctrl+wheel double-acting.* Both wheel listeners — the Konva stage and
-       `numberInputStepping` — acted on a wheel the host was already reading as zoom, so one
-       gesture did two things. Both now ignore a wheel with Ctrl or ⌘ held, which also covers a
-       Mac trackpad pinch (it arrives as `ctrlKey`).
-     - *"Open in Explorer".* New `utils/platform.ts` owns `IS_MAC` (moved from `shortcuts.ts`,
-       which re-exports it), `IS_WINDOWS` and `FILE_MANAGER` — Finder / Explorer / "your file
-       manager". App settings' two folder buttons and the browser host's folder alert read it.
-     - *The Windows-only fallback font list.* `WEB_SAFE_FONTS` offered Segoe UI and Calibri to a
-       Mac that has neither. It is now a common set plus a per-platform one (Mac, Windows or the
-       fontconfig/Liberation families on Linux) plus the generic CSS names. Only the fallback
-       changed; `queryLocalFonts()` still wins where the user grants it.
-
----
-
-## [BL-69] Microsoft Store channel (MSIX)
-
-**Status:** Deferred (2026-09-21) — behind the browser build. The free route to a warning-free
-install on Windows, and the one signing route with no licence or reputation conditions, so this is
-where to restart when signing comes back up.
-
-Package the app as MSIX and publish it to the Microsoft Store. Individual developer registration is
-free (since late 2025) and the Store re-signs submissions with its own certificate, so Store
-installs raise no SmartScreen warning and updates arrive through the Store. Needs no licence of any
-particular kind and does not replace BL-70 — the GitHub installer stays the primary channel, the
-Store is the frictionless one.
-
-Work: an MSIX packaging project, Store account and name reservation, package identity plus a check
-on how the virtualised `%LOCALAPPDATA%` behaves (the app writes `StoryTimelineMk2_Data` and
-`_Cache`), and a decision on whether the in-app updater hides itself in a Store build.
-
----
-
-## [BL-70] Signed installer — SignPath Foundation + CI build
-
-**Status:** In progress (2026-09-21). Licence prerequisite done (AGPL-3.0); the CI half is in —
-`.github/workflows/build.yml` runs the tests and then `release.ps1 <version>` (without
-`-CreateRelease`) on `windows-latest` and uploads all four artifacts, triggered by hand or by a
-`v*` tag. Two green runs (~4 min, all 950 tests, four artifacts, 14-day retention).
-
-**Deferred on 2026-09-21, behind the browser build (BL-67 / BL-68). SignPath application parked.** Their form also asks for a project download page
-and evidence of reputation — media coverage, download statistics, GitHub insights, community
-discussion — which this project does not have yet. Revisit once a few releases have accumulated
-download counts and traffic. Nothing else is blocked by it: the CI build stands on its own and
-BL-69 (Store) has no such bar. When it does happen, uncomment the signing step at the bottom of
-the workflow and fill in the org / project / policy slugs and `SIGNPATH_API_TOKEN`.
-
-Get `StoryTimelineSetup.exe` signed with a free OV certificate from SignPath Foundation so the
-installer stops showing "unknown publisher". Their conditions:
-
-- An OSI-approved licence with no commercial dual-licensing — **satisfied**: the repo is AGPL-3.0
-  and every dependency is compatible (Dapper, Microsoft.Data.Sqlite, WebView2, Vue, Pinia, Konva
-  and Phosphor are MIT-ish; Remixicon is Apache-2.0, compatible with v3).
-- Public repository and a maintainer account with MFA.
-- A project download page, plus evidence the project is **widely used or trusted** — this is the
-  one that is not satisfied yet, and it is a judgement call on their side, not a checkbox.
-- **Artifacts must be built by a CI pipeline**, not on a developer machine — **done**:
-  `.github/workflows/build.yml` calls the same `release.ps1` on `windows-latest`, so there is one
-  build definition rather than two, and SignPath pulls the artifact from the workflow run.
-
-Sequence: Actions build (done), apply to SignPath, then have releases use the CI-built signed
-artifacts instead of local ones — `release.ps1 -CreateRelease` still builds and publishes locally,
-so the last step is teaching it (or a second workflow) to attach the signed artifacts to the tag.
-Certum Open Source (~€69 first year, ~€29/yr after) is the paid fallback if SignPath declines.
-
----
-
-## [BL-71] Modals: drag-safe backdrop and a definite yes / no key
-
-**Status:** Done for 1.1.0 (2026-09-22).
-
-Two faults every modal shared. Selecting text inside a modal and releasing the mouse outside it
-closed the modal — a DOM `click` fires on the nearest common ancestor of `mousedown` and `mouseup`,
-so `@click.self` on the backdrop matched a drag that merely *ended* there. And keyboard support
-stopped at the window: a prompt had no definite yes, and several modals had no Esc at all.
-
-Both live in `utils/modal.ts` now, so a new modal cannot forget half of it:
-
-- `backdropClose(close)` remembers whether the *press* landed on the backdrop and only closes then.
-  Exported on its own for modals that sit inline in a page and have no lifecycle of their own
-  (`CalendarApp`'s day-of-year prompt).
-- `useModal(close, confirm?)` adds Esc → close and Enter → the footer's `[data-primary]` button.
-  Enter is left to the field when the field does something with it (`<textarea>`, contenteditable,
-  or an input marked `data-enter-self` — tag boxes, preset-name boxes and the like). Ctrl+Enter
-  confirms anyway. The edit window is deliberately excluded: there Ctrl+S saves and Enter does not.
-- `BaseModal` calls it, and paints the `↵` / `Esc` badges from `data-primary` / `data-cancel`
-  through `:slotted()`, so each modal only had to mark which button is which.
-- `useModalGuard` became a stack of symbols rather than a counter, and returns an `isTop`
-  predicate. That also fixed a pre-existing bug: with a counter, a nested dialog and the modal
-  underneath it both acted on the same Esc.
-
-`AppThemeModal`, `CalendarYearView` and `ImagePickerModal` had bespoke backdrops with no Esc and no
-guard at all; they use `useModal` now too.
-
----
-
 # Major — 1.2.0
 
 New moving parts; each needs its own design pass before code. This group was 1.1.0 until
@@ -552,14 +72,13 @@ New moving parts; each needs its own design pass before code. This group was 1.1
 
 ## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
 
-**Status:** Substantially resolved; moved to 1.1.0 (2026-09-20), then to 1.2.0 (2026-09-21),
-because what is left is internal. All 10 planned items addressed; since then also done: 30 s bridge request timeout
+**Status:** Resolved. Moved to 1.1.0 (2026-09-20), then to 1.2.0 (2026-09-21), because what was
+left was internal. All 10 planned items addressed; since then also done: 30 s bridge request timeout
 (FC-C1, `api.ts`), deleted items' Konva nodes destroyed (TC-H1), minimap static + dynamic layers
 (TC-H2), icon convention settled — CLAUDE.md now says Phosphor for everything new, Remix only
-survives in the older components, no sweep. Still open, none user-visible: status-discriminated
-bridge response types (FC-C1 deeper fix), heavy handlers on the UI thread (H1 — only
-`CheckForUpdates` uses `Task.Run`), gallery panel re-fetching `GetItemForEdit` (TC-H5), z-index
-token scale.
+survives in the older components, no sweep. The last four — the FC-C1 deeper fix, heavy handlers
+on the UI thread (H1), the panels' double `GetItemForEdit` (TC-H5) and the z-index token scale —
+were done for 1.1.1 (2026-09-23); see the sections below. Nothing known is left open.
 
 ### Data integrity — RESOLVED
 
@@ -567,14 +86,22 @@ token scale.
 - ~~**V1 import writes character↔event links into a dead table** (DB-H1)~~ — **Fixed.** V1 import now maps `item_characters` → `item_character_appearances` correctly.
 - ~~**`SetDataRoot` can silently create a fresh empty DB** (L5)~~ — **Mitigated.** `AppSettingsModal.vue` shows a warning before the action ("Use this folder will load whatever data already exists there") and informs the user after if `isNewDb` is true. Not a blocking issue.
 
-### Bridge / architecture (still pending)
+### Bridge / architecture — RESOLVED
 
-- **`request()` offline path now rejects** (FC-C1 partial): the `resolve(null)` in the no-WebView2
-  branch is replaced by `reject(Error)`, and a hung request rejects after 30 s. The deeper fix (status-discriminated response types
-  so backend error payloads also reject) is still pending — callers must still manually check
-  `?.status === 'error'` for production error responses.
-- **All handlers run synchronously on the UI thread** (H1): a big timeline load or media-folder
-  move freezes the window. Wants `Task.Run` + marshalled replies for the heavy handlers.
+- ~~**`request()` resolves on backend error payloads** (FC-C1)~~ — **Fixed.** The offline path and
+  a 30 s timeout already rejected; since 1.1.1 a reply carrying `status: 'error'` rejects too, with
+  the backend `message` on the `Error` and the whole payload (including `detail`, the C# stack, and
+  per-action flags such as `reported`) on `err.payload`. The hand-written `?.status === 'error'`
+  checks were swept in the same pass, and an `unhandledrejection` listener in `api.ts` shows the
+  last uncaught one rather than leaving it in the console.
+- ~~**Desktop handlers run synchronously on the UI thread** (H1)~~ — **Fixed.** `MessageRouter`
+  queues every message onto one static `Task` chain (`_dataPump`) instead of running it in the
+  WebView2 event: data-layer actions run there, and only what needs a window, a file dialog or a
+  shell hops back via `RunOnUi`. One chain across every window keeps the arrival order and the
+  one-at-a-time SQLite access the UI thread used to give for free; the three callbacks that reach
+  back into WinForms (`OnSettingsApplied`, `OnChromeThemeApplied`, `OnImportMigrationFailed`)
+  marshal themselves. Narrowed by BL-68: the server host already ran `DataActions` off any UI
+  thread, so this was the WinForms host alone.
 - ~~**`ShowDialog` inside WebMessageReceived** (H2)~~ — **Fixed.** All dialog calls wrapped in `BeginInvoke`.
 - ~~**`MoveDataFolder`/`CreateBackup` copy a live SQLite file** (H5)~~ — **Fixed.** `CreateBackup` uses `VACUUM INTO`; `MoveDataFolder` now uses `ItemRepo.VacuumInto()` instead of `File.Copy`.
 - ~~**`GetTimelineStories` name is misleading** (CT-M1)~~ — **Fixed.** Renamed to `GetAllStories`.
@@ -606,9 +133,12 @@ token scale.
   viewport rect.
 - ~~**Deleted items' Konva nodes are hidden, never destroyed** (TC-H1)~~ — **Fixed.** `evictNode()`
   in `TimelineCanvas.vue` destroys the cached nodes on delete and on `upsertItem`.
-- **DataPanel + GalleryPanel double-fetch `GetItemForEdit` per item per pan** (TC-H5): the data
-  panel has its own `pictureCache`; the gallery panel still fetches on its own. Wants one shared
-  cache keyed by item id.
+- ~~**DataPanel + GalleryPanel double-fetch `GetItemForEdit` per item per pan** (TC-H5)~~ —
+  **Fixed.** `utils/itemDetails.ts` holds one `WeakMap<TimelineItem, Promise<ItemForEdit|null>>`
+  that both panels read through, so an item is fetched once however many panels want it and the
+  gallery stops re-fetching on every pan. Keyed by the item object rather than its id: `upsertItem`
+  replaces the object on save, which drops that entry by itself, so there is nothing to
+  invalidate by hand.
 
 ### Styling consolidation (staged plan in AUDIT_FINDINGS §8)
 
@@ -621,7 +151,12 @@ token scale.
   canvas cache on theme change; `ChromeTheme` (TS + C#) includes save-accent. Remaining bare
   literals are intentional: DB-stored LayoutSettings defaults (TimelineSettingsModal script),
   canvas context-menu semantic colours (dark-canvas overlay), and data-driven item colour
-  fallbacks. z-index scale and icon convention sweep deferred — separate effort.
+  fallbacks. Icon convention settled in CLAUDE.md instead of a sweep.
+- ~~**z-index ladder with real conflicts** (part of ST-H3)~~ — **Fixed for 1.1.1.** The app-wide
+  rungs are named in `main.scss` — `--z-modal`, `--z-notification`, `--z-lightbox`,
+  `--z-menu-backdrop`, `--z-menu`, `--z-menu-sub` — and the twelve raw 9000/9001/9500/9998/9999/10000
+  literals now use them. Stacking that only matters inside one component stays a plain small
+  number there, on purpose.
 - ~~**`BaseModal` extraction** (MD-H1/H2): ~700 lines of duplicated modal chrome across 11 modals
   with inconsistent Escape/backdrop/z-index behaviour.~~ **DONE** — `BaseModal.vue` created; 12 of 13
   modals converted (backdrop + panel + Escape key + `#header`/`#footer` slots). `TimelineItemViewModal`
@@ -722,7 +257,9 @@ locked into the splitpanes layout and always show the same row / tile layout. In
   sort key, and which item types are listed; gallery tile size and grouping (by item, by year).
 - Pop-out: open either panel in its own borderless WinForms window (same pattern as
   `f_YearCalendar` — own HTML entry point, `OpenXWindow` bridge action, position persisted in
-  `settings`), kept in sync with the timeline viewport via push messages.
+  `settings`), kept in sync with the timeline viewport via push messages. Since BL-68 that is two
+  hosts: the browser build turns the same `OpenXWindow` into a `window.open` pop-up, so the design
+  has to say what "position persisted" means where the host cannot place a window.
 - Decide whether the popped-out panel replaces or duplicates the in-window one.
 
 ---
@@ -750,6 +287,41 @@ Remaining: fill in real achievement definitions (flavor text, trigger criteria),
 ---
 
 # Long-term / deferred
+
+## [BL-60] Calendar window — more functionality
+
+**Status:** Put away for later (2026-09-23) — the one defined item is done and nothing else
+has been specified, so there is nothing to pick up. First item done (1.0.3): the month grids (`CalendarMonthGrid.vue`, used by the
+year-calendar window and the timeline's calendar overlay) are `user-select: none`, so dragging
+across days no longer highlights the numbers. Open for more; nothing else defined yet. (1.0.3
+also added **Export** to the editor header via BL-59.)
+
+The calendar windows (`f_YearCalendar` / `YearCalendarApp.vue`, `f_Calendar` / `CalendarApp.vue`)
+need more than they have today; ideas to be collected here as they come up.
+
+- ~~Day numbers should not be selectable as text~~ — done (1.0.3).
+- Later: click events on days (open / add items on that date, jump the timeline there).
+
+---
+
+## [BL-23] App icon
+
+**Status:** Put away for later (2026-09-23). Placeholder in place, and the real work is not
+ours — it waits on the commissioned artwork.
+
+The application currently uses a placeholder icon. A proper icon (`.ico` with
+16/32/48/256px variants, plus a matching `favicon`) should be provided.
+
+Since BL-68 the favicon is visible rather than incidental: the browser build shows it on every
+tab, and there are five entry points (`index`, `timeline`, `editItem`, `calendar`,
+`yearCalendar`) that would all carry it.
+
+> In the `.csproj`, set `<ApplicationIcon>` to the `.ico` path. The icon will appear in the
+> taskbar, Alt-Tab switcher, and the title bar of any non-borderless window. For the
+> borderless windows a small SVG/PNG version can be shown in the Vue title bar next to the
+> window title.
+
+---
 
 ## [BL-53] Power-user console
 
@@ -861,121 +433,13 @@ anchor date picker, colour. The anchor date picker reuses `LodDateInput` at DAY 
 
 ---
 
-## [BL-33] Session changes export and import collision screen
-
-**Status:** Done for 1.1.0 (2026-09-22). Snapshot diff, not triggers. A session turned out to be a
-**day**, not an app run: the `session_days` log survives closing the app, and the export screen
-lets the user tick which days go in the file.
-
-`StoryTimeline.Data/Database/SessionChanges.cs` is the whole engine. `EnsureSnapshot(timelineId)`
-is called from `HandleGetTimelineData`, so opening a timeline starts — or resumes — today's row in
-the `session_days` log (see below). An item's `Signature` is a JSON array of the fields a
-co-writer would see plus its tags, story refs, chapter refs and character appearances — `created_at`
-and `updated_at` are left out, or every row would read as changed. `type_id = 7` rows are skipped:
-those are character cards, and `GetItemsByTimeline` skips them too.
-
-Links travel as the **full desired set**, not as add/remove pairs, so applying is a replace and
-`ItemRepo.SaveItemFull` is reused verbatim — there is no second copy of the save logic. Links
-pointing at a character, story or chapter the receiving copy does not have are dropped and counted
-in `SessionApplyResult.Dropped` rather than failing a foreign key and losing the item.
-
-A collision is: the local row exists **and** its `updated_at` no longer equals the
-`baselineUpdatedAt` carried in the file (the shared ancestor both copies started from), or, for an
-insert, the id is already here.
-
-Actions: `GetSessionChanges` / `PreviewSessionChanges` / `ApplySessionChanges` in `DataActions`,
-`ExportSessionChanges` / `BrowseAndPreviewSessionChanges` in `MessageRouter` (they need a file
-dialog), and an `ExportSessionChanges` branch in `FileEndpoints` for the browser build.
-
-**Shipped with two choices, not three.** BL-33 called for *Keep incoming / Keep local / Skip*, but
-without somewhere to persist a deferred decision "Skip" does exactly what "Keep local" does — the
-row is left as it is and the file is not consulted again. Add the third when a deferred-decisions
-store exists.
-
-**A session is a day, and it lives in the database.** `session_days` (migration 8) holds one row
-per day a timeline was worked on. Only the open day carries a `baseline` — `{itemId: {s, u, t}}`,
-all a diff needs — and when a later day opens, `EnsureSnapshot` seals it: the baseline is replaced
-by that day's net change set plus its counts, and any older row left open by a crash is sealed
-empty. One baseline per timeline, ever, so the log stays small however long the history runs, and
-closing the app no longer loses the day's work.
-
-`Build(timelineId, days)` takes any set of days, contiguous or not, and `Merge` folds them oldest
-to newest: the newest version of an item wins, but the ancestor comes from the **oldest** day in
-the range — the version the other copy still has. Taking the newest day's ancestor would make
-every row read as a collision. An item written and deleted inside the range is left out entirely,
-because the other copy never saw it.
-
-`session_exports` records where the last export stopped, which is what *everything since the last
-export* selects; `GetSessionHistory` returns the day list and that marker together. Exporting a
-partial range moves the marker to the newest day exported, so deliberately skipped older days stay
-skipped.
-
-### Session changes export
-
-*The original ask, kept for the reasoning. What shipped is above; the one thing that changed is
-that a session is a calendar day, not an open-to-close app run.*
-
-A per-session diff export that captures every insert, update, and delete made to a single
-timeline during one open-to-close session. The resulting file (`.stlc` — StoryTimeline
-Changes) can be handed to a co-writer, who applies it to their own copy of the same timeline.
-
-**Mechanism (preferred approach — no triggers):**
-
-At session open, snapshot the timeline's item rows into a temp table. On export, diff current
-state against the snapshot:
-
-```text
-op=insert  → row exists now, did not exist in snapshot
-op=update  → row exists in both, differs
-op=delete  → row existed in snapshot, no longer exists
-```
-
-The resulting change file carries the full row for inserts/updates, and just the ID + `"delete"`
-marker for removals. Applying it on the receiving side: upsert inserts/updates, hard-delete
-deleteds. Scope: items, item_tags, item_story_refs, item_character_appearances. Not timelines
-or settings (those are per-installation, not per-session changes).
-
-**Alternative (trigger-based):** `AFTER INSERT / UPDATE / BEFORE DELETE` triggers write
-`(table, row_id, op, ts)` rows to a `change_log` table. Higher write overhead, richer
-intra-session granularity (every individual edit recorded, not just net result). Prefer the
-snapshot diff approach unless replay fidelity becomes important. — *Not taken; the snapshot diff
-shipped.*
-
-### Import collision screen
-
-When applying a session changes file, detect rows where `op=update` or `op=delete` and the
-local copy was also modified since the session export timestamp. Present a simple side-by-side
-comparison (incoming vs local) with per-item radio buttons: **Keep incoming / Keep local /
-Skip**. Default: keep incoming (last write wins). A "Select all incoming" / "Select all local"
-bulk toggle keeps the flow fast for users who just want to accept everything.
-
-This screen applies equally to any future import path that involves per-item merging (not just
-session changes).
-
-**Built as `SessionChangesImportModal.vue`.** Every row carries a pair of checkbox-styled radios,
-**Incoming** / **Local**, defaulting to Incoming, plus *Take incoming for all* / *Keep local for
-all* at the top and a running tally. The side-by-side grid only appears on the rows that collide —
-elsewhere there is nothing to compare — and the fields that actually differ are highlighted.
-
-The choice is offered even on a row this copy does not have, because `Apply` treats
-`decisions[id] == "local"` as `Kept++; continue;` for *any* op: "Local" on an incoming insert means
-"do not add it", which is a real choice, not a no-op. Under each row a sentence spells out what the
-current pick does (“Overwrite my version with theirs” / “Leave it out — nothing is added here”),
-and a short block above defines the two words, because *incoming* and *local* mean nothing to a
-writer. Reached from the database menu on the project list: **Import Changes**.
-
-The matching export is a **tab** on the existing Export dialog (`ExportTimelineModal.vue`), reached
-from a new export button on the timeline's activity strip, just above the `?`. The *My work* tab
-lists the days newest first with each day's counts; the ticks are the single source of truth and
-the two `<input type="date">` boxes and the *Everything since the last export on …* / *All of it*
-buttons only rewrite them. Under the list are the merged counts and titles — what the file will
-actually contain — recomputed whenever the selection changes. Nothing is written until Export.
-
----
-
 ## [BL-34] In-app manual / help system
 
-**Status:** Pending — important but not urgent, defer to post-v2.0.
+**Status:** Pending — important but not urgent, defer to post-v2.0. Partly covered in the
+meantime by the F1 help modal, which was brought up to date for 1.1.0 and already carries the
+strip, shortcuts, sharing and Low resource mode; this item is the searchable, deep-linkable
+version of it, not a first attempt. A `help.html` entry point now has to be served by both hosts
+(the WinForms window and the server's static file list), as BL-68's five entry points are.
 
 A tabbed, searchable in-app manual covering every module. Accessible via a Help button in the
 main toolbar and a `?` button in each major panel (deep-links to the relevant tab).
@@ -1578,6 +1042,118 @@ data). The exact toggle mechanism for the side panel is out of scope for this it
 
 ---
 
+## [BL-33] Session changes export and import collision screen
+
+**Status:** Done for 1.1.0 (2026-09-22). Snapshot diff, not triggers. A session turned out to be a
+**day**, not an app run: the `session_days` log survives closing the app, and the export screen
+lets the user tick which days go in the file.
+
+`StoryTimeline.Data/Database/SessionChanges.cs` is the whole engine. `EnsureSnapshot(timelineId)`
+is called from `HandleGetTimelineData`, so opening a timeline starts — or resumes — today's row in
+the `session_days` log (see below). An item's `Signature` is a JSON array of the fields a
+co-writer would see plus its tags, story refs, chapter refs and character appearances — `created_at`
+and `updated_at` are left out, or every row would read as changed. `type_id = 7` rows are skipped:
+those are character cards, and `GetItemsByTimeline` skips them too.
+
+Links travel as the **full desired set**, not as add/remove pairs, so applying is a replace and
+`ItemRepo.SaveItemFull` is reused verbatim — there is no second copy of the save logic. Links
+pointing at a character, story or chapter the receiving copy does not have are dropped and counted
+in `SessionApplyResult.Dropped` rather than failing a foreign key and losing the item.
+
+A collision is: the local row exists **and** its `updated_at` no longer equals the
+`baselineUpdatedAt` carried in the file (the shared ancestor both copies started from), or, for an
+insert, the id is already here.
+
+Actions: `GetSessionChanges` / `PreviewSessionChanges` / `ApplySessionChanges` in `DataActions`,
+`ExportSessionChanges` / `BrowseAndPreviewSessionChanges` in `MessageRouter` (they need a file
+dialog), and an `ExportSessionChanges` branch in `FileEndpoints` for the browser build.
+
+**Shipped with two choices, not three.** BL-33 called for *Keep incoming / Keep local / Skip*, but
+without somewhere to persist a deferred decision "Skip" does exactly what "Keep local" does — the
+row is left as it is and the file is not consulted again. Add the third when a deferred-decisions
+store exists.
+
+**A session is a day, and it lives in the database.** `session_days` (migration 8) holds one row
+per day a timeline was worked on. Only the open day carries a `baseline` — `{itemId: {s, u, t}}`,
+all a diff needs — and when a later day opens, `EnsureSnapshot` seals it: the baseline is replaced
+by that day's net change set plus its counts, and any older row left open by a crash is sealed
+empty. One baseline per timeline, ever, so the log stays small however long the history runs, and
+closing the app no longer loses the day's work.
+
+`Build(timelineId, days)` takes any set of days, contiguous or not, and `Merge` folds them oldest
+to newest: the newest version of an item wins, but the ancestor comes from the **oldest** day in
+the range — the version the other copy still has. Taking the newest day's ancestor would make
+every row read as a collision. An item written and deleted inside the range is left out entirely,
+because the other copy never saw it.
+
+`session_exports` records where the last export stopped, which is what *everything since the last
+export* selects; `GetSessionHistory` returns the day list and that marker together. Exporting a
+partial range moves the marker to the newest day exported, so deliberately skipped older days stay
+skipped.
+
+### Session changes export
+
+*The original ask, kept for the reasoning. What shipped is above; the one thing that changed is
+that a session is a calendar day, not an open-to-close app run.*
+
+A per-session diff export that captures every insert, update, and delete made to a single
+timeline during one open-to-close session. The resulting file (`.stlc` — StoryTimeline
+Changes) can be handed to a co-writer, who applies it to their own copy of the same timeline.
+
+**Mechanism (preferred approach — no triggers):**
+
+At session open, snapshot the timeline's item rows into a temp table. On export, diff current
+state against the snapshot:
+
+```text
+op=insert  → row exists now, did not exist in snapshot
+op=update  → row exists in both, differs
+op=delete  → row existed in snapshot, no longer exists
+```
+
+The resulting change file carries the full row for inserts/updates, and just the ID + `"delete"`
+marker for removals. Applying it on the receiving side: upsert inserts/updates, hard-delete
+deleteds. Scope: items, item_tags, item_story_refs, item_character_appearances. Not timelines
+or settings (those are per-installation, not per-session changes).
+
+**Alternative (trigger-based):** `AFTER INSERT / UPDATE / BEFORE DELETE` triggers write
+`(table, row_id, op, ts)` rows to a `change_log` table. Higher write overhead, richer
+intra-session granularity (every individual edit recorded, not just net result). Prefer the
+snapshot diff approach unless replay fidelity becomes important. — *Not taken; the snapshot diff
+shipped.*
+
+### Import collision screen
+
+When applying a session changes file, detect rows where `op=update` or `op=delete` and the
+local copy was also modified since the session export timestamp. Present a simple side-by-side
+comparison (incoming vs local) with per-item radio buttons: **Keep incoming / Keep local /
+Skip**. Default: keep incoming (last write wins). A "Select all incoming" / "Select all local"
+bulk toggle keeps the flow fast for users who just want to accept everything.
+
+This screen applies equally to any future import path that involves per-item merging (not just
+session changes).
+
+**Built as `SessionChangesImportModal.vue`.** Every row carries a pair of checkbox-styled radios,
+**Incoming** / **Local**, defaulting to Incoming, plus *Take incoming for all* / *Keep local for
+all* at the top and a running tally. The side-by-side grid only appears on the rows that collide —
+elsewhere there is nothing to compare — and the fields that actually differ are highlighted.
+
+The choice is offered even on a row this copy does not have, because `Apply` treats
+`decisions[id] == "local"` as `Kept++; continue;` for *any* op: "Local" on an incoming insert means
+"do not add it", which is a real choice, not a no-op. Under each row a sentence spells out what the
+current pick does (“Overwrite my version with theirs” / “Leave it out — nothing is added here”),
+and a short block above defines the two words, because *incoming* and *local* mean nothing to a
+writer. Reached from the database menu on the project list: **Import Changes**.
+
+The matching export is a **tab** on the existing Export dialog (`ExportTimelineModal.vue`), reached
+from a new export button on the timeline's activity strip, just above the `?`. The *My work* tab
+lists the days newest first with each day's counts; the ticks are the single source of truth and
+the two `<input type="date">` boxes and the *Everything since the last export on …* / *All of it*
+buttons only rewrite them. Under the list are the merged counts and titles — what the file will
+actually contain — recomputed whenever the selection changes. Nothing is written until Export.
+
+---
+
 ## [BL-35] Proper versioning
 
 **Status:** Done. One version number, propagated by `release.ps1` to `StoryTimelineMk2.csproj`
@@ -1687,6 +1263,112 @@ A Vue modal (not a new WinForms window) overlaid on the main window. Content:
 > The About modal is entirely frontend — no backend call needed if the version is injected at
 > startup. The Help window reuses the existing WebView2 infrastructure; it's a new
 > `BorderlessFormBase` subclass with its own entry point (`help.html`).
+
+---
+
+## [BL-39] Extended keyboard shortcuts
+
+**Status:** Done for 1.0.3 (2026-09-20); `R` landed with BL-66 step 1. Shipped as designed with
+two deviations: the type picker's Note key is `O` (`N` = last type, `P` = Period), and the pan
+speed setting lives in Timeline settings → **General** next to the mouse pan settings
+(`settings.keyboard_pan_speed`, migration 7). Also added: the `?` flyout's Shortcuts entry, F1 /
+F2 in the edit and both calendar windows, title autofocus on open, and Ctrl+Z actually wired
+(it was documented in Help but never implemented). Power-user set still empty.
+
+**Remapping done for 1.1.0 (2026-09-22).** `Shortcut.fixed` marks the conventions the user cannot
+take away (Esc, Enter, Ctrl+S, Ctrl+Enter, F1 / F2 / F10 / F11, arrows, Tab, Ctrl+Z); everything
+else is remappable. `keysOf(s)` resolves a shortcut to its chords, an override replacing every
+default chord; `conflictOf` and `rejectChord` validate a new one. Overrides are keyed
+`` `${context}:${id}` `` — `id` alone is not unique (`help`, `save`, `shortcuts` repeat) — and
+`utils/shortcutOverrides.ts` stores the whole table as one JSON blob under the misc setting
+`shortcut_overrides` at timeline 0, so nothing changed on the C# side. `useShortcuts` builds its
+lookup table in a `computed`, so a remap is live on the next key press without a reload. The
+Shortcuts modal grew a **Customise…** mode: click a row, press the chord, Backspace restores the
+default, Esc cancels the capture — the capture listener is capture-phase with
+`stopImmediatePropagation()` so Esc does not reach `BaseModal` and close the list. The type
+picker's letters come from the registry entries `pickEvent` / `pickPeriod` / `pickAge` /
+`pickPicture` / `pickNote`, with 1–5 always working as a fallback, and the "repeat last type"
+key follows whatever `addItem` is mapped to.
+
+Common timeline actions should have keyboard shortcuts so power users never need to reach for
+the mouse for routine operations.
+
+### Architecture — fixed keys now, user-remappable later
+
+- `utils/shortcuts.ts` is the single registry: `{ id, keys, group, label, context, inInputs? }`
+  per shortcut (`keys` is a normalised chord such as `Ctrl+Shift+S`, `F2`, `ArrowLeft`).
+- Each window calls `useShortcuts(context, handlers)`: one `keydown` listener that normalises
+  the chord, looks it up, applies the focus rule and calls `handlers[id]`. Handlers are the
+  functions that already exist (`store.lodZoomIn`, `toggleMiniMode`, `showSettings = true` …).
+- The **Shortcuts** modal (F2, and the third entry in the `?` flyout beside Help / About)
+  renders straight from the registry, grouped, so it can never drift from what fires.
+- Done in 1.1.0: the registry's `keys` are the defaults, user overrides live in app settings
+  (`shortcut_overrides`, timeline 0), and the same modal grew an edit mode. No handler changes.
+
+### Focus rules
+
+- While an input / textarea / select / contenteditable has focus only Ctrl/Alt chords and
+  F-keys fire; bare letters, digits, Space and arrows belong to the field.
+- `Esc` in a field blurs it (next key is a timeline shortcut again); elsewhere it closes the
+  topmost modal / menu as today.
+- While a modal is open, timeline shortcuts are off except `Esc` (`useModalGuard` keeps a stack;
+  see BL-71 for why it is a stack and not a counter).
+
+### Shortcuts
+
+**Timeline window**
+
+| Group | Shortcut | Action |
+| ----- | -------- | ------ |
+| Navigation | `←` / `→` | pan at a constant pace while held (setting: Timeline settings → General → Keyboard Pan Speed, px/s) |
+| | `Shift+←` / `Shift+→` | pan 3× faster |
+| | `↑` / `↓` | forward / back one tick (same code as the wheel) |
+| | `Shift+↑` / `Shift+↓` | forward / back one year (same as Shift+wheel) |
+| | `+` / `-` | zoom in / out one LOD |
+| | `Home` / `End` | jump to the timeline start / end boundary if the timeline has them, otherwise to the first / last item |
+| | `G` | focus the jump-to-year box |
+| Items | `N` | new item — opens the type picker (see flow below) |
+| | `Shift+N` | new item of the last used type, no picker |
+| | `Ctrl+Z` | undo last deletion (was documented, now implemented) |
+| Panels / windows | `F` | filter panel |
+| | `T` | tags |
+| | `Y` | year calendar |
+| | `M` | mini mode |
+| | `Shift+M` | mass add items |
+| | `R` | open a reference timeline (BL-66 step 1 — done) |
+| | `Ctrl+,` | timeline settings |
+| | `Ctrl+Shift+A` | actions menu |
+| App | `F1` / `F2` | Help / Shortcuts |
+| | `F10` / `F11` | custom scaling / fullscreen (exist) |
+| | `Esc` | close / blur |
+
+**Edit item window**
+
+| Shortcut | Action |
+| -------- | ------ |
+| `Ctrl+S` | save and close (exists); `Ctrl+Enter` inside a text field does the same |
+| `Esc` | cancel (exists) |
+| `Tab` power path | title → description → end date (Period / Age only) → tags; Shift+Tab reverses it; after tags Tab follows normal order |
+| `F1` / `F2` | Help / Shortcuts (also from the calendar windows) |
+
+### Streamlined add flow
+
+`N` opens a small type picker (Event / Period / Age / Picture / Note, canvas-menu order) with key
+hints: `1`–`5` or `E P A I O` (Note is `O`); `N` again = last used type; `Esc` cancels. The choice opens the
+edit window through the existing `OpenAddEditItemWindow` with `typeId`, `year` = current NOW
+year and `granularity` = current LOD. The title is focused and selected on open, the Tab power
+path leads through the fields that matter, `Ctrl+S` saves and closes, focus returns to the
+timeline (1.0.3 fix). `Shift+N` skips the picker. The last type is remembered per session.
+
+Space was rejected as the add key: it re-fires whichever button last had focus and every
+checkbox / button would need guarding.
+
+### Power-user set
+
+A second, larger tier of shortcuts for power users, on top of the table above. List to be
+filled in as they come up (2026-09-19):
+
+- _(none yet)_
 
 ---
 
@@ -1996,3 +1678,294 @@ breaks and indentation collapse. Add `white-space: pre-wrap` to `.data-age-desc`
 already do this).
 
 ---
+## [BL-67] Cross-platform data layer
+
+**Status:** Done (2026-09-21). `StoryTimeline.Data/` is a plain `net10.0` class library holding the
+whole `Database/` tree plus `Logger` and `AppConfig`; the WinForms project references it and both
+build with zero warnings. The five host couplings are resolved:
+
+- Thumbnails run on SkiaSharp (`MediaRepo.WriteThumb`), covered by `MediaRepoThumbTests`. WebP now
+  thumbnails too — the skip existed only because GDI+ had no decoder.
+- `StatsDbInitializer` uses `AppContext.BaseDirectory` instead of `Application.StartupPath`.
+- A failed config read raises `AppConfig.OnLoadError`; `Program.cs` supplies the MessageBox.
+- The import file dialog moved to the host as `Database/DatabaseImportUI.cs`; `DatabaseImporter.Import`
+  stayed in the library.
+- `SchemaMigrator` reads `AppInfo.Version` (entry assembly) rather than the host's `UpdateChecker`,
+  which now delegates to it.
+
+382 .NET tests pass and the app boots and migrates a fresh database unchanged. Left for BL-68:
+`SkiaSharp.NativeAssets.Linux` / `.macOS` once a non-Windows publish exists.
+
+Move `Database/` out of the WinForms project into a class library targeting plain `net10.0` (no
+`-windows`), so the same repositories run on macOS and Linux. The layer is ~5,600 LOC and only two
+files are OS-bound:
+
+- `Database/MediaRepo.cs` — `System.Drawing.Drawing2D` / `.Imaging` for thumbnailing. Replace with
+  ImageSharp or SkiaSharp (both cross-platform and AGPL-compatible).
+- `Database/StatsDbInitializer.cs:10` — `Application.StartupPath` → `AppContext.BaseDirectory`.
+
+Dapper and Microsoft.Data.Sqlite are already cross-platform; SQLitePCLRaw ships its native bundle
+per-RID, so a self-contained publish per platform covers it.
+
+> **Aside:** do this first and alone. It is a mechanical move with `StoryTimelineMk2.Tests` behind
+> it, so it can land and be verified before any server work starts — the WinForms app keeps
+> referencing the library and should not notice the difference.
+
+---
+
+## [BL-68] Local server + browser build (Mac / Linux support)
+
+**Status:** Done for 1.1.0 (2026-09-22). Design pass done (2026-09-21) — decisions, measured action split and
+phases below. **Phases 1 to 4 done**; phase 5 (browser fit-and-finish) started 2026-09-22 and
+closed its audit list on the same day. The macOS artifact has been run on the target Mac, and
+every release is checked there before it is published. A browser now reaches every screen, not
+just the data-only ones: windows open as pop-ups, file dialogs as `<input type="file">`, exports
+as downloads, and a release now produces a self-contained server for Windows, Linux and both
+kinds of Mac.
+
+Ship a second host: an ASP.NET Core binary the user runs locally that serves the built SPA and
+answers the same action names the WebView2 bridge answers today. Data stays on the user's machine
+— this is not hosted SaaS. Driver: a $99/yr Apple developer certificate is not affordable, so a
+native Mac build is out.
+
+### Decisions (2026-09-21)
+
+- **Scope: Mac and Linux only.** Windows keeps the WinForms + WebView2 app unchanged, so the
+  platform that has users carries no regression risk, and a host-bound feature may simply hide in
+  the browser instead of needing a full substitute.
+- **Transport: one WebSocket at `/bridge`.** Every handler already writes to a sink
+  (`ReplyToVue` → `Post` → `PostWebMessageAsJson`), and `StatsService` already keeps a weak-ref
+  registry of live WebViews to broadcast achievements to — so "a client registry with
+  `Post(object)`" is the shape the code already has, and that is a WebSocket hub. Swapping
+  `postMessage` for `ws.send` and the message listener for `ws.onmessage` leaves the correlation
+  map, the 30s timeout and the unprompted-push branch in `api.ts` untouched. Per-action HTTP would
+  need request/response reshaping *plus* a second channel for pushes. Bytes stay on plain HTTP:
+  `POST /upload`, `GET /download/{token}`, `GET /media/*`.
+- **Binding: loopback only (127.0.0.1), no auth.** Nothing on the LAN can reach it, so there is
+  nothing to log in to.
+- **Packaging: self-contained per RID** (osx-arm64, osx-x64, linux-x64). No prerequisite install,
+  at roughly 90–110 MB per download before compression — bigger than the Windows offline
+  installer, and that is accepted.
+- **Windows: `window.open`.** The five Vite entry points already carry their state in query
+  strings. In-page panels are a later item if the popup model proves annoying in practice.
+- **macOS: shipped unsigned, quarantine cleared by hand (2026-09-21).** A binary downloaded
+  through a browser carries `com.apple.quarantine`, and macOS refuses it with "the developer
+  cannot be verified" until it is notarized — which needs the same $99/yr Apple account this
+  whole item exists to avoid. Exactly one person will run the Mac build, so they clear it with
+  `xattr -dr com.apple.quarantine <file>` and the install notes say so. No Apple account, no
+  notarization, no `.app` bundle. Revisit only if the app is ever sold.
+
+### Action split (measured)
+
+63 of the 94 actions are pure data and port unchanged. The 31 host-bound ones are six problems,
+not one:
+
+| Group | Actions | Browser substitute |
+|---|---|---|
+| Window chrome | `WindowMinimize` / `MaximizeRestore` / `GetMaximized` / `Close` / `StartDrag` / `SetTopMost`, `ToggleFullscreen`, `ToggleCustomScaling` | Custom title bar hidden; Fullscreen API; CSS `zoom` for custom scaling; topmost drops |
+| Open a window | `OpenTimeline`, `OpenAddEditItemWindow`, `OpenCalendarEditorWindow`, `OpenYearCalendarWindow` | `window.open` on the matching entry point, same query string the form builds |
+| File in | `AddImageToItem`, `ImportCalendar`, `BrowseAndPreviewImport`, `BrowseAndPreviewTimelineImport`, `ExecuteImportDB` | `<input type="file">` → upload → the *existing* path-taking handler runs unchanged |
+| File out | `ExportTimeline`, `ExportCalendar`, `ExportFullDB` | Write the temp file server-side, reply with a download URL |
+| Folder / shell | `BrowseDataFolder`, `OpenDataFolder`, `OpenBackupsFolder`, `OpenExternalUrl` | `OpenExternalUrl` → `window.open`; the three folder actions have no browser equivalent and hide |
+| Fonts / updater | `GetSystemFonts`, `CheckForUpdates`, `SkipVersion` | `SKFontManager.Default.FontFamilies` — Skia already ships from BL-67. The update *check* is portable HTTP; only installing is not |
+
+Five more are mixed — `SaveItem`, `SaveSettings`, `SaveChromeTheme`, `ToggleCustomScaling` and
+`SetCalendarYear` do real data work plus one host side-effect (`SaveChromeTheme` saves the config,
+then repaints every `BorderlessFormBase`). Each splits cleanly; the side-effect is a no-op on the
+server.
+
+### Phases
+
+1. **Shared bridge core.** ✅ Done (2026-09-21). `StoryTimeline.Data/Bridge/` now holds
+   `IBridgeChannel`, `BridgeHub` and `DataActions` — 57 handlers (798 lines) moved verbatim out of
+   `MessageRouter`, which keeps the 37 that need a window, a dialog or a shell and tries
+   `_data.TryHandle(message)` first. `Post` is gone: replies and pushes both go through
+   `Bridge/WebViewChannel.cs`, and `StatsService` broadcasts achievements through `BridgeHub`
+   instead of its own WebView list. Two host hooks were needed — `DataActions.SystemPrefersDark`
+   (a registry read, wired in `Program.cs`) and `SaveItemPayload`, which stayed with the still
+   host-bound `SaveItem`. No user-visible change. 396 .NET tests pass, 14 of them new
+   (`StoryTimelineMk2.Tests/Bridge/`): hub register/dedupe/unregister/weak-ref/dead-channel
+   behaviour, all 57 data actions still dispatched, all 37 host actions still refused, and
+   round-trips through a fake channel.
+2. **Server host.** ✅ Done (2026-09-21). `StoryTimeline.Server` (`Microsoft.NET.Sdk.Web`,
+   `net10.0`) binds 127.0.0.1 only and serves the built SPA, `/media` and a `/bridge` WebSocket
+   that hands each message to the phase-1 `DataActions`. One `BridgeSession` per open page:
+   an unbounded outbox drains to the socket (a WebSocket allows one send at a time), messages
+   are handled in order, and a host-only action answers `{status:"error"}` rather than leaving
+   the page's promise to time out. `api.ts` picks its transport at load — WebView2 when
+   `window.chrome.webview` exists, the WebSocket otherwise — and rejects everything in flight
+   when that socket closes. `release.ps1 -Dev` now publishes `release\dev\win\` (WinForms) and
+   `release\dev\web\` (server + `wwwroot`). 416 .NET tests pass, 20 of them new
+   (`StoryTimelineMk2.Tests/Server/`: arg parsing, SPA resolution, a real Kestrel on a real
+   socket answering a real `ClientWebSocket`), plus 546 frontend tests, 6 of them new
+   (`src/test/bridge/transport.test.ts`).
+3. **Browser substitutes.** ✅ Done (2026-09-21). `Frontend/src/bridge/browserHost.ts` is the
+   browser's stand-in for the WinForms host: one table keyed by the same 25 action names, which
+   `api.ts` consults before anything reaches the socket. Windows become named `window.open`
+   pop-ups on the matching entry point with the query string the form builds (and a re-open
+   steers the window already there, the way the host reuses its form); window chrome becomes the
+   Fullscreen API plus no-ops for minimise, drag and topmost; file dialogs become a hidden
+   `<input type="file">` whose file goes to `POST /upload` and comes back as a path the existing
+   handler reads unchanged; exports become `POST /export` plus an `<a download>`; fonts come from
+   `queryLocalFonts()` with a web-safe fallback when the user has not granted it; `OpenExternalUrl`
+   is a tab and the three folder actions report the path instead. Cross-window pushes
+   (`CalendarsChanged`, `SetCalendarYear`, `YearCalendarClosed`) travel by `window.postMessage`.
+   Components now subscribe to pushes through the new `BackendAPI.onHostMessage()` rather than
+   `chrome.webview` directly — `TimelineApp.vue` did that unguarded, which threw on mount and was
+   why a browser showed little past the splash screen. 15 actions that needed no window, or only
+   a hook back into one, moved from the host half to `DataActions` along the way. 420 .NET tests
+   and 547 frontend tests pass, 18 of them new (`src/test/bridge/browserHost.test.ts`, upload and
+   export endpoints in `Server/BridgeServerTests.cs`).
+   The `mediaUrl()` helper came forward into phase 2 (`Frontend/src/utils/mediaUrl.ts`, 10 call
+   sites across 7 files) — without it every image in the browser build points at a virtual host
+   that only WebView2 serves, which would have made a phase-2 test look broken for the wrong
+   reason.
+4. **Done (2026-09-21; launcher and §13 link 2026-09-22).** `release.ps1` no longer
+   hardcodes `-r win-x64`: `PublishServer` takes a RID and step 3 runs it for `win-x64`,
+   `linux-x64`, `osx-arm64` and `osx-x64`, all cross-published from Windows with no Mac in the
+   loop and no code change of any kind. A full release now emits eight artifacts instead of four;
+   `-Dev` emits `win`, `web-win` and `web-linux` (no macOS, since it cannot be run here anyway).
+   What the packaging pass settled:
+   - **Nothing for macOS natives.** SkiaSharp 4.152.1 pulls `SkiaSharp.NativeAssets.macOS` in
+     transitively, so `libSkiaSharp.dylib` resolves on its own. (Adding it by hand was a 2.x-era
+     requirement and is not needed here.)
+   - **Linux needed one package ref, now added.** The `linux-x64` restore resolved only
+     `libe_sqlite3.so` — SkiaSharp ships transitive natives for macOS and Win32 only — so
+     `MediaRepo`'s thumbnailing would have thrown `DllNotFoundException` at runtime while the
+     build stayed green. `SkiaSharp.NativeAssets.Linux` 4.152.1 is now in
+     `StoryTimeline.Data.csproj`.
+   - **The executable bit takes two tars.** `.zip` cannot carry it, but `.tar.gz` alone does not
+     solve it either: NTFS has no executable bit to record, and Windows' own bsdtar has no
+     `--mode` to force one, so it writes 0644 and the binary will not start on the other side.
+     Git for Windows' GNU tar does have `--mode`, but it reads `C:\` as a remote host without
+     `--force-local` and has no `gzip` to shell out to. So GNU tar writes a plain `.tar` with
+     `--mode=a+rx --owner=root:0 --group=root:0`, and bsdtar gzips it through its `@archive`
+     syntax. Verified: entries come out `-rwxr-xr-x root/root`. This is the one place the release
+     needs Git for Windows installed, and the script fails with that message if it is not.
+   - **A start shortcut, not an auto-opening launcher (2026-09-22).** `PublishServer` now writes
+     one next to the binary, so every call site — release and `-Dev` — gets it: *Start Story
+     Timeline.command* on macOS (what Finder double-clicks), `start-story-timeline.sh` on Linux,
+     *Start Story Timeline.cmd* on Windows. Each one `cd`s to its own folder and runs the server,
+     which is all the user asked for; opening the browser on top of that (`open` / `xdg-open`) was
+     deliberately left out. The scripts are written LF by a new `WriteLf` — a CRLF shebang reads as
+     "bad interpreter" — and the tar's existing `--mode=a+rx` lands them executable.
+   - **Source link done (2026-09-22).** About now carries a *source for v{version}* link to
+     `github.com/WolfyD/StoryTimelineMk2/tree/v<version>`, the tag of the version actually running,
+     which is what AGPL §13 asks of a program people reach over a network. It goes through
+     `OpenExternalUrl`, so it is a shell open on the desktop and a tab in the browser.
+
+   Paths already port: `AppConfig` and `Logger` go through
+   `Environment.SpecialFolder.LocalApplicationData`, not `%LOCALAPPDATA%`.
+5. **Browser fit-and-finish.** In progress (2026-09-22). The audit that opened this phase is in
+   the 2026-09-22 session notes; what has landed so far:
+   - **Ctrl+C now stops the server.** `/bridge` passed only `context.RequestAborted` to
+     `BridgeSession.RunAsync`, and that token fires on client disconnect, never on shutdown — so
+     an open tab kept its WebSocket in flight and Kestrel waited out the host's full 30s shutdown
+     timeout. Measured at 30,041 ms before, under 1 s after. Fixed by linking
+     `IHostApplicationLifetime.ApplicationStopping` into the token
+     (`StoryTimeline.Server/ServerApp.cs`); regression test
+     `BridgeServerTests.AnOpenPageDoesNotHoldUpShutdown` asserts shutdown-with-an-open-page
+     finishes in under 5 s.
+   - **The title bar knows which host it is in.** `WindowTitleBar.vue` drops pin / minimise /
+     maximise in a browser (the tab does those) and shows instead the one control the page is
+     missing: **Back** on a page that replaced the project list, **×** on a pop-up — both routed
+     through the existing `WindowClose` → `browserHost.closeWindow()`, which already tells those
+     two cases apart. The desktop branch is untouched. Phosphor icons; 5 new tests.
+   - **The window title is the tab title.** Nothing set `document.title` anywhere, so every
+     browser tab read `Story Timeline` (or the file name). The same component now writes
+     `<title> — Story Timeline` from its `title` prop, which every page already passes.
+   - **Shortcuts are labelled the Mac way on a Mac.** `chordOf()` already folded `metaKey` into
+     `Ctrl+`, so ⌘ chords always fired — only the labels lied. `utils/shortcuts.ts` now exports
+     `IS_MAC` / `MOD` / `ALT` and `chordParts()` maps the modifiers to ⌘ / ⌥ / ⇧; the shortcuts
+     list, Help, the notes placeholder, the scaling hint and the Save hint all go through them, so
+     one file knows the key names. The shortcuts list also explains macOS's F-key hijacking.
+   - **On-screen scroll controls** (`store.onScreenControls`, App settings → Appearance, off by
+     default). Two round hold-to-scroll buttons over the canvas edges, driving the same rAF pan
+     loop the arrow keys use — `startPan` was split into `panBy(dir, fast)` so there is still only
+     one loop. Pointer capture on press, so a pointer that slides off a held button cannot leave it
+     panning. The wrapper is `pointer-events: none`, so the canvas underneath is untouched.
+   - **The pan speed sits next to the FPS counter**, editing the existing per-timeline
+     `KeyboardPanSpeed` (clamped 50–5000) through a new `store.savePanSpeed()` — the settings modal
+     still owns the same value, so the two cannot drift apart.
+     Both new settings are app-wide and ride the existing `SetMiscSetting(key, value, 0)`
+     key-value store, so **no C# changes were needed**.
+   - **Low resource mode** (`store.lowResourceMode`, App settings → Performance, off by default).
+     Named after JetBrains' Power Saver mode — deliberately not a judgement on the machine. Four
+     gates, chosen for what actually costs frames on the 2020 Intel MacBook Air:
+     1. the canvas layers are drawn at `pixelRatio` 1 instead of the display's (a Retina screen
+        doubles both axes, so a frame pushes 4× the pixels) — by far the biggest win;
+     2. `updateCursor()` returns early, so the marker that follows the pointer stops re-rendering
+        a Vue overlay on every `mousemove`;
+     3. `animateJumpToYear()` falls through to `jumpToYear()` — gated inside the canvas rather
+        than at the call sites, so every caller gets it;
+     4. a LOD change skips its tween, which re-packed lanes and redrew the grid every frame;
+     plus the minimap is not rendered (it redrew its dynamic layer on every pan frame).
+     The pixel ratio is set once the layers exist, so the setting needs the timeline window
+     reopened — App Settings lives in the project-list window and the two have separate stores.
+     Not done: `perfectDrawEnabled(false)` / `shadowForStrokeEnabled(false)`, which are per-shape
+     and would mean touching every builder in `timelineNodes.ts`. Worth measuring against the FPS
+     counter before paying for it.
+   - **Simpler items in low resource mode** — `buildNode()` takes a trailing `lowRes` flag (a
+     param, not a store import, so the util stays pure; two production call sites):
+     1. `Konva.pixelRatio = 1` alongside the per-layer clamp. The clamp only covered the layers
+        that existed at setup; `cache()` passes `Konva.pixelRatio` to the two offscreen canvases
+        it allocates, so cached bitmaps were still 4× on a Retina screen. The global closes that
+        and covers the minimap and mini-mode stages too.
+     2. The item colour is painted onto the event box's existing stroke (min width 2, so a
+        zero-border layout still shows it) instead of a second `Konva.Rect` per item — events
+        drop from 4 nodes to 3. `updateAbsolutePositions()` already guards on `elements.colorStrip`,
+        so it needed no change.
+     3. Hover is an instant 1.06× grow on the box and its label instead of the shadow-plus-`cache()`
+        highlight, and Age/Period's `scaleY: 1.3` is set directly rather than tweened. The growth
+        is anchored at the node's corner, not its centre: centring needs a position offset that
+        `updateAbsolutePositions()` overwrites on the next pan frame. A picture's caption is not
+        scaled — it hangs off the bottom edge rather than sharing the box's origin.
+   - **The audit list is closed (2026-09-22).**
+     - *`beforeunload` on the edit window.* A browser tab's own close, ⌘/Ctrl+W and Back never
+       reached `requestClose()`, so an unsaved item went with them silently. `EditItem` now hangs
+       the existing `isDirty()` off a `beforeunload` listener, registered on mount and removed on
+       unmount, and only under `IS_BROWSER_HOST` (new export from `api.ts`) — the desktop host
+       already routes its X through `requestClose()` and would just stack a second prompt.
+     - *Ctrl+wheel double-acting.* Both wheel listeners — the Konva stage and
+       `numberInputStepping` — acted on a wheel the host was already reading as zoom, so one
+       gesture did two things. Both now ignore a wheel with Ctrl or ⌘ held, which also covers a
+       Mac trackpad pinch (it arrives as `ctrlKey`).
+     - *"Open in Explorer".* New `utils/platform.ts` owns `IS_MAC` (moved from `shortcuts.ts`,
+       which re-exports it), `IS_WINDOWS` and `FILE_MANAGER` — Finder / Explorer / "your file
+       manager". App settings' two folder buttons and the browser host's folder alert read it.
+     - *The Windows-only fallback font list.* `WEB_SAFE_FONTS` offered Segoe UI and Calibri to a
+       Mac that has neither. It is now a common set plus a per-platform one (Mac, Windows or the
+       fontconfig/Liberation families on Linux) plus the generic CSS names. Only the fallback
+       changed; `queryLocalFonts()` still wins where the user grants it.
+
+---
+
+## [BL-71] Modals: drag-safe backdrop and a definite yes / no key
+
+**Status:** Done for 1.1.0 (2026-09-22).
+
+Two faults every modal shared. Selecting text inside a modal and releasing the mouse outside it
+closed the modal — a DOM `click` fires on the nearest common ancestor of `mousedown` and `mouseup`,
+so `@click.self` on the backdrop matched a drag that merely *ended* there. And keyboard support
+stopped at the window: a prompt had no definite yes, and several modals had no Esc at all.
+
+Both live in `utils/modal.ts` now, so a new modal cannot forget half of it:
+
+- `backdropClose(close)` remembers whether the *press* landed on the backdrop and only closes then.
+  Exported on its own for modals that sit inline in a page and have no lifecycle of their own
+  (`CalendarApp`'s day-of-year prompt).
+- `useModal(close, confirm?)` adds Esc → close and Enter → the footer's `[data-primary]` button.
+  Enter is left to the field when the field does something with it (`<textarea>`, contenteditable,
+  or an input marked `data-enter-self` — tag boxes, preset-name boxes and the like). Ctrl+Enter
+  confirms anyway. The edit window is deliberately excluded: there Ctrl+S saves and Enter does not.
+- `BaseModal` calls it, and paints the `↵` / `Esc` badges from `data-primary` / `data-cancel`
+  through `:slotted()`, so each modal only had to mark which button is which.
+- `useModalGuard` became a stack of symbols rather than a counter, and returns an `isTop`
+  predicate. That also fixed a pre-existing bug: with a counter, a nested dialog and the modal
+  underneath it both acted on the same Esc.
+
+`AppThemeModal`, `CalendarYearView` and `ImagePickerModal` had bespoke backdrops with no Esc and no
+guard at all; they use `useModal` now too.
+
+---
+

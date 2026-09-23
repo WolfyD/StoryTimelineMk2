@@ -60,13 +60,13 @@ const calendarMismatch = computed(() =>
                     <span>Different calendar ({{ store.reference.project.Calendar?.Name || 'unnamed' }}) — years line up one-to-one, but month and day labels may not match.</span>
                 </p>
                 <label class="rt-shift">
-                    Shift by <input v-model.number="store.reference.shift" type="number" step="1" /> years
-                    <span class="rt-dim">(display only, not saved)</span>
+                    Shift by <input v-model.lazy.number="store.reference.shift" type="number" step="1" /> years
+                    <span class="rt-dim">(saved with this timeline)</span>
                 </label>
                 <p class="rt-tip">Alt+click a ghosted item to view it. Reference items ignore your filters and stay off the minimap.</p>
             </div>
             <p class="rt-tip">Draw one of your other timelines underneath this one, or open it read-only in its own window. <kbd>R</kbd> opens this list.</p>
-            <p v-if="error" class="rt-error">{{ error }}</p>
+            <p v-if="error || store.referenceError" class="rt-error">{{ error || store.referenceError }}</p>
             <div v-if="loading" class="rt-empty">Loading…</div>
             <div v-else-if="!timelines.length" class="rt-empty">No other timelines yet.</div>
             <div v-for="t in timelines" :key="t.Id" class="rt-row">

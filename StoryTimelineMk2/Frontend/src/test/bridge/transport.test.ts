@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { BridgeError } from '@/bridge/api'
 
 /**
  * The browser transport (BL-68). Without WebView2, the bridge has to reach the local server
@@ -111,6 +112,23 @@ describe('bridge transport without WebView2', () => {
 
 		await expect(first).resolves.toBe(1)
 		await expect(second).resolves.toBe(2)
+	})
+
+	// BL-18 (FC-C1): an error reply rejects instead of resolving with an error object nobody reads.
+	it('rejects on a status: error reply, keeping the payload', async () => {
+		const { BackendAPI, socket } = await loadBrowserBridge()
+		socket.open()
+
+		const pending = BackendAPI.request('RenameTag', { id: 1 })
+		socket.deliver({
+			messageId: socket.lastSent.messageId,
+			payload: { status: 'error', message: 'nope', detail: 'C# stack', reported: true },
+		})
+
+		await expect(pending).rejects.toThrow('nope')
+		const err = (await pending.catch((e) => e)) as BridgeError
+		expect(err.payload?.detail).toBe('C# stack')
+		expect(err.payload?.reported).toBe(true)
 	})
 
 	it('sends fire-and-forget messages too', async () => {

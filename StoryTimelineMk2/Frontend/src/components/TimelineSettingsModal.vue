@@ -2,7 +2,7 @@
 import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { PhPlus } from '@phosphor-icons/vue'
 import type { TimelineSettings, LayoutSettings } from '@/types/models'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, type BridgeError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { MOD } from '@/utils/shortcuts'
 import { DEFAULT_SWATCHES, ALL_LODS_MASK, loadSwatches, saveSwatches, loadDefaultLodMask, saveDefaultLodMask, lodMaskSummary } from '@/utils/timelinePrefs'
@@ -145,14 +145,14 @@ const isBuiltinPreset = computed(() =>
 async function resetPreset() {
     if (!isBuiltinPreset.value) return
     isResetting.value = true
-    const result = await BackendAPI.ResetLayoutPreset(local.selectedLayoutId)
-    isResetting.value = false
-    if (result?.status === 'ok' && result.layoutSettings) {
-        Object.assign(localLayout, result.layoutSettings)
-    } else if (result?.status === 'error') {
-        console.error('[resetPreset] Backend error:', result.message)
-        console.error('[resetPreset] Detail:', result.detail)
-        alert(`Reset failed:\n${result.message}`)
+    try {
+        const result = await BackendAPI.ResetLayoutPreset(local.selectedLayoutId)
+        if (result?.layoutSettings) Object.assign(localLayout, result.layoutSettings)
+    } catch (e) {
+        console.error('[resetPreset] failed:', e, (e as BridgeError).payload?.detail)
+        alert(`Reset failed:\n${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+        isResetting.value = false
     }
 }
 

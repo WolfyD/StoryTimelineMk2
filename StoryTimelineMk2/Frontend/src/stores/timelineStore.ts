@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote, type CharacterItem, type ItemTagLink, type ItemCharacterLink, type ItemStoryRefLink, type FilterRule, type FilterPreset, type FilterState } from '@/types/models';
 import { BackendAPI } from '@/bridge/api';
 import { buildFormatRegistry, DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
@@ -65,8 +65,10 @@ export const useTimelineStore = defineStore('timeline', () => {
 	const onScreenControls = ref<boolean>(false);
 	const lowResourceMode = ref<boolean>(false);
 	const readOnly = ref<boolean>(false); // BL-66: reference window — view only, no edit affordances
-	// BL-66 step 2: another timeline drawn underneath this one. Session-only; `shift` is display-only years.
+	// BL-66 step 2: another timeline drawn underneath this one. Which one, and the `shift` in years,
+	// are remembered per timeline in misc settings; the items themselves are re-fetched each time.
 	const reference = ref<{ project: TimelineProject; items: TimelineItem[]; shift: number } | null>(null);
+	const referenceError = ref<string | null>(null);   // surfaced by ReferenceTimelineModal
 	let _undoTimer: ReturnType<typeof setTimeout> | null = null;
 	let _pulseTimer: ReturnType<typeof setTimeout> | null = null;
 	//const konvaItems = ref<KonvaGroupObject[]>([]);
@@ -120,17 +122,46 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 	let _loadSeq = 0;
 
-	async function loadReference(id: number) {
+	async function loadReference(id: number, shift = 0) {
 		const response: FullTimelineProject = await BackendAPI.LoadTimelineData(id);
 		if (!response?.Project) throw new Error((response as any)?.message ?? `Timeline ${id} returned no data`);
 		reference.value = {
 			project: response.Project,
 			items: (response.Items ?? []).filter(i => i.TypeId !== 8 && i.TypeId !== 9),   // boundaries are the active timeline's business
-			shift: 0,
+			shift,
 		};
+		referenceError.value = null;
 	}
 
-	function clearReference() { reference.value = null; }
+	function clearReference() { reference.value = null; referenceError.value = null; }
+
+	const REFERENCE_KEY = 'reference_timeline';
+
+	// One watcher instead of a save call at each mutation site: picking a reference, removing it and
+	// nudging the shift all land here. The writes are idempotent, so a restore re-writing what it
+	// just read costs nothing.
+	watch(() => [reference.value?.project.Id, reference.value?.shift], () => {
+		const tlId = currentProject.value?.Id;
+		if (!tlId) return;
+		const r = reference.value;
+		void BackendAPI.SetMiscSetting(REFERENCE_KEY, r ? JSON.stringify({ id: r.project.Id, shift: r.shift }) : '', tlId);
+	});
+
+	// Restores whatever was drawn underneath this timeline last time. A reference that will not load
+	// (deleted, renumbered) is dropped rather than retried, and the reason shows in the reference modal.
+	async function restoreReference(raw: string | null | undefined, seq: number) {
+		let saved: { id?: number; shift?: number } | null = null;
+		if (raw) { try { saved = JSON.parse(raw); } catch { saved = null; } }
+		if (!saved?.id) { if (reference.value) clearReference(); return; }
+		try {
+			await loadReference(saved.id, saved.shift ?? 0);
+		} catch (err) {
+			console.error('[timelineStore] restoring reference timeline failed', err);
+			if (seq !== _loadSeq) return;
+			clearReference();
+			referenceError.value = `The timeline drawn underneath could not be loaded and was removed: ${(err as Error).message}`;
+		}
+	}
 
 	async function loadTimelineData (id:number) {
 		const seq = ++_loadSeq;
@@ -194,13 +225,14 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 			// Load filter rules and misc settings for this timeline
 			const tlId = response.Project.Id;
-			const [rulesResult, andModeResult, panelOpenResult, displayModeResult, oscResult, lowResResult] = await Promise.all([
+			const [rulesResult, andModeResult, panelOpenResult, displayModeResult, oscResult, lowResResult, refResult] = await Promise.all([
 				BackendAPI.GetFilterRules(tlId),
 				BackendAPI.GetMiscSetting('filter_and_mode', tlId),
 				BackendAPI.GetMiscSetting('filter_panel_open', tlId),
 				BackendAPI.GetMiscSetting('filter_display_mode', 0),
 				BackendAPI.GetMiscSetting('on_screen_controls', 0),
 				BackendAPI.GetMiscSetting('low_resource_mode', 0),
+				BackendAPI.GetMiscSetting(REFERENCE_KEY, tlId),
 			]);
 			if (seq !== _loadSeq) return;
 			filterRules.value = rulesResult?.rules ?? [];
@@ -209,6 +241,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 			filterDisplayMode.value = displayModeResult?.value === 'dimmed' ? 'dimmed' : 'hidden';
 			onScreenControls.value = oscResult?.value === '1';
 			lowResourceMode.value = lowResResult?.value === '1';
+			void restoreReference(refResult?.value, seq);   // a second full fetch — never block the timeline on it
 			const lProf = response.Project.Calendar.LodProfile;
 			const _lp = lProf.Profile;
 			if(_lp){
@@ -576,7 +609,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
-		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference,
+		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference, referenceError,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,

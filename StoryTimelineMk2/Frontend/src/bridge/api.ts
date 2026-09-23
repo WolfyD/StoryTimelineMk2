@@ -29,6 +29,19 @@ export interface BridgeMessage {
 	messageId?: number;
 }
 
+/** What the backend sends when a handler fails: `message` plus whatever that action adds. */
+export interface BridgeErrorPayload {
+	status?: string;
+	message?: string;
+	detail?: string;          // the C# stack trace
+	[key: string]: unknown;
+}
+
+/** What `request()` rejects with — the payload is kept for callers that need its extra fields. */
+export interface BridgeError extends Error {
+	payload?: BridgeErrorPayload;
+}
+
 const pendingRequests = new Map<number, (data: any) => void>();
 const rejectRequests = new Map<number, (reason: Error) => void>();
 let messageCounter = 0;
@@ -158,6 +171,17 @@ function sendRequest<T>(action: string, payload: unknown = null, direct = false)
 	});
 }
 
+// BL-18 (FC-C1): a caller that catches its own bridge error handles it however it likes. One
+// that does not used to leave the failure in the console, which is not "shown to the user" —
+// so the last uncaught one lands here. Only errors carrying a backend payload: the browser
+// host has already shown its own alert for the ones it raises.
+window.addEventListener('unhandledrejection', (event) => {
+	const err = event.reason as BridgeError | undefined;
+	if (!err?.payload) return;
+	event.preventDefault();   // the console line is already there, from sendRequest
+	window.alert(`Something went wrong:\n\n${err.message}`);
+});
+
 /** Pushes that are not replies: InitReload, ItemSaved, and the host's own notifications. */
 const hostListeners = new Set<(message: BridgeMessage) => void>();
 
@@ -187,14 +211,9 @@ export const BackendAPI = {
 
 	async ImportDatabase() {
 		const x: { status: string; message?: string } | null = await this.request('ImportDB', { args: [] });
-		if (x?.status === 'ok') {
-			const timelines: TimelineProjectContainer = await this.request('GetAllTimelines', { args: [] });
-			return timelines;
-		}
-		if (x?.status === 'error') {
-			console.error(`[ImportDB] ${x.message ?? 'Import failed'}`);
-		}
-		return null;
+		// A failure rejects now; 'cancelled' and anything else means there is nothing new to show.
+		if (x?.status !== 'ok') return null;
+		return await this.request<TimelineProjectContainer>('GetAllTimelines', { args: [] });
 	},
 
 	async BrowseAndPreviewImport() {
@@ -629,6 +648,17 @@ export const BackendAPI = {
 // Replies and unprompted pushes from C#, whichever pipe they arrived on.
 function handleIncoming(data: BridgeMessage) {
 	if (data.messageId && pendingRequests.has(data.messageId)) {
+		// BL-18 (FC-C1): the backend answers a failure with `{ status: 'error', message, detail }`.
+		// That used to resolve, so every caller had to remember to look — and most did not. It
+		// rejects here instead, once, and a caller that wants the message catches it.
+		const failed = data.payload as BridgeErrorPayload | null;
+		if (failed?.status === 'error') {
+			const err = new Error(failed.message ?? `'${data.action}' failed`) as BridgeError;
+			err.payload = failed;   // `detail` (the stack) and per-action flags such as `reported`
+			rejectRequests.get(data.messageId)?.(err);   // also clears both maps and the timeout
+			pendingRequests.delete(data.messageId);
+			return;
+		}
 		const resolveFn = pendingRequests.get(data.messageId)!;
 		resolveFn(data.payload);
 		pendingRequests.delete(data.messageId);

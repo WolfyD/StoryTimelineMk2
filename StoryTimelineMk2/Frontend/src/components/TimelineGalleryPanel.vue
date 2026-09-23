@@ -2,8 +2,8 @@
 import { ref, computed, watch } from 'vue';
 import { mediaUrl } from '@/utils/mediaUrl';
 import { useTimelineStore } from '@/stores/timelineStore';
-import { BackendAPI } from '@/bridge/api';
-import type { LayoutSettings, MediaItem } from '@/types/models';
+import { getItemDetails } from '@/utils/itemDetails';
+import type { LayoutSettings, MediaItem, TimelineItem } from '@/types/models';
 import { useLightbox } from '@/composables/useLightbox';
 import LightboxOverlay from '@/components/LightboxOverlay.vue';
 import CalendarPanel from '@/components/CalendarPanel.vue';
@@ -38,31 +38,30 @@ function inRange(absoluteStart: number, absoluteEnd: number): boolean {
     return absoluteStart >= rangeStart && absoluteStart <= rangeEnd;
 }
 
-const inRangeItemIds = computed(() =>
+// The items themselves, not copies of their ids: the shared details cache is keyed by the
+// item object, so a copy would miss every entry the data panel already filled.
+const inRangeItems = computed<TimelineItem[]>(() =>
     store.items
         .filter(i => inRange(i.AbsoluteStart, i.AbsoluteEnd) && i.TypeId !== 6 && i.TypeId !== 8 && i.TypeId !== 9)
-        .map(i => ({ id: i.Id, timelineId: i.TimelineId, title: i.Title }))
 );
 
 // Reload pictures whenever in-range items change (debounced to avoid hammering backend during drag)
 let _galleryTimer: ReturnType<typeof setTimeout> | null = null;
-watch(inRangeItemIds, (items) => {
+watch(inRangeItems, (items) => {
     if (_galleryTimer) clearTimeout(_galleryTimer);
     _galleryTimer = setTimeout(async () => {
         _galleryTimer = null;
         const fetched: GalleryEntry[] = [];
-        for (const { id, timelineId, title } of items) {
-            try {
-                const data = await BackendAPI.GetItemForEdit(timelineId, id);
-                for (const pic of data?.Pictures ?? []) {
-                    fetched.push({
-                        url: mediaUrl(pic.FilePath),
-                        thumbUrl: mediaUrl(pic.ThumbPath),
-                        title: pic.Title || pic.FileName,
-                        itemTitle: title,
-                    });
-                }
-            } catch { /* skip */ }
+        for (const item of items) {
+            const data = await getItemDetails(item);
+            for (const pic of data?.Pictures ?? []) {
+                fetched.push({
+                    url: mediaUrl(pic.FilePath),
+                    thumbUrl: mediaUrl(pic.ThumbPath),
+                    title: pic.Title || pic.FileName,
+                    itemTitle: item.Title,
+                });
+            }
         }
         entries.value = fetched;
         cascadeIndex.value = 0;

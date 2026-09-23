@@ -51,7 +51,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9500;
+    z-index: var(--z-lightbox);
     cursor: zoom-out;
 }
 

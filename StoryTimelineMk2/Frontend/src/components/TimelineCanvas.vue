@@ -4,7 +4,7 @@ import { mediaUrl } from '@/utils/mediaUrl';
 import { useTimelineStore } from '@/stores/timelineStore';
 import Konva from 'konva';
 import 'splitpanes/dist/splitpanes.css';
-import type { LayoutSettings, TimelineItem, TimelineProject, TimelineSettings } from '@/types/models';
+import type { LayoutSettings, HiddenRange, TimelineItem, TimelineProject, TimelineSettings } from '@/types/models';
 import type { Stage } from 'konva/lib/Stage';
 import { BackendAPI } from '@/bridge/api';
 import { canvasColor } from '@/utils/canvasTheme';
@@ -61,6 +61,13 @@ const boundaryOverlayLayer = new Konva.Layer();
 const referenceLayer = new Konva.Layer({ opacity: 0.4 });
 const refStems = new Konva.Group();
 const refBoxes = new Konva.Group();
+// BL-66: ages sit in the centre band and cannot take a lane, so a real one simply covers the
+// ghost behind it. This layer goes over the items and paints diagonal slits across the stretch
+// where a ghost age is hidden. Same 0.4 as the underlay, so the ghost reads the same either way.
+const refStripeLayer = new Konva.Layer({ opacity: 0.4, listening: false });
+const refStripes = new Konva.Group();
+refStripeLayer.add(refStripes);
+const STRIPE_SPACING = 16;   // half colour, half gap — strokeWidth is half the spacing
 referenceLayer.add(refStems, refBoxes);
 const refNodeCache = new Map<string, any>();
 const refLanes = new Map<string, LaneLock>();
@@ -101,6 +108,9 @@ const bookmarkNodeCache = new Map<string, { group: Konva.Group; line: Konva.Line
 const pictureImageCache = new Map<string, HTMLImageElement>();
 const pictureLoadingSet = new Set<string>();
 const lockedLanes = new Map<string, LaneLock>();
+// BL-66: ghosts pack around the real items, so their locks are only valid while the real
+// ones are. Every site that re-packs the world calls this rather than clearing one map.
+const clearLanes = () => { lockedLanes.clear(); refLanes.clear(); };
 // Item object last rendered per id — upsertItem replaces the object, which is the signal to rebuild that node
 const renderedItem = new Map<string, TimelineItem>();
 
@@ -136,7 +146,7 @@ const GRID_EXTRA_PX   = 500;
 const toggleRange = (id: number) => {
     if (expandedRangeIds.has(id)) expandedRangeIds.delete(id);
     else expandedRangeIds.add(id);
-    lockedLanes.clear();
+    clearLanes();
     if (props.layoutSettings) {
         renderGrid(gridLayer, props.layoutSettings);
         renderWithDimming(props.layoutSettings);
@@ -291,7 +301,7 @@ const removeBoundaryItem = async (itemId: string) => {
         store.removeItem(itemId);
         viewport.centerTime = clampToBoundaries(viewport.centerTime);
         if (props.layoutSettings) {
-            lockedLanes.clear();
+            clearLanes();
             renderGrid(gridLayer, props.layoutSettings);
             renderWithDimming(props.layoutSettings);
         }
@@ -321,7 +331,7 @@ const deleteItem = async (itemId: string) => {
         store.removeItem(itemId);
         evictNode(itemId);
         if (props.layoutSettings) {
-            lockedLanes.clear();
+            clearLanes();
             renderGrid(gridLayer, props.layoutSettings);
             renderWithDimming(props.layoutSettings);
         }
@@ -342,7 +352,7 @@ watch(() => props.layoutSettings, (newLs) => {
     miniNodeCache.clear();
     miniPinLanes.clear();
     miniBarLanes.clear();
-    lockedLanes.clear();
+    clearLanes();
     stemsMaster.destroyChildren();
     boxesMaster.destroyChildren();
     clearReferenceNodes();
@@ -368,7 +378,7 @@ watch(() => props.miniMode, (isMini) => {
     miniBarLanes.clear();
     miniLayer.visible(!!isMini);
     itemLayer.visible(!isMini);
-    lockedLanes.clear();
+    clearLanes();
     renderWithDimming(props.layoutSettings);
 });
 
@@ -389,7 +399,7 @@ watch(() => store.items, (items) => {
 // same array instance, and upsertItem swaps items in place inside it.
 watch(() => [...(props.timelineItems ?? [])], () => {
     if (!stage || !props.layoutSettings) return;
-    lockedLanes.clear();
+    clearLanes();
     renderWithDimming(props.layoutSettings);
 }, { deep: false });
 
@@ -402,7 +412,7 @@ watch([() => store.filterDisplayMode, () => store.dimmableItems], () => {
 // Re-render when hidden ranges change (added/deleted from settings)
 watch(() => store.hiddenRanges, () => {
     if (!stage || !props.layoutSettings) return;
-    lockedLanes.clear();
+    clearLanes();
     renderGrid(gridLayer, props.layoutSettings);
     renderWithDimming(props.layoutSettings);
 }, { deep: true });
@@ -410,7 +420,7 @@ watch(() => store.hiddenRanges, () => {
 // --- LOD ANIMATION WATCHER ---
 let lodAnim: number | null = null;
 watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
-    lockedLanes.clear(); // Clear collision cache so shapes can re-evaluate on zoom
+    clearLanes(); // Clear collision cache so shapes can re-evaluate on zoom
 
     const oldStep = store.lodProfile?.[oldIdx]?.stepFraction || 1;
     const targetStep = store.lodProfile?.[newIdx]?.stepFraction || 1;
@@ -429,7 +439,7 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
 
             // FIX: Clear the lane cache EVERY frame so they dynamically dodge
             // each other and re-pack as they compress or expand!
-            lockedLanes.clear();
+            clearLanes();
 
             renderGrid(gridLayer, props.layoutSettings);
             renderWithDimming(props.layoutSettings!);
@@ -1085,6 +1095,68 @@ function clearReferenceNodes() {
     refLanes.clear();
     refStems.destroyChildren();
     refBoxes.destroyChildren();
+    refStripes.destroyChildren();
+}
+
+/**
+ * BL-66 — diagonal slits across the stretch where a reference age sits behind a real one.
+ * Only that stretch: solid everywhere the ghost does not reach, so the slits themselves show
+ * where it starts and ends.
+ *
+ * ponytail: the slits paint the ghost's colour over the real age rather than cutting a hole in
+ * it, so the ghost's own label stays hidden. Clip the age node itself if the label ever needs
+ * to read through.
+ */
+function renderAgeStripes(
+    ghostAges: { start: number; end: number; color: string }[],
+    ls: LayoutSettings,
+    ranges: HiddenRange[],
+) {
+    refStripes.destroyChildren();
+    if (!ghostAges.length) { refStripeLayer.batchDraw(); return; }
+
+    const realItems: TimelineItem[] = props.timelineItems ?? store.items ?? [];
+    const height = ls.TimelineAgeHeight;
+    const top = viewport.height / 2 - height / 2;
+    const activeStep = viewport.lodStepFraction;
+    const toX = (t: number) => getXFromTime(t, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+
+    for (const real of realItems) {
+        if (getTypeName(real) !== 'Age') continue;
+        const realStart = getAbsoluteStart(real);
+        const realEnd = getAbsoluteEnd(real);
+
+        for (const ghost of ghostAges) {
+            const from = Math.max(realStart, ghost.start);
+            const to = Math.min(realEnd, ghost.end);
+            if (to <= from) continue;   // nothing of this ghost hides behind this age
+
+            const x1 = toX(from);
+            const x2 = toX(to);
+            const left = Math.min(x1, x2);
+            const width = Math.abs(x2 - x1);
+            if (width <= 0 || left > viewport.width || left + width < 0) continue;
+
+            const slits = new Konva.Group({
+                x: left, y: top,
+                clipX: 0, clipY: 0, clipWidth: width, clipHeight: height,
+            });
+            // 45°, so each line is shifted by the band height to cover the full width. An age can
+            // be far wider than the window, so only the lines that land on screen get built —
+            // snapped to the same grid, or they would crawl along the box as it pans.
+            const lo = Math.max(-height, -left - height);
+            const hi = Math.min(width + height, viewport.width - left);
+            const first = -height + Math.ceil((lo + height) / STRIPE_SPACING) * STRIPE_SPACING;
+            for (let sx = first; sx < hi; sx += STRIPE_SPACING) {
+                slits.add(new Konva.Line({
+                    points: [sx, 0, sx + height, height],
+                    stroke: ghost.color, strokeWidth: STRIPE_SPACING / 2, listening: false,
+                }));
+            }
+            refStripes.add(slits);
+        }
+    }
+    refStripeLayer.batchDraw();
 }
 
 // Same placement math as renderItems, minus everything the ghost doesn't need: no dimming,
@@ -1095,9 +1167,11 @@ function renderReference(ls: LayoutSettings) {
         if (refNodeCache.size) clearReferenceNodes();
         refRenderedFor = null;
     }
-    if (!ref || props.miniMode) { referenceLayer.visible(false); return; }
+    if (!ref || props.miniMode) { referenceLayer.visible(false); refStripeLayer.visible(false); return; }
     if (refRenderedFor !== ref) { clearReferenceNodes(); refRenderedFor = ref; }
     referenceLayer.visible(true);
+    refStripeLayer.visible(true);
+    const ghostAges: { start: number; end: number; color: string }[] = [];
 
     const screenBuffer = 400;
     const stageCenterY = viewport.height / 2;
@@ -1144,12 +1218,17 @@ function renderReference(ls: LayoutSettings) {
             : typeName === 'Picture' ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
             : ls.TimelineEventBoxWidth;
         let targetY = stageCenterY - ls.TimelineAgeHeight / 2;
-        if (typeName !== 'Age') {
+        if (typeName === 'Age') {
+            // BL-66: ages have no lane to move to, so note where this one runs and let the stripes
+            // show it through whatever real age ends up on top.
+            ghostAges.push({ start: absoluteStart, end: absoluteEnd, color: getColor(item) });
+        } else {
             const isAboveLine = item.Placement ? item.Placement === 1 : getItemIndex(item) % 2 !== 0;
             targetY = stageCenterY + getAssignedLane(
                 id, itemX, boxWidth, isAboveLine, isAgeOrPeriod,
                 absoluteStart, absoluteEnd, viewport.centerTime, activeStep,
-                viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, refLanes, ls, ranges
+                viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, refLanes, ls, ranges,
+                lockedLanes   // BL-66: pack around the real items, never under them
             );
         }
         updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeftOfNow(itemX, viewport.width), stageCenterY, ls, !!item.Centered);
@@ -1157,6 +1236,7 @@ function renderReference(ls: LayoutSettings) {
 
     for (const [id, elements] of refNodeCache) if (!shown.has(id)) setNodeVisibility(elements, false);
     referenceLayer.batchDraw();
+    renderAgeStripes(ghostAges, ls, ranges);
 }
 
 function RenderUiLayer(ui_layer: Konva.Layer, ls: LayoutSettings) {
@@ -1379,7 +1459,7 @@ function updateStageSize() {
 
     renderGrid(gridLayer, props.layoutSettings);
     RenderUiLayer(uiLayer, props.layoutSettings!);
-    lockedLanes.clear();
+    clearLanes();
     renderWithDimming(props.layoutSettings!);
 }
 
@@ -1545,6 +1625,7 @@ onMounted(() => {
 		stage.add(gridLayer);
 		stage.add(itemLayer);
 	}
+    stage.add(refStripeLayer); // BL-66 age slits — above the items in either grid order
     stage.add(boundaryOverlayLayer); // above items
     // Set initial layer visibility based on current prop value
     miniLayer.visible(!!props.miniMode);
@@ -1820,7 +1901,7 @@ onBeforeUnmount(() => {
 
 function refreshItems() {
     if (!props.layoutSettings) return;
-    lockedLanes.clear();
+    clearLanes();
     renderGrid(gridLayer, props.layoutSettings);
     renderWithDimming(props.layoutSettings);
 }
@@ -2041,12 +2122,12 @@ defineExpose({
 .context-menu-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 9998;
+    z-index: var(--z-menu-backdrop);
 }
 
 .context-menu {
     position: fixed;
-    z-index: 9999;
+    z-index: var(--z-menu);
     min-width: 190px;
     background-color: #1e293b;
     border: 1px solid #334155;
@@ -2152,7 +2233,7 @@ defineExpose({
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
             flex-direction: column;
             padding: 6px 0;
-            z-index: 10000;
+            z-index: var(--z-menu-sub);
         }
 
         &:hover .submenu {

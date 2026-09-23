@@ -19,6 +19,7 @@ vi.mock('@/bridge/api', () => ({
       { Id: 3, Title: '',       Author: '',  Color: '#333' },
     ] }),
     LoadTimelineData: vi.fn(),
+    SetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok' }),
   },
 }))
 
@@ -88,19 +89,26 @@ describe('ReferenceTimelineModal', () => {
     w.unmount()
   })
 
-  it('shows the active underlay with a calendar warning, a display-only shift and Remove', async () => {
+  it('shows the active underlay with a calendar warning, a saved shift and Remove', async () => {
     store.reference = { project: refProject as any, items: [], shift: 0 }
     const w = mount(ReferenceTimelineModal, { props: { currentId: 1 } })
     await flushPromises()
     expect(w.find('.rt-active-title').text()).toBe('Underneath: Other')
     expect(w.find('.rt-warn').text()).toContain('Different calendar (Lunar)')
 
-    await w.find('.rt-shift input').setValue('-40')
+    // .lazy: the shift commits on change, not on every keystroke.
+    const input = w.find('.rt-shift input')
+    await input.setValue('-40')
+    await input.trigger('change')
     expect(store.reference!.shift).toBe(-40)
+    await flushPromises()
+    expect(BackendAPI.SetMiscSetting).toHaveBeenCalledWith('reference_timeline', '{"id":2,"shift":-40}', 1)
 
     await w.find('.rt-remove').trigger('click')
     expect(store.reference).toBeNull()
     expect(w.find('.rt-active').exists()).toBe(false)
+    await flushPromises()
+    expect(BackendAPI.SetMiscSetting).toHaveBeenCalledWith('reference_timeline', '', 1)
     w.unmount()
   })
 

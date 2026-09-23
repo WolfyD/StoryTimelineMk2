@@ -150,7 +150,7 @@ const panelStyle = computed(() => ({
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.65);
-    z-index: 9000;
+    z-index: var(--z-modal);
     display: flex;
     align-items: center;
     justify-content: center;

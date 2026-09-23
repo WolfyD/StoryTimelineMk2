@@ -214,7 +214,8 @@ describe('CalendarApp — new calendar', () => {
         expect(typeof JSON.parse(payload.YearDefinition)).toBe('object')
         expect(vm.saveError).toBe('')
 
-        ;(BackendAPI.ExportCalendar as any).mockResolvedValueOnce({ status: 'error', message: 'disk full' })
+        // The bridge rejects on a backend error now (BL-18 FC-C1), so that is what a failure looks like.
+        ;(BackendAPI.ExportCalendar as any).mockRejectedValueOnce(new Error('disk full'))
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
         await wrapper.find('.btn-export').trigger('click')
         await flushPromises()

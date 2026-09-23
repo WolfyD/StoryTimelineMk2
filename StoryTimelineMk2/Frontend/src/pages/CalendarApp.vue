@@ -538,8 +538,7 @@ async function exportCalendar() {
     saveError.value = validate()
     if (saveError.value) return
     try {
-        const result = await BackendAPI.ExportCalendar({ calendar: buildPayload() })
-        if (result?.status === 'error') throw new Error(result.message ?? 'Export failed')
+        await BackendAPI.ExportCalendar({ calendar: buildPayload() })
     } catch (e) {
         console.error('[CalendarApp] export failed:', e)
         saveError.value = `Export failed: ${e instanceof Error ? e.message : String(e)}`

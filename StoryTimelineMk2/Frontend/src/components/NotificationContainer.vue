@@ -39,7 +39,7 @@ const store = useNotificationsStore()
 	position: fixed;
 	bottom: 20px;
 	right: 20px;
-	z-index: 9000;
+	z-index: var(--z-modal);
 	pointer-events: none;
 }
 
@@ -56,7 +56,7 @@ const store = useNotificationsStore()
 	top: 20px;
 	left: 50%;
 	transform: translateX(-50%);
-	z-index: 9001;
+	z-index: var(--z-notification);
 	pointer-events: auto;
 }
 

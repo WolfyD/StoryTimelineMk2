@@ -89,15 +89,16 @@ watch([from, to], () => pickRange(from.value || null, to.value || null))
 async function loadHistory() {
     if (props.sessionTimelineId === undefined) return
     summaryError.value = ''
-    const result = await BackendAPI.GetSessionHistory(props.sessionTimelineId)
-    if (result?.status !== 'ok' || !result.history) {
+    try {
+        const result = await BackendAPI.GetSessionHistory(props.sessionTimelineId)
+        if (!result?.history) throw new Error('the backend returned no history')
+        history.value = result.history
+        if (result.history.lastExportDay) pickSinceLastExport()
+        else pickAll()
+    } catch (e) {
         summaryError.value = 'Could not read your work history — check the application log.'
-        console.error('[GetSessionHistory]', result)
-        return
+        console.error('[GetSessionHistory]', e)
     }
-    history.value = result.history
-    if (result.history.lastExportDay) pickSinceLastExport()
-    else pickAll()
 }
 
 async function loadSummary() {
@@ -133,13 +134,10 @@ async function confirm() {
     isWorking.value = true
     try {
         const result = await BackendAPI.ExportSessionChanges(props.sessionTimelineId!, pickedDays.value)
-        if (result?.status === 'error') {
-            const msg = result.message ?? 'No response from the backend — check the application log.'
-            console.error('[ExportSessionChanges]', msg)
-            alert(`Session export failed:\n\n${msg}`)
-            return
-        }
         if (result?.status === 'ok') emit('close')
+    } catch (e) {
+        console.error('[ExportSessionChanges]', e)
+        alert(`Session export failed:\n\n${e instanceof Error ? e.message : String(e)}`)
     } finally {
         isWorking.value = false
     }

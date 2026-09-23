@@ -5,12 +5,15 @@ import type { LodLevel } from '@/types/models'
 // dedicated column: the read side of each is defensive because the value is free text.
 
 async function loadPref(key: string, timelineId: number): Promise<string | null> {
-  const res = await BackendAPI.GetMiscSetting(key, timelineId)
-  if (res?.status !== 'ok') {
-    console.error(`[timelinePrefs] loading ${key} failed:`, res)
+  // A preference that cannot be read falls back to its default rather than stopping the caller:
+  // losing a colour swatch is not worth an error dialog over the window it was opening.
+  try {
+    const res = await BackendAPI.GetMiscSetting(key, timelineId)
+    return res?.value ?? null
+  } catch (e) {
+    console.error(`[timelinePrefs] loading ${key} failed:`, e)
     return null
   }
-  return res.value
 }
 
 function savePref(key: string, timelineId: number, value: string) {

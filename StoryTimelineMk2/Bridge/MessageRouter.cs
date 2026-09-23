@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using StoryTimelineMk2.Forms;
 
@@ -22,6 +23,15 @@ namespace StoryTimelineMk2.Bridge
 
         // Held so timeline can push year updates to the year-calendar window
         private static f_YearCalendar? _yearCalendarWindow;
+
+        /// <summary>
+        /// BL-18 (H1): where data-layer actions run, instead of on the UI thread. One chain for
+        /// every window's router, so messages still run one at a time and in arrival order —
+        /// which is what the shared UI thread used to give the single SQLite file for free.
+        /// ponytail: a continuation chain, not a worker with a queue. If one slow action ever has
+        /// to stop holding up the rest, give the read-only actions a second chain.
+        /// </summary>
+        private static Task _dataPump = Task.CompletedTask;
 
         /// <summary>
         /// Called by f_Timeline when it is closing. Schedules all connected child
@@ -55,17 +65,19 @@ namespace StoryTimelineMk2.Bridge
             _webView = webView;
             _parentForm = parentForm;
             _channel = new WebViewChannel(webView, parentForm);
+            // These three are the only places a data action reaches back into WinForms, and
+            // since BL-18 (H1) it calls from the thread pool — so each one hops back to the UI.
             _data = new DataActions(_channel)
             {
-                OnSettingsApplied = ApplyWindowSettings,
-                OnChromeThemeApplied = () =>
+                OnSettingsApplied = s => RunOnUi(() => ApplyWindowSettings(s)),
+                OnChromeThemeApplied = () => RunOnUi(() =>
                 {
                     foreach (Form f in Application.OpenForms)
                         (f as BorderlessFormBase)?.ApplyChromeColor();
-                },
+                }),
                 // A copyable report (schema versions, stage, log path) beats the Vue alert.
-                OnImportMigrationFailed = ex => f_ErrorReport.ShowReport(
-                    "The backup could not be imported. Your current data was not changed.", ex),
+                OnImportMigrationFailed = ex => RunOnUi(() => f_ErrorReport.ShowReport(
+                    "The backup could not be imported. Your current data was not changed.", ex)),
             };
             _webView.WebMessageReceived += OnWebMessageReceived;
             BridgeHub.Register(_channel);
@@ -90,9 +102,24 @@ namespace StoryTimelineMk2.Bridge
 
             if (message == null) return;
 
+            // BL-18 (H1): queued onto the pump rather than run here, so a long save or timeline
+            // load no longer freezes the window it came from. WebView2 raises this event on the
+            // UI thread, so the chain is only ever extended from one thread.
+            BridgeMessage queued = message;
+            _dataPump = _dataPump.ContinueWith(_ => Dispatch(queued), TaskScheduler.Default);
+        }
+
+        /// <summary>
+        /// Runs one message to completion and answers it, whatever happens.
+        /// </summary>
+        private void Dispatch(BridgeMessage message)
+        {
             try
             {
-                RouteMessage(message);
+                // Everything that only needs the data layer lives in StoryTimeline.Data so the
+                // browser host (BL-68) can serve it too, and it stays on this thread. What is
+                // left needs a window, a file dialog or a shell, so it goes back to the UI one.
+                if (!_data.TryHandle(message)) RunOnUi(() => RouteMessage(message));
             }
             catch (Exception ex)
             {
@@ -109,19 +136,35 @@ namespace StoryTimelineMk2.Bridge
                         detail = ex.ToString(),
                     });
                 }
-                _parentForm?.BeginInvoke((MethodInvoker)(() =>
-                    MessageBox.Show($"Action '{message.Action}' failed:\n\n{ex}", "Backend error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                if (_parentForm is { IsDisposed: false, IsHandleCreated: true })
+                {
+                    _parentForm.BeginInvoke((MethodInvoker)(() =>
+                        MessageBox.Show($"Action '{message.Action}' failed:\n\n{ex}", "Backend error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                }
             }
+        }
+
+        /// <summary>
+        /// Runs <paramref name="work"/> on the UI thread and waits for it, so the next queued
+        /// message still starts only after this one has finished. Exceptions come back here.
+        /// </summary>
+        private void RunOnUi(Action work)
+        {
+            Form? ui = _parentForm;
+            if (ui == null) { work(); return; }
+            if (ui.IsDisposed || !ui.IsHandleCreated)
+            {
+                // The window that asked is gone, and so is the page that was waiting for it.
+                Logger.Warn("Bridge/Route", "Dropped a host action: its window is already closed.");
+                return;
+            }
+            if (ui.InvokeRequired) ui.Invoke(work);
+            else work();
         }
 
         private void RouteMessage(BridgeMessage message)
         {
-            // Everything that only needs the data layer lives in StoryTimeline.Data so the
-            // browser host (BL-68) can serve it too. What is left below needs a window, a
-            // file dialog or a shell.
-            if (_data.TryHandle(message)) return;
-
             switch (message.Action)
             {
                 case "OpenAddEditItemWindow":   HandleOpenAddEditItemWindow(message); break;

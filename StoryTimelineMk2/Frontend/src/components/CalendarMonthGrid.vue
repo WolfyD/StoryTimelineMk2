@@ -270,7 +270,7 @@ td.has-items {
     border: 1px solid var(--app-accent, #6366f1);
     border-radius: var(--app-radius-sm, 5px);
     padding: 5px 8px;
-    z-index: 9999;
+    z-index: var(--z-menu);
     white-space: nowrap;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     pointer-events: none;

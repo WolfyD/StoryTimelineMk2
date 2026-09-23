@@ -48,14 +48,15 @@ const showExport = ref(false);
 async function exportTimeline(includeIds: boolean, includeMedia: boolean) {
     const id = store.currentProject?.Id
     if (id == null) return
-    const result = await BackendAPI.ExportTimeline(id, includeIds, includeMedia)
-    showExport.value = false
-    if (result?.status === 'error') {
-        const msg = (result as { message?: string }).message ?? 'No response from the backend — check the application log.'
-        console.error('[ExportTimeline]', msg)
+    try {
+        await BackendAPI.ExportTimeline(id, includeIds, includeMedia)
+    } catch (e) {
+        console.error('[ExportTimeline]', e)
         alert(`Timeline export failed:
 
-${msg}`)
+${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+        showExport.value = false
     }
 }
 const showTypePicker = ref(false);
@@ -1118,7 +1119,7 @@ onBeforeUnmount(() => {
     position: fixed;
     inset: 0;
     background: #000000cc;
-    z-index: 9500;
+    z-index: var(--z-lightbox);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1165,7 +1166,7 @@ onBeforeUnmount(() => {
 // Not scoped: mini tooltip is teleported to body
 .mini-hover-tooltip {
     position: fixed;
-    z-index: 9999;
+    z-index: var(--z-menu);
     background: #1e293b;
     color: #f1f5f9;
     padding: 4px 8px;

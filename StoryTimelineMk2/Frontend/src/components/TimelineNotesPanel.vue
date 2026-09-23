@@ -81,11 +81,19 @@ async function addNote() {
     };
     store.addNote(note);
     newNoteText.value = '';
-    const result = await BackendAPI.SaveNote(note).catch(() => null);
-    if (!result || result.status !== 'ok') {
+    try {
+        await BackendAPI.SaveNote(note);
+    } catch (e) {
+        // Put the note back in the box rather than pretend it was saved.
         store.removeNote(note.Id);
         newNoteText.value = text;
+        noteFailed('Saving the note', e);
     }
+}
+
+function noteFailed(what: string, e: unknown) {
+    console.error(`[TimelineNotesPanel] ${what} failed:`, e);
+    alert(`${what} failed:\n\n${e instanceof Error ? e.message : String(e)}`);
 }
 
 function startEdit(note: TimelineNote) {
@@ -95,18 +103,24 @@ function startEdit(note: TimelineNote) {
 
 async function saveEdit(note: TimelineNote) {
     const updated = { ...note, NoteContents: editingText.value.trim() };
-    const result = await BackendAPI.SaveNote(updated);
-    if (result?.status === 'ok') {
+    try {
+        await BackendAPI.SaveNote(updated);
         store.updateNote(updated);
         editingId.value = null;
+    } catch (e) {
+        noteFailed('Saving the note', e);   // stays in edit mode, so the text is not lost
     }
 }
 
 function cancelEdit() { editingId.value = null; }
 
 async function deleteNote(noteId: string) {
-    const result = await BackendAPI.DeleteNote(noteId);
-    if (result?.status === 'ok') store.removeNote(noteId);
+    try {
+        await BackendAPI.DeleteNote(noteId);
+        store.removeNote(noteId);
+    } catch (e) {
+        noteFailed('Deleting the note', e);
+    }
 }
 
 // ── Distance state ────────────────────────────────────────────────────────────
@@ -799,7 +813,7 @@ function formatApproximate(dist: number): string {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9000;
+    z-index: var(--z-modal);
 }
 
 .note-view-modal {

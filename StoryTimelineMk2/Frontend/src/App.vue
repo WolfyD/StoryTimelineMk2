@@ -2,7 +2,7 @@
 	import ProjectContainer from "./components/ProjectContainer.vue";
 	import SplashTitle from "./components/SplashTitle.vue";
 	import WindowTitleBar from "./components/WindowTitleBar.vue";
-	import { BackendAPI } from "./bridge/api";
+	import { BackendAPI, type BridgeError } from "./bridge/api";
 	import { ref, onMounted } from "vue";
 	import { PhTrayArrowUp, PhTrayArrowDown, PhFileArrowDown, PhGitDiff, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear, PhDatabase } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
@@ -42,23 +42,30 @@
 	const exportDbMedia = ref(false)
 
 	async function HandleImportDatabase() {
-		const result = await BackendAPI.BrowseAndPreviewImport()
-		if (result?.status === 'ok' && result.preview) {
-			dbImportPreview.value = result.preview
+		try {
+			const result = await BackendAPI.BrowseAndPreviewImport()
+			if (result?.status === 'ok' && result.preview) {
+				dbImportPreview.value = result.preview
+			}
+		} catch (e) {
+			console.error('[BrowseAndPreviewImport]', e)
+			alert(`That database could not be read:\n\n${e instanceof Error ? e.message : String(e)}`)
 		}
 	}
 
 	async function executeImport(path: string) {
-		const result = await BackendAPI.ExecuteImportDB(path)
-		dbImportPreview.value = null
-		if (result?.status === 'ok') {
+		try {
+			await BackendAPI.ExecuteImportDB(path)
 			dbMenuOpen.value = false
 			await HandleGetTimelines()
-		} else {
-			const msg = result?.message ?? 'No response from the backend — check the application log.'
-			console.error('[ImportDB]', msg)
+		} catch (e) {
+			console.error('[ImportDB]', e)
 			// reported: the backend already showed its own error-report dialog for this failure
-			if (!result?.reported) alert(`Database import failed:\n\n${msg}`)
+			if (!(e as BridgeError).payload?.reported) {
+				alert(`Database import failed:\n\n${e instanceof Error ? e.message : String(e)}`)
+			}
+		} finally {
+			dbImportPreview.value = null
 		}
 	}
 
@@ -69,11 +76,11 @@
 
 	async function runExportDatabase() {
 		showExportDb.value = false
-		const result = await BackendAPI.ExportFullDB(exportDbMedia.value)
-		if (result?.status === 'error') {
-			const msg = result.message ?? 'No response from the backend — check the application log.'
-			console.error('[ExportFullDB]', msg)
-			alert(`Database export failed:\n\n${msg}`)
+		try {
+			await BackendAPI.ExportFullDB(exportDbMedia.value)
+		} catch (e) {
+			console.error('[ExportFullDB]', e)
+			alert(`Database export failed:\n\n${e instanceof Error ? e.message : String(e)}`)
 		}
 	}
 

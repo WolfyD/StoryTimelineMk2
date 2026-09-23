@@ -31,6 +31,17 @@
     --app-radius:         8px;
     --app-radius-sm:      4px;
     --app-radius-lg:      12px;
+
+    // ── Stacking order (BL-18) ──────────────────────────────────────────────
+    // The app-wide ladder, named, so a new overlay picks a rung instead of bidding
+    // 9999 and hoping. Stacking that only matters inside one component stays a plain
+    // small number there; these are the layers that have to agree with each other.
+    --z-modal:          9000;   // modal backdrops, and the notification stack beside them
+    --z-notification:   9001;   // milestones, which have to clear the rest of that stack
+    --z-lightbox:       9500;   // full-screen image and theme overlays, above any modal
+    --z-menu-backdrop:  9998;   // the click-catcher under an open context menu
+    --z-menu:           9999;   // context menus, and tooltips teleported to the body
+    --z-menu-sub:      10000;   // a submenu, which has to clear the menu it opened from
 }
 
 *, *::before, *::after { box-sizing: border-box; }

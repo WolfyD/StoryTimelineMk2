@@ -2,7 +2,7 @@
 import { ref, computed, watch, reactive } from 'vue';
 import { mediaUrl } from '@/utils/mediaUrl';
 import { useTimelineStore } from '@/stores/timelineStore';
-import { BackendAPI } from '@/bridge/api';
+import { getItemDetails } from '@/utils/itemDetails';
 import type { LayoutSettings, TimelineItem, MediaItem } from '@/types/models';
 import { useLightbox } from '@/composables/useLightbox';
 import { PhEye } from '@phosphor-icons/vue';
@@ -96,13 +96,9 @@ watch(inRangeItems, (items) => {
         for (const item of items) {
             if (pictureCache.has(item)) continue;
             pictureCache.set(item, undefined as any);
-            try {
-                const data = await BackendAPI.GetItemForEdit(item.TimelineId, item.Id);
-                const first = data?.Pictures?.[0];
-                pictureCache.set(item, first ? mediaUrl(first.ThumbPath) : null);
-            } catch {
-                pictureCache.set(item, null);
-            }
+            const data = await getItemDetails(item);
+            const first = data?.Pictures?.[0];
+            pictureCache.set(item, first ? mediaUrl(first.ThumbPath) : null);
         }
     }, 300);
 }, { immediate: true });
