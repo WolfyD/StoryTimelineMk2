@@ -79,6 +79,7 @@ function makeItemForEdit(overrides: Partial<ItemForEdit> = {}): ItemForEdit {
     },
     Tags: [{ Id: 1, Name: 'war' }],
     Characters: [],
+    Dismissals: [],
     StoryRefs: [],
     ChapterRefs: [],
     Calendar: {
@@ -167,7 +168,7 @@ describe('EditItem page', () => {
     const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
     await flushPromises()
 
-    const titleInput = wrapper.find('input[type="text"]')
+    const titleInput = wrapper.find<HTMLInputElement>('input[type="text"]')
     expect(titleInput.element.value).toBe('')
     wrapper.unmount()
   })
@@ -199,7 +200,7 @@ describe('EditItem page', () => {
     const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
     await flushPromises()
 
-    const titleInput = wrapper.find('input[placeholder="Item title"]')
+    const titleInput = wrapper.find<HTMLInputElement>('input[placeholder="Item title"]')
     expect(titleInput.element.value).toBe('The Great War')
     wrapper.unmount()
   })
@@ -212,7 +213,7 @@ describe('EditItem page', () => {
     const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
     await flushPromises()
 
-    const descTextarea = wrapper.find('textarea[placeholder="Short description"]')
+    const descTextarea = wrapper.find<HTMLTextAreaElement>('textarea[placeholder="Short description"]')
     expect(descTextarea.element.value).toBe('A pivotal conflict')
     wrapper.unmount()
   })
@@ -311,12 +312,14 @@ describe('EditItem page', () => {
     const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
     await flushPromises()
 
-    // ITEM_TYPES has 6 entries: Event, Period, Age, Picture, Note, Bookmark
+    // ITEM_TYPES has 7 entries: Event, Period, Age, Picture, Note, Bookmark, Character
     // The first select in the form is the type selector
     const typeSelect = wrapper.find('select')
     expect(typeSelect.exists()).toBe(true)
     const options = typeSelect.findAll('option')
-    expect(options.length).toBe(6)
+    expect(options.length).toBe(7)
+    // Character is the character window's to hand out — unpickable on an item that is not one.
+    expect(options[6]!.attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 

@@ -185,6 +185,59 @@ public class ItemRepoTests
         Assert.Equal(item1.Id, results[0].Id);
     }
 
+    // The canvas draws a character's disc from this flag, and it lives on the character, not the item.
+    [Fact]
+    public void GetItemsByTimeline_CarriesTheOwningCharactersHighlightFlag()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var birth = MakeItem(tl);
+        birth.TypeId = 7;
+        var ordinary = MakeItem(tl);
+        repo.SaveItemFull(birth, [], [], [], []);
+        repo.SaveItemFull(ordinary, [], [], [], []);
+
+        string charId = SeedCharacter(ctx, tl);
+        using (var db = ctx.OpenConnection())
+            db.Execute("UPDATE characters SET use_highlight_color = 1, birth_item_id = @Item WHERE id = @Id",
+                new { Item = birth.Id, Id = charId });
+
+        var byId = repo.GetItemsByTimeline(tl).ToDictionary(i => i.Id);
+        Assert.True(byId[birth.Id].UseHighlightColor);
+        Assert.False(byId[ordinary.Id].UseHighlightColor);
+    }
+
+    // ── detected links ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DetectedAppearance_SurvivesTheRoundTrip_AndADismissalIsTakenBackByAManualAdd()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+        var item = MakeItem(tl);
+        string charId = SeedCharacter(ctx, tl);
+
+        repo.SaveItemFull(item, [],
+            [new ItemRepo.CharacterAppearanceInput { CharacterId = charId, Role = "", AutoDetected = true }],
+            [], []);
+        Assert.True(repo.GetItemCharacterAppearances(item.Id).Single().AutoDetected);
+
+        // The user takes the detected link off: the matcher has to leave them alone from now on.
+        repo.DismissCharacterLink(item.Id, charId);
+        repo.SaveItemFull(item, [], [], [], []);
+        Assert.Equal([charId], repo.GetDismissedCharacters(item.Id));
+
+        // Attaching them by hand is a change of mind, and clears the dismissal.
+        repo.SaveItemFull(item, [],
+            [new ItemRepo.CharacterAppearanceInput { CharacterId = charId, Role = "friend" }],
+            [], []);
+        Assert.Empty(repo.GetDismissedCharacters(item.Id));
+        Assert.False(repo.GetItemCharacterAppearances(item.Id).Single().AutoDetected);
+    }
+
     // ── relation seeding helpers ──────────────────────────────────────────────
 
     private static string SeedCharacter(DbTestContext ctx, int timelineId, string name = "Alice", string color = "#ff0000")
@@ -235,7 +288,7 @@ public class ItemRepoTests
     // ── GetItemsByYear ────────────────────────────────────────────────────────
 
     [Fact]
-    public void GetItemsByYear_ReturnsOnlyItemsInThatYear_ExcludingCharacters()
+    public void GetItemsByYear_ReturnsOnlyItemsInThatYear_CharactersIncluded()
     {
         using var ctx = new DbTestContext();
         int tl = SeedTimeline(ctx);
@@ -249,8 +302,12 @@ public class ItemRepoTests
 
         var results = repo.GetItemsByYear(tl, 1500).ToList();
 
-        Assert.Single(results);
-        Assert.Equal(hit.Id, results[0].Id);
+        // Type 7 is a real item since BL-15 phase 2 — a character's birth or death — so it is
+        // listed like any other; only the other year is left out.
+        Assert.Equal(2, results.Count);
+        Assert.Contains(results, r => r.Id == hit.Id);
+        Assert.Contains(results, r => r.Id == character.Id);
+        Assert.DoesNotContain(results, r => r.Id == otherYear.Id);
     }
 
     // ── timeline-wide link getters ────────────────────────────────────────────

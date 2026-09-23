@@ -36,6 +36,10 @@
         public bool TimelineBoxTypesShowAsBox { get; set; }
         public int TimelineBoxTypesBoxWidth { get; set; }
         public bool TimelineBoxTypesShowImage { get; set; }
+        // A caption under a picture is the file's title; under a portrait it is a generated
+        // sentence, so the two need their own sizes. Defaulted, never 0 from a partial save.
+        public int TimelinePictureCaptionFontSize { get; set; } = 12;
+        public int TimelineCharacterCaptionFontSize { get; set; } = 12;
 
         // Timeline misc
         public string TimelineCanvasBackgroundColor { get; set; } = string.Empty;

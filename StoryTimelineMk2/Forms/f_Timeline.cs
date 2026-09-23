@@ -24,6 +24,11 @@ namespace StoryTimelineMk2.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool ReadOnly { get; set; }
 
+        /// <summary>BL-15 phase 3: an appearances window — the same read-only page narrowed to one
+        /// character's items. Null for every other window, including a prewarmed one reused here.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public string? CharacterId { get; set; }
+
         private readonly System.Windows.Forms.Timer _moveTimer = new() { Interval = 500 };
 
         public f_Timeline()
@@ -154,7 +159,7 @@ namespace StoryTimelineMk2.Forms
                 {
                     // Vue is already bootstrapping in the background.
                     // Send the real timeline ID — Vue is listening for this push.
-                    string idMsg = JsonSerializer.Serialize(new { action = "SetTimelineId", payload = new { id = TimelineId, readOnly = ReadOnly } });
+                    string idMsg = JsonSerializer.Serialize(new { action = "SetTimelineId", payload = new { id = TimelineId, readOnly = ReadOnly, characterId = CharacterId } });
 
                     void SendId()
                     {
@@ -183,7 +188,8 @@ namespace StoryTimelineMk2.Forms
                     coreWV.NavigationCompleted += OnNavigationCompleted;
 
                     Logger.Info("f_Timeline.Load", "Navigate starting");
-                    string query = $"?id={TimelineId}" + (ReadOnly ? "&readOnly=1" : "");
+                    string query = $"?id={TimelineId}" + (ReadOnly ? "&readOnly=1" : "")
+                                 + (string.IsNullOrEmpty(CharacterId) ? "" : $"&characterId={CharacterId}");
                     if (Directory.Exists(distPath))
                     {
                         coreWV.SetVirtualHostNameToFolderMapping("app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
@@ -221,6 +227,8 @@ namespace StoryTimelineMk2.Forms
             f_YearCalendar.BeginPrewarm();
             await Task.Delay(200);
             f_Calendar.BeginPrewarm();
+            await Task.Delay(200);
+            f_Characters.BeginPrewarm();
             await Task.Delay(400); // start next timeline pre-warm last so it's ready before the user closes
             BeginPrewarm();
         }

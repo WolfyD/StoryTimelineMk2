@@ -658,10 +658,8 @@ namespace StoryTimelineMk2.Database
             using var db = new SqliteConnection(DbInitializer.GetConnectionString());
             db.Open();
 
-            // type 7 is a character card: CharacterRepo owns those, and GetItemsByTimeline skips
-            // them too, so a session diff would otherwise report every character as an item.
             var items = db.Query<TimelineItem>(
-                "SELECT * FROM items WHERE timeline_id = @id AND type_id != 7",
+                "SELECT * FROM items WHERE timeline_id = @id",
                 new { id = timelineId }).ToList();
 
             var tags = Group(db, @"

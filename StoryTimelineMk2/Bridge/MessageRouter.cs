@@ -24,6 +24,9 @@ namespace StoryTimelineMk2.Bridge
         // Held so timeline can push year updates to the year-calendar window
         private static f_YearCalendar? _yearCalendarWindow;
 
+        // One characters window per app (BL-15): it is a view onto the timeline already open.
+        private static f_Characters? _charactersWindow;
+
         /// <summary>
         /// BL-18 (H1): where data-layer actions run, instead of on the UI thread. One chain for
         /// every window's router, so messages still run one at a time and in arrival order —
@@ -44,6 +47,11 @@ namespace StoryTimelineMk2.Bridge
             var yearCal = _yearCalendarWindow;
             if (yearCal != null && !yearCal.IsDisposed && yearCal.IsHandleCreated)
                 yearCal.BeginInvoke((MethodInvoker)yearCal.Close);
+
+            // Characters window
+            var chars = _charactersWindow;
+            if (chars != null && !chars.IsDisposed && chars.IsHandleCreated)
+                chars.BeginInvoke((MethodInvoker)chars.Close);
 
             // Calendar editor windows
             var toClose = new List<Form>();
@@ -173,6 +181,7 @@ namespace StoryTimelineMk2.Bridge
 
                 // EditItem actions
                 case "AddImageToItem":          HandleAddImageToItem(message); break;
+                case "SetCharacterPortrait":    HandleSetCharacterPortrait(message); break;
                 case "ExportTimeline":          HandleExportTimeline(message); break;
                 case "ExportSessionChanges":    HandleExportSessionChanges(message); break;
                 case "BrowseAndPreviewSessionChanges": HandleBrowseAndPreviewSessionChanges(message); break;
@@ -191,6 +200,9 @@ namespace StoryTimelineMk2.Bridge
                 case "ExportCalendar":              HandleExportCalendar(message); break;
                 case "ImportCalendar":              HandleImportCalendar(message); break;
                 case "OpenCalendarEditorWindow":    HandleOpenCalendarEditorWindow(message); break;
+
+                // Characters window (BL-15)
+                case "OpenCharactersWindow":        HandleOpenCharactersWindow(message); break;
 
                 // Year calendar window
                 case "OpenYearCalendarWindow":      HandleOpenYearCalendarWindow(message); break;
@@ -235,6 +247,11 @@ namespace StoryTimelineMk2.Bridge
                 TimelineForm.TimelineId = ot_timeline_id;
             // BL-66: a reference window — opened from a timeline, shown next to it, no edit affordances
             TimelineForm.ReadOnly = message.Payload.TryGetProperty("readOnly", out var ro) && ro.ValueKind == JsonValueKind.True;
+            // BL-15 phase 3: an appearances window — that reference window narrowed to one character.
+            // Always assigned: this form may be a prewarmed one that carried a character last time.
+            TimelineForm.CharacterId = message.Payload.TryGetProperty("characterId", out var cid) && cid.ValueKind == JsonValueKind.String
+                ? cid.GetString()
+                : null;
 
             TimelineForm.Show();
             if (TimelineForm.Visible && mainForm != null)
@@ -400,9 +417,16 @@ namespace StoryTimelineMk2.Bridge
             int  id         = message.Payload.GetProperty("id").GetInt32();
             bool includeIds = message.Payload.TryGetProperty("includeIds", out var ip) && ip.GetBoolean();
             bool inclMedia  = message.Payload.TryGetProperty("includeMedia", out var im) && im.GetBoolean();
+            // BL-15 phase 3: set from an appearances window, where the export is that one character's.
+            string? characterId = message.Payload.TryGetProperty("characterId", out var cp) && cp.ValueKind == JsonValueKind.String
+                ? cp.GetString()
+                : null;
 
             var timeline = new TimelineRepo().GetTimelineById(id);
-            string safeName = string.Concat(timeline.Title.Split(Path.GetInvalidFileNameChars()));
+            string name = string.IsNullOrEmpty(characterId)
+                ? timeline.Title
+                : $"{timeline.Title} - {new CharacterRepo().GetCharacter(characterId)?.Name ?? "character"}";
+            string safeName = string.Concat(name.Split(Path.GetInvalidFileNameChars()));
 
             _parentForm!.BeginInvoke((MethodInvoker)(() =>
             {
@@ -422,7 +446,7 @@ namespace StoryTimelineMk2.Bridge
 
                 try
                 {
-                    TimelineExporter.ExportToZip(id, dlg.FileName, includeIds, inclMedia);
+                    TimelineExporter.ExportToZip(id, dlg.FileName, includeIds, inclMedia, characterId);
                     ReplyToVue(message.MessageId, new { status = "ok", path = dlg.FileName });
                 }
                 catch (Exception ex)
@@ -713,6 +737,74 @@ namespace StoryTimelineMk2.Bridge
                     ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
                 }
             }));
+        }
+
+        /// <summary>
+        /// BL-15: picks an image and makes it a character's portrait. Host-side because of the file
+        /// dialog; the picture goes through the same <see cref="MediaRepo"/> pipeline as item images,
+        /// so it gets the same copy-into-the-media-folder and thumbnail treatment.
+        /// ponytail: desktop only. The browser host needs the upload half instead, the way
+        /// AddImagesToItem pairs with AddImageToItem — worth writing once someone runs it there.
+        /// </summary>
+        /// <summary>
+        /// BL-15: opens the characters window for a timeline, or brings the open one forward. One per
+        /// app, like the year calendar — it is a view onto the timeline you are already looking at.
+        /// </summary>
+        private void HandleOpenCharactersWindow(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            string? characterId = message.Payload.TryGetProperty("characterId", out var cid)
+                ? cid.GetString()
+                : null;
+
+            if (_charactersWindow is { IsDisposed: false })
+            {
+                _charactersWindow.Activate();
+                // Already open on some other character: the page is listening, so tell it to switch.
+                if (!string.IsNullOrEmpty(characterId))
+                    BridgeHub.Broadcast("FocusCharacter", new { CharacterId = characterId });
+                ReplyToVue(message.MessageId, new { status = "ok" });
+                return;
+            }
+
+            // A fresh window is not listening yet, so the character rides in on the query string.
+            var window = f_Characters.TakePrewarmed() ?? new f_Characters();
+            window.TimelineId  = timelineId;
+            window.CharacterId = characterId;
+            _charactersWindow = window;
+            window.FormClosed += (_, _) =>
+            {
+                if (ReferenceEquals(_charactersWindow, window)) _charactersWindow = null;
+                f_Characters.BeginPrewarm();   // closing it is the best hint it will be opened again
+            };
+            window.Show(_parentForm);
+            window.TopMost = _parentForm?.TopMost ?? false;
+            window.Activate();
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleSetCharacterPortrait(BridgeMessage message)
+        {
+            string characterId = message.Payload.GetProperty("characterId").GetString()!;
+
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Select Portrait",
+                Filter = "Image files|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff|All files|*.*",
+            };
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                ReplyToVue(message.MessageId, new { status = "cancelled" });
+                return;
+            }
+
+            var media = new MediaRepo();
+            var picture = media.ImportAndSaveMedia(dialog.FileName, Path.GetFileNameWithoutExtension(dialog.FileName), "");
+            string? replaced = new CharacterRepo().SetPortrait(characterId, picture.Id);
+            if (replaced != null) media.DeleteMedia(replaced);
+
+            ReplyToVue(message.MessageId, new { status = "ok", Picture = picture });
         }
 
         // -----------------------------------------------------------------------

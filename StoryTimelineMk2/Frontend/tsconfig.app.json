@@ -1,7 +1,9 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
   "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "utils"],
-  "exclude": ["src/**/__tests__/*"],
+  // Tests are checked by tsconfig.vitest.json, which drops noUncheckedIndexedAccess: a fixture
+  // indexing its own array is noise, not a finding.
+  "exclude": ["src/test/**"],
   "compilerOptions": {
     // Extra safety for array and object lookups, but may have false positives.
     "noUncheckedIndexedAccess": true,

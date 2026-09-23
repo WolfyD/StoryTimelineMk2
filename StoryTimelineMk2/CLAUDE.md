@@ -52,7 +52,7 @@ Key actions: `GetTimelineData`, `SaveItem`, `GetTimelineCharacters`, `GetTimelin
 
 | Path | Purpose |
 |------|---------|
-| `pages/` | Top-level page components: `TimelineApp.vue`, `EditItem.vue`, `SettingsApp.vue` |
+| `pages/` | Top-level page components: `TimelineApp.vue`, `EditItem.vue`, `CharactersApp.vue`, `CalendarApp.vue`, `YearCalendarApp.vue` |
 | `components/` | Reusable components — `TimelineCanvas` (Konva.js canvas), `LodDateInput`, etc. |
 | `stores/timelineStore.ts` | Pinia store — central state for current timeline, items, settings |
 | `bridge/api.ts` | All calls to C# backend go through here |
@@ -62,10 +62,18 @@ Key actions: `GetTimelineData`, `SaveItem`, `GetTimelineCharacters`, `GetTimelin
 
 ### Multiple Entry Points (Vite)
 
-The build produces three HTML files, each loaded by a different WinForms window:
-- `index.html` → `TimelineApp` (main project list / timeline viewer)
-- `timeline.html` → timeline canvas
-- `editItem.html` → `EditItem`
+The build produces six HTML files. Each is a separate page with its own Vue app — there is no
+router. On Windows a WinForms window navigates to one; in the browser build `browserHost.ts`
+navigates to the same file instead, which is why every window-opening action needs a case in both.
+
+| Entry | Component | Opened by |
+|-------|-----------|-----------|
+| `index.html` | `App.vue` | `f_Main` — project list |
+| `timeline.html` | `TimelineApp` | `f_Timeline` — the timeline canvas |
+| `editItem.html` | `EditItem` | `f_AddEditItem` |
+| `calendar.html` | `CalendarApp` | `f_Calendar` |
+| `yearCalendar.html` | `YearCalendarApp` | `f_YearCalendar` |
+| `characters.html` | `CharactersApp` | `f_Characters` |
 
 ### Backend Structure
 

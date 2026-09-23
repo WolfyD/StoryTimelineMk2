@@ -190,7 +190,17 @@ export interface LaneLock {
     absoluteStart: number;
     absoluteEnd: number;
     isCenterOut: boolean;
+    /** Lanes covered from laneIndex outward — 1 for an event box, more for a portrait. */
+    laneSpan: number;
 }
+
+/**
+ * How many event lanes a box of this height swallows. A portrait is as tall as it is wide, which is
+ * two or three event boxes, and it grows from its lane towards the axis — so without this the next
+ * item along picks the lane the portrait is already sitting in and draws straight through it.
+ */
+export const laneSpanFor = (height: number, layoutSettings: LayoutSettings) =>
+    Math.max(1, Math.ceil(height / (layoutSettings.TimelineEventBoxHeight + layoutSettings.TimelineEventYMargin)));
 
 export const getAssignedLane = (
     itemId: string,
@@ -210,7 +220,9 @@ export const getAssignedLane = (
     // Lanes to pack around but never write to (BL-66): the reference underlay passes the active
     // timeline's locks here, so a ghost picks a lane no real item holds instead of sliding under
     // one. One-way on purpose — the active pass never sees ghosts, so its packing is unchanged.
-    avoidLanes?: Map<string, LaneLock>
+    avoidLanes?: Map<string, LaneLock>,
+    // Lanes this item covers; see laneSpanFor. Events are 1, which is what everything else was.
+    laneSpan = 1
 ): number => {
 
     // 1. If already locked, return the physical Y offset
@@ -231,7 +243,10 @@ export const getAssignedLane = (
             : lockedLanes.values();
 
         for (const lock of packAround) {
-            if (lock.isCenterOut === isCenterOut && lock.isAbove === isAboveLine && lock.laneIndex === laneIndex) {
+            // Bands, not single lanes: [laneIndex, +span) against [lock.laneIndex, +its span).
+            const lockSpan = lock.laneSpan ?? 1;
+            const sameBand = laneIndex < lock.laneIndex + lockSpan && lock.laneIndex < laneIndex + laneSpan;
+            if (lock.isCenterOut === isCenterOut && lock.isAbove === isAboveLine && sameBand) {
 
                 // --- PERIOD COLLISION (Exact bounding box) ---
                 if (isCenterOut) {
@@ -275,7 +290,8 @@ export const getAssignedLane = (
         isAbove: isAboveLine,
         absoluteStart,
         absoluteEnd,
-        isCenterOut
+        isCenterOut,
+        laneSpan
     });
 
     return convertLaneIndexToY(laneIndex, isAboveLine, isCenterOut, viewportHeight, layoutSettings);

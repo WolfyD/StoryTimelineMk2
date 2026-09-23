@@ -346,4 +346,40 @@ public class TimelineExporterTests
         Assert.Equal(1, alphaCount);
         Assert.Equal(1, betaCount);
     }
+
+    // ── BL-15 phase 3: the character-filtered export ──────────────────────────
+
+    [Fact]
+    public void ExportToZip_WithCharacterId_KeepsOnlyThatCharactersItems()
+    {
+        using var ctx = new DbTestContext();
+        int tlId        = InsertTimeline(ctx, "Focus TL");
+        string theirs   = InsertItem(ctx, tlId, "Theirs");
+        InsertItem(ctx, tlId, "Stranger");
+        string birth    = InsertItem(ctx, tlId, "Born");
+        string charId   = Guid.NewGuid().ToString();
+
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute("INSERT INTO characters (id, name, timeline_id, birth_item_id) VALUES (@charId, 'Focus', @tlId, @birth)",
+                new { charId, tlId, birth });
+            db.Execute("INSERT INTO item_character_appearances (item_id, character_id, role) VALUES (@theirs, @charId, 'lead')",
+                new { theirs, charId });
+            // A boundary marker belongs to every character: it carries the timeline's extent.
+            db.Execute(@"INSERT INTO items
+                (id, title, description, type_id, year, end_year, absolute_start, absolute_end,
+                 timeline_id, item_index, show_in_notes, importance, min_lod_level)
+                VALUES (@id, 'Start', '', 8, 0, 0, 0.0, 0.0, @tlId, 0, 1, 5, 3)",
+                new { id = Guid.NewGuid().ToString(), tlId });
+        }
+
+        string zipPath = Path.Combine(ctx.TempDir, "focus.stlm");
+        TimelineExporter.ExportToZip(tlId, zipPath, includeIds: true, includeMedia: false, characterId: charId);
+
+        using var doc = ReadZipJson(zipPath, "timeline.json");
+        var titles = doc.RootElement.GetProperty("items").EnumerateArray()
+            .Select(i => i.GetProperty("title").GetString()).OrderBy(t => t).ToArray();
+
+        Assert.Equal(new[] { "Born", "Start", "Theirs" }, titles);
+    }
 }

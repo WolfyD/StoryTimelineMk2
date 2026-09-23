@@ -64,6 +64,19 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// App-wide, not per timeline: both live in the misc-settings table under timeline 0.
 	const onScreenControls = ref<boolean>(false);
 	const lowResourceMode = ref<boolean>(false);
+	// BL-15 phase 3: an appearances window. The id is set from the URL before the load, the
+	// character itself comes out of the load — session-only, never written back.
+	const characterFocusId = ref<string | null>(null);
+	const characterFocus = ref<CharacterItem | null>(null);
+
+	/** Boundary markers carry the timeline's extent, so they belong to every character. */
+	function belongsToFocus(item: TimelineItem, charLinks?: ItemCharacterLink[]): boolean {
+		const c = characterFocus.value;
+		if (!c) return true;
+		if (item.TypeId >= 8 || item.Id === c.BirthItemId || item.Id === c.DeathItemId) return true;
+		return (charLinks ?? itemCharacterMap.value.get(item.Id) ?? []).some(l => l.CharacterId === c.Id);
+	}
+
 	const readOnly = ref<boolean>(false); // BL-66: reference window — view only, no edit affordances
 	// BL-66 step 2: another timeline drawn underneath this one. Which one, and the `shift` in years,
 	// are remembered per timeline in misc settings; the items themselves are re-fetched each time.
@@ -116,7 +129,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 	}
 
 	async function loadTimelines() {
-		const response = await BackendAPI.request("GetAllTimelines", { args: [] });
+		const response = await BackendAPI.request<{ data?: TimelineProject[] }>("GetAllTimelines", { args: [] });
 		projects.value = response?.data ?? [];
 	}
 
@@ -213,6 +226,13 @@ export const useTimelineStore = defineStore('timeline', () => {
 			allTimelineTags.value = [...seenTags.entries()].map(([TagId, TagName]) => ({ TagId, TagName })).sort((a, b) => a.TagName.localeCompare(b.TagName));
 			allTimelineCharacters.value = (response.Characters ?? []).sort((a, b) => a.Name.localeCompare(b.Name));
 
+			// BL-15 phase 3: narrow the items, not the filter, so the minimap, the notes panel and
+			// the export see the character's timeline too — not just the canvas.
+			characterFocus.value = characterFocusId.value
+				? allTimelineCharacters.value.find(c => c.Id === characterFocusId.value) ?? null
+				: null;
+			if (characterFocus.value) items.value = items.value.filter(i => belongsToFocus(i));
+
 			const seenStories = new Map<string, string>();
 			for (const s of storyLinks) seenStories.set(s.StoryId, s.StoryTitle);
 			allTimelineStories.value = [...seenStories.entries()].map(([StoryId, StoryTitle]) => ({ StoryId, StoryTitle })).sort((a, b) => a.StoryTitle.localeCompare(b.StoryTitle));
@@ -274,6 +294,10 @@ export const useTimelineStore = defineStore('timeline', () => {
 		storyLinks?: ItemStoryRefLink[],
 		hasPicture?: boolean,
 	) {
+		// An edit in the main window reaches every open window; an appearances window must not
+		// collect the items of characters it is not about.
+		if (!belongsToFocus(item, charLinks)) return
+
 		const idx = items.value.findIndex(i => i.Id === item.Id)
 		if (idx >= 0) {
 			items.value[idx] = item
@@ -533,7 +557,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		const sorted = [...lodProfile.value].sort((a, b) => a.index - b.index);
 		const pos = sorted.findIndex(l => l.index === currentLodIndex.value);
 		if (pos < sorted.length - 1) {
-			const next = sorted[pos + 1];
+			const next = sorted[pos + 1]!;
 			currentLodIndex.value = next.index;
 			currentLodTitle.value = next.formatKey;
 		}
@@ -544,7 +568,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		const sorted = [...lodProfile.value].sort((a, b) => a.index - b.index);
 		const pos = sorted.findIndex(l => l.index === currentLodIndex.value);
 		if (pos > 0) {
-			const prev = sorted[pos - 1];
+			const prev = sorted[pos - 1]!;
 			currentLodIndex.value = prev.index;
 			currentLodTitle.value = prev.formatKey;
 		}
@@ -610,6 +634,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
 		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference, referenceError,
+		characterFocusId, characterFocus,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,

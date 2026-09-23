@@ -39,7 +39,13 @@ namespace StoryTimelineMk2.Database
     {
         // ── Export ───────────────────────────────────────────────────────────────
 
-        public static void ExportToZip(int timelineId, string destPath, bool includeIds, bool includeMedia)
+        /// <param name="characterId">
+        /// BL-15 phase 3: with it, only that character's timeline is exported — their appearances,
+        /// their birth and death, and the boundary markers that keep the timeline's extent. Everything
+        /// else in the archive is derived from the items, so nothing further needs filtering.
+        /// </param>
+        public static void ExportToZip(int timelineId, string destPath, bool includeIds, bool includeMedia,
+                                       string? characterId = null)
         {
             string dbPath     = AppConfig.Instance.GetDbPath();
             string mediaFolder = AppConfig.Instance.GetMediaFolder();
@@ -53,7 +59,17 @@ namespace StoryTimelineMk2.Database
             string title      = Val(timelineRow, "title") ?? "Unknown";
             string? calId     = Val(timelineRow, "calendar_id");
 
-            var itemRows     = QueryRows(db, "SELECT * FROM items WHERE timeline_id = @id", new { id = timelineId });
+            string itemWhere = "timeline_id = @id";
+            if (!string.IsNullOrEmpty(characterId))
+            {
+                itemWhere += @" AND (type_id >= 8
+                                 OR id IN (SELECT birth_item_id FROM characters WHERE id = @cid)
+                                 OR id IN (SELECT death_item_id FROM characters WHERE id = @cid)";
+                itemWhere += TableExists(db, "item_character_appearances")
+                    ? " OR id IN (SELECT item_id FROM item_character_appearances WHERE character_id = @cid))"
+                    : ")";
+            }
+            var itemRows     = QueryRows(db, $"SELECT * FROM items WHERE {itemWhere}", new { id = timelineId, cid = characterId });
             var itemUuids    = itemRows.Select(r => Val(r, "id")).Where(x => x != null).Cast<string>().ToList();
 
             var charRows     = QueryRows(db, "SELECT * FROM characters WHERE timeline_id = @id", new { id = timelineId });

@@ -114,11 +114,18 @@ namespace StoryTimelineMk2.Server
             int id = payload.GetProperty("id").GetInt32();
             bool includeIds = payload.TryGetProperty("includeIds", out var ip) && ip.GetBoolean();
             bool includeMedia = payload.TryGetProperty("includeMedia", out var im) && im.GetBoolean();
+            // BL-15 phase 3: sent by an appearances window — one character's timeline, not the whole one.
+            string? characterId = payload.TryGetProperty("characterId", out var cp) && cp.ValueKind == JsonValueKind.String
+                ? cp.GetString()
+                : null;
 
             var timeline = new TimelineRepo().GetTimelineById(id);
+            string name = string.IsNullOrEmpty(characterId)
+                ? timeline.Title
+                : $"{timeline.Title} - {new CharacterRepo().GetCharacter(characterId)?.Name ?? "character"}";
             string temp = NewTempFile(".stlm");
-            TimelineExporter.ExportToZip(id, temp, includeIds, includeMedia);
-            return StreamAndDelete(temp, "application/zip", SafeName(timeline.Title) + ".stlm");
+            TimelineExporter.ExportToZip(id, temp, includeIds, includeMedia, characterId);
+            return StreamAndDelete(temp, "application/zip", SafeName(name) + ".stlm");
         }
 
         /// <summary>BL-33: the chosen days' net changes as a .stlc file.</summary>

@@ -3,7 +3,10 @@ import type {
 	TimelineProjectContainer,
 	ItemForEdit,
 	Tag,
+	Calendar,
 	CharacterItem,
+	CharacterAppearance,
+	MediaItem,
 	Story,
 	Book,
 	Chapter,
@@ -260,6 +263,14 @@ export const BackendAPI = {
 		this.send('OpenTimeline', { id });
 	},
 
+	/**
+	 * BL-15 phase 3: the appearances window — the BL-66 read-only timeline narrowed to one
+	 * character, so a writer can read their life without the rest of the world in the way.
+	 */
+	OpenCharacterTimeline(timelineId: number, characterId: string) {
+		this.send('OpenTimeline', { id: timelineId, readOnly: true, characterId });
+	},
+
 	async LoadTimelineData(id: number) {
 		return await this.request<FullTimelineProject>('GetTimelineData', { id });
 	},
@@ -273,7 +284,7 @@ export const BackendAPI = {
 	async SaveItem(
 		item: TimelineItem,
 		tagNames: string[],
-		characterAppearances: { CharacterId: string; Role: string | null }[],
+		characterAppearances: { CharacterId: string; Role: string | null; AutoDetected?: boolean }[],
 		storyRefs: string[],
 		chapterRefs: string[]
 	) {
@@ -307,8 +318,51 @@ export const BackendAPI = {
 		return await this.request<{ status: string; unlinked?: number; message?: string }>('DeleteTag', { id });
 	},
 
+	/** Just the calendar, for windows that need dates but not the whole project. */
+	async GetTimelineCalendar(timelineId: number) {
+		return await this.request<Calendar | null>('GetTimelineCalendar', { timelineId });
+	},
+
 	async GetTimelineCharacters(timelineId: number) {
 		return await this.request<CharacterItem[]>('GetTimelineCharacters', { timelineId });
+	},
+
+	/** Remembers that the user took a character off an item, so the matcher stops re-adding them. */
+	async DismissCharacterLink(itemId: string, characterId: string) {
+		return await this.request<{ status: string }>('DismissCharacterLink', { itemId, characterId });
+	},
+	/** The reverse of an item's character list: every item a character appears in. */
+	async GetCharacterAppearances(characterId: string) {
+		return await this.request<CharacterAppearance[]>('GetCharacterAppearances', { characterId });
+	},
+	/** Asks whichever window is drawing the timeline to jump to an item and pulse it. */
+	async FocusTimelineItem(itemId: string, absoluteStart: number) {
+		return await this.request<{ status: string }>('FocusTimelineItem', { itemId, absoluteStart });
+	},
+	async SaveCharacter(character: Partial<CharacterItem>) {
+		// The saved row comes back: a new character's Id is made backend-side, and Name is derived there.
+		return await this.request<{ status: string; character: CharacterItem }>('SaveCharacter', character);
+	},
+
+	async DeleteCharacter(id: string) {
+		return await this.request<{ status: string }>('DeleteCharacter', { id });
+	},
+
+	/** `characterId` opens the window on that character, or points the open one at them. */
+	async OpenCharactersWindow(timelineId: number, characterId?: string) {
+		return await this.request<{ status: string }>('OpenCharactersWindow', { timelineId, characterId });
+	},
+
+	/** The character a birth/death item belongs to — null for every other item. */
+	async GetCharacterIdForItem(itemId: string) {
+		return await this.request<{ characterId: string | null }>('GetCharacterIdForItem', { itemId });
+	},
+
+	/** Opens a file dialog on the host; replies `status: 'cancelled'` if the user closes it. */
+	async SetCharacterPortrait(characterId: string) {
+		return await this.request<{ status: string; Picture?: MediaItem }>('SetCharacterPortrait', {
+			characterId,
+		});
 	},
 
 	async GetAllStories() {
@@ -339,8 +393,9 @@ export const BackendAPI = {
 		return await this.request<{ status: string }>('SaveTimelineInfo', { id, title, author, description, startYear, color, calendarId });
 	},
 
-	async ExportTimeline(id: number, includeIds: boolean, includeMedia = false) {
-		return await this.request<{ status: string; path?: string }>('ExportTimeline', { id, includeIds, includeMedia });
+	/** `characterId` exports that character's timeline alone — sent by the appearances window. */
+	async ExportTimeline(id: number, includeIds: boolean, includeMedia = false, characterId?: string) {
+		return await this.request<{ status: string; path?: string }>('ExportTimeline', { id, includeIds, includeMedia, characterId });
 	},
 
 	// ── BL-33: session changes ───────────────────────────────────────────────
@@ -434,7 +489,7 @@ export const BackendAPI = {
 	},
 
 	async GetAppConfig() {
-		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string; chromeTheme: ChromeTheme; themeInitialized: boolean; performantPanning: boolean; showAchievementPopups: boolean; achievementSound: boolean }>('GetAppConfig', {});
+		return await this.request<{ DataRoot: string; DbPath: string; MediaFolder: string; chromeTheme: ChromeTheme; themeInitialized: boolean; systemPrefersDark: boolean; performantPanning: boolean; showAchievementPopups: boolean; achievementSound: boolean }>('GetAppConfig', {});
 	},
 
 	async SaveChromeTheme(theme: ChromeTheme) {
@@ -669,6 +724,8 @@ function handleIncoming(data: BridgeMessage) {
 		} else if (data.action === 'ItemSaved') {
 			const store = useTimelineStore();
 			store.upsertItem(data.payload.Item, data.payload.Tags, data.payload.Characters, data.payload.StoryRefs, data.payload.HasPicture);
+		} else if (data.action === 'ItemDeleted') {
+			useTimelineStore().removeItem(data.payload.ItemId);
 		} else if (data.action === 'CalendarsChanged') {
 			// Calendar editor window closed — any open calendar list reloads itself.
 			window.dispatchEvent(new Event('calendars-changed'));

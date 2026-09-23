@@ -20,7 +20,7 @@ const lodForm    = ref({ lodIndex: 0 })
 const colorForm  = ref({ hex: '#000000', tolerance: 10 })
 
 const TYPE_LABELS: Record<number, string> = {
-    1: 'Event', 2: 'Period', 3: 'Age', 4: 'Picture', 5: 'Note', 6: 'Bookmark'
+    1: 'Event', 2: 'Period', 3: 'Age', 4: 'Picture', 5: 'Note', 6: 'Bookmark', 7: 'Character'
 }
 
 // types that EXIST in the timeline's items

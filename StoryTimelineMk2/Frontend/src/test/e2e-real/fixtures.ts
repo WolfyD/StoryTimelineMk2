@@ -4,15 +4,19 @@ import type { Browser, BrowserContext, Page } from '@playwright/test'
 export const CDP_PORT = parseInt(process.env.STORYTIMELINE_REMOTE_DEBUG_PORT ?? '9222')
 export const CDP_URL  = `http://localhost:${CDP_PORT}`
 
-export type RealFixtures = {
+/** Worker-scoped: one CDP connection for the whole run, not one per test. */
+export type RealWorkerFixtures = {
   appBrowser: Browser
   appContext: BrowserContext
+}
+
+export type RealFixtures = RealWorkerFixtures & {
   mainPage: Page
   /** Console errors and uncaught page exceptions collected from all CDP pages during this test. */
   pageErrors: string[]
 }
 
-export const test = base.extend<RealFixtures>({
+export const test = base.extend<Omit<RealFixtures, keyof RealWorkerFixtures>, RealWorkerFixtures>({
   appBrowser: [async ({}, use) => {
     const browser = await chromium.connectOverCDP(CDP_URL)
     await use(browser)
@@ -117,7 +121,7 @@ export async function openTimelinePage(
   for (const page of existingTimelines) {
     try {
       await page.evaluate(() => {
-        window.chrome.webview.postMessage({ action: 'WindowClose', payload: null })
+        window.chrome!.webview!.postMessage({ action: 'WindowClose', payload: null })
       })
       await page.waitForEvent('close', { timeout: 3000 }).catch(() => {})
     } catch {

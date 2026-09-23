@@ -38,7 +38,7 @@ import { BackendAPI } from '@/bridge/api'
 // Ã¢â€â‚¬Ã¢â€â‚¬ Fixtures Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function makeSettings(overrides: Partial<TimelineSettings> = {}): TimelineSettings {
-  return {
+  return Object.assign({
     PixelsPerSubtick: 20,
     IsFullscreen: false,
     ShowGuides: true,
@@ -61,11 +61,17 @@ function makeSettings(overrides: Partial<TimelineSettings> = {}): TimelineSettin
       defaultSplitterDistance: 300,
     },
     ...overrides,
-  }
+    TimelineMinimised: false,
+    HeaderMode: 0,
+    PanSpeedMultiplier: 1,
+    PanDeadzone: 0,
+    KeyboardPanSpeed: 1,
+    DefaultItemColor: '#888888',
+  }, overrides)
 }
 
 function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSettings {
-  return {
+  return Object.assign({
     Id: 'ls_default',
     Name: 'Default',
     TimelineEventBoxWidth: 130,
@@ -94,6 +100,8 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineBoxTypesShowAsBox: true,
     TimelineBoxTypesBoxWidth: 100,
     TimelineBoxTypesShowImage: true,
+    TimelinePictureCaptionFontSize: 12,
+    TimelineCharacterCaptionFontSize: 12,
     TimelineCanvasBackgroundColor: '#f1e7d5',
     TimelineShowNowLine: true,
     TimelineShowNowLineText: true,
@@ -149,7 +157,10 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineCalendarOverlayWeekColor: '#ffffff08',
     TimelineCalendarOverlayDayColor: '#ffffff06',
     ...overrides,
-  }
+    TimelineBreakFillColor: '#ffffff',
+    TimelineBreakBorderColor: '#000000',
+    MeasureLineColor: '#000000',
+  }, overrides)
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Tests Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬

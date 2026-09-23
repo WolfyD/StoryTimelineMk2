@@ -38,7 +38,7 @@ const filterColorFields: Partial<Record<keyof ChromeTheme, string>> = {
 // Extract a #rrggbb hex from any CSS color string (for rgba fields)
 function toPickerHex(color: string): string {
     const m = color.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/)
-    if (m) return `#${[m[1],m[2],m[3]].map(n => parseInt(n).toString(16).padStart(2,'0')).join('')}`
+    if (m) return `#${[m[1]!,m[2]!,m[3]!].map(n => parseInt(n).toString(16).padStart(2,'0')).join('')}`
     if (/^#[0-9a-f]{6}/i.test(color)) return color.slice(0, 7)
     return '#000000'
 }

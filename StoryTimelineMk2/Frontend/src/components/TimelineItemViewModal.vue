@@ -5,6 +5,7 @@ import { BackendAPI } from '@/bridge/api';
 import type { ItemForEdit, LayoutSettings } from '@/types/models';
 import { useModal } from '@/utils/modal';
 import { useTimelineStore } from '@/stores/timelineStore';
+import { PhUserCircle } from '@phosphor-icons/vue';
 
 const props = defineProps<{
     itemId: string;
@@ -28,11 +29,28 @@ const TYPE_NAMES: Record<number, string> = {
     8: 'Timeline Start', 9: 'Timeline End',
 };
 
+/** Set for a character's birth/death item, which has a second editor behind it. */
+const characterId = ref<string | null>(null);
+
 onMounted(async () => {
     data.value = await BackendAPI.GetItemForEdit(props.timelineId, props.itemId);
     loading.value = false;
+    if (data.value?.Item?.TypeId === 7)
+        characterId.value = (await BackendAPI.GetCharacterIdForItem(props.itemId)).characterId;
 });
 
+
+function openCharacter() {
+    if (!characterId.value) return;
+    BackendAPI.OpenCharactersWindow(props.timelineId, characterId.value)
+        .catch(e => {
+            console.error('[TimelineItemViewModal] OpenCharactersWindow failed:', e);
+            alert(`Could not open that character:
+
+${e instanceof Error ? e.message : String(e)}`);
+        });
+    emit('close');
+}
 
 function openEdit() {
     BackendAPI.OpenAddEditItemWindow(props.timelineId, props.itemId)
@@ -135,6 +153,9 @@ const panelStyle = computed(() => ({
                     </div>
 
                     <div v-if="!store.readOnly && !viewOnly" class="vm-footer">
+                        <button v-if="characterId" class="vm-edit-btn secondary" @click="openCharacter">
+                            <PhUserCircle :size="16" /> Edit character
+                        </button>
                         <button class="vm-edit-btn" @click="openEdit">
                             Edit item <i class="ri-arrow-right-line"></i>
                         </button>
@@ -362,6 +383,7 @@ const panelStyle = computed(() => ({
     border-top: 1px solid color-mix(in srgb, var(--dp-h4) 25%, transparent);
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
 }
 
 .vm-edit-btn {
@@ -381,6 +403,19 @@ const panelStyle = computed(() => ({
         background: color-mix(in srgb, var(--app-accent, #6366f1) 22%, transparent);
         border-color: color-mix(in srgb, var(--app-accent, #6366f1) 55%, transparent);
         color: var(--app-accent-hover, #a5b4fc);
+    }
+
+    /* The item editor stays the primary action; the character is the quieter way out. */
+    &.secondary {
+        background: transparent;
+        border-color: color-mix(in srgb, var(--dp-h4) 30%, transparent);
+        color: var(--dp-h2, #cbd5e1);
+
+        &:hover {
+            background: color-mix(in srgb, var(--dp-h4) 12%, transparent);
+            border-color: color-mix(in srgb, var(--dp-h4) 50%, transparent);
+            color: var(--dp-h1, #f1f5f9);
+        }
     }
 }
 </style>

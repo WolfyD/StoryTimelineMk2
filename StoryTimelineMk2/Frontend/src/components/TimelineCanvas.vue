@@ -8,14 +8,16 @@ import type { LayoutSettings, HiddenRange, TimelineItem, TimelineProject, Timeli
 import type { Stage } from 'konva/lib/Stage';
 import { BackendAPI } from '@/bridge/api';
 import { canvasColor } from '@/utils/canvasTheme';
+import { characterAbsolute } from '@/utils/characterItems';
+import { PhUserCircle, PhUserFocus } from '@phosphor-icons/vue';
 
 import {
 	BREAK_TICKS, absoluteToVisual, visualToAbsolute,
 	getXFromTime, getTimeFromX,
-    isLeftOfNow, getAssignedLane, type LaneLock
+    isLeftOfNow, getAssignedLane, laneSpanFor, type LaneLock
 } from '@/utils/timelineLayout';
 import {
-    buildNode, updateAbsolutePositions, setNodeVisibility,
+    buildNode, updateAbsolutePositions, setNodeVisibility, isPortraitType,
     buildMiniNode, setMiniNodePosition, setMiniNodeVisibility,
     type MiniNodeElements,
 } from '@/utils/timelineNodes';
@@ -64,6 +66,12 @@ const refBoxes = new Konva.Group();
 // BL-66: ages sit in the centre band and cannot take a lane, so a real one simply covers the
 // ghost behind it. This layer goes over the items and paints diagonal slits across the stretch
 // where a ghost age is hidden. Same 0.4 as the underlay, so the ghost reads the same either way.
+// BL-15: the character lifeline, drawn only in an appearances window. Under the items on
+// purpose — an age the character is tied to keeps its place and thins out instead (see renderItems).
+const lifelineLayer = new Konva.Layer({ listening: false });
+// ponytail: a fixed wave — tall enough to read under an age bar, short enough not to reach the
+// lanes. Settings for these three only if someone asks for them.
+const WAVE_AMP = 7, WAVE_LEN = 44, WAVE_STEP = 4;
 const refStripeLayer = new Konva.Layer({ opacity: 0.4, listening: false });
 const refStripes = new Konva.Group();
 refStripeLayer.add(refStripes);
@@ -89,6 +97,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     itemClick: [itemId: string]
+    editCharacter: [itemId: string]
+    characterTimeline: [itemId: string]
     viewItem: [itemId: string]
     viewReferenceItem: [itemId: string]
     addItem: [typeId: number, absoluteTime: number, lodIndex: number]
@@ -256,7 +266,7 @@ const addBoundaryItem = async (typeId: 8 | 9, absoluteTime: number) => {
         Color: typeId === 8 ? '#22c55e' : '#ef4444',
         CreationGranularity: store.currentLodIndex,
         TimelineId: props.timelineInfo.Id,
-        ItemIndex: 0, ShowInNotes: false, Importance: 0, MinLodLevel: 0,
+        ItemIndex: 0, ShowInNotes: false, Importance: 0, MinLodLevel: 0, LodVisibilityMask: 255,
     };
     const result = await BackendAPI.SaveItem(item, [], [], [], []);
     if (result?.status === 'ok') {
@@ -282,7 +292,7 @@ const addBookmark = async (absoluteTime: number) => {
         Color: '#4b5563',
         CreationGranularity: store.currentLodIndex,
         TimelineId: props.timelineInfo.Id,
-        ItemIndex: 0, ShowInNotes: false, Importance: 5, MinLodLevel: 0,
+        ItemIndex: 0, ShowInNotes: false, Importance: 5, MinLodLevel: 0, LodVisibilityMask: 255,
     };
     const result = await BackendAPI.SaveItem(bm, [], [], [], []);
     if (result?.status === 'ok') {
@@ -568,14 +578,14 @@ function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSetting
 
     function paintBands(items: BandStart[], color: string): boolean {
         if (items.length < 2) return false;
-        const px0 = getXFromTime(items[0].abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-        const px1 = getXFromTime(items[1].abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const px0 = getXFromTime(items[0]!.abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const px1 = getXFromTime(items[1]!.abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
         if (Math.abs(px1 - px0) < 2) return false;
 
         for (let i = 0; i < items.length - 1; i++) {
-            if (items[i].idx % 2 !== 0) continue; // global idx keeps parity stable while panning
-            const absStart = items[i].abs;
-            const absEnd   = items[i + 1].abs;
+            if (items[i]!.idx % 2 !== 0) continue; // global idx keeps parity stable while panning
+            const absStart = items[i]!.abs;
+            const absEnd   = items[i + 1]!.abs;
             if (absEnd < leftAbs || absStart > rightAbs) continue;
 
             const xS = getXFromTime(absStart, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
@@ -594,7 +604,10 @@ function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSetting
     paintBands(buildStarts(primaryType), primaryColor);
 }
 
-const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
+// Callers hand this props.layoutSettings straight through, which is null until the settings
+// load. Guarding here rather than at six call sites: without it the body throws on the first read.
+const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) => {
+    if (!layoutSettings) return;
     gridPanOffset = 0;
     layer.x(0);
     boundaryOverlayLayer.x(0);
@@ -651,7 +664,10 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings) => {
         const fraction  = cleanTime - year;
 
         const x = getXFromTime(cleanTime, viewport.centerTime, step, viewport.width, store.layoutSettings!, ranges);
-        const formatter = store.activeFormatRegistry[currentLod.formatKey] || store.activeFormatRegistry['YEARS'];
+        // A calendar with no YEARS entry would otherwise crash the whole grid draw.
+        const formatter = store.activeFormatRegistry[currentLod.formatKey]
+            ?? store.activeFormatRegistry['YEARS']
+            ?? ((y: number) => String(y));
 
         const isYearTick = fraction < 0.000001;
         const tickHalfH = (!isYearTick && layoutSettings.TimelineNonYearTicksSmaller) ? 6 : 10;
@@ -1000,9 +1016,9 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
 
         let elements = nodeCache.get(itemIdStr);
         if (!elements) {
-            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls, !!item.ShowTitle, store.lowResourceMode);
+            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls, !!item.ShowTitle, store.lowResourceMode, !!item.UseHighlightColor);
             nodeCache.set(itemIdStr, elements);
-            if (typeName === 'Age' || typeName === 'Period' || typeName === 'Picture') {
+            if (typeName === 'Age' || typeName === 'Period' || isPortraitType(typeName)) {
                 const itemTitle = getTitle(item);
                 elements.box.on('mouseenter', () => {
                     const pos = stage?.getPointerPosition();
@@ -1010,20 +1026,22 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
                 });
                 elements.box.on('mouseleave', hideTooltip);
             }
-            if (typeName === 'Picture') {
+            if (isPortraitType(typeName)) {
                 loadPictureImage(itemIdStr);
             }
         }
 
         setNodeVisibility(elements, true);
         const isDimmed = dimmableIds?.has(itemIdStr) ?? false;
-        if (elements.box)   { elements.box.opacity(isDimmed ? 0.25 : 1);   elements.box.listening(!isDimmed); }
-        if (elements.label) { elements.label.opacity(isDimmed ? 0.25 : 1); elements.label.listening(!isDimmed); }
-        if (elements.stem)  { elements.stem.opacity(isDimmed ? 0.25 : 1);  elements.stem.listening(!isDimmed); }
+        // BL-15: an age in an appearances window is a backdrop to the life running under it.
+        const base = store.characterFocus && typeName === 'Age' ? 0.55 : 1;
+        if (elements.box)   { elements.box.opacity(isDimmed ? 0.25 : base);   elements.box.listening(!isDimmed); }
+        if (elements.label) { elements.label.opacity(isDimmed ? 0.25 : base); elements.label.listening(!isDimmed); }
+        if (elements.stem)  { elements.stem.opacity(isDimmed ? 0.25 : base);  elements.stem.listening(!isDimmed); }
 
         let targetY = 0;
         const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX)
-            : typeName === 'Picture' ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
+            : isPortraitType(typeName) ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
             : ls.TimelineEventBoxWidth;
 
         if (typeName === "Age") {
@@ -1035,7 +1053,9 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
             targetY = stageCenterY + getAssignedLane(
                 itemIdStr, itemX, boxWidth, isAboveLine, isAgeOrPeriod,
                 absoluteStart, absoluteEnd, viewport.centerTime, activeStep,
-                viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, lockedLanes, ls, ranges
+                viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, lockedLanes, ls, ranges,
+                undefined,  // no ghosts to avoid: this is the real pass
+                isPortraitType(typeName) ? laneSpanFor(boxWidth, ls) : 1
             );
         }
 
@@ -1088,7 +1108,52 @@ const renderWithDimming = (ls: LayoutSettings) => {
         renderItems(visible, ls);
     }
     renderReference(ls);
+    renderLifeline(ls);
 };
+
+/**
+ * BL-15: one character's life as a wave along the centre axis — birth to death, in their own
+ * colour. Wavy rather than a bar so it stays legible where it passes under an age band, and
+ * unmistakable for the axis it rides on. An end with no date runs off that edge of the window
+ * dashed: an unrecorded death is not a short life.
+ */
+function renderLifeline(ls: LayoutSettings) {
+    const c = store.characterFocus;
+    // Every other window pans past this on every frame: no layer work at all unless there is,
+    // or was, a lifeline to draw.
+    if (!c && !lifelineLayer.hasChildren()) return;
+    lifelineLayer.destroyChildren();
+    const birth = c ? characterAbsolute('Birth', c, store.lodProfile) : null;
+    const death = c ? characterAbsolute('Death', c, store.lodProfile) : null;
+    if (!c || props.miniMode || (birth === null && death === null)) { lifelineLayer.batchDraw(); return; }
+
+    const ranges = getActiveRanges();
+    const toX = (t: number) => getXFromTime(t, viewport.centerTime, viewport.lodStepFraction, viewport.width, ls, ranges);
+    const from = birth !== null ? toX(birth) : -WAVE_AMP;
+    const to   = death !== null ? toX(death) : viewport.width + WAVE_AMP;
+    const lo = Math.max(from, -WAVE_AMP);
+    const hi = Math.min(to, viewport.width + WAVE_AMP);
+    if (hi <= lo) { lifelineLayer.batchDraw(); return; }   // wholly off screen
+
+    // Phase runs from whichever end of the life is dated, not from the window, so the wave travels
+    // with the character while panning instead of crawling along underneath them.
+    const cy = viewport.height / 2;
+    const anchor = birth !== null ? from : to;
+    const yAt = (x: number) => cy + WAVE_AMP * Math.sin((x - anchor) * 2 * Math.PI / WAVE_LEN);
+    const pts: number[] = [];
+    for (let x = lo; x < hi; x += WAVE_STEP) pts.push(x, yAt(x));
+    pts.push(hi, yAt(hi));
+
+    lifelineLayer.add(new Konva.Line({
+        points: pts,
+        stroke: c.Color || ls.TimelineAxisColor || '#ffffff',
+        strokeWidth: 3,
+        lineCap: 'round',
+        dash: birth === null || death === null ? [10, 6] : [],
+        listening: false,
+    }));
+    lifelineLayer.batchDraw();
+}
 
 function clearReferenceNodes() {
     refNodeCache.clear();
@@ -1206,7 +1271,7 @@ function renderReference(ls: LayoutSettings) {
 
         let elements = refNodeCache.get(id);
         if (!elements) {
-            elements = buildNode(id, typeName, getTitle(item), getColor(item), refStems, refBoxes, ls, false, store.lowResourceMode);
+            elements = buildNode(id, typeName, getTitle(item), getColor(item), refStems, refBoxes, ls, false, store.lowResourceMode, !!item.UseHighlightColor);
             refNodeCache.set(id, elements);
             const tip = `${getTitle(item)} — ${ref.project.Title || 'Untitled'} (reference · Alt+click to view)`;
             elements.box.on('mouseenter', () => { const pos = stage?.getPointerPosition(); if (pos) showTooltip(tip, pos.x, pos.y); });
@@ -1215,7 +1280,7 @@ function renderReference(ls: LayoutSettings) {
         setNodeVisibility(elements, true);
 
         const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX)
-            : typeName === 'Picture' ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
+            : isPortraitType(typeName) ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
             : ls.TimelineEventBoxWidth;
         let targetY = stageCenterY - ls.TimelineAgeHeight / 2;
         if (typeName === 'Age') {
@@ -1228,7 +1293,8 @@ function renderReference(ls: LayoutSettings) {
                 id, itemX, boxWidth, isAboveLine, isAgeOrPeriod,
                 absoluteStart, absoluteEnd, viewport.centerTime, activeStep,
                 viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, refLanes, ls, ranges,
-                lockedLanes   // BL-66: pack around the real items, never under them
+                lockedLanes,  // BL-66: pack around the real items, never under them
+                isPortraitType(typeName) ? laneSpanFor(boxWidth, ls) : 1
             );
         }
         updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeftOfNow(itemX, viewport.width), stageCenterY, ls, !!item.Centered);
@@ -1439,7 +1505,7 @@ function loadPictureImage(itemId: string) {
 
 function jumpToYear(targetYear: number) {
     viewport.centerTime = clampToBoundaries(targetYear);
-    localYearCache = Math.floor(parseInt(targetYear));
+    localYearCache = Math.trunc(targetYear);
     store.setNowYear(localYearCache);
 
     if (stage) {
@@ -1596,7 +1662,7 @@ onMounted(() => {
 
     if (!containerRef.value) return;
     stage = new Konva.Stage({
-        container: containerRef.value,
+        container: containerRef.value as HTMLDivElement,
         width: containerRef.value.clientWidth,
         height: containerRef.value.clientHeight
     });
@@ -1617,6 +1683,7 @@ onMounted(() => {
 
 	stage.add(uiLayer);
 	stage.add(referenceLayer); // BL-66 underlay — below the grid and the active items
+	stage.add(lifelineLayer);  // BL-15 lifeline — under the items it runs beneath
 
 	if(store.layoutSettings?.TimelineTickMarkerTextAlwaysOnTop) {
 		stage.add(itemLayer);
@@ -1663,7 +1730,7 @@ onMounted(() => {
         e.evt.preventDefault();
         e.evt.stopPropagation();
 
-        const pos = stage.getPointerPosition();
+        const pos = stage!.getPointerPosition();
         if (!pos || !store.layoutSettings) return;
 
         const { absoluteTime, year, fraction } = resolveTimeAtPos(pos.x, e.evt.shiftKey);
@@ -1708,7 +1775,7 @@ onMounted(() => {
         if (hasDragged) { hasDragged = false; return; }
         if (contextMenu.isOpen) { closeContextMenu(); return; }
 
-        const pos = stage.getPointerPosition();
+        const pos = stage!.getPointerPosition();
         if (!pos) return;
 
         const targetId = e.target.id();
@@ -2048,8 +2115,23 @@ defineExpose({
                 <button class="menu-item" @click="emit('itemClick', contextMenu.itemId!); closeContextMenu()">
                     <i class="ri-edit-line"></i> Edit
                 </button>
+                <button
+                    v-if="contextMenu.itemTypeId === 7"
+                    class="menu-item"
+                    @click="emit('editCharacter', contextMenu.itemId!); closeContextMenu()"
+                >
+                    <PhUserCircle :size="16" /> Edit character
+                </button>
                 <div class="menu-separator"></div>
                 </template>
+                <!-- Outside the read-only guard: it only ever opens another read-only window. -->
+                <button
+                    v-if="contextMenu.itemTypeId === 7"
+                    class="menu-item"
+                    @click="emit('characterTimeline', contextMenu.itemId!); closeContextMenu()"
+                >
+                    <PhUserFocus :size="16" /> Their timeline
+                </button>
                 <button class="menu-item dist-from" @click="setItemDistancePoint('from')">
                     <i class="ri-map-pin-2-fill"></i> Distance – From
                 </button>

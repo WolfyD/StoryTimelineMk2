@@ -50,6 +50,7 @@ namespace StoryTimelineMk2.Bridge
                 case "PreviewTimelineImport":    HandlePreviewTimelineImport(message); break;
                 case "ImportCalendarFile":       HandleImportCalendarFile(message); break;
                 case "AddImagesToItem":          HandleAddImagesToItem(message); break;
+                case "SetCharacterPortraitFromPath": HandleSetCharacterPortraitFromPath(message); break;
                 default: return false;
             }
             return true;
@@ -290,6 +291,25 @@ namespace StoryTimelineMk2.Bridge
                 pictures.Add(picture);
             }
             ReplyToVue(message.MessageId, new { status = "ok", Pictures = pictures });
+        }
+
+        /// <summary>
+        /// The browser half of <c>SetCharacterPortrait</c> (BL-15): the page uploads the file first,
+        /// so this one gets a path instead of opening a dialog. Desktop keeps its own handler in
+        /// MessageRouter because there the dialog is the whole point.
+        /// </summary>
+        private void HandleSetCharacterPortraitFromPath(BridgeMessage message)
+        {
+            string characterId = message.Payload.GetProperty("characterId").GetString()!;
+            string filePath = message.Payload.GetProperty("path").GetString()!;
+            if (!File.Exists(filePath)) throw new FileNotFoundException($"File not found: {filePath}", filePath);
+
+            var mediaRepo = new MediaRepo();
+            var picture = mediaRepo.ImportAndSaveMedia(filePath, Path.GetFileNameWithoutExtension(filePath), "");
+            string? replaced = new CharacterRepo().SetPortrait(characterId, picture.Id);
+            if (replaced != null) mediaRepo.DeleteMedia(replaced);
+
+            ReplyToVue(message.MessageId, new { status = "ok", Picture = picture });
         }
 
         private static string RequiredPath(BridgeMessage message)

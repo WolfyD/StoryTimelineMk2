@@ -7,6 +7,7 @@ import {
   getXFromTime,
   isLeftOfNow,
   getAssignedLane,
+  laneSpanFor,
   type LaneLock,
 } from '@/utils/timelineLayout'
 import type { HiddenRange, LayoutSettings } from '@/types/models'
@@ -18,7 +19,7 @@ function makeRange(startYear: number, endYear: number, id = 1): HiddenRange {
 }
 
 function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSettings {
-  return {
+  return Object.assign({
     Id: 'ls_test',
     Name: 'Test',
     TimelineEventBoxWidth: 130,
@@ -47,6 +48,8 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineBoxTypesShowAsBox: true,
     TimelineBoxTypesBoxWidth: 100,
     TimelineBoxTypesShowImage: true,
+    TimelinePictureCaptionFontSize: 12,
+    TimelineCharacterCaptionFontSize: 12,
     TimelineCanvasBackgroundColor: '#f1e7d5',
     TimelineShowNowLine: true,
     TimelineShowNowLineText: true,
@@ -102,7 +105,10 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineCalendarOverlayWeekColor: '#ffffff08',
     TimelineCalendarOverlayDayColor: '#ffffff06',
     ...overrides,
-  }
+    TimelineBreakFillColor: '#ffffff',
+    TimelineBreakBorderColor: '#000000',
+    MeasureLineColor: '#000000',
+  }, overrides)
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ FormatRegistry Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -318,6 +324,57 @@ describe('getXFromTime', () => {
     const ls = makeLayoutSettings({ TimelineTickDistance: 100 })
     const result = getXFromTime(999, 1000, 1, 800, ls)
     expect(result).toBeCloseTo(300)
+  })
+})
+
+describe('laneSpanFor', () => {
+  // 30px boxes 10px apart: a 30px event is one lane, an 80px portrait covers two.
+  const ls = makeLayoutSettings({ TimelineEventBoxHeight: 30, TimelineEventYMargin: 10 })
+
+  it('counts the lanes a box of a given height swallows', () => {
+    expect(laneSpanFor(30, ls)).toBe(1)
+    expect(laneSpanFor(80, ls)).toBe(2)
+    expect(laneSpanFor(120, ls)).toBe(3)
+  })
+
+  it('never returns less than one lane', () => {
+    expect(laneSpanFor(0, ls)).toBe(1)
+  })
+})
+
+describe('getAssignedLane lane spans (BL-15)', () => {
+  const ls = makeLayoutSettings({
+    TimelineTickDistance: 100, TimelineEventBoxHeight: 30, TimelineEventYMargin: 10,
+  })
+  const pack = (id: string, lanes: Map<string, LaneLock>, span = 1) =>
+    getAssignedLane(id, 500, 80, true, false, 10, 10, 0, 1, 800, 1000, lanes, ls, [], undefined, span)
+
+  // The bug: a portrait is two lanes tall, so an event in the lane below drew through its face.
+  it('skips every lane a portrait covers, not just its first', () => {
+    const lanes = new Map<string, LaneLock>()
+    pack('portrait', lanes, 2)
+    pack('event', lanes)
+
+    expect(lanes.get('portrait')!.laneIndex).toBe(0)
+    expect(lanes.get('event')!.laneIndex).toBe(2)
+  })
+
+  // The other direction: a portrait cannot start one lane under an event either.
+  it('keeps a portrait clear of the lanes it would reach back over', () => {
+    const lanes = new Map<string, LaneLock>()
+    pack('event', lanes)
+    pack('portrait', lanes, 2)
+
+    expect(lanes.get('portrait')!.laneIndex).toBe(1)
+    expect(pack('second-event', lanes)).toBeDefined()
+    expect(lanes.get('second-event')!.laneIndex).toBe(3)
+  })
+
+  it('leaves single-lane items packing exactly as before', () => {
+    const lanes = new Map<string, LaneLock>()
+    pack('a', lanes)
+    pack('b', lanes)
+    expect(lanes.get('b')!.laneIndex).toBe(1)
   })
 })
 

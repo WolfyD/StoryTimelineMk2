@@ -22,6 +22,10 @@ namespace StoryTimelineMk2.Database.Migrations
             new(6, "item notes", "1.0.3", V6_ItemNotes),
             new(7, "keyboard pan speed", "1.0.3", V7_KeyboardPanSpeed),
             new(8, "session day log", "1.1.0", V8_SessionDays),
+            new(9, "character names, portrait and generated items", "1.1.1", V9_CharacterDetails),
+            new(10, "character date precision", "1.1.1", V10_CharacterDatePrecision),
+            new(11, "character highlight colour opt-in", "1.1.1", V11_CharacterHighlightColor),
+            new(12, "separate caption font sizes", "1.1.1", V12_CaptionFontSizes),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1071,6 +1075,97 @@ namespace StoryTimelineMk2.Database.Migrations
                     exported_at TEXT NOT NULL,
                     through_day TEXT NOT NULL
                 )");
+        }
+
+        // ── 9: character names, portrait, state, generated items ──────────────────────────────────
+
+        /// <summary>
+        /// BL-15 phase 0. Splits <c>characters.name</c> into first/last while keeping <c>name</c> itself
+        /// as a derived column, so every existing read of it (ORDER BY name, the appearance lists, the
+        /// EditItem picker) keeps working untouched. Adds what the character window needs beyond that:
+        /// a portrait pointing at the shared <c>pictures</c> table, an explicit state, and the two items
+        /// <i>Show on timeline</i> generates — exactly two, so two columns beat a join table.
+        /// <c>item_character_appearances</c> learns which links the text matcher made on its own, and
+        /// the dismissal table remembers the detected ones the user deleted so they do not come back.
+        /// </summary>
+        private static void V9_CharacterDetails(MigrationDb db)
+        {
+            db.Execute(@"
+                ALTER TABLE characters ADD COLUMN first_name TEXT NOT NULL DEFAULT '';
+                ALTER TABLE characters ADD COLUMN last_name  TEXT NOT NULL DEFAULT '';
+                ALTER TABLE characters ADD COLUMN portrait_picture_id TEXT;
+                ALTER TABLE characters ADD COLUMN state TEXT;
+                ALTER TABLE characters ADD COLUMN show_on_timeline INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE characters ADD COLUMN birth_item_id TEXT;
+                ALTER TABLE characters ADD COLUMN death_item_id TEXT;
+
+                ALTER TABLE item_character_appearances ADD COLUMN auto_detected INTEGER NOT NULL DEFAULT 0;");
+
+            // ponytail: no FKs — foreign keys are off on these connections, so they would not
+            // cascade anyway. A row left behind by a deleted item is unreachable, not harmful.
+            db.Execute(@"
+                CREATE TABLE character_link_dismissals (
+                    item_id      TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    PRIMARY KEY (item_id, character_id)
+                )");
+
+            // Last space wins: "Risha" is a first name, "Anna Maria Vas" is "Anna Maria" + "Vas".
+            // A guess, which is why both halves are editable afterwards — with this user base that
+            // beats a migration that has to ask questions.
+            foreach (var (id, name) in db.Query<(string Id, string? Name)>("SELECT id, name FROM characters"))
+            {
+                var (first, last) = CharacterItem.SplitName(name);
+                db.Execute("UPDATE characters SET first_name = @first, last_name = @last WHERE id = @id",
+                    new { first, last, id });
+            }
+        }
+
+        // ── 10: character date precision ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-15 phase 1. A birth or death year alone cannot place an item: the canvas works in
+        /// <c>absolute_start = year + subtick * lodStep</c>, so the character has to remember which
+        /// tick inside the year, and at which LOD that tick was picked — the same pair every item
+        /// carries. The legacy <c>birth_date</c> / <c>death_date</c> strings are real-world dates
+        /// from the v1 import and say nothing about a custom calendar, so they are left alone.
+        /// </summary>
+        private static void V10_CharacterDatePrecision(MigrationDb db)
+        {
+            db.Execute(@"
+                ALTER TABLE characters ADD COLUMN birth_subtick     INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE characters ADD COLUMN birth_granularity INTEGER NOT NULL DEFAULT 3;
+                ALTER TABLE characters ADD COLUMN death_subtick     INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE characters ADD COLUMN death_granularity INTEGER NOT NULL DEFAULT 3;");
+        }
+
+        // ── 11: character highlight colour ────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-15, after phase 2. A portrait with transparency sat straight on the character's
+        /// colour, which drowned the face. The disc is neutral now and the colour rides the ring
+        /// instead, unless the character asks for the fill back — so this defaults to off,
+        /// existing rows included.
+        /// </summary>
+        private static void V11_CharacterHighlightColor(MigrationDb db)
+        {
+            db.Execute("ALTER TABLE characters ADD COLUMN use_highlight_color INTEGER NOT NULL DEFAULT 0;");
+        }
+
+        // ── 12: caption font sizes ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-15: a portrait's caption is a generated sentence ("The birth of &lt;full name&gt;") and
+        /// overflows the disc at the event font size. Pictures and portraits get a size each, backfilled
+        /// from the event size so no existing timeline changes appearance on upgrade.
+        /// </summary>
+        private static void V12_CaptionFontSizes(MigrationDb db)
+        {
+            AddCol(db, "layout_settings", "timeline_picture_caption_font_size",   "INTEGER NOT NULL DEFAULT 12");
+            AddCol(db, "layout_settings", "timeline_character_caption_font_size", "INTEGER NOT NULL DEFAULT 12");
+            db.Execute(@"UPDATE layout_settings
+                            SET timeline_picture_caption_font_size   = timeline_event_font_size,
+                                timeline_character_caption_font_size = timeline_event_font_size");
         }
     }
 }

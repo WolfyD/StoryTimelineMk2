@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { mediaUrl } from '@/utils/mediaUrl';
+import { parseCalendarDef } from '@/utils/calendarDef'
+import { blankCharacter, characterEntity } from '@/utils/characterItems'
+import HighlightedTextarea from '@/components/HighlightedTextarea.vue'
+import { PhMagicWand } from '@phosphor-icons/vue'
 import { BackendAPI, IS_BROWSER_HOST } from '@/bridge/api'
 import { useShortcuts, MOD } from '@/utils/shortcuts'
 import HelpModal from '@/components/HelpModal.vue'
@@ -50,6 +54,8 @@ const ITEM_TYPES = [
   { id: 4, name: 'Picture' },
   { id: 5, name: 'Note' },
   { id: 6, name: 'Bookmark' },
+  // The character window generates these; the option is here so an open one shows its own type.
+  { id: 7, name: 'Character' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -133,6 +139,11 @@ const showCharPicker     = ref(false)
 const charPickerFilter   = ref('')
 const pendingCharId      = ref('')
 const pendingCharRole    = ref('')
+const creatingChar       = ref(false)
+// Characters the user took off this item. The matcher skips them, so a deleted link stays deleted.
+const dismissedChars     = ref(new Set<string>())
+
+const charEntities = computed(() => allCharacters.value.map(characterEntity))
 
 // Story picker
 const showStoryPicker    = ref(false)
@@ -150,7 +161,7 @@ let bookDebounce: ReturnType<typeof setTimeout>
 // ---------------------------------------------------------------------------
 const isRangeType = computed(() => item.value.TypeId === 2 || item.value.TypeId === 3)
 // Types drawn without a side of the axis (mirrors ItemRepo.SaveItemFull)
-const hasSide     = computed(() => ![3, 6, 7, 8, 9].includes(item.value.TypeId))
+const hasSide     = computed(() => ![3, 6, 8, 9].includes(item.value.TypeId))
 // Types drawn as a box on a stem — the only ones "Centered" changes (events, notes)
 const hasStemBox  = computed(() => item.value.TypeId === 1 || item.value.TypeId === 5)
 
@@ -176,43 +187,6 @@ function findBestSubYearLod(frac: number, profile: LodLevel[]): number {
         if (Math.abs(frac - nearest) <= lod.stepFraction * 0.25) return lod.index
     }
     return lods[lods.length - 1]?.index ?? 5 // finest available (days shows month+day)
-}
-
-// Parse month names from the calendar's year_definition JSON
-function parseCalendarDef(yearDefinition: string): {
-  monthNames: string[]
-  monthLengths: number[]
-  seasonNames: string[]
-  weekCount: number
-} {
-  try {
-    const def = JSON.parse(yearDefinition)
-    const yearLength: number = def.length ?? 365
-    const weekLength: number = def.week_definition?.length ?? 7
-
-    const monthNames: string[] = []
-    const monthLengths: number[] = []
-    if (def.month_definition && def.months) {
-      for (let i = 0; i < (def.months as number); i++) {
-        const m = def.month_definition[String(i)]
-        monthNames.push(m?.name ?? `Month ${i + 1}`)
-        monthLengths.push(m?.length ?? 30)
-      }
-    }
-
-    const seasonNames: string[] = []
-    if (def.season_definition && def.seasons) {
-      for (let i = 0; i < (def.seasons as number); i++) {
-        const s = def.season_definition[String(i)]
-        seasonNames.push(s?.name ?? `Season ${i + 1}`)
-      }
-    }
-
-    const weekCount = weekLength > 0 ? Math.ceil(yearLength / weekLength) : 52
-    return { monthNames, monthLengths, seasonNames, weekCount }
-  } catch {
-    return { monthNames: [], monthLengths: [], seasonNames: [], weekCount: 52 }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +282,7 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
 
       tags.value               = data.Tags ?? []
       characterAppearances.value = data.Characters ?? []
+      dismissedChars.value = new Set(data.Dismissals ?? [])
       storyRefs.value          = data.StoryRefs ?? []
       chapterRefs.value        = data.ChapterRefs ?? []
       images.value             = data.Pictures ?? []
@@ -421,14 +396,14 @@ if (IS_BROWSER_HOST) {
 const showHelp      = ref(false)
 const showShortcuts = ref(false)
 const titleRef      = ref<HTMLInputElement | null>(null)
-const descRef       = ref<HTMLTextAreaElement | null>(null)
+const descRef       = ref<InstanceType<typeof HighlightedTextarea> | null>(null)
 const endDateRef    = ref<InstanceType<typeof LodDateInput> | null>(null)
 const tagInputRef   = ref<HTMLInputElement | null>(null)
 
 // Tab walks the writer's path; anywhere else Tab keeps its native order.
 function tabPath(e: KeyboardEvent) {
   const endYear = (endDateRef.value?.$el as HTMLElement | undefined)?.querySelector<HTMLInputElement>('input')
-  const path = [titleRef.value, descRef.value, endYear, tagInputRef.value].filter((el): el is HTMLInputElement | HTMLTextAreaElement => !!el)
+  const path = [titleRef.value, descRef.value?.el, endYear, tagInputRef.value].filter((el): el is HTMLInputElement | HTMLTextAreaElement => !!el)
   const i = path.indexOf(document.activeElement as HTMLInputElement)
   const next = i < 0 ? undefined : path[i + (e.shiftKey ? -1 : 1)]
   if (!next) return false
@@ -554,15 +529,71 @@ function confirmAddCharacter() {
     CharacterColor: char.Color,
     Role: pendingCharRole.value || null,
   })
+  dismissedChars.value.delete(char.Id)   // added by hand: the save clears the stored dismissal too
   showCharPicker.value = false
 }
 
 function removeCharacterAppearance(index: number) {
-  characterAppearances.value.splice(index, 1)
+  const [removed] = characterAppearances.value.splice(index, 1)
+  if (!removed) return
+  // Whether it was detected or added by hand, taking it off is an answer: remember it, or the
+  // next blur puts it straight back.
+  dismissedChars.value.add(removed.CharacterId)
+  BackendAPI.DismissCharacterLink(item.value.Id, removed.CharacterId).catch(err => {
+    saveError.value = `Could not remember that removal: ${err}`
+    console.error('[EditItem] DismissCharacterLink error:', err)
+  })
+}
+
+/**
+ * Names found in the text attach themselves when the field loses focus — on blur rather than per
+ * keystroke, so the list does not reshuffle mid-sentence.
+ */
+function attachDetectedCharacters(ids: string[]) {
+  for (const id of ids) {
+    if (dismissedChars.value.has(id)) continue
+    if (characterAppearances.value.some(a => a.CharacterId === id)) continue
+    const char = allCharacters.value.find(c => c.Id === id)
+    if (!char) continue
+    characterAppearances.value.push({
+      CharacterId: char.Id,
+      CharacterName: char.Name,
+      CharacterColor: char.Color,
+      Role: null,
+      AutoDetected: true,
+    })
+  }
 }
 
 function characterInitials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+}
+
+/** The portrait of an already-linked character: the appearance row only carries name and colour. */
+function portraitOf(characterId: string) {
+  return allCharacters.value.find(c => c.Id === characterId)?.PortraitPath ?? null
+}
+
+/**
+ * Invent a character without leaving the editor. What was typed into the filter becomes the name,
+ * and the backend splits it into first and last — the same path the importer uses.
+ */
+async function createCharacterFromFilter() {
+  const name = charPickerFilter.value.trim()
+  if (!name || creatingChar.value) return
+  creatingChar.value = true
+  try {
+    const result = await BackendAPI.SaveCharacter({ ...blankCharacter(timelineId), Name: name })
+    if (result?.status !== 'ok') throw new Error('The character was not saved.')
+    allCharacters.value.push(result.character)
+    pendingCharId.value    = result.character.Id
+    charPickerFilter.value = ''
+  } catch (err) {
+    saveError.value = `Could not create the character: ${err}`
+    console.error('[EditItem] createCharacter error:', err)
+  } finally {
+    creatingChar.value = false
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +678,9 @@ async function save(closeOnSuccess = true) {
     const result = await BackendAPI.SaveItem(
       item.value,
       tags.value.map(t => t.Name),
-      characterAppearances.value.map(a => ({ CharacterId: a.CharacterId, Role: a.Role })),
+      characterAppearances.value.map(a => ({
+        CharacterId: a.CharacterId, Role: a.Role, AutoDetected: !!a.AutoDetected,
+      })),
       storyRefs.value.map(r => r.StoryId),
       chapterRefs.value.map(r => r.ChapterId),
     )
@@ -736,7 +769,14 @@ async function removeImage(pictureId: string) {
       <div class="row">
         <div class="field flex-1">
           <label>Description</label>
-          <textarea ref="descRef" rows="7" v-model="item.Description" placeholder="Short description" />
+          <HighlightedTextarea
+            ref="descRef"
+            v-model="item.Description"
+            :entities="charEntities"
+            :rows="7"
+            placeholder="Short description"
+            @matched="attachDetectedCharacters"
+          />
         </div>
         <div class="field color-field">
           <label>Color</label>
@@ -769,7 +809,12 @@ async function removeImage(pictureId: string) {
           <div class="field flex-1">
             <label>Type</label>
             <select v-model="item.TypeId">
-              <option v-for="t in ITEM_TYPES" :key="t.id" :value="t.id">{{ t.name }}</option>
+              <option
+                v-for="t in ITEM_TYPES"
+                :key="t.id"
+                :value="t.id"
+                :disabled="t.id === 7 && item.TypeId !== 7"
+              >{{ t.name }}</option>
             </select>
           </div>
 
@@ -833,7 +878,13 @@ async function removeImage(pictureId: string) {
 
         <div class="field">
           <label>Content</label>
-          <textarea v-model="item.Content" rows="5" placeholder="Full content / notes…" />
+          <HighlightedTextarea
+            v-model="item.Content"
+            :entities="charEntities"
+            :rows="5"
+            placeholder="Full content / notes…"
+            @matched="attachDetectedCharacters"
+          />
         </div>
 
         <div class="row">
@@ -975,9 +1026,15 @@ async function removeImage(pictureId: string) {
               <div
                 class="char-avatar"
                 :style="{ backgroundColor: app.CharacterColor || '#7c8cbe' }"
-              >{{ characterInitials(app.CharacterName) }}</div>
+              >
+                <img v-if="portraitOf(app.CharacterId)" :src="mediaUrl(portraitOf(app.CharacterId)!)" :alt="app.CharacterName" />
+                <template v-else>{{ characterInitials(app.CharacterName) }}</template>
+              </div>
               <div class="char-info">
-                <span class="char-name">{{ app.CharacterName }}</span>
+                <span class="char-name">
+                  {{ app.CharacterName }}
+                  <span v-if="app.AutoDetected" class="char-auto" title="Found in this item's text"><PhMagicWand :size="12" /></span>
+                </span>
                 <input
                   class="char-role-input"
                   type="text"
@@ -1015,15 +1072,26 @@ async function removeImage(pictureId: string) {
                   <div
                     class="char-avatar sm"
                     :style="{ backgroundColor: c.Color || '#7c8cbe' }"
-                  >{{ characterInitials(c.Name) }}</div>
+                  >
+                    <img v-if="c.PortraitPath" :src="mediaUrl(c.PortraitPath)" :alt="c.Name" />
+                    <template v-else>{{ characterInitials(c.Name) }}</template>
+                  </div>
                   {{ c.Name }}
                 </div>
-                <p v-if="!filteredCharacters.length" class="picker-empty">No characters found.</p>
+                <p v-if="!filteredCharacters.length" class="picker-empty">
+                  {{ charPickerFilter.trim() ? 'No one by that name yet.' : 'No characters found.' }}
+                </p>
               </div>
               <div class="picker-role">
                 <input type="text" v-model="pendingCharRole" placeholder="Role / connection (optional)" />
               </div>
               <div class="picker-footer">
+                <button
+                  v-if="charPickerFilter.trim()"
+                  class="btn btn-secondary btn-sm picker-new"
+                  :disabled="creatingChar"
+                  @click="createCharacterFromFilter"
+                >+ New &ldquo;{{ charPickerFilter.trim() }}&rdquo;</button>
                 <button class="btn btn-secondary btn-sm" @click="showCharPicker = false">Cancel</button>
                 <button class="btn btn-primary btn-sm" :disabled="!pendingCharId" @click="confirmAddCharacter">Add</button>
               </div>
@@ -1584,6 +1652,8 @@ async function removeImage(pictureId: string) {
   flex-shrink: 0;
 
   &.sm { width: 28px; height: 28px; font-size: 0.75rem; }
+
+  img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 }
 
 .char-info {
@@ -1690,6 +1760,14 @@ async function removeImage(pictureId: string) {
     &:focus { outline: 2px solid var(--app-accent, #4a90d9); }
     &::placeholder { color: var(--app-text-dim, #64748b); }
   }
+}
+
+.picker-new {
+  margin-right: auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .picker-footer {

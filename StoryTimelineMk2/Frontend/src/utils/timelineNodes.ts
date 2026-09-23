@@ -7,6 +7,10 @@ import Konva from 'konva';
 const GROW = { x: 1.06, y: 1.06 };
 const NO_GROW = { x: 1, y: 1 };
 
+// Characters (type 7) hang a portrait off the stem the way a Picture hangs its image — same
+// geometry, same loader, only rounder. Everything that special-cases pictures means both.
+export const isPortraitType = (typeName: string) => typeName === "Picture" || typeName === "Character";
+
 export const buildNode = (
     id: string,
     typeName: string,
@@ -17,6 +21,7 @@ export const buildNode = (
 	layoutSettings: LayoutSettings,
     showTitle = false,   // pictures: caption strip along the bottom edge (items.show_title)
     lowRes = false,      // low resource mode: fewer nodes per item, no cached hover bitmap
+    useHighlightColor = false, // characters: fill the disc with their colour (characters.use_highlight_color)
 ) => {
     const safeColor = color || (typeName === "Event" ? '#ffffff' : '#888888');
     const elements: any = {}; // Standard JS object to hold references
@@ -40,8 +45,12 @@ export const buildNode = (
 
         // Ages/Periods don't have stems, just add the box to the upper layer
         boxesMaster.add(elements.box);
-    } else if (typeName === "Picture") {
+    } else if (isPortraitType(typeName)) {
         const size = layoutSettings.TimelineBoxTypesBoxWidth || layoutSettings.TimelineEventBoxHeight;
+        const round = typeName === "Character";
+        // A portrait with transparency over a filled disc drowns the face, so the colour rides the
+        // ring unless the character asks for the fill back — and then the ring earns a minimum width.
+        const ringOnly = round && !useHighlightColor;
         elements.stem = new Konva.Line({
             id: `stem-${id}`,
             points: [0, 0, 0, 0],
@@ -53,21 +62,33 @@ export const buildNode = (
             image: undefined as any,
             width: size,
             height: size,
-            fill: '#00000022',
+            fill: ringOnly || !round ? '#00000022' : safeColor,
             stroke: safeColor,
-            strokeWidth: layoutSettings.TimelineEventBorderWidth,
-            cornerRadius: 4,
+            strokeWidth: ringOnly
+                ? Math.max(2, layoutSettings.TimelineEventBorderWidth)
+                : layoutSettings.TimelineEventBorderWidth,
+            cornerRadius: round ? size / 2 : 4,
         });
         stemsMaster.add(elements.stem);
         boxesMaster.add(elements.box);
         if (showTitle) {
             // Label = Tag (background) + Text; the Text carries the label-id so clicks resolve to the item
             elements.label = new Konva.Label({ id: `caption-${id}` });
-            elements.label.add(new Konva.Tag({ fill: 'rgba(0, 0, 0, 0.55)', cornerRadius: [0, 0, 4, 4] }));
-            elements.label.add(new Konva.Text({
+            elements.label.add(new Konva.Tag({ fill: 'rgba(0, 0, 0, 0.55)', cornerRadius: round ? 4 : [0, 0, 4, 4] }));
+            // A portrait's caption is often a generated sentence, a picture's is a title — own size each.
+            const captionSize = round
+                ? layoutSettings.TimelineCharacterCaptionFontSize
+                : layoutSettings.TimelinePictureCaptionFontSize;
+            const caption = new Konva.Text({
                 id: `label-${id}`, text: title || 'Untitled', fill: '#ffffff', padding: 4, width: size, align: 'center',
-                ellipsis: true, wrap: 'none', fontFamily: layoutSettings.TimelineEventFontFamily, fontSize: layoutSettings.TimelineEventFontSize
-            }));
+                ellipsis: true, wrap: 'word', lineHeight: 1,
+                fontFamily: layoutSettings.TimelineEventFontFamily, fontSize: captionSize
+            });
+            // A name too long for the disc folds onto a second row and is cut there. Height is left
+            // to the text until it needs cutting: one row should not reserve two rows of picture.
+            const twoRows = captionSize * 2 + 8; // 2 lines + the 4px padding twice
+            if (caption.height() > twoRows) caption.height(twoRows);
+            elements.label.add(caption);
             boxesMaster.add(elements.label);
         }
     } else {
@@ -135,7 +156,7 @@ export const buildNode = (
             // offscreen canvases per item the pointer crosses. A transform costs nothing to set up.
             // Box and label share an origin, so scaling both keeps the text where it sits.
             elements.box.scale(GROW);
-            if (typeName !== "Picture") elements.label?.scale(GROW);   // a caption hangs off the bottom edge, not the box origin
+            if (!isPortraitType(typeName)) elements.label?.scale(GROW);   // a caption hangs off the bottom edge, not the box origin
             elements.box.getLayer()?.batchDraw();
         } else if (layoutSettings.TimelineEventHasHoverHighlight) {
             const hoverColor = layoutSettings.TimelineEventHoverColor || '#ffffff';
@@ -158,7 +179,7 @@ export const buildNode = (
             else elements.box.to({ scaleY: 1, duration: 0.15, easing: Konva.Easings.EaseOut });
         } else if (lowRes) {
             elements.box.scale(NO_GROW);
-            if (typeName !== "Picture") elements.label?.scale(NO_GROW);
+            if (!isPortraitType(typeName)) elements.label?.scale(NO_GROW);
             elements.box.getLayer()?.batchDraw();
         } else if (layoutSettings.TimelineEventHasHoverHighlight) {
             elements.box.clearCache();
@@ -216,7 +237,7 @@ export const updateAbsolutePositions = (
 
 		// Set position, adding half the height because the shape's anchor is now in its center
 		elements.box.position({ x: anchorX, y: boxy + (height / 2) });
-    } else if (typeName === "Picture") {
+    } else if (isPortraitType(typeName)) {
         // Square image centered on the stem; stem runs straight up/down
         const size = boxWidth;
         elements.box.width(size);

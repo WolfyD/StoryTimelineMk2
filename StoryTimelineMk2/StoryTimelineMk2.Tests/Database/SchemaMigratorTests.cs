@@ -149,6 +149,28 @@ public class SchemaMigratorTests
         Assert.Equal(MainDbMigrations.LatestVersion, Version(ctx.DbPath));
     }
 
+    /// <summary>
+    /// V12 gave pictures and portraits a caption font size each. An upgraded timeline has to look
+    /// exactly as it did, so both are backfilled from the event font size instead of keeping the
+    /// column default — the seeded presets use 16, the column default is 12.
+    /// </summary>
+    [Fact]
+    public void CaptionFontSizes_AreBackfilledFromTheEventFontSize()
+    {
+        using var ctx = new DbTestContext();
+
+        using var verify = Open(ctx.DbPath);
+        var rows = verify.Query<(long Event, long Picture, long Portrait)>(
+            @"SELECT timeline_event_font_size,
+                     timeline_picture_caption_font_size,
+                     timeline_character_caption_font_size
+              FROM layout_settings").ToList();
+
+        Assert.NotEmpty(rows);
+        Assert.All(rows, r => Assert.Equal((r.Event, r.Event), (r.Picture, r.Portrait)));
+        Assert.Contains(rows, r => r.Event == 16);
+    }
+
     [Fact]
     public void Initialize_IsIdempotent_OnCurrentDb()
     {
@@ -246,6 +268,34 @@ public class SchemaMigratorTests
         Assert.Equal(1, placement["p1"]); Assert.Equal(2, placement["p2"]);
         Assert.Equal(0, placement["age"]);
         Assert.Equal(1, placement["other"]);
+    }
+
+    /// <summary>
+    /// V9 splits characters.name on the last space. Everything else about the character track is new
+    /// columns, which AssertSameSchema already covers.
+    /// </summary>
+    [Fact]
+    public void MainV0Fixture_SplitsCharacterNames_OnTheLastSpace()
+    {
+        using var ctx = new DbTestContext();
+        string oldDb = Path.Combine(ctx.TempDir, "v0.sqlite");
+        BuildFromFixture(oldDb, "main_schema_v0_1.0.1.sql");
+        using (var db = Open(oldDb))
+        {
+            db.Execute("INSERT INTO timelines (id, title, author, description, start_year) VALUES (1, 'A', '', '', 0)");
+            db.Execute(@"INSERT INTO characters (id, name, timeline_id) VALUES
+                ('c1', 'Risha', 1), ('c2', 'Anna Maria Vas', 1), ('c3', '  Padded  Name  ', 1), ('c4', '', 1)");
+        }
+
+        DbInitializer.Initialize(oldDb, backupFirst: false);
+
+        using var verify = Open(oldDb);
+        var split = verify.Query<(string id, string first, string last)>(
+            "SELECT id, first_name, last_name FROM characters").ToDictionary(r => r.id, r => (r.first, r.last));
+        Assert.Equal(("Risha", ""), split["c1"]);
+        Assert.Equal(("Anna Maria", "Vas"), split["c2"]);
+        Assert.Equal(("Padded", "Name"), split["c3"]);
+        Assert.Equal(("", ""), split["c4"]);
     }
 
     /// <summary>

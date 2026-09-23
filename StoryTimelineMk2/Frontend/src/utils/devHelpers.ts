@@ -28,7 +28,7 @@ export function installDevHelpers(): void {
 			const MD_NAMES   = ["Festival of Fire","Night of Veils","The Long Sleep","Storm's Greeting","Day of Ashes","Tide's Turn","The Great Hunt","Blood Moon Feast","Starfall Night","The Awakening","Harvest Pyre","Frost's Embrace"]
 			const MD_COLORS  = ['#ff4500','#9b59b6','#3498db','#e74c3c','#1abc9c','#f39c12','#e91e63','#00bcd4','#ff9800','#8bc34a']
 
-			const pick = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)]
+			const pick = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)]!
 			const rnd  = (lo: number, hi: number) => Math.floor(Math.random() * (hi - lo)) + lo
 			const shuf = <T>(a: T[]): T[] => [...a].sort(() => Math.random() - 0.5)
 
@@ -44,7 +44,7 @@ export function installDevHelpers(): void {
 
 			const season_definition: Record<string, unknown> = {}
 			for (let i = 0; i < nS; i++) {
-				const st = i * mps, sn = S_NAMES[i % S_NAMES.length]
+				const st = i * mps, sn = S_NAMES[i % S_NAMES.length]!
 				season_definition[i] = { name: sn, short_name: sn.slice(0, 3), start: st, end: i === nS - 1 ? nM - 1 : st + mps - 1 }
 			}
 
@@ -52,7 +52,7 @@ export function installDevHelpers(): void {
 
 			const memorable_days = shuf(MD_NAMES).slice(0, nD).map(name => {
 				const mi = rnd(0, nM)
-				return { id: crypto.randomUUID(), name, color: pick(MD_COLORS), type: 'fixed', startMonth: mi, startDay: rnd(1, lens[mi] + 1), endMonth: mi, endDay: rnd(1, lens[mi] + 1), isRange: false, weekDays: [] }
+				return { id: crypto.randomUUID(), name, color: pick(MD_COLORS), type: 'fixed', startMonth: mi, startDay: rnd(1, lens[mi]! + 1), endMonth: mi, endDay: rnd(1, lens[mi]! + 1), isRange: false, weekDays: [] }
 			})
 
 			const yd = { length: ylen, months: nM, month_definition, seasons: nS, season_definition, week_definition, year_start_dow: rnd(0, wL), memorable_days }

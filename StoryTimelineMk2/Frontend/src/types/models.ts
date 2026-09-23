@@ -224,6 +224,8 @@ export interface TimelineItem {
 	Centered?: boolean;
 	/** Draw the title as a caption strip on the canvas (pictures only) */
 	ShowTitle?: boolean;
+	/** Read-only, type 7 only: the owning character's UseHighlightColor, joined in by the backend. */
+	UseHighlightColor?: boolean;
 	/** Writer's private notes: stored and exported, never rendered anywhere */
 	ItemNotes?: string | null;
 	ShowInNotes: boolean;
@@ -249,15 +251,52 @@ export interface LodLevel {
 	stepFraction: number;
 }
 
+/** One item a character appears in — the character window's reverse list. */
+export interface CharacterAppearance {
+	ItemId: string;
+	Title: string;
+	TypeId: number;
+	Year: number;
+	AbsoluteStart: number;
+	Color: string | null;
+	Role: string | null;
+}
+
 export interface CharacterItem {
 	Id: string;
+	/** Derived from FirstName + LastName by the backend on save — never set it directly. */
 	Name: string;
+	FirstName: string;
+	LastName: string;
 	Nicknames: string | null;
 	Aliases: string | null;
 	Race: string | null;
 	Description: string | null;
+	Notes: string | null;
+	BirthYear: number | null;
+	BirthDate: string | null;
+	BirthAlternativeYear: string | null;
+	DeathYear: number | null;
+	DeathDate: string | null;
+	DeathAlternativeYear: string | null;
+	/** Where inside the year, at the LOD it was picked at — the pair every item carries. */
+	BirthSubtick: number;
+	BirthGranularity: number;
+	DeathSubtick: number;
+	DeathGranularity: number;
 	Color: string | null;
 	Importance: number;
+	PortraitPictureId: string | null;
+	/** Read-only: the portrait's media-relative path, joined in by the backend. */
+	PortraitPath: string | null;
+	/** Overrides what the dates imply; null (the normal case) means derive it from DeathYear. */
+	State: string | null;
+	/** Draw birth and death as two items this character owns. */
+	ShowOnTimeline: boolean;
+	/** Fill the portrait disc with Color instead of leaving it neutral; the ring is coloured either way. */
+	UseHighlightColor: boolean;
+	BirthItemId: string | null;
+	DeathItemId: string | null;
 	TimelineId: number;
 }
 
@@ -290,6 +329,8 @@ export interface ItemCharacterAppearance {
 	CharacterName: string;
 	CharacterColor: string | null;
 	Role: string | null;
+	/** The name matcher attached this one rather than the user (BL-15 phase 2). */
+	AutoDetected?: boolean;
 }
 
 export interface ItemChapterRef {
@@ -324,6 +365,8 @@ export interface ItemForEdit {
 	Item: TimelineItem;
 	Tags: Tag[];
 	Characters: ItemCharacterAppearance[];
+	/** Characters the user took off this item — the matcher leaves these alone. */
+	Dismissals: string[];
 	StoryRefs: ItemStoryRef[];
 	ChapterRefs: ItemChapterRef[];
 	Calendar: Calendar;
@@ -363,6 +406,8 @@ export interface LayoutSettings {
 	TimelineBoxTypesShowAsBox: boolean;	// Show as a box or show as a normal Event?
 	TimelineBoxTypesBoxWidth: number;	// If show as box, what should the dimensions be?
 	TimelineBoxTypesShowImage: boolean;	// Should the type contain a visible image, eg character image or note icon etc
+	TimelinePictureCaptionFontSize: number;	// Caption strip under a picture
+	TimelineCharacterCaptionFontSize: number;	// Caption under a portrait — generated titles run long
 	// Timeline misc
 	TimelineCanvasBackgroundColor: string;
 	TimelineShowNowLine: boolean;

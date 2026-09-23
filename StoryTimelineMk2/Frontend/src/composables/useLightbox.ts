@@ -27,7 +27,7 @@ export function useLightbox() {
         lightboxCollection.value = collection ?? [src]
         lightboxIndex.value      = lightboxCollection.value.indexOf(src)
         if (lightboxIndex.value < 0) lightboxIndex.value = 0
-        lightboxSrc.value = lightboxCollection.value[lightboxIndex.value]
+        lightboxSrc.value = lightboxCollection.value[lightboxIndex.value] ?? null
     }
 
     function closeLightbox() {
@@ -37,14 +37,14 @@ export function useLightbox() {
     function lightboxPrev() {
         if (lightboxIndex.value > 0) {
             lightboxIndex.value--
-            lightboxSrc.value = lightboxCollection.value[lightboxIndex.value]
+            lightboxSrc.value = lightboxCollection.value[lightboxIndex.value] ?? null
         }
     }
 
     function lightboxNext() {
         if (lightboxIndex.value < lightboxCollection.value.length - 1) {
             lightboxIndex.value++
-            lightboxSrc.value = lightboxCollection.value[lightboxIndex.value]
+            lightboxSrc.value = lightboxCollection.value[lightboxIndex.value] ?? null
         }
     }
 

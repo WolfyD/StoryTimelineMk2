@@ -147,9 +147,9 @@ const cascadeOrder = computed(() => {
                         transform: `translateX(${(cascadeOrder.length - 1 - pos) * 6}px) translateY(${(cascadeOrder.length - 1 - pos) * 4}px)`,
                         opacity: pos === cascadeOrder.length - 1 ? 1 : 0.6 - (cascadeOrder.length - 1 - pos) * 0.1,
                     }"
-                    @click="pos === cascadeOrder.length - 1 ? openLightbox($event, entries[idx].url, entries.map(e => e.url)) : null"
+                    @click="pos === cascadeOrder.length - 1 ? openLightbox($event, entries[idx]!.url, entries.map(e => e.url)) : null"
                 >
-                    <img :src="entries[idx].thumbUrl" :alt="entries[idx].title" />
+                    <img :src="entries[idx]!.thumbUrl" :alt="entries[idx]!.title" />
                 </div>
             </div>
             <div class="gallery-cascade-controls">

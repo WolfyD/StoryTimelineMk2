@@ -27,8 +27,8 @@ const isSaving = ref(false)
 const saveError = ref('')
 
 // ---- Calendar metadata ----
-const calId = ref(calendarIdParam ?? crypto.randomUUID())
-const lodProfileId = ref(crypto.randomUUID())
+const calId = ref<string>(calendarIdParam ?? crypto.randomUUID())
+const lodProfileId = ref<string>(crypto.randomUUID())
 const calName = ref('New Calendar')
 const shortName = ref('')
 const alternateName = ref('')
@@ -80,6 +80,7 @@ function onLodDrop(i: number) {
     if (from === null || from === i) { lodDragIndex.value = null; lodDragOver.value = null; return }
     const items = [...lodLevels.value]
     const [moved] = items.splice(from, 1)
+    if (!moved) return
     items.splice(i, 0, moved)
     items.forEach((l, idx) => l.index = idx)
     lodLevels.value = items
@@ -230,7 +231,7 @@ const seasonSegments = computed((): SeasonSegment[] => {
     return seasons.value.map((s, i) => {
         let len = s.end - s.start + 1
         if (len <= 0) len += yearLength.value
-        return { name: s.name || `Season ${i + 1}`, length: Math.max(len, 1), color: SEASON_PALETTE[i % SEASON_PALETTE.length] }
+        return { name: s.name || `Season ${i + 1}`, length: Math.max(len, 1), color: SEASON_PALETTE[i % SEASON_PALETTE.length]! }
     })
 })
 
@@ -240,7 +241,7 @@ const doyBackdrop = backdropClose(() => { showSeasonDoyModal.value = false })
 const seasonStartInput = ref(1)
 
 function openSeasonDoyModal() {
-    seasonStartInput.value = seasons.value.length > 0 ? seasons.value[0].start + 1 : 1
+    seasonStartInput.value = seasons.value.length > 0 ? seasons.value[0]!.start + 1 : 1
     showSeasonDoyModal.value = true
 }
 

@@ -28,7 +28,8 @@ export default defineConfig({
         timeline: resolve(__dirname, 'timeline.html'),
         editItem: resolve(__dirname, 'editItem.html'),
         calendar: resolve(__dirname, 'calendar.html'),
-        yearCalendar: resolve(__dirname, 'yearCalendar.html')
+        yearCalendar: resolve(__dirname, 'yearCalendar.html'),
+        characters: resolve(__dirname, 'characters.html')
       }
     }
   }

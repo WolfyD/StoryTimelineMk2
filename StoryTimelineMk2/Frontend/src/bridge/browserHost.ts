@@ -218,7 +218,11 @@ async function showFolderPath(which: 'DataRoot' | 'BackupsFolder', label: string
 const handlers: Record<string, (payload: Payload) => unknown> = {
 	// Windows
 	OpenTimeline: (p) => {
-		const url = `timeline.html${query({ id: p.id as number, readOnly: p.readOnly ? 1 : null })}`
+		const url = `timeline.html${query({
+			id: p.id as number,
+			readOnly: p.readOnly ? 1 : null,
+			characterId: (p.characterId as string) ?? null,   // BL-15 phase 3: the appearances window
+		})}`
 		// A reference timeline is meant to sit beside the one that opened it; a normal open
 		// replaces the project list, the way the desktop app hides it.
 		if (p.readOnly) openPopup('storytimeline-reference', url, 1200, 800)
@@ -248,6 +252,17 @@ const handlers: Record<string, (payload: Payload) => unknown> = {
 		)
 		// Saving closes the editor, so its closing is the opener's "the list may have changed".
 		whenClosed(popup, () => pushToSelf('CalendarsChanged', {}))
+	},
+
+	OpenCharactersWindow: (p) => {
+		// Re-opening the same named window navigates it, so the character rides the query string
+		// here rather than needing the broadcast the desktop host uses.
+		openPopup(
+			'storytimeline-characters',
+			`characters.html${query({ timelineId: p.timelineId as number, characterId: p.characterId as string })}`,
+			1200,
+			860,
+		)
 	},
 
 	OpenYearCalendarWindow: (p) => {
@@ -305,6 +320,13 @@ const handlers: Record<string, (payload: Payload) => unknown> = {
 		const { timelineCount, itemCount, sourcePath } = preview.preview
 		const go = window.confirm(`Import ${timelineCount} timeline(s) and ${itemCount} item(s) from this file?`)
 		return go ? await backend('ExecuteImportDB', { path: sourcePath }) : { status: 'cancelled' }
+	},
+
+	SetCharacterPortrait: async (p) => {
+		const files = await pickFiles('image/*', false)
+		if (!files.length) return { status: 'cancelled' }
+		const path = await upload(files[0]!)
+		return await backend('SetCharacterPortraitFromPath', { characterId: p.characterId, path })
 	},
 
 	AddImageToItem: async (p) => {

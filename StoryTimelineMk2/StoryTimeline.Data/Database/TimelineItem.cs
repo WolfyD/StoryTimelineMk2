@@ -29,6 +29,8 @@ namespace StoryTimelineMk2.Database
         public bool Centered { get; set; }
         /// <summary>Draw the title as a caption strip on the canvas (pictures only).</summary>
         public bool ShowTitle { get; set; }
+        /// <summary>Not a column: the owning character's flag, joined in for type 7. False for everything else.</summary>
+        public bool UseHighlightColor { get; set; }
         /// <summary>Writer's private notes — stored and exported, never rendered on the canvas, data panel or view modal.</summary>
         public string? ItemNotes { get; set; }
         public bool ShowInNotes { get; set; } = true;

@@ -49,7 +49,7 @@ async function exportTimeline(includeIds: boolean, includeMedia: boolean) {
     const id = store.currentProject?.Id
     if (id == null) return
     try {
-        await BackendAPI.ExportTimeline(id, includeIds, includeMedia)
+        await BackendAPI.ExportTimeline(id, includeIds, includeMedia, store.characterFocus?.Id)
     } catch (e) {
         console.error('[ExportTimeline]', e)
         alert(`Timeline export failed:
@@ -87,6 +87,12 @@ function onHostPush(msg: BridgeMessage) {
     if (msg?.action === 'ZoomChanged' && store.settings) {
         store.settings.UseCustomScaling = !!msg.payload.useCustomScaling
         store.settings.CustomScale = msg.payload.customScale
+    }
+    // BL-15: the characters window clicked one of a character's appearances. The absolute start
+    // travels with it, so the item does not have to be one this window has loaded.
+    if (msg?.action === 'FocusTimelineItem') {
+        jumpTo(msg.payload.AbsoluteStart)
+        store.pulseItem(msg.payload.ItemId)
     }
 }
 async function dismissUpdate() { updateBanner.value = null }
@@ -158,6 +164,37 @@ async function onViewItem(itemId: string) {
     }
 }
 
+/**
+ * BL-15: a birth/death item's own editor is the character, not the item. The id is resolved here
+ * rather than carried on the item, so the canvas never has to know characters exist.
+ */
+/** BL-15 phase 3: the same right-click, one step further — that character's own timeline. */
+async function onCharacterTimeline(itemId: string) {
+    try {
+        const { characterId } = await BackendAPI.GetCharacterIdForItem(itemId)
+        if (!characterId) return
+        BackendAPI.OpenCharacterTimeline(store.currentProject!.Id, characterId)
+    } catch (e) {
+        console.error('[onCharacterTimeline]', e)
+        alert(`Could not open that character's timeline:
+
+${e instanceof Error ? e.message : String(e)}`)
+    }
+}
+
+async function onEditCharacter(itemId: string) {
+    try {
+        const { characterId } = await BackendAPI.GetCharacterIdForItem(itemId)
+        if (!characterId) return
+        await BackendAPI.OpenCharactersWindow(store.currentProject!.Id, characterId)
+    } catch (e) {
+        console.error('[onEditCharacter]', e)
+        alert(`Could not open that character:
+
+${e instanceof Error ? e.message : String(e)}`)
+    }
+}
+
 function onAddItem(typeId: number, absoluteTime: number, lodIndex: number) {
     if (store.readOnly) return
     BackendAPI.send('OpenAddEditItemWindow', {
@@ -190,6 +227,7 @@ async function HandleLoadTimeline() {
 	const urlParams = new URLSearchParams(window.location.search)
 	const id = parseInt(urlParams.get('id') ?? '0', 10)
 	store.readOnly = urlParams.get('readOnly') === '1'   // BL-66 reference window (cold-start path)
+	store.characterFocusId = urlParams.get('characterId')   // BL-15 phase 3 appearances window
 
 	if (id > 0) {
 		await store.loadTimelineData(id)
@@ -249,7 +287,7 @@ function handleResizeEvent(){
 				scheduled = false;
 				if (throttleTimer == -1) {
 					timelineCanvasRef.value.updateStageSize(timelineCanvasRef.value.gridLayer, timelineCanvasRef.value.uiLayer);
-					throttleTimer = setTimeout(() => {
+					throttleTimer = window.setTimeout(() => {
 						throttleTimer = -1;
 						return;
 					}, 100);
@@ -257,7 +295,7 @@ function handleResizeEvent(){
 
 				// Debounce: final update after resize ends
 				clearTimeout(debounceTimer);
-				debounceTimer = setTimeout(() => {
+				debounceTimer = window.setTimeout(() => {
 					timelineCanvasRef.value.updateStageSize(timelineCanvasRef.value.gridLayer, timelineCanvasRef.value.uiLayer);
 				}, 100);
 			});
@@ -354,7 +392,9 @@ onMounted(async () => {
 		const id = msg.payload?.id
 		if (id > 0) {
 			store.readOnly = !!msg.payload?.readOnly
-			history.replaceState(null, '', '?id=' + id + (store.readOnly ? '&readOnly=1' : '')) // pre-warmed URL has no ?id; F5 must still work
+			store.characterFocusId = msg.payload?.characterId ?? null
+			history.replaceState(null, '', '?id=' + id + (store.readOnly ? '&readOnly=1' : '')
+				+ (store.characterFocusId ? '&characterId=' + store.characterFocusId : '')) // pre-warmed URL has no ?id; F5 must still work
 			store.loadTimelineData(id)
 			BackendAPI.GetAppConfig().then(cfg => {
 				if (cfg) store.setPerformantPanning(cfg.performantPanning ?? true)
@@ -394,7 +434,7 @@ onBeforeUnmount(() => {
 
 <template>
 	<div id="timeline-center">
-		<WindowTitleBar :title="(store.title || 'Story Timeline') + (store.readOnly ? ' (reference)' : '')" />
+		<WindowTitleBar :title="(store.title || 'Story Timeline') + (store.characterFocus ? ' — ' + store.characterFocus.Name : store.readOnly ? ' (reference)' : '')" />
 		<div v-if="(store.isLoading || waitingForId) && !loadError" id="status-container">
 			<PhSpinner class="spinner-icon" :size="48" color="#79876b" />
 			<h2>Loading Timeline Data...</h2>
@@ -411,6 +451,7 @@ onBeforeUnmount(() => {
                 :mini-mode="isMinimised"
                 :year-calendar-open="yearCalendarOpen"
                 :read-only="store.readOnly"
+                :allow-export="!!store.characterFocus"
                 :reference-active="!!store.reference"
                 @toggle-filter="store.setFilterPanelOpen(!store.filterPanelOpen)"
                 @toggle-mini="toggleMiniMode"
@@ -423,6 +464,7 @@ onBeforeUnmount(() => {
                 @open-shortcuts="showShortcuts = true"
                 @open-export="showExport = true"
                 @toggle-year-calendar="toggleYearCalendar"
+                @open-characters="BackendAPI.OpenCharactersWindow(store.currentProject?.Id ?? 0)"
             >
                 <template #actions>
                     <TimelineActionsMenu ref="actionsMenuRef" @shift-complete="onShiftComplete" />
@@ -468,8 +510,8 @@ onBeforeUnmount(() => {
     <ShortcutsModal v-if="showShortcuts" context="timeline" @close="showShortcuts = false" />
     <ExportTimelineModal
         v-if="showExport"
-        :title="store.currentProject?.Title ?? ''"
-        :session-timeline-id="store.currentProject?.Id"
+        :title="(store.currentProject?.Title ?? '') + (store.characterFocus ? ' — ' + store.characterFocus.Name : '')"
+        :session-timeline-id="store.characterFocus ? undefined : store.currentProject?.Id"
         @close="showExport = false"
         @confirm="exportTimeline"
     />
@@ -514,6 +556,8 @@ onBeforeUnmount(() => {
 				:layout-settings="store.layoutSettings ?? null"
 				:mini-mode="false"
 				@item-click="onItemClick"
+				@edit-character="onEditCharacter"
+				@character-timeline="onCharacterTimeline"
 				@view-item="onViewItem"
 				@view-reference-item="refViewItemId = $event"
 				@add-item="onAddItem"
@@ -572,6 +616,8 @@ onBeforeUnmount(() => {
                 :layout-settings="store.layoutSettings ?? null"
                 :mini-mode="true"
                 @item-click="onItemClick"
+                @edit-character="onEditCharacter"
+                @character-timeline="onCharacterTimeline"
                 @view-item="onViewItem"
                 @add-item="onAddItem"
                 @mini-hover="onMiniHover"

@@ -67,12 +67,14 @@ describe('AppSettingsModal — backup section', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    // Deliberately partial: the modal reads these four. Cast so adding a field to the real
+    // payload does not drag every mock in the suite along with it.
     vi.mocked(BackendAPI.GetAppConfig).mockResolvedValue({
       DataRoot: 'C:/test/data',
       DbPath: 'C:/test/data/timeline.sqlite',
       performantPanning: true,
       themeInitialized: true,
-    })
+    } as Awaited<ReturnType<typeof BackendAPI.GetAppConfig>>)
     vi.mocked(BackendAPI.GetBackupSettings).mockResolvedValue({
       interval: 'weekly',
       lastAutoBackupAt: null,
@@ -81,7 +83,7 @@ describe('AppSettingsModal — backup section', () => {
     })
     vi.mocked(BackendAPI.CreateBackup).mockResolvedValue({ status: 'ok' })
     vi.mocked(BackendAPI.SaveBackupSettings).mockResolvedValue({ status: 'ok' })
-    vi.mocked(BackendAPI.OpenBackupsFolder).mockResolvedValue({ status: 'ok' })
+    vi.mocked(BackendAPI.OpenBackupsFolder).mockResolvedValue(undefined)
   })
 
   it('renders the modal', async () => {

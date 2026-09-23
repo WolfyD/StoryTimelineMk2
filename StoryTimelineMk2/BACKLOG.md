@@ -115,6 +115,20 @@ were done for 1.1.1 (2026-09-23); see the sections below. Nothing known is left 
   for future modules (BL-17 character relations, multi-calendar support, character event links)
   — not dead, do not remove.
 
+### Type checking — RESOLVED
+
+- ~~**`npm run build` fails its own type-check**: 194 `vue-tsc` errors, so the build script was
+  only ever run as `vite build`.~~ **Fixed (2026-09-23).** 139 of them were the test suite being
+  checked against the app's config: `tsconfig.app.json` excluded `src/**/__tests__/*`, a path that
+  has never existed here — the tests live in `src/test/`. The exclude is correct now and
+  `tsconfig.vitest.json` checks the suite with `noUncheckedIndexedAccess` off (an `arr[0]` in a
+  fixture is not a finding) and Node's globals for the Playwright specs. The remaining 55 were
+  hand-fixed rather than silenced, and four were real: `renderGrid` threw on a null
+  `layoutSettings`, a missing `YEARS` formatter crashed the grid draw, a `let` assigned only inside
+  callbacks was read back as `never` so the settings search never scrolled, and three e2e capture
+  hooks were `if (cond)\n  ;(expr)` — the semicolon was the if-body, so they always fired.
+  `npm run build` runs the type-check again.
+
 ### Custom-calendar correctness (core-feature gaps)
 
 - ~~**`LodDateInput` hardcodes Gregorian month lengths** (MD-H3)~~ — **Fixed.** `MONTH_LENGTHS` and `SEASON_NAMES` constants removed. New props `monthLengths`, `seasonNames`, `weekCount` added. `EditItem.vue` now calls `parseCalendarDef(YearDefinition)` and passes all four values to both date inputs.
@@ -170,17 +184,305 @@ were done for 1.1.1 (2026-09-23); see the sections below. Nothing known is left 
 
 ## [BL-15] Characters module
 
-**Status:** Pending. Large feature.
+**Status:** In progress (2026-09-23). Design agreed with the user; **Phases 0, 1, 2 and 3 done**,
+plus the six phase-2 follow-ups the user asked for after using it and the two phase-3 ones below.
+Phases 4 and 5 are BL-17.
+Six phases below, each shippable on its own. Phases 4 and 5 are BL-17.
+**Priority:** 1
 
 Full character management: create/edit characters with biography fields, birth/death dates, states (alive/deceased/unknown), attachment to timeline items, exportable as a character-specific event timeline, and filterable.
 
 > **Aside:** The DB schema already has `characters` and `character_appearances` tables, so the data layer is partially in place. The main work is the UI. Key screens needed: (1) character list with search/filter; (2) character detail/edit form (biography, dates, color, portrait image); (3) character appearances timeline — a filtered view of the main timeline showing only items where that character appears, which is essentially just BL-03 filter applied to one character. The "state" system (born/alive/deceased) should tie into the item dates where possible — if a character has a "death" event, the state should auto-update. The "export as timeline" feature is high value: it lets a writer hand a character's journey to someone else without exposing the full world history.
 
+
+### Agreed design (2026-09-23)
+
+Decided with the user before any code. Six phases, ordered so nothing is blocked by a later one.
+
+**What already exists, and does not need building:** the `characters`, `character_relationships`,
+`relationship_types` and `item_character_appearances` tables are all in `MainDbMigrations`, with
+`character_relationships` ported from v1 (type, custom type, degree, modifier, strength,
+bidirectional, notes). `CharacterRepo` already has `SaveCharacter`, `DeleteCharacter`,
+`GetCharactersByTimeline` and `GetNetwork(timelineId, startCharId, maxDepth)`. None of the write
+methods are routed onto the bridge, which is why there is currently **no way to create a character
+in the app at all** — every character in a live database arrived through a v1 import.
+
+**Decisions taken:**
+
+- The character screen gets its **own window**, the calendar-editor pattern: `f_Characters.cs` +
+  `characters.html` + `CharactersApp.vue` + a sixth vite entry, opened from the activity strip.
+  It can then stay open beside the timeline.
+- Characters get a **portrait** and an explicit **state**. State is null by default, meaning
+  "derive it from `death_year`" — the column is an override, not something to keep up to date.
+- `name` splits into **`first_name` / `last_name`**. Existing characters split on the last space
+  and stay editable; with this user base a heuristic they can correct beats a migration that asks
+  questions.
+- **Show on timeline** on the character creates a birth item and a death item, and **the character
+  owns them**: editing a date moves the item, unticking the box deletes both, and the items open
+  read-only on the timeline with a link back to the character. One source of truth, no drift.
+- Character names in an item's text **highlight live and attach on blur**. The textareas stay
+  plain `<textarea>` over plain text; the live highlight comes from a mirror `<div>` behind a
+  transparent-background textarea (same font, padding and wrapping, matches wrapped in `<mark>`).
+  Attaching on blur rather than per keystroke keeps the Characters list from reshuffling
+  mid-sentence. Known ceiling: the mirror must match the textarea's metrics exactly or the
+  highlight drifts, and the taller boxes need scroll sync.
+- Matching is **whole words across every name field** — first, last, full, nicknames, aliases.
+  Accepted cost: a character called "Will" or "Mark" will occasionally grab a verb, which is why a
+  detected link the user deletes has to stay deleted.
+- The matcher is built as **`utils/entityMatcher.ts`, taking a name list**, not as character-specific
+  code, so BL-16 can point it at place names later ("Clockwork went to Taiom" attaching Clockwork
+  and giving Taiom an event). Detected links are marked as detected in the edit window either way,
+  so it is always obvious what the app did on its own.
+
+#### Phase 0 — schema and bridge reach — **DONE (2026-09-23)**
+
+Migration 9 (`V9_CharacterDetails`): `characters.first_name` / `last_name` (backfilled by splitting
+`name` on its last space), `portrait_picture_id` (pointing at the existing `pictures` table, so
+`MediaRepo.ImportAndSaveMedia` does the copy and thumbnail), `state`, `show_on_timeline`,
+`birth_item_id` / `death_item_id` (exactly two items, so two columns beat a join table). Plus
+`item_character_appearances.auto_detected` and the `character_link_dismissals` table, so a detected
+link the user removes does not come back on the next blur.
+
+`name` stayed as a stored column, derived: `CharacterRepo.SaveCharacter` joins the two halves back
+into it on every save, so every existing read (`ORDER BY name`, the appearance lists, the EditItem
+picker) needed no sweep. A caller that only knows a full name — the v1 importer — gets it split
+instead. Renaming therefore goes through the halves, not through `name`.
+
+Bridge: `SaveCharacter` and `DeleteCharacter` in `DataActions`, `SetCharacterPortrait` in
+`MessageRouter` (file dialog, so host-side; it also deletes the picture it replaced, since a
+portrait is never shared and `UnlinkAndPruneImage` only prunes item links).
+
+Two departures from the plan, both deliberate:
+- **`GetCharacterForEdit` was not built.** `GetTimelineCharacters` already returns whole rows, so
+  the window has everything the form needs without a second round trip. It becomes worth adding in
+  phase 2, when there are appearances to fetch alongside, and phase 4 for relations.
+- **`SetCharacterPortrait` is desktop-only.** The browser host needs the upload half instead, the
+  way `AddImagesToItem` pairs with `AddImageToItem` — worth writing when someone runs it there.
+
+#### Phase 1 — the character window — **DONE (2026-09-23)**
+
+Own window on the calendar-editor shell: `Forms/f_Characters.cs` + `characters.html` +
+`CharactersApp.vue` + a sixth Vite entry, opened by `OpenCharactersWindow` from the Characters
+button in the activity strip. One window per app, closed with the timeline. List + detail split:
+the list carries portraits, the form covers every column plus portrait, state, the split names,
+colour and importance, and birth/death go through `LodDateInput` on the timeline's own calendar.
+
+Migration 10 (`V10_CharacterDatePrecision`): `birth_subtick` / `birth_granularity` and the death
+pair. A year alone cannot place an item — the canvas works in `absolute_start = year + subtick *
+lodStep` — so a character has to carry the same pair every item carries. Step 9 may already be
+stamped in a running database, hence a new step rather than an edit to that one.
+
+*Show on timeline* lives in `utils/characterItems.ts`: `planGeneratedItems` settles the two item
+ids *before* the character is written (so one save stores them) and hands back the ids to drop;
+`buildGeneratedItem` places each end. The items are built frontend-side and written with the
+existing `SaveItem` / `DeleteItem`, which already do tags, appearances, placement, session logging
+and the `ItemSaved` broadcast. The portrait is linked to both items through `LinkImageToItem`, so
+they carry the face; replacing a portrait deletes the picture row, which cascades the old link away.
+
+Departures from the plan, all deliberate:
+- **Generated items are `TypeId: 1` (Event).** Type 7 "Character" still has no renderer; phase 2
+  owns that call, as recorded below. *(Phase 2 took it: they are `TypeId: 7` now.)*
+- **`DeleteCharacter` is back to `void`.** Ownership moved to the caller: `HandleDeleteCharacter`
+  reads the row with the new `GetCharacter` and deletes the portrait file and both generated items
+  itself, since those live in other repos. Replacing a portrait was already covered in phase 0, by
+  `SetPortrait` returning the picture it replaced.
+- **`SetCharacterPortrait` is no longer desktop-only** — the phase 0 open detail, closed.
+  `SetCharacterPortraitFromPath` in `DataActions.App.cs` plus a `pickFiles`/`upload` handler in
+  `browserHost.ts` give the browser build the same picker.
+- **`ItemDeleted` is now broadcast.** Deleting only replied to the caller, so unticking the box
+  left a ghost on an open canvas until reload; `api.ts` answers it with `store.removeItem`. Every
+  deletion benefits, not only this one.
+- **New `GetTimelineCalendar` action**, so the window gets the calendar and LOD profile without
+  pulling the whole project. `parseCalendarDef` moved out of `EditItem.vue` into
+  `utils/calendarDef.ts` to be shared.
+- **`PortraitPath`** rides along on every character read (`LEFT JOIN pictures`), so a list of
+  faces costs no lookup each.
+- **No prewarm, no saved window position, no F1/F2.** The window opens from a button, once per
+  session; shortcuts would mean widening `ShortcutContext` and `CONTEXT_TITLES`, which is more
+  than this phase asked for.
+- **Generated items still open as ordinary items.** Opening one read-only with a link back to the
+  character is a canvas concern, left for later.
+
+Checks: 451 .NET tests, 616 vitest (6 new, `characterItems.test.ts`).
+
+#### Phase 2 — appearances both ways, and the matcher — **DONE (2026-09-23)**
+
+**Item type 7 is the character type** — the user's call, taken at the start of the phase. Generated
+birth and death items are `TypeId: 7`, so three "type 7 is not an item" assumptions had to come out:
+the `type_id != 7` filters in `ItemRepo.GetItemsByTimeline` / `GetItemsByYear`, the same filter in
+`SessionChanges.Load`, and `7` in EditItem's `hasSide` exclusion list. Checked against the user's
+live database first — no type-7 rows exist, so nothing was resurrected. On the canvas they reuse
+the Picture geometry and image loader through one shared predicate,
+`timelineNodes.isPortraitType(typeName)`, and differ only in being round: a portrait disc on a
+stem, falling back to the character's colour when there is no portrait. Filterable as *Character*,
+and the type shows in the editor's dropdown but is disabled unless the item already is one.
+
+**Both directions of the appearance list.** `CharacterRepo.GetAppearances` is the reverse of
+`ItemRepo.GetItemCharacterAppearances`; the character form lists every item with its role, a row
+click jumps the timeline to it and the pencil opens the item editor. Cross-window focus is a
+`FocusTimelineItem` broadcast carrying `{ItemId, AbsoluteStart}` — the absolute position travels
+with the message, so the timeline window does not need the item loaded to jump to it.
+
+**The matcher.** `utils/entityMatcher.ts` takes `{id, names[], color}` and returns matches with
+offsets: whole-word, case-insensitive, longest name first, and `\p{L}\p{N}_` lookarounds instead
+of `\b` so accented names are not matched inside longer words. Characters are adapted to it by
+`characterEntity()`, which also splits the comma-separated nickname and alias fields.
+`components/HighlightedTextarea.vue` draws the matches in a mirror `<div>` under a
+transparent-background textarea and attaches on blur; Description and Content use it, Notes stays
+plain. Detected links are marked with a wand in the character list, stored with
+`auto_detected = 1`, and removing one writes a `character_link_dismissals` row so the next blur
+leaves it alone. Re-attaching by hand clears that row, inside `SaveItemFull` where the manual
+appearance is written.
+
+Departures from the plan, all deliberate:
+- **Removing *any* appearance dismisses it**, not only a detected one. A hand-added link the
+  matcher then re-adds on the next blur would be the same annoyance, and a manual add takes the
+  dismissal back again.
+- **`+ New "<name>"` saves immediately.** The picker's filter text becomes the name and
+  `SaveCharacter` splits it, so the new character exists before the item is saved — an item that
+  is then cancelled leaves a character behind, which is the cheaper of the two wrong answers.
+- **No debounce on the highlight.** Matching runs in a `computed` over the whole field; at the
+  length these fields run to it is not measurable. Ceiling noted in the component.
+- **The mirror duplicates the field metrics** rather than inheriting them — a scoped parent style
+  cannot reach inside a child component. If they drift the highlight drifts with them.
+- **The highlight does not use the character's colour raw.** The first build did, and the first
+  character it met was `#00011f`: against the dark field the wash came out darker than the
+  background and the underline was invisible, so it read as "the matcher does not highlight". The
+  colour is now clamped to a lightness floor in HSL, which keeps the hue that tells characters
+  apart. `HighlightedTextarea.test.ts` holds that floor.
+
+Checks: 452 .NET tests (1 new: the detected-link round trip), 626 vitest (10 new:
+`entityMatcher.test.ts`, `HighlightedTextarea.test.ts`), 194 vue-tsc errors (the baseline at the time; cleared right after, see BL-18),
+`vite build` clean.
+
+#### Phase 2 follow-ups — **DONE (2026-09-23)**
+
+Six things the user asked for after living with phase 2 for an afternoon. All approved before any
+code, in this order:
+
+1. **Edit character, from the item.** A birth or death item's real editor is the character, so the
+   canvas context menu and the item view modal both offer *Edit character* on a type-7 item.
+   Shift-click and *Edit item* are untouched — the user was explicit that those stay item edit.
+   `CharacterRepo.GetCharacterIdByItem` answers the new `GetCharacterIdForItem` action (both hosts,
+   since it lives in `DataActions`); `OpenCharactersWindow` grew an optional `characterId` rather
+   than a second action — a fresh window gets it on the query string, an open one gets a
+   `FocusCharacter` broadcast, the `FocusTimelineItem` pattern in reverse.
+2. **The characters window prewarms**, on the `f_Calendar` pattern: after the timeline window
+   settles, and again whenever the characters window is closed. The phase-1 "no prewarm" note is
+   gone with it.
+3. **`characters.use_highlight_color`** (migration 11). A portrait with transparency sat straight
+   on the character's colour and drowned the face. The disc is neutral now and the colour rides
+   the ring and the stem; ticking *Use highlight colour* on the character puts the fill back.
+   Off by default, existing rows included. The flag reaches the canvas as a `LEFT JOIN` on
+   `GetItemsByTimeline` — the alternative was a bridge call per character on screen.
+4. **Captions fold to two rows.** Picture captions and character names wrap instead of losing
+   their second half to an ellipsis, and are cut at two rows. The strip only claims the height it
+   uses, so a one-line name still shows one line of picture.
+5. **Portraits claim the lanes they actually cover.** A portrait is as tall as it is wide — two or
+   three event boxes — and grows from its lane towards the axis, so events were being packed into
+   lanes it was already sitting in and drawn through its face. `LaneLock` carries a `laneSpan` and
+   the collision test compares bands instead of single lanes; `laneSpanFor()` does the arithmetic.
+   Reference ghosts pack the same way.
+6. **The name highlight has padding and a border.** An inline span cannot take horizontal padding
+   without shifting the text off the textarea it mirrors, so the breathing room is `box-shadow`
+   spread — a 2px ring in the wash colour, a 1px border outside it — plus vertical padding, which
+   a line box ignores.
+
+Departures worth recording:
+- **`GetCharacterIdForItem` resolves in `TimelineApp`, not the canvas.** `TimelineCanvas` emits an
+  item id and knows nothing about characters, which is how it stayed through phase 2.
+- **`use_highlight_color` defaults to off**, so every existing character changes appearance on
+  upgrade. The feature is unreleased, and the default the user complained about is the one being
+  left behind.
+
+Checks: 453 .NET tests (1 new: the flag joins onto the character's items), 636 vitest (7 new:
+lane spans, `laneSpanFor`, the neutral disc, the wrapping caption, the highlight ring, the two
+*Edit character* modal cases), 194 vue-tsc errors (the baseline at the time; cleared right after, see BL-18), `vite build` clean.
+
+#### Phase 3 — the character's own timeline — **DONE (2026-09-23)**
+
+An **appearances window**: BL-66's read-only timeline narrowed to one character, opened from the
+“Appears in” header on the character form and from *Their timeline* on a right-clicked portrait.
+`OpenTimeline` carries a `characterId` alongside `readOnly`, so it rides the plumbing that already
+existed — `f_Timeline.CharacterId` → `&characterId=` (cold start) or the `SetTimelineId` payload
+(prewarmed) → `store.characterFocusId`, and the browser host adds the same query parameter.
+
+Two departures from the plan, both deliberate:
+
+- **The items are narrowed, not the filter.** `loadTimelineData` drops everything the character has
+  nothing to do with, and `upsertItem` turns away the same items when an edit broadcast arrives from
+  the main window. The filter would only have narrowed the canvas; this way the minimap, the notes
+  panel, the export and the item count agree with each other. The predicate (`belongsToFocus`) keeps
+  their appearances, their birth and death items, and the boundary markers that carry the timeline's
+  extent.
+- **The export is reached from inside that window**, not from new UI on the character form: the
+  strip's export button is shown there (`allowExport`, since the window is otherwise read-only) and
+  `ExportTimeline` picks up `store.characterFocus`. The session-changes tab is hidden there — a
+  per-day diff of the whole timeline does not belong in one character's export. The file is named
+  “*Timeline* - *Character*.stlm”.
+
+Server-side the filter is one `WHERE` clause in `TimelineExporter.ExportToZip`: every other table in
+the archive is derived from the exported item ids, so tags, stories, pictures and appearance rows
+follow without any further filtering. Both hosts pass it (`MessageRouter`, `FileEndpoints`).
+
+#### Phase 3 follow-ups — **DONE (2026-09-23)**
+
+Both asked for after using the appearances window.
+
+- **A caption font size of its own, twice over.** A portrait's caption is a generated sentence
+  (“The birth of *full name*”) and overflowed the disc at the event font size, which a picture's
+  own title never does — so the user chose two settings rather than one. Migration 12 adds
+  `timeline_picture_caption_font_size` and `timeline_character_caption_font_size` to
+  `layout_settings`, both backfilled from `timeline_event_font_size` so no existing timeline
+  changes appearance on upgrade. `buildNode` branches on the same `round` flag it already uses for
+  the disc, and the two-row clamp follows the size in use. New settings section, *Pictures &
+  Portraits* — the `TimelineBoxTypes*` fields still have no control and did not grow one here.
+- **The character lifeline.** In an appearances window, a wave along the centre axis in the
+  character's colour, from birth to death. Wavy rather than a bar so it reads where it passes under
+  an age band and is never mistaken for the axis it rides on; with an end the character has no date
+  for, the whole wave is dashed and runs off that edge of the window, because an unrecorded death is
+  not a short life — and the phase is anchored to the dated end so that one still holds still. Drawn
+  per frame in its own layer under the items, on the same `getXFromTime` mapping as everything else,
+  and phase-anchored to the start of the life so it travels with the character instead of crawling
+  underneath them while panning. Positions come from the character's own dates via
+  `characterAbsolute` (extracted from `buildGeneratedItem`), so the lifeline is right even when
+  *Show on timeline* is off and there are no birth/death items at all. Ages drop to 0.55 opacity in
+  that window only, so the life shows through the bands it runs under.
+  Defaults chosen, none of them settings yet: amplitude 7px, wavelength 44px, sampled every 4px.
+
+**Deferred to after phase 4:** family members as smaller, slightly dimmed portraits along the
+lifeline — the user's call, since who counts as family is exactly what phase 4 defines.
+
+#### Phase 4 — relations, as a list (BL-17)
+
+**Decided (2026-09-23):** the relations designer is a **panel in the Characters window**, not a
+window of its own — the same place the character being related is already open.
+
+Repo over `character_relationships` plus a section on the character form: A → type → B, with the
+other side's row generated when it is bidirectional. `relationship_types` seeds nothing today, so
+this phase also needs a small type editor and a starter set (parent/child, sibling, ally, rival).
+
+#### Phase 5 — the relations graph (BL-17)
+
+Centred on one character, one degree at a time, click to recentre; `GetNetwork` already walks the
+graph, so this is rendering. Two calls to make with the user when the phase starts, not before:
+the layout library (`d3-force` against drawing it in Konva, which the app already ships), and
+whether the graph answers to the timeline's current year — the relationship rows have no
+start/end year columns, so time-aware relations need a Phase 4 schema addition.
+
+#### Later, not in this plan
+
+The user has further optional ideas for this area, to be specified when the phases above are done.
+
 ---
 
 ## [BL-17] Character relations screen
 
-**Status:** Pending. Depends on BL-15 (Characters module).
+**Status:** Pending — phases 4 and 5 of the BL-15 plan (2026-09-23). The agreed design lives in
+BL-15; the two open calls are recorded there too (layout library, and whether relations get
+start/end years so the graph can answer to the timeline's current year). Decided 2026-09-23: it
+lives as a panel in the Characters window.
+**Priority:** 1 (same track as BL-15, last in line)
 
 A visual network graph showing characters and their relationships (family, rival, ally, etc.), centered on a selected character, with relationship types as labeled edges.
 

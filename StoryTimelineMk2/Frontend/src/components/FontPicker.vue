@@ -59,7 +59,8 @@ function onKeydown(e: KeyboardEvent) {
         highlightIndex.value = Math.max(0, highlightIndex.value - 1)
     } else if (e.key === 'Enter') {
         e.preventDefault()
-        if (filtered.value[highlightIndex.value]) selectFont(filtered.value[highlightIndex.value])
+        const font = filtered.value[highlightIndex.value]
+        if (font) selectFont(font)
     } else if (e.key === 'Escape') {
         isOpen.value = false
     }

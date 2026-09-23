@@ -68,6 +68,8 @@ function initLayout(ls: LayoutSettings | null | undefined): LayoutSettings {
         TimelineBoxTypesShowAsBox: d.TimelineBoxTypesShowAsBox ?? false,
         TimelineBoxTypesBoxWidth: d.TimelineBoxTypesBoxWidth ?? 80,
         TimelineBoxTypesShowImage: d.TimelineBoxTypesShowImage ?? true,
+        TimelinePictureCaptionFontSize: d.TimelinePictureCaptionFontSize ?? 12,
+        TimelineCharacterCaptionFontSize: d.TimelineCharacterCaptionFontSize ?? 12,
         TimelineCanvasBackgroundColor: d.TimelineCanvasBackgroundColor ?? '#0f172a',
         TimelineShowNowLine: d.TimelineShowNowLine ?? true,
         TimelineShowNowLineText: d.TimelineShowNowLineText ?? true,
@@ -172,23 +174,25 @@ watch(searchQuery, (q) => {
     if (!q.trim()) return
 
     const lower = q.trim().toLowerCase()
-    let firstMatch: Element | null = null
+    // Collected rather than tracked in a `let`: an assignment inside these callbacks is invisible
+    // to the checker, which then reads the variable back as `never`. Titles stay ahead of labels.
+    const matches: HTMLElement[] = []
 
     body.querySelectorAll<HTMLElement>('.section-title').forEach(el => {
         if (el.textContent?.toLowerCase().includes(lower)) {
             el.classList.add('search-hl')
-            if (!firstMatch) firstMatch = el
+            matches.push(el)
         }
     })
 
     body.querySelectorAll<HTMLElement>('.s-label').forEach(el => {
         if (el.textContent?.toLowerCase().includes(lower)) {
             el.classList.add('search-hl')
-            if (!firstMatch) firstMatch = el
+            matches.push(el)
         }
     })
 
-    firstMatch?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    matches[0]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 })
 
 // --- data range color with alpha support ---
@@ -197,7 +201,7 @@ function parseHexAlpha(hex: string): { rgb: string; alpha: number } {
     const h = hex.replace('#', '');
     if (h.length === 4) {
         // #RGBA short form
-        const r = h[0] + h[0], g = h[1] + h[1], b = h[2] + h[2], a = h[3] + h[3];
+        const r = h[0]! + h[0], g = h[1]! + h[1], b = h[2]! + h[2], a = h[3]! + h[3];
         return { rgb: `#${r}${g}${b}`, alpha: Math.round(parseInt(a, 16) / 255 * 100) };
     }
     if (h.length === 8) {
@@ -206,7 +210,7 @@ function parseHexAlpha(hex: string): { rgb: string; alpha: number } {
     }
     if (h.length === 6) return { rgb: `#${h}`, alpha: 100 };
     if (h.length === 3) {
-        const r = h[0] + h[0], g = h[1] + h[1], b = h[2] + h[2];
+        const r = h[0]! + h[0], g = h[1]! + h[1], b = h[2]! + h[2];
         return { rgb: `#${r}${g}${b}`, alpha: 100 };
     }
     return { rgb: '#3b6ec4', alpha: 30 };
@@ -620,6 +624,16 @@ async function save() {
 
                     <span class="s-label">Period Y Offset <SettingHint tip="Vertical shift applied to all period bars (positive = down)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelinePeriodYOffset" :step="1" />
+                </div>
+
+                <!-- PICTURES & PORTRAITS -->
+                <div class="section-title">Pictures &amp; Portraits</div>
+                <div class="settings-grid">
+                    <span class="s-label">Picture Caption Size <SettingHint tip="Font size of the caption strip across the bottom of a picture, in pixels" /></span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelinePictureCaptionFontSize" :step="1" min="4" max="48" />
+
+                    <span class="s-label">Portrait Caption Size <SettingHint tip="Font size of the caption under a character portrait, in pixels. Generated titles like 'The birth of …' need a smaller one than event text" /></span>
+                    <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineCharacterCaptionFontSize" :step="1" min="4" max="48" />
                 </div>
 
                 <!-- TIMELINE -->

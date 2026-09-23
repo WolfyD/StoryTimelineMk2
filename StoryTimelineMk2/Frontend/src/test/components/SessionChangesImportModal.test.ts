@@ -121,7 +121,7 @@ describe('SessionChangesImportModal', () => {
   it('keeping everything local names every row, so the file changes nothing', async () => {
     const wrapper = open([entry({ id: 'a' }), entry({ id: 'b' })])
     await wrapper.findAll('.bulk-btn')[1]!.trigger('click')
-    await wrapper.findAll('.picker input[value=\"incoming\"]')[0]!.setValue()
+    await wrapper.findAll('.picker input[value="incoming"]')[0]!.setValue()
 
     await wrapper.find('[data-primary]').trigger('click')
     expect(wrapper.emitted('confirm')![0]![1]).toEqual({ b: 'local' })

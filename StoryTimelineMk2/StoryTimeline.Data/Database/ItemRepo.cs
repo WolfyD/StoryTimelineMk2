@@ -19,15 +19,25 @@ namespace StoryTimelineMk2.Database
         public IEnumerable<TimelineItem> GetItemsByTimeline(int timelineId)
         {
             using var db = new SqliteConnection(_connString);
-            // Fetch everything except characters (Type 7), which belong to CharacterRepo
-            string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND type_id != 7 ORDER BY absolute_start, item_index";
+            // Type 7 used to be excluded as a leftover of v1's character cards. BL-15 phase 2 gave
+            // it a job: the birth and death items a character owns. They are ordinary items now.
+            // The join is only for type 7: the canvas needs the owning character's disc-fill flag, and
+            // asking per item would be one bridge round trip per character on the screen.
+            // ponytail: an OR join has no index to use, but `characters` is dozens of rows. If a
+            // timeline ever holds thousands, give items a character_id column and join on that.
+            string sql = @"
+                SELECT i.*, COALESCE(c.use_highlight_color, 0) AS use_highlight_color
+                FROM items i
+                LEFT JOIN characters c ON i.type_id = 7 AND (c.birth_item_id = i.id OR c.death_item_id = i.id)
+                WHERE i.timeline_id = @TimelineId
+                ORDER BY i.absolute_start, i.item_index";
             return db.Query<TimelineItem>(sql, new { TimelineId = timelineId });
         }
 
         public IEnumerable<TimelineItem> GetItemsByYear(int timelineId, int year)
         {
             using var db = new SqliteConnection(_connString);
-            string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND year = @Year AND type_id != 7 ORDER BY absolute_start, item_index";
+            string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND year = @Year ORDER BY absolute_start, item_index";
             return db.Query<TimelineItem>(sql, new { TimelineId = timelineId, Year = year });
         }
 
@@ -61,6 +71,27 @@ namespace StoryTimelineMk2.Database
                 WHERE i.timeline_id = @TimelineId", new { TimelineId = timelineId });
         }
 
+        /// <summary>
+        /// Characters the user took off this item. The matcher reads this before it attaches anyone,
+        /// so a detected link that was deleted does not come back on the next blur.
+        /// </summary>
+        public IEnumerable<string> GetDismissedCharacters(string itemId)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<string>(
+                "SELECT character_id FROM character_link_dismissals WHERE item_id = @ItemId",
+                new { ItemId = itemId });
+        }
+
+        /// <summary>Remembers that the user took a character off an item.</summary>
+        public void DismissCharacterLink(string itemId, string characterId)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Execute(@"INSERT OR IGNORE INTO character_link_dismissals (item_id, character_id)
+                         VALUES (@ItemId, @CharacterId)",
+                new { ItemId = itemId, CharacterId = characterId });
+        }
+
         public IEnumerable<TagItem> GetItemTags(string itemId)
         {
             using var db = new SqliteConnection(_connString);
@@ -76,13 +107,15 @@ namespace StoryTimelineMk2.Database
             public string CharacterName { get; set; } = null!;
             public string CharacterColor { get; set; } = null!;
             public string Role { get; set; } = null!;
+            public bool AutoDetected { get; set; }
         }
 
         public IEnumerable<ItemCharacterAppearanceRow> GetItemCharacterAppearances(string itemId)
         {
             using var db = new SqliteConnection(_connString);
             return db.Query<ItemCharacterAppearanceRow>(@"
-                SELECT ica.character_id as CharacterId, c.name as CharacterName, c.color as CharacterColor, ica.role as Role
+                SELECT ica.character_id as CharacterId, c.name as CharacterName, c.color as CharacterColor,
+                       ica.role as Role, ica.auto_detected as AutoDetected
                 FROM item_character_appearances ica
                 INNER JOIN characters c ON c.id = ica.character_id
                 WHERE ica.item_id = @ItemId", new { ItemId = itemId });
@@ -146,6 +179,8 @@ namespace StoryTimelineMk2.Database
         {
             public string CharacterId { get; set; } = null!;
             public string Role { get; set; } = null!;
+            /// <summary>The matcher attached this one, not the user (BL-15 phase 2).</summary>
+            public bool AutoDetected { get; set; }
         }
 
         public string SaveItemFull(TimelineItem item, List<string> tagNames,
@@ -159,7 +194,7 @@ namespace StoryTimelineMk2.Database
             try
             {
                 // 0 = Auto: pick the emptier side now — new items, and items the user set back to Auto.
-                if (item.Placement == 0 && item.TypeId is not (3 or 6 or 7 or 8 or 9))
+                if (item.Placement == 0 && item.TypeId is not (3 or 6 or 8 or 9))
                     item.Placement = PickSide(db, tx, item);
 
                 string sql = @"
@@ -208,9 +243,16 @@ namespace StoryTimelineMk2.Database
                 db.Execute("DELETE FROM item_character_appearances WHERE item_id = @Id", new { item.Id }, tx);
                 foreach (var appearance in characterAppearances ?? new List<CharacterAppearanceInput>())
                 {
-                    db.Execute(@"INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role)
-                        VALUES (@ItemId, @CharacterId, @Role)",
-                        new { ItemId = item.Id, appearance.CharacterId, appearance.Role }, tx);
+                    db.Execute(@"INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role, auto_detected)
+                        VALUES (@ItemId, @CharacterId, @Role, @AutoDetected)",
+                        new { ItemId = item.Id, appearance.CharacterId, appearance.Role, appearance.AutoDetected }, tx);
+
+                    // Attaching someone by hand takes back an earlier dismissal, so the matcher is
+                    // free to find them again later.
+                    if (!appearance.AutoDetected)
+                        db.Execute(@"DELETE FROM character_link_dismissals
+                                     WHERE item_id = @ItemId AND character_id = @CharacterId",
+                            new { ItemId = item.Id, appearance.CharacterId }, tx);
                 }
 
                 // Story refs

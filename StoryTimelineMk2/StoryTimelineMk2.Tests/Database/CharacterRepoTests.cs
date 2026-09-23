@@ -144,7 +144,9 @@ public class CharacterRepoTests
         var character = MakeCharacter(tlId, "Initial Name");
         repo.SaveCharacter(character);
 
-        character.Name = "Updated Name";
+        // Renaming goes through the two halves now; `name` is derived from them on save.
+        character.FirstName = "Updated";
+        character.LastName = "Name";
         character.Race = "Elf";
         character.Importance = 9;
         repo.SaveCharacter(character);
@@ -218,6 +220,128 @@ public class CharacterRepoTests
         var chars = repo.GetCharactersByTimeline(tlId).ToList();
         Assert.Single(chars);
         Assert.Equal(keep.Id, chars[0].Id);
+    }
+
+    // ── name is derived from the two halves ───────────────────────────────────
+
+    [Fact]
+    public void SaveCharacter_DerivesName_FromFirstAndLast()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var character = MakeCharacter(tlId, "ignored");
+        character.FirstName = "Anna Maria";
+        character.LastName = "Vas";
+        repo.SaveCharacter(character);
+
+        var saved = repo.GetCharactersByTimeline(tlId).Single();
+        Assert.Equal("Anna Maria Vas", saved.Name);
+        Assert.Equal("Anna Maria Vas", character.Name);   // the caller's copy matches what was stored
+    }
+
+    [Fact]
+    public void SaveCharacter_SplitsName_WhenTheCallerOnlyKnowsAFullOne()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        repo.SaveCharacter(MakeCharacter(tlId, "Anna Maria Vas"));   // what the v1 importer sends
+
+        var saved = repo.GetCharactersByTimeline(tlId).Single();
+        Assert.Equal("Anna Maria Vas", saved.Name);
+        Assert.Equal("Anna Maria", saved.FirstName);
+        Assert.Equal("Vas", saved.LastName);
+    }
+
+    [Fact]
+    public void SaveCharacter_PersistsTheNewCharacterWindowFields()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var character = MakeCharacter(tlId, "Risha");
+        character.State = "missing";
+        character.ShowOnTimeline = true;
+        character.BirthItemId = "birth-item";
+        character.DeathItemId = "death-item";
+        character.BirthSubtick = 47;
+        character.BirthGranularity = 5;
+        character.UseHighlightColor = true;
+        repo.SaveCharacter(character);
+
+        var saved = repo.GetCharactersByTimeline(tlId).Single();
+        Assert.Equal("missing", saved.State);
+        Assert.True(saved.ShowOnTimeline);
+        Assert.Equal("birth-item", saved.BirthItemId);
+        Assert.Equal("death-item", saved.DeathItemId);
+        Assert.Equal(47, saved.BirthSubtick);
+        Assert.Equal(5, saved.BirthGranularity);
+        Assert.Equal(0, saved.DeathSubtick);
+        Assert.True(saved.UseHighlightColor);
+    }
+
+    // ── portrait ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SetPortrait_ReturnsTheReplacedPicture_SoTheCallerCanDeleteIt()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var character = MakeCharacter(tlId);
+        repo.SaveCharacter(character);
+
+        Assert.Null(repo.SetPortrait(character.Id, "pic-1"));         // nothing to replace yet
+        Assert.Null(repo.SetPortrait(character.Id, "pic-1"));         // same picture: not an orphan
+        Assert.Equal("pic-1", repo.SetPortrait(character.Id, "pic-2"));
+        Assert.Equal("pic-2", repo.GetCharactersByTimeline(tlId).Single().PortraitPictureId);
+    }
+
+    [Fact]
+    public void SaveCharacter_LeavesThePortraitAlone()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var character = MakeCharacter(tlId);
+        repo.SaveCharacter(character);
+        repo.SetPortrait(character.Id, "pic-1");
+
+        character.Race = "Elf";
+        repo.SaveCharacter(character);   // the page never sends a portrait id back
+
+        Assert.Equal("pic-1", repo.GetCharactersByTimeline(tlId).Single().PortraitPictureId);
+    }
+
+    /// <summary>
+    /// Deleting is the row only; what the character owned is the caller's job, and GetCharacter is
+    /// how it finds out — the portrait file and the two generated items all live in other repos.
+    /// </summary>
+    [Fact]
+    public void GetCharacter_TellsTheCallerWhatToCleanUp_BeforeDeleting()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var character = MakeCharacter(tlId);
+        character.BirthItemId = "birth-item";
+        repo.SaveCharacter(character);
+        repo.SetPortrait(character.Id, "pic-1");
+
+        var owned = repo.GetCharacter(character.Id)!;
+        Assert.Equal("pic-1", owned.PortraitPictureId);
+        Assert.Equal("birth-item", owned.BirthItemId);
+
+        repo.DeleteCharacter(character.Id);
+        Assert.Null(repo.GetCharacter(character.Id));
+        repo.DeleteCharacter(Guid.NewGuid().ToString());   // a stale id is a no-op, not a throw
     }
 
     // ── GetNetwork (BFS) ──────────────────────────────────────────────────────

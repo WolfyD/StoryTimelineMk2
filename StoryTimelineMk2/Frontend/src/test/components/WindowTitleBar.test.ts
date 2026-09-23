@@ -112,8 +112,8 @@ describe('WindowTitleBar', () => {
     await flushPromises()
 
     // Retrieve the listener registered on webview
-    const addSpy = window.chrome.webview.addEventListener as ReturnType<typeof vi.fn>
-    const call = addSpy.mock.calls.find(([evt]: [string]) => evt === 'message')
+    const addSpy = window.chrome!.webview!.addEventListener as ReturnType<typeof vi.fn>
+    const call = addSpy.mock.calls.find((args: unknown[]) => args[0] === 'message')
     expect(call).toBeDefined()
 
     const handler = call![1]
@@ -129,8 +129,8 @@ describe('WindowTitleBar', () => {
     const wrapper = mountBar()
     await flushPromises()
 
-    const addSpy = window.chrome.webview.addEventListener as ReturnType<typeof vi.fn>
-    const handler = addSpy.mock.calls.find(([evt]: [string]) => evt === 'message')![1]
+    const addSpy = window.chrome!.webview!.addEventListener as ReturnType<typeof vi.fn>
+    const handler = addSpy.mock.calls.find((args: unknown[]) => args[0] === 'message')![1]
     handler({ data: { action: 'SomethingElse', payload: { isTopmost: true } } })
     await wrapper.vm.$nextTick()
 
@@ -145,7 +145,7 @@ describe('WindowTitleBar', () => {
     const wrapper = mountBar()
     await flushPromises()
 
-    const removeSpy = window.chrome.webview.removeEventListener as ReturnType<typeof vi.fn>
+    const removeSpy = window.chrome!.webview!.removeEventListener as ReturnType<typeof vi.fn>
     wrapper.unmount()
 
     expect(removeSpy).toHaveBeenCalledWith('message', expect.any(Function))

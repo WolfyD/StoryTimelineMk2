@@ -44,6 +44,13 @@ namespace StoryTimelineMk2.Bridge
                 case "RenameTag":                HandleRenameTag(message); break;
                 case "DeleteTag":                HandleDeleteTag(message); break;
                 case "GetTimelineCharacters":    HandleGetTimelineCharacters(message); break;
+                case "GetTimelineCalendar":      HandleGetTimelineCalendar(message); break;
+                case "SaveCharacter":            HandleSaveCharacter(message); break;
+                case "DeleteCharacter":          HandleDeleteCharacter(message); break;
+                case "GetCharacterAppearances":  HandleGetCharacterAppearances(message); break;
+                case "FocusTimelineItem":        HandleFocusTimelineItem(message); break;
+                case "DismissCharacterLink":     HandleDismissCharacterLink(message); break;
+                case "GetCharacterIdForItem":    HandleGetCharacterIdForItem(message); break;
                 case "GetAllStories":            HandleGetAllStories(message); break;
                 case "SearchBooks":              HandleSearchBooks(message); break;
                 case "GetBookChapters":          HandleGetBookChapters(message); break;
@@ -248,6 +255,9 @@ namespace StoryTimelineMk2.Bridge
                 Item = item,
                 Tags = itemRepo.GetItemTags(item.Id),
                 Characters = itemRepo.GetItemCharacterAppearances(item.Id),
+                Dismissals = string.IsNullOrEmpty(itemId)
+                    ? new List<string>()
+                    : itemRepo.GetDismissedCharacters(item.Id).ToList(),
                 StoryRefs = itemRepo.GetItemStoryRefs(item.Id),
                 ChapterRefs = itemRepo.GetItemChapterRefs(item.Id),
                 Calendar = timeline.Calendar,
@@ -313,6 +323,86 @@ namespace StoryTimelineMk2.Bridge
             int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
             var characters = new CharacterRepo().GetCharactersByTimeline(timelineId);
             ReplyToVue(message.MessageId, characters);
+        }
+
+        /// <summary>
+        /// BL-15. The saved character goes back rather than being echoed by the page: a new one's id
+        /// is made here, and `Name` is derived from the two halves on the way in.
+        /// </summary>
+        private void HandleSaveCharacter(BridgeMessage message)
+        {
+            var character = JsonSerializer.Deserialize<CharacterItem>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveCharacter received an empty payload.");
+            new CharacterRepo().SaveCharacter(character);
+            ReplyToVue(message.MessageId, new { status = "ok", character });
+        }
+
+        private void HandleDeleteCharacter(BridgeMessage message)
+        {
+            string id = message.Payload.GetProperty("id").GetString()!;
+            var repo = new CharacterRepo();
+            var character = repo.GetCharacter(id);
+            repo.DeleteCharacter(id);
+
+            // Everything the character owned goes with it: the portrait file, and the birth and
+            // death items "Show on timeline" generated.
+            if (!string.IsNullOrEmpty(character?.PortraitPictureId))
+                new MediaRepo().DeleteMedia(character.PortraitPictureId);
+
+            var itemRepo = new ItemRepo();
+            foreach (string? itemId in new[] { character?.BirthItemId, character?.DeathItemId })
+                if (!string.IsNullOrEmpty(itemId)) itemRepo.DeleteItem(itemId);
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleDismissCharacterLink(BridgeMessage message)
+        {
+            new ItemRepo().DismissCharacterLink(
+                message.Payload.GetProperty("itemId").GetString()!,
+                message.Payload.GetProperty("characterId").GetString()!);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleGetCharacterAppearances(BridgeMessage message)
+        {
+            string characterId = message.Payload.GetProperty("characterId").GetString()!;
+            ReplyToVue(message.MessageId, new CharacterRepo().GetAppearances(characterId));
+        }
+
+        /// <summary>
+        /// BL-15. Which character a birth/death item belongs to, so the timeline can offer
+        /// <i>Edit character</i> on it. Null for every ordinary item, which is how the caller
+        /// decides whether to show the entry at all.
+        /// </summary>
+        private void HandleGetCharacterIdForItem(BridgeMessage message)
+        {
+            string itemId = message.Payload.GetProperty("itemId").GetString()!;
+            ReplyToVue(message.MessageId, new { characterId = new CharacterRepo().GetCharacterIdByItem(itemId) });
+        }
+
+        /// <summary>
+        /// BL-15. The character window asks for one of its appearances to be brought into view. The
+        /// timeline is another window, so this goes out as a broadcast — whoever is drawing it jumps.
+        /// </summary>
+        private void HandleFocusTimelineItem(BridgeMessage message)
+        {
+            BridgeHub.Broadcast("FocusTimelineItem", new
+            {
+                ItemId = message.Payload.GetProperty("itemId").GetString(),
+                AbsoluteStart = message.Payload.GetProperty("absoluteStart").GetDouble(),
+            });
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// The calendar a timeline runs on, LOD profile included. The character window needs it to
+        /// show birth and death dates the way the item editor does, without pulling the whole project.
+        /// </summary>
+        private void HandleGetTimelineCalendar(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new TimelineRepo().GetTimelineById(timelineId).Calendar);
         }
 
         private void HandleGetAllStories(BridgeMessage message)
@@ -567,6 +657,10 @@ namespace StoryTimelineMk2.Bridge
             string? itemId = message.Payload.GetProperty("itemId").GetString();
             new ItemRepo().DeleteItem(itemId!);
             ReplyToVue(message.MessageId, new { status = "ok" });
+
+            // Same reason as the ItemSaved broadcast: whoever deleted it is usually not the window
+            // drawing it. Without this, unticking "Show on timeline" leaves a ghost until reload.
+            BridgeHub.Broadcast("ItemDeleted", new { ItemId = itemId });
         }
 
         private void HandleSaveNote(BridgeMessage message)

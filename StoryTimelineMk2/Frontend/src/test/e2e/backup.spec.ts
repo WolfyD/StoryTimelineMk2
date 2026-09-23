@@ -58,8 +58,9 @@ test.describe('AppSettingsModal — backup section', () => {
       const orig = (window as any).chrome.webview.postMessage.bind((window as any).chrome.webview)
       ;(window as any).chrome.webview.postMessage = (msg: unknown) => {
         const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg
-        if (parsed?.action)
-          ;(window as any)._captureBridge(parsed.action, parsed.payload)
+        if (parsed?.action) {
+          (window as any)._captureBridge(parsed.action, parsed.payload)
+        }
         orig(msg)
       }
     })
@@ -86,7 +87,7 @@ test.describe('AppSettingsModal — backup section', () => {
       const orig = (window as any).chrome.webview.postMessage.bind((window as any).chrome.webview)
       ;(window as any).chrome.webview.postMessage = (msg: unknown) => {
         const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg
-        if (parsed?.action) ;(window as any)._captureAction(parsed.action)
+        if (parsed?.action) { (window as any)._captureAction(parsed.action) }
         orig(msg)
       }
     })
@@ -119,7 +120,7 @@ test.describe('AppSettingsModal — backup section', () => {
       const orig = (window as any).chrome.webview.postMessage.bind((window as any).chrome.webview)
       ;(window as any).chrome.webview.postMessage = (msg: unknown) => {
         const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg
-        if (parsed?.action) ;(window as any)._captureAction(parsed.action)
+        if (parsed?.action) { (window as any)._captureAction(parsed.action) }
         orig(msg)
       }
     })
@@ -216,8 +217,8 @@ test.describe('AppSettingsModal — includeMedia, pruning hint, and backup list 
     await page.waitForLoadState('networkidle')
     await page.exposeFunction('_captureMsg', (json: string) => { captured.push(json) })
     await page.evaluate(() => {
-      const orig = window.chrome.webview.postMessage.bind(window.chrome.webview)
-      window.chrome.webview.postMessage = (msg: unknown) => {
+      const orig = window.chrome!.webview!.postMessage.bind(window.chrome!.webview!)
+      window.chrome!.webview!.postMessage = (msg: unknown) => {
         // Capture ALL messages so we can see the full picture
         ;(window as unknown as { _captureMsg: (s: string) => void })
           ._captureMsg(JSON.stringify(typeof msg === 'string' ? JSON.parse(msg) : msg))

@@ -74,6 +74,8 @@ namespace StoryTimelineMk2.Database
                     timeline_box_types_show_as_box,
                     timeline_box_types_box_width,
                     timeline_box_types_show_image,
+                    timeline_picture_caption_font_size,
+                    timeline_character_caption_font_size,
 
                     -- Timeline misc
                     timeline_canvas_background_color,
@@ -181,6 +183,8 @@ namespace StoryTimelineMk2.Database
                     @TimelineBoxTypesShowAsBox,
                     @TimelineBoxTypesBoxWidth,
                     @TimelineBoxTypesShowImage,
+                    @TimelinePictureCaptionFontSize,
+                    @TimelineCharacterCaptionFontSize,
 
                     @TimelineCanvasBackgroundColor,
                     @TimelineShowNowLine,
@@ -286,6 +290,8 @@ namespace StoryTimelineMk2.Database
                     timeline_box_types_show_as_box = excluded.timeline_box_types_show_as_box,
                     timeline_box_types_box_width = excluded.timeline_box_types_box_width,
                     timeline_box_types_show_image = excluded.timeline_box_types_show_image,
+                    timeline_picture_caption_font_size = excluded.timeline_picture_caption_font_size,
+                    timeline_character_caption_font_size = excluded.timeline_character_caption_font_size,
 
                     timeline_canvas_background_color = excluded.timeline_canvas_background_color,
                     timeline_show_now_line = excluded.timeline_show_now_line,

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTimelineStore } from '@/stores/timelineStore'
-import type { TimelineItem, TimelineNote, LodLevel } from '@/types/models'
+import type { TimelineItem, TimelineNote, LodLevel, CharacterItem, ItemCharacterLink } from '@/types/models'
 
 // Silence console calls made inside the store
 vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -403,6 +403,31 @@ describe('timelineStore', () => {
       expect(ids).toContain('now')
       expect(ids).toContain('future')
       expect(ids).not.toContain('past')
+    })
+  })
+
+  // ── BL-15 phase 3: the appearances window ─────────────────────────────────
+
+  describe('character focus', () => {
+    const focus = { Id: 'c1', Name: 'Focus', BirthItemId: 'birth', DeathItemId: null } as unknown as CharacterItem
+
+    it('turns away items the focused character has nothing to do with', () => {
+      const store = useTimelineStore()
+      store.characterFocus = focus
+
+      store.upsertItem(makeItem({ Id: 'stranger' }))
+      store.upsertItem(makeItem({ Id: 'theirs' }), undefined,
+        [{ ItemId: 'theirs', CharacterId: 'c1' } as unknown as ItemCharacterLink])
+      store.upsertItem(makeItem({ Id: 'birth' }))
+      store.upsertItem(makeItem({ Id: 'start', TypeId: 8 }))   // a boundary belongs to everyone
+
+      expect(store.items.map(i => i.Id).sort()).toEqual(['birth', 'start', 'theirs'])
+    })
+
+    it('takes everything when no character is focused', () => {
+      const store = useTimelineStore()
+      store.upsertItem(makeItem({ Id: 'stranger' }))
+      expect(store.items.map(i => i.Id)).toEqual(['stranger'])
     })
   })
 })

@@ -27,6 +27,8 @@ defineProps<{
     yearCalendarOpen: boolean
     /** BL-66 reference window: hides everything that edits or opens child windows */
     readOnly?: boolean
+    /** BL-15 phase 3: an appearances window is read-only but may still be exported. */
+    allowExport?: boolean
     /** BL-66 underlay: a reference timeline is drawn underneath this one */
     referenceActive?: boolean
 }>()
@@ -43,13 +45,14 @@ const emit = defineEmits<{
     'open-mass-add': []
     'open-reference': []
     'open-export': []
+    'open-characters': []
 }>()
 
 const helpMenuOpen = ref(false)
 
 const navItems = [
     { id: 'timeline', icon: PhRuler,            label: 'Timeline',            active: true,  available: true  },
-    { id: 'chars',    icon: PhUsersThree,        label: 'Characters',          active: false, available: false },
+    { id: 'chars',    icon: PhUsersThree,        label: 'Characters',          active: false, available: true  },
     { id: 'map',      icon: PhMapPin,            label: 'Map',                 active: false, available: false },
     { id: 'search',   icon: PhMagnifyingGlass,   label: 'Search',              active: false, available: false },
     { id: 'stats',    icon: PhChartBar,          label: 'Statistics',          active: false, available: false },
@@ -128,6 +131,7 @@ const navItems = [
             }"
             :title="item.available ? item.label : `${item.label} (coming soon)`"
             :tabindex="item.available ? 0 : -1"
+            @click="item.id === 'chars' && emit('open-characters')"
         >
             <component :is="item.icon" :size="20" :weight="item.active ? 'duotone' : 'regular'" />
         </button>
@@ -136,7 +140,7 @@ const navItems = [
         <div class="strip-spacer" />
 
         <!-- ── Export (whole timeline / my work) ────────────────── -->
-        <button v-if="!readOnly" class="strip-btn strip-btn--export" title="Export…" @click="emit('open-export')">
+        <button v-if="!readOnly || allowExport" class="strip-btn strip-btn--export" title="Export…" @click="emit('open-export')">
             <PhExport :size="20" />
         </button>
 

@@ -30,7 +30,8 @@ class FakeSocket {
 	}
 
 	private emit(type: string, event?: MessageEvent) {
-		for (const fn of this.listeners[type] ?? []) fn(event)
+		// open/close carry no event; the transport under test only reads .data on 'message'.
+		for (const fn of this.listeners[type] ?? []) fn(event as MessageEvent)
 	}
 
 	/** The server accepted the connection. */

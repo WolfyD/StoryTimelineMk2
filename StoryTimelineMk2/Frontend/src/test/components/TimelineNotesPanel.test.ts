@@ -19,7 +19,7 @@ import TimelineNotesPanel from '@/components/TimelineNotesPanel.vue'
 // Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSettings {
-  return {
+  return Object.assign({
     Id: 'ls_test',
     Name: 'Test',
     TimelineEventBoxWidth: 130,
@@ -48,6 +48,8 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineBoxTypesShowAsBox: true,
     TimelineBoxTypesBoxWidth: 100,
     TimelineBoxTypesShowImage: true,
+    TimelinePictureCaptionFontSize: 12,
+    TimelineCharacterCaptionFontSize: 12,
     TimelineCanvasBackgroundColor: '#f1e7d5',
     TimelineShowNowLine: true,
     TimelineShowNowLineText: true,
@@ -103,7 +105,10 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineCalendarOverlayWeekColor: '#ffffff08',
     TimelineCalendarOverlayDayColor: '#ffffff06',
     ...overrides,
-  }
+    TimelineBreakFillColor: '#ffffff',
+    TimelineBreakBorderColor: '#000000',
+    MeasureLineColor: '#000000',
+  }, overrides)
 }
 
 function makeLodProfile(): LodLevel[] {

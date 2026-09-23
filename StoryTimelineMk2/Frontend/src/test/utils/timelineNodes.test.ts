@@ -68,7 +68,7 @@ function makeMasterGroup() {
 }
 
 function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSettings {
-  return {
+  return Object.assign({
     Id: 'ls_test',
     Name: 'Test',
     TimelineEventBoxWidth: 130,
@@ -97,6 +97,8 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineBoxTypesShowAsBox: true,
     TimelineBoxTypesBoxWidth: 100,
     TimelineBoxTypesShowImage: true,
+    TimelinePictureCaptionFontSize: 12,
+    TimelineCharacterCaptionFontSize: 12,
     TimelineCanvasBackgroundColor: '#f1e7d5',
     TimelineShowNowLine: true,
     TimelineShowNowLineText: true,
@@ -152,7 +154,10 @@ function makeLayoutSettings(overrides: Partial<LayoutSettings> = {}): LayoutSett
     TimelineCalendarOverlayWeekColor: '#ffffff08',
     TimelineCalendarOverlayDayColor: '#ffffff06',
     ...overrides,
-  }
+    TimelineBreakFillColor: '#ffffff',
+    TimelineBreakBorderColor: '#000000',
+    MeasureLineColor: '#000000',
+  }, overrides)
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ buildNode Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -184,6 +189,34 @@ describe('buildNode', () => {
     const el = buildNode('p1', 'Picture', 'Pic', '#aaa', stems as any, boxes as any, ls, true)
     expect(el.label).toBeDefined()
     expect(el.label.add).toHaveBeenCalledTimes(2)   // Tag + Text
+  })
+
+  // A name too long for the disc used to lose its second half to an ellipsis on one line.
+  it('lets a caption wrap onto a second row', () => {
+    const el = buildNode('p1', 'Picture', 'A very long picture title', '#aaa', stems as any, boxes as any, ls, true) as any
+    const caption = el.label.add.mock.calls[1][0]
+    expect(caption.opts.wrap).toBe('word')
+    expect(caption.opts.ellipsis).toBe(true)
+  })
+
+  // A generated portrait caption ("The birth of <full name>") overflows at the event font size,
+  // so the two caption kinds carry a size each.
+  it('sizes a caption by its kind', () => {
+    const sizes = makeLayoutSettings({ TimelinePictureCaptionFontSize: 20, TimelineCharacterCaptionFontSize: 8 })
+    const pic = buildNode('p1', 'Picture', 'Pic', '#aaa', stems as any, boxes as any, sizes, true) as any
+    const port = buildNode('c1', 'Character', 'Risha', '#aaa', stems as any, boxes as any, sizes, true) as any
+    expect(pic.label.add.mock.calls[1][0].opts.fontSize).toBe(20)
+    expect(port.label.add.mock.calls[1][0].opts.fontSize).toBe(8)
+  })
+
+  // A portrait with transparency over a filled disc drowns the face, so the fill is opt-in.
+  it('leaves a character disc neutral unless they ask for the highlight colour', () => {
+    const ringOnly = buildNode('c1', 'Character', 'Risha', '#ff0000', stems as any, boxes as any, ls) as any
+    expect(ringOnly.box.opts.fill).toBe('#00000022')
+    expect(ringOnly.box.opts.stroke).toBe('#ff0000')
+
+    const filled = buildNode('c2', 'Character', 'Risha', '#ff0000', stems as any, boxes as any, ls, false, false, true) as any
+    expect(filled.box.opts.fill).toBe('#ff0000')
   })
 
   it('builds a Period node with only a box (no stem, no label)', () => {

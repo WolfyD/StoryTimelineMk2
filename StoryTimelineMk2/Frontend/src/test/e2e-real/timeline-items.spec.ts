@@ -165,7 +165,7 @@ test.describe('Timeline items — real backend', () => {
     await tl.evaluate(() => {
       type Root = { __vue_app__: { config: { globalProperties: { $pinia: { _s: Map<string, { currentProject: { Id: number } }> } } } } }
       const store = (document.getElementById('app') as unknown as Root).__vue_app__.config.globalProperties.$pinia._s.get('timeline')!
-      window.chrome.webview.postMessage({ action: 'OpenAddEditItemWindow', payload: { timelineId: store.currentProject.Id, typeId: 1 } })
+      window.chrome!.webview!.postMessage({ action: 'OpenAddEditItemWindow', payload: { timelineId: store.currentProject.Id, typeId: 1 } })
     })
     const editPage = await waitForNewPage(appContext, 'editItem', 10_000, pageErrors)
     const editRoot = editPage.locator('.edit-item-root')

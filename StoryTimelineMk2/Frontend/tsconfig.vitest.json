@@ -1,0 +1,13 @@
+// TSConfig for the test suite. It extends the app config rather than repeating it, so a test that
+// misuses a real type still fails — but `arr[0]` in a fixture is not a finding, and the Playwright
+// specs need Node's globals.
+{
+  "extends": "./tsconfig.app.json",
+  "include": ["env.d.ts", "src/test/**/*", "src/**/*.vue", "src/**/*.ts"],
+  "exclude": [],
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false,
+    "types": ["node", "vitest/globals"],
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo"
+  }
+}

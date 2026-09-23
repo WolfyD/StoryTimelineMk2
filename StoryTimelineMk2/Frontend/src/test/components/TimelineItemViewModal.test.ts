@@ -7,6 +7,8 @@ import type { ItemForEdit } from '@/types/models'
 vi.mock('@/bridge/api', () => ({
   BackendAPI: {
     GetItemForEdit: vi.fn(),
+    GetCharacterIdForItem: vi.fn(),
+    OpenCharactersWindow: vi.fn(),
     request: vi.fn(),
     send: vi.fn(),
   },
@@ -44,6 +46,7 @@ function makeItemForEdit(overrides: Partial<ItemForEdit> = {}): ItemForEdit {
     },
     Tags: [{ Id: 1, Name: 'battle' }, { Id: 2, Name: 'medieval' }],
     Characters: [],
+    Dismissals: [],
     StoryRefs: [],
     ChapterRefs: [],
     Calendar: {
@@ -178,5 +181,37 @@ describe('TimelineItemViewModal', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.emitted('close')).toBeTruthy()
+  })
+
+  // BL-15: a birth/death item has a character behind it, and that is the editor people want.
+  it('offers Edit character only for a character item, and opens the window on it', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(
+      makeItemForEdit({ Item: { ...makeItemForEdit().Item, TypeId: 7 } })
+    )
+    ;(BackendAPI.GetCharacterIdForItem as ReturnType<typeof vi.fn>).mockResolvedValue({ characterId: 'char-1' })
+    ;(BackendAPI.OpenCharactersWindow as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
+
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    const btn = bodyQ('.vm-edit-btn.secondary') as HTMLElement
+    expect(btn).not.toBeNull()
+    btn.click()
+    await wrapper.vm.$nextTick()
+
+    expect(BackendAPI.OpenCharactersWindow).toHaveBeenCalledWith(1, 'char-1')
+    expect(wrapper.emitted('close')).toBeTruthy()
+  })
+
+  it('leaves an ordinary item with only Edit item', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(bodyQ('.vm-edit-btn.secondary')).toBeNull()
+    expect(BackendAPI.GetCharacterIdForItem).not.toHaveBeenCalled()
   })
 })

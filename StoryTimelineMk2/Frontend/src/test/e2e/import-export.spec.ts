@@ -135,8 +135,8 @@ test.describe('DB export flow', () => {
       sent.push({ action, payload })
     })
     await page.evaluate(() => {
-      const orig = window.chrome.webview.postMessage.bind(window.chrome.webview)
-      window.chrome.webview.postMessage = (msg: unknown) => {
+      const orig = window.chrome!.webview!.postMessage.bind(window.chrome!.webview!)
+      window.chrome!.webview!.postMessage = (msg: unknown) => {
         const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg
         if (parsed?.action) (window as unknown as { _captureAction: (a: string, p: unknown) => void })
           ._captureAction(parsed.action, parsed.payload)
@@ -276,11 +276,12 @@ test.describe('DB import — post-import behaviour', () => {
 
     await page.exposeFunction('_captureAction', (action: string) => { actions.push(action) })
     await page.evaluate(() => {
-      const orig = window.chrome.webview.postMessage.bind(window.chrome.webview)
-      window.chrome.webview.postMessage = (msg: unknown) => {
+      const orig = window.chrome!.webview!.postMessage.bind(window.chrome!.webview!)
+      window.chrome!.webview!.postMessage = (msg: unknown) => {
         const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg
-        if (parsed?.action)
-          ;(window as unknown as { _captureAction: (a: string) => void })._captureAction(parsed.action)
+        if (parsed?.action) {
+          (window as unknown as { _captureAction: (a: string) => void })._captureAction(parsed.action)
+        }
         orig(msg)
       }
     })
