@@ -20,6 +20,7 @@ import {
     PhCalendarBlank, PhArrowsOut, PhCirclesThree, PhGridFour,
     PhRainbow, PhArrowsInLineHorizontal, PhArrowsOutLineHorizontal, PhUsersThree, PhChartDonut,
     PhLineSegments, PhFrameCorners, PhCopy, PhDownloadSimple, PhRows, PhFootprints,
+    PhSlidersHorizontal,
 } from '@phosphor-icons/vue'
 import type { CharacterItem, CharacterRelationship, RelationshipType } from '@/types/models'
 
@@ -101,6 +102,8 @@ const knotRoom = ref(50)
 const crossFade = ref(100)
 /** The chain's side circles. Off when the route is all you want to read. */
 const haloOn = ref(true)
+/** The chain folded into rows to fit the window, rather than run off both edges of it. */
+const chainWrap = ref(false)
 /** The matrix's staircase and the genogram's numbered trail. Session-only, like the arc's rows. */
 const showPath = ref(false)
 const pathFrom = ref('')
@@ -127,12 +130,21 @@ const categories = computed(() => [...new Set(allEdges.value.map(e => e.category
 const asOfYear = computed(() => (yearOn.value ? year.value : null))
 const range = computed(() => G.yearRange(characters.value, relations.value))
 
-const visibleEdges = computed(() =>
+/**
+ * Every recorded tie that held in the chosen year. The year is a claim about the story, so it
+ * belongs here; the kind checkboxes are about what a picture draws and do not. This is what the
+ * path finder and the genogram read.
+ */
+const datedEdges = computed(() =>
     allEdges.value.filter(e => {
-        if (hiddenCategories.value.includes(e.category)) return false
         const rel = relById.value.get(e.id)
         return !rel || G.relationActiveAt(rel, asOfYear.value)
     }),
+)
+
+/** The above, less the kinds unticked in the legend. What the views that own that legend draw. */
+const visibleEdges = computed(() =>
+    datedEdges.value.filter(e => !hiddenCategories.value.includes(e.category)),
 )
 
 /** The knots both the clustered layout and the grid order by — one pass over the same web. */
@@ -331,19 +343,32 @@ const selectedTies = computed(() => {
         })
 })
 
+/**
+ * The route between the finder's two ends, or null. Off `datedEdges` rather than `visibleEdges`,
+ * because a kind unticked to unclutter a picture is not an answer to "how are they related" — and
+ * the answer said so all along: *not through the relations recorded here*. The genogram made the
+ * gap plain. Its legend edits `treeShown` and shows `hiddenCategories` nowhere, so a list left
+ * behind in another view reported a married couple, drawn side by side with their children under
+ * them, as unconnected.
+ *
+ * One search rather than one per reader: the sentence, the trail and the chain view all want the
+ * same route, and a BFS over a few hundred people is not free to run three times a frame.
+ */
+const pathFound = computed(() =>
+    pathFrom.value && pathTo.value && pathFrom.value !== pathTo.value
+        ? G.shortestPath(datedEdges.value, pathFrom.value, pathTo.value)
+        : null,
+)
+
 const pathText = computed(() => {
     if (!pathFrom.value || !pathTo.value) return ''
     if (pathFrom.value === pathTo.value) return 'Pick two different characters.'
-    const found = G.shortestPath(visibleEdges.value, pathFrom.value, pathTo.value)
-    if (!found) return 'Nothing connects them — not through the relations recorded here.'
-    return G.describePath(found, relById.value, charById.value, typeById.value)
+    if (!pathFound.value) return 'Nothing connects them — not through the relations recorded here.'
+    return G.describePath(pathFound.value, relById.value, charById.value, typeById.value)
 })
 
 /** The route between the two ends in order, ends included. Empty when there is none. */
-const pathRoute = computed(() => {
-    if (!pathFrom.value || !pathTo.value || pathFrom.value === pathTo.value) return [] as string[]
-    return G.shortestPath(visibleEdges.value, pathFrom.value, pathTo.value)?.nodes ?? []
-})
+const pathRoute = computed(() => pathFound.value?.nodes ?? [])
 
 /** The nodes on the path, so the stage can trace it. Empty when there is no route. */
 const pathNodes = computed(() => new Set(pathRoute.value))
@@ -544,7 +569,7 @@ function mountStage() {
         e.evt.preventDefault()
         menu.value = { x: e.evt.clientX, y: e.evt.clientY, id: '' }
     })
-    stage.on('mousedown touchstart', () => { panned = false; menuPick = false })
+    stage.on('mousedown touchstart', () => { panned = false; menuPick = false; shotOpen.value = false })
     stage.on('dragmove', () => { panned = true })
     stage.on('click tap', e => {
         if (e.target === stage) {
@@ -1292,7 +1317,7 @@ function buildTree() {
 
     // Everything the chart is not built from. Drawn after the kinship elbows so it sits over
     // them, and before the nodes so it runs under the faces rather than across them.
-    for (const e of G.overlayEdges(visibleEdges.value, new Set(at.keys()))) {
+    for (const e of G.overlayEdges(datedEdges.value, new Set(at.keys()))) {
         if (!treeShown.value.includes(e.category)) continue
         const a = at.get(e.aId)
         const b = at.get(e.bId)
@@ -1346,12 +1371,12 @@ function buildTree() {
     // worse than no trail. Searching only the ties this chart draws also keeps the legend honest:
     // a category it has hidden is not a step the route is allowed to take.
     const onChart = new Set(at.keys())
-    const hiddenHere = new Set(G.overlayEdges(visibleEdges.value, onChart)
+    const hiddenHere = new Set(G.overlayEdges(datedEdges.value, onChart)
         .filter(e => !treeShown.value.includes(e.category)).map(e => e.id))
     const route = showPath.value && pathFrom.value !== pathTo.value
         && onChart.has(pathFrom.value) && onChart.has(pathTo.value)
         ? G.shortestPath(
-            visibleEdges.value.filter(e => onChart.has(e.aId) && onChart.has(e.bId) && !hiddenHere.has(e.id)),
+            datedEdges.value.filter(e => onChart.has(e.aId) && onChart.has(e.bId) && !hiddenHere.has(e.id)),
             pathFrom.value, pathTo.value,
         )?.nodes ?? []
         : []
@@ -1800,8 +1825,7 @@ function buildChain() {
     chainWords = []
     chainRing = []
 
-    const ends = pathFrom.value && pathTo.value && pathFrom.value !== pathTo.value
-    const found = ends ? G.shortestPath(visibleEdges.value, pathFrom.value, pathTo.value) : null
+    const found = pathFound.value
     if (!found) {
         nodeGroup.add(new Konva.Text({
             text: pathText.value
@@ -1815,7 +1839,10 @@ function buildChain() {
         return
     }
 
-    const steps = L.chainLayout(found.nodes, visibleEdges.value)
+    // Wrapped, the row length is worked out from the window the chain has to fit in, so the
+    // shape follows a resize or a narrowed sidebar rather than a number picked once.
+    const steps = L.chainLayout(found.nodes, visibleEdges.value,
+        chainWrap.value ? L.chainColumns(found.nodes.length, stage.width(), stage.height()) : 0)
     const at = new Map<string, { x: number; y: number }>()
     for (const step of steps) {
         at.set(step.id, step)
@@ -1871,7 +1898,7 @@ function buildChain() {
             // Read left to right, so it is whose end it is said from that matters, not which of
             // the two the relation happens to have been written down against.
             text: said,
-            x: (a.x + b.x) / 2, y: -20,
+            x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 20,
             fontSize: 12, fill: '#94a3b8',
             width: L.CHAIN_GAP, offsetX: L.CHAIN_GAP / 2,
             align: 'center', wrap: 'none', ellipsis: true, listening: false,
@@ -1935,8 +1962,13 @@ function buildChain() {
 
     const r = layer?.getClientRect({ skipTransform: true })
     if (r) {
-        fitOrHold(r.x, r.y, r.x + r.width, r.y + r.height,
-            (selectedId.value ? at.get(selectedId.value) : undefined) ?? steps[0])
+        // Wrapped, *fit* is the whole instruction — it is the button you pressed, and holding a
+        // readable floor and panning instead is the thing you pressed it to stop doing.
+        if (chainWrap.value) fitStage(r.x, r.y, r.x + r.width, r.y + r.height)
+        else {
+            fitOrHold(r.x, r.y, r.x + r.width, r.y + r.height,
+                (selectedId.value ? at.get(selectedId.value) : undefined) ?? steps[0])
+        }
     }
     layer?.batchDraw()
 }
@@ -1973,6 +2005,7 @@ watch(chordBy, () => { chordPick.value = null })
 watch([chordBy, chordPick], () => { if (mode.value === 'chord') buildChord() })
 watch(treeRootId, () => { if (mode.value === 'tree') buildTree() })
 watch(haloOn, () => { if (mode.value === 'chain') buildChain() })
+watch(chainWrap, () => { if (mode.value === 'chain') buildChain() })
 watch(arcRows, () => { if (mode.value === 'arc') buildArc() })
 watch(showPath, () => {
     if (mode.value === 'matrix') buildMatrix()
@@ -2090,23 +2123,129 @@ function say(what: string) {
     noticeTimer = window.setTimeout(() => { notice.value = '' }, 2500)
 }
 
+/** A margin round the exported picture, in stage units, so nothing stands against the edge. */
+const SHOT_PAD = 44
+/** How far apart the paper is ruled, in stage units — about a disc and a half. */
+const SHOT_GRID = 64
+const SHOT_INK = 'rgba(148, 163, 184, 0.22)'
+// Past either of these a browser hands back a blank canvas rather than throwing, so the export
+// comes down to fit and says so instead of writing out an empty PNG.
+const SHOT_MAX_SIDE = 16384
+const SHOT_MAX_AREA = 2.4e8
+
+const SHOT_BACKS = [
+    { id: 'plain', label: 'Plain' },
+    { id: 'lines', label: 'Ruled paper' },
+    { id: 'dots', label: 'Dotted paper' },
+    { id: 'none', label: 'Transparent' },
+] as const
+
+/** How the picture comes out. Session-only, like the rest of this window's knobs, and shared by
+ *  Copy and Save — the two are the same picture going to two places. */
+const shotBack = ref<(typeof SHOT_BACKS)[number]['id']>('plain')
+const shotScale = ref(2)
+const shotOpen = ref(false)
+const shotDims = ref('')
+
 /**
- * The whole picture as a PNG, at twice the screen resolution so it survives being pasted into a
- * document and zoomed. Konva draws on transparency and the window's dark comes from CSS behind
- * it, so the background is painted in here — without it the export is an invisible tangle of
- * pale threads on whatever the reader's page happens to be.
+ * The crop, in the stage's own coordinates, and the pixel ratio it can actually bear. Asks the
+ * layer what it drew rather than the layout what it meant to, so it is right in every view.
+ */
+function shotBox(want: number) {
+    const r = layer?.getClientRect({ skipTransform: true })
+    if (!r || !r.width || !r.height) return null
+    const box = {
+        x: r.x - SHOT_PAD, y: r.y - SHOT_PAD,
+        width: r.width + SHOT_PAD * 2, height: r.height + SHOT_PAD * 2,
+    }
+    const ratio = Math.max(0.05, Math.min(want,
+        SHOT_MAX_SIDE / box.width, SHOT_MAX_SIDE / box.height,
+        Math.sqrt(SHOT_MAX_AREA / (box.width * box.height))))
+    return { box, ratio, capped: ratio < want - 0.005 }
+}
+
+/** What the next picture will measure, for the panel. Recomputed rather than watched: the layer
+ *  changes size without telling anyone, so it is read when the panel is opened. */
+function refreshShotDims() {
+    const fit = shotBox(shotScale.value)
+    if (!fit) {
+        shotDims.value = 'Nothing drawn yet.'
+        return
+    }
+    const size = `${Math.round(fit.box.width * fit.ratio)} × ${Math.round(fit.box.height * fit.ratio)}`
+    shotDims.value = fit.capped
+        ? `${size} pixels — as large as a picture this size can be encoded.`
+        : `${size} pixels.`
+}
+
+watch([shotScale, shotOpen], refreshShotDims)
+
+/**
+ * The sheet the picture is drawn on. Konva draws on transparency and the window's dark comes from
+ * CSS behind it, so without this an export is an invisible tangle of pale threads on whatever the
+ * reader's page happens to be — which is still the right answer when transparency is what was
+ * asked for.
+ */
+function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, ratio: number) {
+    if (shotBack.value === 'none') return
+    ctx.fillStyle = getComputedStyle(document.documentElement)
+        .getPropertyValue('--app-bg').trim() || '#0f172a'
+    ctx.fillRect(0, 0, w, h)
+    if (shotBack.value === 'plain') return
+    // Ruled in export pixels, so the paper looks the same at 1× and at 4× instead of the grid
+    // getting four times finer the larger you ask for.
+    const step = SHOT_GRID * ratio
+    const pen = Math.max(1, ratio * 0.6)
+    if (shotBack.value === 'lines') {
+        ctx.strokeStyle = SHOT_INK
+        ctx.lineWidth = pen
+        ctx.beginPath()
+        for (let x = step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h) }
+        for (let y = step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y) }
+        ctx.stroke()
+        return
+    }
+    // A dot covers a fraction of what a line does, so the same ink comes out half as dark.
+    ctx.fillStyle = 'rgba(148, 163, 184, 0.34)'
+    for (let x = step; x < w; x += step) {
+        for (let y = step; y < h; y += step) {
+            ctx.beginPath()
+            ctx.arc(x, y, pen * 1.4, 0, Math.PI * 2)
+            ctx.fill()
+        }
+    }
+}
+
+/**
+ * Everything drawn, as a PNG — not the window's worth of it you happen to be looking at. A chain
+ * or a genogram runs several screens wide on a real cast, and a picture of the middle of one is
+ * not a picture of it.
  */
 async function stageBlob(): Promise<Blob> {
     if (!stage) throw new Error('the stage is not up yet')
-    const shot = stage.toCanvas({ pixelRatio: 2 })
+    const fit = shotBox(shotScale.value)
+    if (!fit) throw new Error('there is nothing drawn to make a picture of')
+    // The crop is in the stage's own coordinates, which the zoom and the pan are part of, so they
+    // come off first — and go back in the `finally`, because taking a picture of a view must not
+    // move it.
+    const scale = stage.scale()
+    const pos = stage.position()
+    let shot: HTMLCanvasElement
+    try {
+        stage.scale({ x: 1, y: 1 })
+        stage.position({ x: 0, y: 0 })
+        shot = stage.toCanvas({ ...fit.box, pixelRatio: fit.ratio })
+    } finally {
+        stage.scale(scale)
+        stage.position(pos)
+        stage.batchDraw()
+    }
     const out = document.createElement('canvas')
     out.width = shot.width
     out.height = shot.height
     const ctx = out.getContext('2d')
     if (!ctx) throw new Error('this browser would not give the page a 2D canvas')
-    ctx.fillStyle = getComputedStyle(document.documentElement)
-        .getPropertyValue('--app-bg').trim() || '#0f172a'
-    ctx.fillRect(0, 0, out.width, out.height)
+    paintBackdrop(ctx, out.width, out.height, fit.ratio)
     ctx.drawImage(shot, 0, 0)
     return await new Promise<Blob>((resolve, reject) => {
         out.toBlob(b => (b ? resolve(b) : reject(new Error('the picture would not encode as a PNG'))), 'image/png')
@@ -2115,6 +2254,7 @@ async function stageBlob(): Promise<Blob> {
 
 async function copyImage() {
     menu.value = null
+    shotOpen.value = false
     try {
         // `ClipboardItem` is missing outside a secure context, which a `file://` build is. Worth
         // saying plainly rather than letting `write` throw something about undefined.
@@ -2131,6 +2271,7 @@ async function copyImage() {
 
 async function saveImage() {
     menu.value = null
+    shotOpen.value = false
     let url = ''
     try {
         url = URL.createObjectURL(await stageBlob())
@@ -2329,6 +2470,15 @@ function unpinOne(id: string) {
                         initials. Turn them off for the route on its own. Drag anyone to tidy
                         the picture up; a ring follows whoever it belongs to.
                     </p>
+                    <button class="rel-btn" @click="chainWrap = !chainWrap">
+                        <component :is="chainWrap ? PhArrowsOutLineHorizontal : PhFrameCorners" :size="14" />
+                        {{ chainWrap ? 'Straighten the chain out' : 'Fit the chain on screen' }}
+                    </button>
+                    <p class="rel-hint">
+                        A long route folds into rows that read back and forth like lines of
+                        writing, sized to the window, instead of one line running off both edges
+                        of it.
+                    </p>
                 </section>
 
                 <section v-if="mode === 'sociogram'" class="rel-block">
@@ -2457,6 +2607,31 @@ function unpinOne(id: string) {
                     <button title="Save the picture as a PNG" @click="saveImage">
                         <PhDownloadSimple :size="15" />
                     </button>
+                    <button
+                        :class="{ on: shotOpen }"
+                        title="How the picture comes out"
+                        @click="shotOpen = !shotOpen"
+                    >
+                        <PhSlidersHorizontal :size="15" />
+                    </button>
+                </div>
+                <div v-if="shotOpen" class="rel-shot-opts">
+                    <p class="rel-shot-head">Behind the picture</p>
+                    <label v-for="b in SHOT_BACKS" :key="b.id" class="rel-check">
+                        <input v-model="shotBack" type="radio" :value="b.id" />
+                        {{ b.label }}
+                    </label>
+                    <p class="rel-shot-head">Size</p>
+                    <div class="rel-shot-row">
+                        <button
+                            v-for="s in [1, 2, 4]"
+                            :key="s"
+                            class="rel-btn"
+                            :class="{ on: shotScale === s }"
+                            @click="shotScale = s"
+                        >{{ s }}×</button>
+                    </div>
+                    <p class="rel-hint">Everything drawn, not just what is on screen. {{ shotDims }}</p>
                 </div>
                 <p v-if="mode === 'tree' && treeEmpty" class="rel-overlay">
                     No parents or children recorded for this character yet — add a
@@ -2719,22 +2894,24 @@ function unpinOne(id: string) {
     margin-top: auto;
     padding-top: 9px;
     border-top: 1px solid var(--app-border, #2d3a56);
+}
 
-    button {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 3px 8px;
-        border: 1px solid var(--app-border, #2d3a56);
-        border-radius: var(--app-radius-sm, 4px);
-        background: transparent;
-        color: var(--app-text-muted, #94a3b8);
-        font: inherit;
-        font-size: 0.72rem;
-        cursor: pointer;
+.rel-tools button,
+.rel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px);
+    background: transparent;
+    color: var(--app-text-muted, #94a3b8);
+    font: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
 
-        &:hover { color: var(--app-text, #e2e8f0); border-color: var(--app-accent, #6366f1); }
-    }
+    &:hover { color: var(--app-text, #e2e8f0); border-color: var(--app-accent, #6366f1); }
+    &.on { color: var(--app-text, #e2e8f0); border-color: var(--app-accent, #6366f1); }
 }
 
 .rel-stage-wrap {
@@ -2802,10 +2979,49 @@ function unpinOne(id: string) {
         color: var(--app-text-dim, #94a3b8);
         cursor: pointer;
 
-        &:hover {
+        &:hover,
+        &.on {
             color: var(--app-text, #e2e8f0);
             border-color: var(--app-accent, #6366f1);
         }
+    }
+}
+
+// Under the buttons it belongs to. Over the stage rather than in the sidebar, because it is about
+// the picture that is there and you close it again as soon as you have taken one.
+.rel-shot-opts {
+    position: absolute;
+    top: 44px;
+    right: 12px;
+    z-index: 5;
+    width: 196px;
+    padding: 9px 11px 10px;
+    border: 1px solid var(--app-border, #2d3a56);
+    border-radius: var(--app-radius-sm, 4px);
+    background: var(--app-surface, #0c1524);
+    box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.7);
+
+    .rel-check { margin: 3px 0; }
+    .rel-hint { margin-top: 8px; }
+}
+
+.rel-shot-head {
+    margin: 9px 0 4px;
+    color: var(--app-text-muted, #94a3b8);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+
+    &:first-child { margin-top: 0; }
+}
+
+.rel-shot-row {
+    display: flex;
+    gap: 4px;
+
+    button {
+        flex: 1;
+        justify-content: center;
     }
 }
 

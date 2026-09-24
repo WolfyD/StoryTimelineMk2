@@ -503,6 +503,8 @@ export function matrixOrder(
 export const CHAIN_GAP = 330
 /** How far a satellite sits from whoever it belongs to. */
 export const CHAIN_HALO_R = 104
+/** How far apart two rows of a wrapped chain stand — a fan below one clears the fan above the next. */
+export const CHAIN_ROW = 300
 /** Most circles one chain member gets around them. Past this the rest are counted, not drawn. */
 export const CHAIN_HALO_MAX = 5
 
@@ -519,7 +521,7 @@ export interface ChainStep extends Placed {
  * drawn at dead level would run along the chain's own line, which is the one line on this chart
  * that has to stay legible.
  */
-function fan(count: number, cx: number): { x: number; y: number }[] {
+function fan(count: number, cx: number, cy: number): { x: number; y: number }[] {
 	const above = Math.ceil(count / 2)
 	return Array.from({ length: count }, (_, i) => {
 		const up = i < above
@@ -530,7 +532,7 @@ function fan(count: number, cx: number): { x: number; y: number }[] {
 		// Well clear of the horizontal: the chain's own line and the word written over it
 		// run along it, and a satellite at dead level lands on both.
 		const rad = ((up ? -145 + t * 110 : 35 + t * 110) * Math.PI) / 180
-		return { x: cx + Math.cos(rad) * CHAIN_HALO_R, y: Math.sin(rad) * CHAIN_HALO_R }
+		return { x: cx + Math.cos(rad) * CHAIN_HALO_R, y: cy + Math.sin(rad) * CHAIN_HALO_R }
 	})
 }
 
@@ -547,7 +549,17 @@ function fan(count: number, cx: number): { x: number; y: number }[] {
  * goes in is one of the ring's, so it is always the same eight circles, one of them saying how
  * many you are not being shown.
  */
-export function chainLayout(path: string[], edges: GraphEdge[]): ChainStep[] {
+/**
+ * How many people to a row so a wrapped chain comes out roughly the shape of the window it has to
+ * fit in. Solved rather than guessed: a row is `n/perRow` rows tall and `perRow` gaps wide, and
+ * setting that ratio equal to the stage's leaves one square root.
+ */
+export function chainColumns(count: number, w: number, h: number): number {
+	if (count < 3 || w <= 0 || h <= 0) return count
+	return Math.max(2, Math.min(count, Math.round(Math.sqrt((count * CHAIN_ROW * w) / (CHAIN_GAP * h)))))
+}
+
+export function chainLayout(path: string[], edges: GraphEdge[], perRow = 0): ChainStep[] {
 	const near = new Map<string, Set<string>>()
 	for (const e of edges) {
 		if (e.aId === e.bId) continue
@@ -560,18 +572,24 @@ export function chainLayout(path: string[], edges: GraphEdge[]): ChainStep[] {
 	const onPath = new Set(path)
 	const taken = new Set<string>()
 	return path.map((id, i) => {
-		const x = i * CHAIN_GAP
+		// Boustrophedon: every other row runs back the way it came, so the last person of one row
+		// and the first of the next stand one above the other and the step between them is a plain
+		// drop. Wrapped the other way it would be a diagonal back across everything just drawn.
+		const row = perRow ? Math.floor(i / perRow) : 0
+		const col = perRow ? i % perRow : i
+		const x = (row % 2 ? perRow - 1 - col : col) * CHAIN_GAP
+		const y = row * CHAIN_ROW
 		const others = [...(near.get(id) ?? [])]
 			.filter(o => !onPath.has(o) && !taken.has(o))
 			.sort((a, b) => (near.get(b)?.size ?? 0) - (near.get(a)?.size ?? 0) || a.localeCompare(b))
 		const over = others.length > CHAIN_HALO_MAX
 		const shown = others.slice(0, over ? CHAIN_HALO_MAX - 1 : CHAIN_HALO_MAX)
 		for (const o of shown) taken.add(o)
-		const spots = fan(shown.length + (over ? 1 : 0), x)
+		const spots = fan(shown.length + (over ? 1 : 0), x, y)
 		return {
 			id,
 			x,
-			y: 0,
+			y,
 			halo: shown.map((o, k) => ({ id: o, x: spots[k]!.x, y: spots[k]!.y })),
 			extra: others.length - shown.length,
 			extraAt: over ? spots[spots.length - 1]! : null,

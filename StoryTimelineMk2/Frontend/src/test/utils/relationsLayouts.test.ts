@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-	arcLayout, chainLayout, CHAIN_GAP, CHAIN_HALO_MAX, CHAIN_HALO_R, chordLayout, communities,
+	arcLayout, chainColumns, chainLayout, CHAIN_GAP, CHAIN_HALO_MAX, CHAIN_HALO_R, CHAIN_ROW,
+	chordLayout, communities,
 	clusterSeed, convexHull, matrixOrder, sociogramLayout, SOCIO_HEADER,
 } from '@/utils/relationsLayouts'
 import { stepForces } from '@/utils/relationsGraph'
@@ -489,5 +490,44 @@ describe('chainLayout', () => {
 		const step = chainLayout(['a'], TRIANGLES.edges)[0]!
 		expect(step.extra).toBe(0)
 		expect(step.extraAt).toBeNull()
+	})
+
+	it('wraps into rows that read back and forth, like lines of writing', () => {
+		const steps = chainLayout(Array.from({ length: 7 }, (_, i) => `p${i}`), [], 3)
+		expect(steps.map(s => s.x)).toEqual(
+			[0, CHAIN_GAP, CHAIN_GAP * 2, CHAIN_GAP * 2, CHAIN_GAP, 0, 0])
+		expect(steps.map(s => s.y)).toEqual(
+			[0, 0, 0, CHAIN_ROW, CHAIN_ROW, CHAIN_ROW, CHAIN_ROW * 2])
+	})
+
+	it('turns by dropping straight down, so no step cuts back across a row', () => {
+		const steps = chainLayout(Array.from({ length: 9 }, (_, i) => `p${i}`), [], 4)
+		for (const [i, s] of steps.slice(0, -1).entries()) {
+			const next = steps[i + 1]!
+			// Along a row or down onto the next one — never a diagonal over what was just drawn.
+			expect(s.x === next.x || s.y === next.y).toBe(true)
+		}
+	})
+
+	it('takes the satellites down to the row their person is on', () => {
+		// 'd' is third of three at two to a row, so it opens the second row.
+		const step = chainLayout(['a', 'c', 'd'], TRIANGLES.edges, 2)[2]!
+		expect(step.y).toBe(CHAIN_ROW)
+		for (const h of step.halo) expect(Math.abs(h.y - CHAIN_ROW)).toBeLessThanOrEqual(CHAIN_HALO_R)
+	})
+})
+
+describe('chainColumns', () => {
+	it('makes the rows about the shape of the window they have to fit in', () => {
+		expect(chainColumns(40, 1600, 400)).toBeGreaterThan(chainColumns(40, 400, 1600))
+		const per = chainColumns(40, 1200, 800)
+		const aspect = (per * CHAIN_GAP) / (Math.ceil(40 / per) * CHAIN_ROW)
+		// Within half and double of the window's own 1.5 — the headcount only divides so many ways.
+		expect(aspect).toBeGreaterThan(0.75)
+		expect(aspect).toBeLessThan(3)
+	})
+
+	it('leaves a chain too short to be worth folding on the one line', () => {
+		expect(chainColumns(2, 1200, 800)).toBe(2)
 	})
 })

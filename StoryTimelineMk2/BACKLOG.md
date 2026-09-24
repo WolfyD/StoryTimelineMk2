@@ -70,7 +70,8 @@ zoom apply to them too). Rules:
 **Status:** Done 2026-09-24 for 1.1.1. All five steps — schema, Genogram, Arc, Sociogram and
 Chord; see the sections below. **Knots was reprieved the same day** and fixed rather than cut
 (asked for 2026-09-24). Rings and Rows are gone, Grid is the Matrix and has its interactions, and
-a batch of ten further changes asked for the same day is in the last section.
+a batch of ten further changes asked for the same day is in the last section — followed by the
+chain's fold-to-fit and the picture the two corner buttons now take.
 
 BL-76 added four views on the strength of "it is a different arrangement of the same nodes".
 Reviewed side by side, three of them do not earn their place: **Graph and Knots are visually
@@ -476,8 +477,95 @@ built. The sidebar one is two bullets because the Characters list got the same g
   related; a non-kin step takes the bow the overlay already drew it as. Live: 14 people ringed and
   numbered 1–14 with 26 highlight segments, matching the sidebar's sentence name for name.
 
+### A legend was answering a question about the story, 2026-09-24
+
+Reported with a screenshot of a married couple standing side by side on the genogram, their three
+children drawn underneath them, and the finder underneath *that* saying **"Nothing connects them"**.
+
+The finder read `visibleEdges`, which is `allEdges` minus the year scrubber **and minus
+`hiddenCategories`** — the legend's hide-list. The genogram has its own legend, `treeShown`, held
+apart on purpose and listed as what to *show*. So in the tree `hiddenCategories` is neither drawn
+nor editable, and a list left behind in another view sat there emptying the web behind every
+question asked of it. The chart contradicted it because `hourglassLayout` is built from `relations`
+directly: descent and marriage are drawn whatever the legend says. Two kinds hidden, 737 edges,
+`visibleEdges.length === 0`, and a husband and wife reported as strangers.
+
+Split the two ideas instead of patching the one mode:
+
+- **`datedEdges`** — every recorded tie that held in the chosen year. The year is a claim about the
+  story. This is what the finder answers from, and what the genogram draws its overlay and its
+  numbered trail from, since the genogram's legend is `treeShown` and it filters against that.
+- **`visibleEdges`** — `datedEdges` less the unticked kinds. What the views that own that legend
+  draw, unchanged.
+
+The distinction is the fix: a kind unticked to unclutter a picture is not an answer to "how are
+they related", and the sentence said as much all along — *not through the relations recorded here*.
+The same bug blanked the whole Chain view, which is nothing but the route, and silently dropped the
+genogram's overlay ties even with their kinds ticked in the legend in front of you.
+
+`pathText`, `pathRoute` and the chain view were each running their own BFS over the same pair;
+they now share one `pathFound`. Three searches over a few hundred people per frame was not free.
+
+Checked live on the reported pair, on the user's own 300-character cast: with both kinds hidden the
+finder answers "Wendel Fallowfield is the husband of Orla Ashdown" in tree, clusters and chain
+alike, the chain view draws its 342 shapes, and the furthest pair in the cast — 41 people apart —
+comes back described step by step. No console errors.
+
+ponytail: there is no unit test behind this. The finder itself was never wrong; what was wrong was
+which edge list it was handed, and reaching that needs the whole page mounted with Konva and the
+bridge. The live check above is what would catch it again.
+
 The sociogram's inter-group dimming was the one thing on the list already built: the *Crossing
 ties* slider is what was meant.
+
+### A chain that folds, and a picture of all of it, 2026-09-24
+
+Two asks, one cause: **both views and both export buttons assumed the picture was the size of the
+window.** On the user's cast the furthest pair are 41 people apart, which is a chain 13,438 px wide
+and 321 tall. It fits on screen at 0.065 — seven faces of forty-one, the rest off both edges — and
+the Copy and Save buttons handed you a PNG of whichever seven those were.
+
+**The chain folds into rows** on a button in its own block (*Fit the chain on screen* /
+*Straighten the chain out*; a button rather than automatic, decided 2026-09-24 — the straight line
+is still the right picture of a short route and the writer says which they want). The fold is
+boustrophedon: every other row runs back the way it came, so the last person of a row and the first
+of the next stand one above the other and the step between them is a plain vertical drop. Wrapped
+the other way, each turn would be a diagonal cutting back across everything just drawn. `fan()`
+gained a `y` so the satellites come down to their person's row.
+
+Row length is solved rather than picked: a wrap of `perRow` is `n/perRow` rows tall and `perRow`
+gaps wide, and setting that ratio equal to the stage's leaves one square root (`chainColumns`). The
+same 41 people come out 2,068 × 2,121 in a 914 × 818 window — 0.367 rather than 0.065, and every
+face on screen. Wrapped, the view calls `fitStage` rather than `fitOrHold`: holding a readable
+floor and panning instead is the thing the button was pressed to stop doing.
+
+**The picture is now everything drawn.** `stageBlob` crops to `layer.getClientRect()` with a
+margin, after putting the stage's own zoom and pan back to nothing — the crop is in stage
+coordinates, which the transform is part of — and restores both in a `finally`, because taking a
+picture of a view must not move it. Three settings behind a fourth corner button, shared by Copy
+and Save because they are the same picture going to two places:
+
+- **Behind the picture**: plain, ruled paper, dotted paper, or transparent. Konva draws on
+  transparency and the window's dark comes from CSS behind it, so a background has to be painted
+  in — transparent is now a deliberate choice rather than what you got by accident. The rules are
+  laid in *export* pixels, so the paper looks the same at 1× as at 4× instead of getting four times
+  finer.
+- **Size**: 1× / 2× / 4×, with the pixel size it comes to shown underneath. Not a DPI field: a PNG
+  carries physical size in a `pHYs` chunk that half the programs that open one ignore, and "how
+  many pixels" is the thing a writer can check against what they are pasting into.
+- **A ceiling that tells you**: past about 16,384 px a side or 240 megapixels a browser hands back
+  a blank canvas rather than throwing, so the ratio comes down to fit and the panel says *as large
+  as a picture this size can be encoded* instead of writing out an empty file.
+
+Measured live on the 41-person chain: 1× → 2,068 × 2,121 (322 KB, 0.2 s), 2× → 4,136 × 4,242
+(937 KB), 4× → 8,272 × 8,484 (2.6 MB, 3.5 s); transparent comes back with an alpha-zero corner and
+the other three with the window's own dark; the straight 13,438-wide chain clamps to 16,384 × 391
+at every preset, as it should.
+
+ponytail: the settings are session-only, like the rest of this window's knobs. Persist them
+alongside `relationsSideWidth` if anyone gets tired of picking 4× every time. The wrap is
+recomputed from the stage at build time, so it follows a resize the next time the view is drawn
+rather than reflowing under you — re-press the button, or switch views and back.
 
 ---
 
