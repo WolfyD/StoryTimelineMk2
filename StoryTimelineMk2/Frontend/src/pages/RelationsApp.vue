@@ -15,6 +15,7 @@ import { initials, lifespan } from '@/utils/characterItems'
 import { genderKey, relationLabel, relationOtherId } from '@/utils/characterRelations'
 import * as G from '@/utils/relationsGraph'
 import * as L from '@/utils/relationsLayouts'
+import { shotFit, paintBackdrop, type ShotBack } from '@/utils/imageExport'
 import {
     PhTreeStructure, PhMagnifyingGlass, PhPushPinSlash, PhPath, PhCrosshair,
     PhCalendarBlank, PhArrowsOut, PhCirclesThree, PhGridFour,
@@ -545,6 +546,10 @@ function mountStage() {
     linkGroup = new Konva.Group({ listening: false })
     nodeGroup = new Konva.Group()
     layer.add(hullGroup, linkGroup, nodeGroup)
+    // The size the panel quotes is read off the layer, which changes extent without telling
+    // anyone — switch view or move the year with the panel open and the number would be the one
+    // from before. Guarded, so it costs nothing at all while the panel is shut.
+    layer.on('draw', () => { if (shotOpen.value) refreshShotDims() })
     stage.add(layer)
 
     // Wheel zooms about the pointer, which is the only zoom that does not lose what you aimed at.
@@ -2123,49 +2128,31 @@ function say(what: string) {
     noticeTimer = window.setTimeout(() => { notice.value = '' }, 2500)
 }
 
-/** A margin round the exported picture, in stage units, so nothing stands against the edge. */
-const SHOT_PAD = 44
-/** How far apart the paper is ruled, in stage units — about a disc and a half. */
-const SHOT_GRID = 64
-const SHOT_INK = 'rgba(148, 163, 184, 0.22)'
-// Past either of these a browser hands back a blank canvas rather than throwing, so the export
-// comes down to fit and says so instead of writing out an empty PNG.
-const SHOT_MAX_SIDE = 16384
-const SHOT_MAX_AREA = 2.4e8
-
-const SHOT_BACKS = [
+const SHOT_BACKS: { id: ShotBack; label: string }[] = [
     { id: 'plain', label: 'Plain' },
     { id: 'lines', label: 'Ruled paper' },
     { id: 'dots', label: 'Dotted paper' },
     { id: 'none', label: 'Transparent' },
-] as const
+]
 
 /** How the picture comes out. Session-only, like the rest of this window's knobs, and shared by
  *  Copy and Save — the two are the same picture going to two places. */
-const shotBack = ref<(typeof SHOT_BACKS)[number]['id']>('plain')
+const shotBack = ref<ShotBack>('plain')
 const shotScale = ref(2)
 const shotOpen = ref(false)
 const shotDims = ref('')
 
 /**
- * The crop, in the stage's own coordinates, and the pixel ratio it can actually bear. Asks the
- * layer what it drew rather than the layout what it meant to, so it is right in every view.
+ * The crop and the ratio for the picture about to be taken. Asks the layer what it drew rather
+ * than the layout what it meant to, so it is right in every view.
  */
 function shotBox(want: number) {
-    const r = layer?.getClientRect({ skipTransform: true })
-    if (!r || !r.width || !r.height) return null
-    const box = {
-        x: r.x - SHOT_PAD, y: r.y - SHOT_PAD,
-        width: r.width + SHOT_PAD * 2, height: r.height + SHOT_PAD * 2,
-    }
-    const ratio = Math.max(0.05, Math.min(want,
-        SHOT_MAX_SIDE / box.width, SHOT_MAX_SIDE / box.height,
-        Math.sqrt(SHOT_MAX_AREA / (box.width * box.height))))
-    return { box, ratio, capped: ratio < want - 0.005 }
+    return shotFit(layer?.getClientRect({ skipTransform: true }), want)
 }
 
 /** What the next picture will measure, for the panel. Recomputed rather than watched: the layer
- *  changes size without telling anyone, so it is read when the panel is opened. */
+ *  changes size without telling anyone, so it is read when the panel opens and on every redraw
+ *  while it is open. */
 function refreshShotDims() {
     const fit = shotBox(shotScale.value)
     if (!fit) {
@@ -2179,42 +2166,6 @@ function refreshShotDims() {
 }
 
 watch([shotScale, shotOpen], refreshShotDims)
-
-/**
- * The sheet the picture is drawn on. Konva draws on transparency and the window's dark comes from
- * CSS behind it, so without this an export is an invisible tangle of pale threads on whatever the
- * reader's page happens to be — which is still the right answer when transparency is what was
- * asked for.
- */
-function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, ratio: number) {
-    if (shotBack.value === 'none') return
-    ctx.fillStyle = getComputedStyle(document.documentElement)
-        .getPropertyValue('--app-bg').trim() || '#0f172a'
-    ctx.fillRect(0, 0, w, h)
-    if (shotBack.value === 'plain') return
-    // Ruled in export pixels, so the paper looks the same at 1× and at 4× instead of the grid
-    // getting four times finer the larger you ask for.
-    const step = SHOT_GRID * ratio
-    const pen = Math.max(1, ratio * 0.6)
-    if (shotBack.value === 'lines') {
-        ctx.strokeStyle = SHOT_INK
-        ctx.lineWidth = pen
-        ctx.beginPath()
-        for (let x = step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h) }
-        for (let y = step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y) }
-        ctx.stroke()
-        return
-    }
-    // A dot covers a fraction of what a line does, so the same ink comes out half as dark.
-    ctx.fillStyle = 'rgba(148, 163, 184, 0.34)'
-    for (let x = step; x < w; x += step) {
-        for (let y = step; y < h; y += step) {
-            ctx.beginPath()
-            ctx.arc(x, y, pen * 1.4, 0, Math.PI * 2)
-            ctx.fill()
-        }
-    }
-}
 
 /**
  * Everything drawn, as a PNG — not the window's worth of it you happen to be looking at. A chain
@@ -2245,7 +2196,8 @@ async function stageBlob(): Promise<Blob> {
     out.height = shot.height
     const ctx = out.getContext('2d')
     if (!ctx) throw new Error('this browser would not give the page a 2D canvas')
-    paintBackdrop(ctx, out.width, out.height, fit.ratio)
+    paintBackdrop(ctx, out.width, out.height, fit.ratio, shotBack.value,
+        getComputedStyle(document.documentElement).getPropertyValue('--app-bg').trim() || '#0f172a')
     ctx.drawImage(shot, 0, 0)
     return await new Promise<Blob>((resolve, reject) => {
         out.toBlob(b => (b ? resolve(b) : reject(new Error('the picture would not encode as a PNG'))), 'image/png')

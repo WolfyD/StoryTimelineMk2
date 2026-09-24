@@ -42,6 +42,9 @@ defineEmits<{ close: [] }>()
                         <tr><td>Tag</td><td>Manage tags — rename, recolor, merge, delete</td></tr>
                         <tr><td>List</td><td>Mass add — type many items at once instead of one form at a time</td></tr>
                         <tr><td>Books</td><td>Draw another timeline underneath this one for reference, without changing either <em>(R)</em></td></tr>
+                        <tr><td>Ruler</td><td>The timeline itself — the module you are in, past the separator</td></tr>
+                        <tr><td>People</td><td>Open the <strong>Characters</strong> window</td></tr>
+                        <tr><td>Graph</td><td>Open the <strong>Relations</strong> window</td></tr>
                         <tr><td>Export</td><td>Save this timeline, or just the days you worked on it, to a file</td></tr>
                         <tr><td>?</td><td>Help, Shortcuts and About</td></tr>
                         <tr><td>Gear</td><td>Timeline settings — look, layout, calendar overlay, time breaks</td></tr>
@@ -79,6 +82,9 @@ defineEmits<{ close: [] }>()
                         <tr><td>Undo delete</td><td><kbd>{{ MOD }}</kbd> + <kbd>Z</kbd></td></tr>
                     </tbody>
                 </table>
+
+                <h3>Ages and periods that run off the edge</h3>
+                <p><strong>Open start</strong> and <strong>Open end</strong> draw a fading arrow instead of a hard edge — for the war that was already old when the story begins, or the dynasty that outlasts it, without stretching the timeline to a year you do not mean. Tick either, or both. <strong>Fade out</strong> beside them trails the open side away instead of ending it flat.</p>
             </section>
 
             <!-- DISTANCE -->
@@ -105,6 +111,94 @@ defineEmits<{ close: [] }>()
                 <p>The <strong>Notes panel</strong> (right side) shows notes anchored to the visible time range. Write in the text box and press <kbd>{{ MOD }}</kbd> + <kbd>Enter</kbd> to save.</p>
             </section>
 
+            <!-- CHARACTERS -->
+            <section>
+                <h2>Characters</h2>
+                <p>The <strong>Characters</strong> button in the activity strip opens a window with everyone in this timeline down one side and a form for whoever you picked. Drag the edge of the list to widen it; the width is remembered.</p>
+                <table>
+                    <tbody>
+                        <tr><th>Field</th><th>What it is for</th></tr>
+                        <tr><td>Names</td><td>First and last name, plus nicknames and aliases — any of which the app will recognise in your writing</td></tr>
+                        <tr><td>Gender</td><td>Picks the natural English word in every relation — <em>mother of</em>, <em>son of</em>, <em>aunt of</em>. Type past the suggestions if none fit; the wording then reads the neutral way.</td></tr>
+                        <tr><td>Faction</td><td>Whatever your world divides itself into — a house, a guild, a cult. Free text, and the box suggests names you have used before, so a cast does not end up split between <em>Night Watch</em> and <em>night watch</em>.</td></tr>
+                        <tr><td>Race, state, importance, color</td><td>State is alive, dead, missing — or anything you type</td></tr>
+                        <tr><td>Portrait</td><td>Their face shows beside their name, and on the timeline. Replacing it clears the old one out.</td></tr>
+                        <tr><td>Birth and death</td><td>Entered exactly the way item dates are, at whatever level of detail you have — a year, a month, a day</td></tr>
+                        <tr><td>Shared character</td><td>They join every timeline's cast while staying one person: the same portrait, dates and relations, edited in one place</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>Putting a character on the timeline</h3>
+                <p>Tick <strong>Show on timeline</strong> and their birth and death appear as events in their own color, carrying their portrait. Move a date and the events move with it; untick the box and they go away. They draw as a round portrait rather than a box, and can be filtered as <strong>Character</strong>.</p>
+                <p>Right-click one and pick <em>Edit character</em> to come back here. <em>Edit item</em> still edits the event itself.</p>
+
+                <h3>Where they appear</h3>
+                <p>Type a character's name, nickname or alias into an item's description and it lights up as you write; click away and they are attached to the item, marked as something the app found rather than something you added. Take one off and it stays off. <strong>+ New</strong> in an item's character picker invents one from whatever you typed into the filter box.</p>
+                <p><strong>Appears in</strong> on the character form lists every item they are in with the role you gave them — click one to fly the timeline to it, or the pencil to open it.</p>
+                <p><strong>Their timeline</strong>, on that same header or on a right-clicked portrait, reopens the timeline with everything that is not about them left out: ringed in their color, and read-only, because it is a view of their life rather than another place to edit it. A wave in their color runs from birth to death along the middle; a date you never recorded leaves it dashed and running off that edge. The births and deaths of everyone they are related to are drawn there too, smaller and dimmer. Export from inside that window and you get a timeline file of that character alone.</p>
+
+                <h3>Relations</h3>
+                <p>The <strong>Relations</strong> section of the form ties a character to another — parent, sibling, grandparent, cousin, spouse, in-law, friend, colleague, rival, twenty kinds in all — and the tie shows on both of their pages, read the right way round from each.</p>
+                <table>
+                    <tbody>
+                        <tr><td>Relate</td><td>Opens a list of everyone else with their portrait, years and state, and a search box over it. The kind you choose is spelled out underneath both ways round, and a button swaps the two if you had them backwards.</td></tr>
+                        <tr><td>Kinds</td><td>Add your own — “Sworn enemies”, “Liege / sworn” — and say how each reads in either direction. Removing a kind leaves the relations that used it in place.</td></tr>
+                        <tr><td>Dates</td><td>Most need none, since a son is one from birth. Tick <em>From</em> or <em>Until</em> for the ones that do, like an adoption or a marriage that ended.</td></tr>
+                        <tr><td>Closeness</td><td>0 to 100. Draws the line thicker in the Relations window, and pulls the two harder together when the web lays itself out.</td></tr>
+                        <tr><td>Degree</td><td><em>half-sister of</em>, <em>cousin once removed of</em> — it reads into the wording everywhere the relation is named</td></tr>
+                        <tr><td>State</td><td>Estranged, secret, adoptive, former, alleged. It leads the wording and changes the line: secret and alleged draw as long dashes, estranged and former as short ones.</td></tr>
+                    </tbody>
+                </table>
+                <p class="help-tip">When somebody shares a last name with characters you have not related them to, the section offers to sort it out: every pair listed with a guess from their birth years — sixteen years or more apart reads as parent and child, closer than that as siblings. The guesses are only the dates talking, so every row can be re-kinded, swapped or unticked, and nothing is written until you press the button.</p>
+            </section>
+
+            <!-- RELATIONS -->
+            <section>
+                <h2>The Relations window</h2>
+                <p>The <strong>Relations</strong> button in the activity strip draws the whole cast as one picture — every character a circle with their portrait in it, every relation a line in the colour of its kind. Seven views of the same web; whoever you have selected, the year you have set and the kinds you have ticked carry across all of them.</p>
+                <table>
+                    <tbody>
+                        <tr><th>View</th><th>What it shows</th></tr>
+                        <tr><td>Knots</td><td>Everyone loose, pulled together by their ties, with each group of people who mostly know each other shoved clear of the rest and sitting under a soft coloured blob named after whoever in it has the most ties. <strong>Knot distance</strong> decides how hard the groups push apart. Drag somebody and they stay where you put them, next time too.</td></tr>
+                        <tr><td>Matrix</td><td>The cast down the side and across the top, with a square wherever two of them are related — brighter the closer they are, grouped by faction so each house is a block on the diagonal. Click a square, or a name down the side and one across the top, to ask about that pair.</td></tr>
+                        <tr><td>Genogram</td><td>A family tree around whoever you picked: ancestors above, descendants below, couples joined by a connector their children hang off. Men are squares, women circles, anyone else a diamond, with the portrait inside; a cross through the shape means they are dead. Every tie that is not descent is drawn over it as a curve — dashed if secret or estranged, jagged if hostile. Click a relative to re-centre on them.</td></tr>
+                        <tr><td>Arc</td><td>The cast along one axis in birth order, family arching over the line and everything else looping under it. The <strong>spread</strong> slider runs from even spacing to true-to-the-years, and a checkbox stacks the line into rows by generation. Anyone you never gave a birth year waits past a dashed fence at the end.</td></tr>
+                        <tr><td>Sociogram</td><td>Every faction in a box of its own, standing in a ring. Ties inside a box fade into the background; ties that cross from one faction to another are drawn full strength. <strong>Crossing ties</strong> turns the crossings down when the middle fills in solid. Anyone without a faction rings the outside.</td></tr>
+                        <tr><td>Chord</td><td>Factions round a circle with a ribbon between every pair that has ties, as thick as the number of them — a slice is as wide as its dealings, not its size. Click a slice or ribbon to light it and list who it is made of. Switch to <strong>Kinds</strong> to put your relation categories round the circle instead.</td></tr>
+                        <tr><td>Chain</td><td>The route between the two characters in <em>How are they related?</em>, laid out with each step written over its line. Round everybody on the way is a small circle for each of their other relations — up to five, with a <em>+3</em> where there are more. Untick <em>Side circles</em> for the bare route.</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>How are they related?</h3>
+                <p>Pick two characters and the sidebar spells the chain out — <em>Risha is the mother of Adan, who is the wife of Toma</em> — and traces it through the web. If nothing connects them, it says so. It answers from the relations you have recorded, as of the year on the scrubber; unticking a kind changes what the picture draws, not who is related to whom.</p>
+                <p>Tick <strong>Show the route</strong> in the <strong>Matrix</strong> or the <strong>Genogram</strong> to see the answer drawn rather than read: numbered rings on the squares where each pair meets with a dotted line between them, or the chart's own lines lit down through the family. The genogram only offers it when both ends are on the chart in front of you.</p>
+
+                <h3>The sidebar</h3>
+                <table>
+                    <tbody>
+                        <tr><td>Search</td><td>Pulls whoever you type to the middle of the window</td></tr>
+                        <tr><td>Kinds</td><td>Which categories of relation the picture draws. In the Genogram they start unticked, so you get the bare family tree and add the rest over it when you want them.</td></tr>
+                        <tr><td>As of year</td><td>The web as it was that year: relations that had not started or had already ended disappear, characters not yet born fade almost away, the dead are half-lit</td></tr>
+                        <tr><td>Unconnected</td><td>The characters no relation mentions at all — usually the ones you meant to get back to</td></tr>
+                    </tbody>
+                </table>
+                <p class="help-tip">Drag the edge beside the sidebar to make it wider; the width is remembered, as are the sliders.</p>
+
+                <h3>Clicking around</h3>
+                <p>Click a character and everyone more than one step away fades, so you can read their corner of it. They stay ringed in white in every view, and a re-drawn chart brings them back to the middle only when they have actually gone off the edge. Double-click opens them in the Characters window.</p>
+                <p>Right-click anywhere for the app's own menu: on a character, <em>Their timeline</em>, <em>Open in characters</em>, <em>Centre the genogram here</em>, and the two ends of <em>How are they related?</em>; on the background, <em>Fit to window</em> and <em>Unpin all</em>.</p>
+
+                <h3>Taking a picture of it</h3>
+                <p>Three small buttons in the top-right corner of the picture: <strong>Copy</strong>, <strong>Save</strong>, and the settings the two share. Both write out <em>everything drawn</em>, with a margin round it — not the window's worth you happen to be looking at.</p>
+                <table>
+                    <tbody>
+                        <tr><td>Behind the picture</td><td>Plain, ruled paper, dotted paper, or transparent for dropping onto a page of your own</td></tr>
+                        <tr><td>Size</td><td>1×, 2× or 4×, with the pixel size it will come to shown underneath</td></tr>
+                    </tbody>
+                </table>
+                <p class="help-tip">A picture too large to encode is scaled down to fit rather than saved blank, and the panel says so before you press anything. In the <strong>Chain</strong> view, <strong>Fit the chain on screen</strong> folds a long route into rows that read back and forth like lines of writing — much the better shape to hand to anybody.</p>
+            </section>
+
             <!-- CALENDAR -->
             <section>
                 <h2>Calendar &amp; dates</h2>
@@ -116,6 +210,13 @@ defineEmits<{ close: [] }>()
             <section>
                 <h2>Time breaks</h2>
                 <p>Hide large empty gaps with a <strong>hidden range</strong> — the canvas shows a striped break strip instead. Click the strip to temporarily expand it. Colors are set in <strong>Timeline Settings → Time Breaks</strong>.</p>
+            </section>
+
+            <!-- REFERENCE TIMELINES -->
+            <section>
+                <h2>Reference timelines</h2>
+                <p>The <strong>books</strong> button in the activity strip draws another timeline underneath this one without changing either, and a year shift lines the two up. The timeline you picked and the shift you gave it come back the next time you open this one; if it can no longer be loaded, it is dropped and the window tells you why.</p>
+                <p>Reference items take the rows your own timeline is not using, so they sit beside your events instead of under them. Ages cannot move aside, so an age of yours covering one of theirs is drawn with diagonal slits in the reference age's color — across the stretch where the two actually overlap, so the slits show you where the one behind starts and ends.</p>
             </section>
 
             <!-- IMPORT / EXPORT -->

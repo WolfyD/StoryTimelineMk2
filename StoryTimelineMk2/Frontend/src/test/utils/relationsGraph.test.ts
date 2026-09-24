@@ -130,6 +130,28 @@ describe('shortestPath / describePath', () => {
 		expect(shortestPath(edges, 'Risha', 'Ilse')).toBeNull()
 	})
 
+	it('has no route through a tie that had not started, or was over, by the chosen year', () => {
+		// What the year scrubber does: the route is searched over the ties alive that year, so a
+		// marriage in 1200 is not a way through the web in 1150 and not one in 1250 either.
+		const dated = [
+			tie('parent', 'Risha', 'Adan'),
+			tie('spouse', 'Adan', 'Toma', { StartYear: 1200, EndYear: 1210 }),
+		]
+		const at = (year: number | null) => shortestPath(
+			buildEdges(
+				dated.filter(r => relationActiveAt(r, year)),
+				TYPES,
+				new Set(chars.map(c => c.Id)),
+			),
+			'Risha', 'Toma',
+		)
+		expect(at(1205)?.nodes).toEqual(['Risha', 'Adan', 'Toma'])
+		expect(at(1150)).toBeNull()
+		expect(at(1250)).toBeNull()
+		// And with the scrubber off, dates say nothing at all.
+		expect(at(null)?.nodes).toEqual(['Risha', 'Adan', 'Toma'])
+	})
+
 	it('words each step from its own subject', () => {
 		const found = shortestPath(edges, 'Risha', 'Toma')!
 		const text = describePath(

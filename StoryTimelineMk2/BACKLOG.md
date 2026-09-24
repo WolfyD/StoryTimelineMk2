@@ -71,7 +71,9 @@ zoom apply to them too). Rules:
 Chord; see the sections below. **Knots was reprieved the same day** and fixed rather than cut
 (asked for 2026-09-24). Rings and Rows are gone, Grid is the Matrix and has its interactions, and
 a batch of ten further changes asked for the same day is in the last section — followed by the
-chain's fold-to-fit and the picture the two corner buttons now take.
+chain's fold-to-fit and the picture the two corner buttons now take. Verified live across all seven
+views on 2026-09-24, which turned up and fixed the stale export size, added 12 unit tests, and the
+help — modal and `HELP.md` — now covers characters, relations and reference timelines.
 
 BL-76 added four views on the strength of "it is a different arrangement of the same nodes".
 Reviewed side by side, three of them do not earn their place: **Graph and Knots are visually
@@ -559,13 +561,43 @@ and Save because they are the same picture going to two places:
 
 Measured live on the 41-person chain: 1× → 2,068 × 2,121 (322 KB, 0.2 s), 2× → 4,136 × 4,242
 (937 KB), 4× → 8,272 × 8,484 (2.6 MB, 3.5 s); transparent comes back with an alpha-zero corner and
-the other three with the window's own dark; the straight 13,438-wide chain clamps to 16,384 × 391
-at every preset, as it should.
+the other three with the window's own dark; the straight 13,438-wide chain measured 16,384 × 391 at
+2×, the cap doing its work — 1× is under it and 4× lands on the same clamp, neither of which was
+measured separately.
 
 ponytail: the settings are session-only, like the rest of this window's knobs. Persist them
 alongside `relationsSideWidth` if anyone gets tired of picking 4× every time. The wrap is
 recomputed from the stage at build time, so it follows a resize the next time the view is drawn
 rather than reflowing under you — re-press the button, or switch views and back.
+
+**Verified live across all seven views, and one bug out of it** *(2026-09-24)*. 100 characters /
+190 visible edges, each view exported plain and transparent at 1× and 4×, counting lit pixels
+across the middle of every image rather than trusting the dimensions — a browser answers an
+impossible crop with a blank canvas, not an error. Nothing came back blank; transparent gives an
+alpha-zero corner and plain the window's own dark; the stage's scale and position are byte-identical
+before and after every export; `copyImage()` and `saveImage()` were run for real; an emptied layer
+says *there is nothing drawn to make a picture of* rather than writing a file. Tree 6,006 × 2,286
+and arc 7,361 × 388 both hit the side cap at 4× (ratios 2.73 and 2.23) and sociogram reached
+12,969 × 13,277 at 172 MP under the area cap.
+
+The bug: **the pixel size under the Size buttons went stale.** It was refreshed from a
+`watch([shotScale, shotOpen])`, and neither of those changes when the drawing does — switch view or
+move the year scrubber with the panel open and the number was the one from before. Fixed at the
+source, a guarded `layer.on('draw')` that re-reads it only while the panel is open, so it costs
+nothing the rest of the time. Verified across clusters / matrix / tree / arc / chord / chain: the
+number shown now equals the number measured in every one.
+
+The export maths came out into `Frontend/src/utils/imageExport.ts` (`shotFit`, `paintBackdrop`, the
+two ceilings) so it can be tested without a stage: 11 tests covering the crop margin, both branches
+of the cap on the real 13,438-wide chain, a shape sweep asserting neither ceiling is ever crossed,
+the null/zero cases, and that transparent paints nothing while the paper is ruled in export pixels.
+A twelfth test in `relationsGraph.test.ts` pins the year scrubber against the path finder: a
+marriage in 1200 is not a route through the web in 1150, nor in 1250, and with the scrubber off the
+dates say nothing at all.
+
+**Documented** in the in-app help (**Characters**, **The Relations window**, **Reference
+timelines**, and open-ended ages) and in `HELP.md`, which was still describing the timeline alone
+and is now level with the modal.
 
 ---
 
