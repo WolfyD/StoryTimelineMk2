@@ -25,6 +25,10 @@ function makeKonvaShape(id: string) {
     cache: vi.fn(),
     clearCache: vi.fn(),
     getLayer: vi.fn(),
+    fillLinearGradientStartPoint: vi.fn(),
+    fillLinearGradientEndPoint: vi.fn(),
+    fillLinearGradientColorStops: vi.fn(),
+    fillPriority: vi.fn(),
   }
 }
 
@@ -54,12 +58,18 @@ vi.mock('konva', () => {
       Tag: makeClass('Tag'),
       Group,
       Easings: { EaseOut: 'easeOut' },
+      // Enough of it for fadedColor: six-digit hex is what every test here passes.
+      Util: {
+        colorToRGBA: (c: string) => /^#[0-9a-f]{6}$/i.test(c)
+          ? { r: parseInt(c.slice(1, 3), 16), g: parseInt(c.slice(3, 5), 16), b: parseInt(c.slice(5, 7), 16), a: 1 }
+          : undefined,
+      },
     },
   }
 })
 
 // Import after mock is registered
-import { buildNode, setNodeVisibility, updateAbsolutePositions } from '@/utils/timelineNodes'
+import { buildNode, setNodeVisibility, updateAbsolutePositions, KIN_SCALE } from '@/utils/timelineNodes'
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -210,13 +220,96 @@ describe('buildNode', () => {
   })
 
   // A portrait with transparency over a filled disc drowns the face, so the fill is opt-in.
-  it('leaves a character disc neutral unless they ask for the highlight colour', () => {
+  it('leaves a character disc neutral unless they ask for the highlight color', () => {
     const ringOnly = buildNode('c1', 'Character', 'Risha', '#ff0000', stems as any, boxes as any, ls) as any
     expect(ringOnly.box.opts.fill).toBe('#00000022')
     expect(ringOnly.box.opts.stroke).toBe('#ff0000')
 
     const filled = buildNode('c2', 'Character', 'Risha', '#ff0000', stems as any, boxes as any, ls, false, false, true) as any
     expect(filled.box.opts.fill).toBe('#ff0000')
+    // An opaque portrait covers the disc, so the fill alone is invisible for exactly the characters
+    // most likely to have one — the ring has to carry the highlight as well.
+    expect(filled.box.opts.strokeWidth).toBeGreaterThan(ringOnly.box.opts.strokeWidth)
+  })
+
+  // BL-17: kin on a character's own timeline are context. laneSpanFor reads the same number, so a
+  // disc that shrinks here has to shrink in TimelineCanvas's boxWidth too or the packer leaves a hole.
+  it('draws a portrait smaller at KIN_SCALE, caption included', () => {
+    const sizes = makeLayoutSettings({ TimelineBoxTypesBoxWidth: 100, TimelineCharacterCaptionFontSize: 10 })
+    const full = buildNode('c1', 'Character', 'Risha', '#aaa', stems as any, boxes as any, sizes, true) as any
+    const kin  = buildNode('c2', 'Character', 'Adan', '#aaa', stems as any, boxes as any, sizes, true, false, false, KIN_SCALE) as any
+
+    expect(full.box.opts.width).toBe(100)
+    expect(kin.box.opts.width).toBe(100 * KIN_SCALE)
+    expect(kin.box.opts.cornerRadius).toBe(kin.box.opts.width / 2)   // still a disc, not an egg
+    expect(kin.label.add.mock.calls[1][0].opts.fontSize).toBe(10 * KIN_SCALE)
+  })
+
+  // BL-72: an open side is an arrowhead that fades out, so a span can say "and long after that"
+  // without the timeline being stretched to a year nobody means. The closed side stays an edge.
+  it('points an open-ended age off its open side only', () => {
+    const ages = makeLayoutSettings({ TimelineAgeHeight: 20 })
+    const el = buildNode('a1', 'Age', 'The Long War', '#abcdef', stems as any, boxes as any, ages,
+                         false, false, false, 1, false, true) as any
+    expect(el.arrowStart).toBeUndefined()
+    expect(el.arrowEnd).toBeDefined()
+
+    updateAbsolutePositions(el, 'Age', 100, 300, 50, 200, false, 60, ages)
+    const pts = el.arrowEnd.points.mock.calls.at(-1)[0]
+    // The point is ON the end date and the head runs back over the bar from there. The other way
+    // up put the arrow a headlength past the year it marks, and left a rounded corner sticking
+    // out behind the tip. Solid, too: an undated end is not a fading one.
+    expect(pts[2]).toBe(300)                // tip sits on the bar's end date
+    expect(pts[0]).toBe(268)                // base is a headlength back inside the bar
+    expect(el.arrowEnd.opts.fillPriority).toBe('color')
+    expect(el.fade).toBeUndefined()
+    // And the bar ends where the head begins rather than running on underneath it. Overlaid, the
+    // bar's own edge showed through a half-transparent head, which is the one thing it must not do.
+    expect(el.box.position.mock.calls.at(-1)[0].x).toBe(100)
+    expect(el.box.width.mock.calls.at(-1)[0]).toBe(168)
+    // Square on the open side only: a rounded corner leaves a notch at the head's base, which is
+    // where the triangle is widest and covers nothing beyond.
+    expect(el.box.cornerRadius.mock.calls.at(-1)[0]).toEqual([ages.TimelineAgeCornerRounding, 0, 0, ages.TimelineAgeCornerRounding])
+  })
+
+  // BL-72: "fade out" is the writer's other claim — this trails off rather than merely stopping.
+  // One gradient over the bar and a matching one on each head, so the two read as one surface.
+  it('fades an open span into its bar, not just its arrowhead', () => {
+    const ages = makeLayoutSettings({ TimelineAgeHeight: 20 })
+    const el = buildNode('a2', 'Age', 'The Long War', '#abcdef', stems as any, boxes as any, ages,
+                         false, false, false, 1, true, true, true) as any
+
+    updateAbsolutePositions(el, 'Age', 100, 300, 50, 200, false, 60, ages, false, 40)
+    // 40px of a 200px bar is a fifth, from each end, and the stops have to stay in order.
+    expect(el.box.fillLinearGradientColorStops.mock.calls.at(-1)[0])
+      .toEqual([0, 'rgba(171,205,239,0.500)', 0.2, '#abcdef', 0.8, '#abcdef', 1, 'rgba(171,205,239,0.500)'])
+    // The head's gradient runs tip → inward over the same year, so head and bar meet seamlessly.
+    const tip = el.arrowEnd.fillLinearGradientStartPoint.mock.calls.at(-1)[0]
+    const inward = el.arrowEnd.fillLinearGradientEndPoint.mock.calls.at(-1)[0]
+    expect(tip.x).toBe(300)
+    expect(inward.x).toBe(260)
+    // A 32px head at each end, so the bar is 136 wide starting at 132 — and its gradient still
+    // spans the two dates (local -32 to 168), which is what makes the alphas match at the seam.
+    expect(el.box.position.mock.calls.at(-1)[0].x).toBe(132)
+    expect(el.box.width.mock.calls.at(-1)[0]).toBe(136)
+    expect(el.box.fillLinearGradientStartPoint.mock.calls.at(-1)[0].x).toBe(-32)
+    expect(el.box.fillLinearGradientEndPoint.mock.calls.at(-1)[0].x).toBe(168)
+  })
+
+  // Both ends fading on a bar narrower than two years would cross the stops and Konva throws.
+  it('never runs the two fades past each other on a short span', () => {
+    const ages = makeLayoutSettings({ TimelineAgeHeight: 20 })
+    const el = buildNode('a3', 'Age', 'A Moment', '#abcdef', stems as any, boxes as any, ages,
+                         false, false, false, 1, true, true, true) as any
+
+    updateAbsolutePositions(el, 'Age', 100, 130, 50, 30, false, 60, ages, false, 400)
+    const stops = el.box.fillLinearGradientColorStops.mock.calls.at(-1)[0] as number[]
+    const offsets = stops.filter((_, i) => i % 2 === 0)
+    expect(offsets).toEqual([...offsets].sort((a, b) => a - b))
+    // Two heads cannot eat more than the span has: 15px each here, not the 32 the height wants,
+    // so they meet in the middle instead of overrunning each other.
+    expect(el.arrowStart.points.mock.calls.at(-1)[0][0]).toBe(115)
+    expect(el.arrowEnd.points.mock.calls.at(-1)[0][0]).toBe(115)
   })
 
   it('builds a Period node with only a box (no stem, no label)', () => {
@@ -264,13 +357,13 @@ describe('buildNode', () => {
     expect(() => buildNode('id-6', 'Event', 'T', '', stems as any, boxes as any, ls)).not.toThrow()
   })
 
-  it('low resource mode colours the border instead of adding a strip node', () => {
+  it('low resource mode colors the border instead of adding a strip node', () => {
     expect(buildNode('c1', 'Event', 'T', '#ff0000', stems as any, boxes as any, ls).colorStrip).toBeDefined()
 
     const el = buildNode('c2', 'Event', 'T', '#ff0000', stems as any, boxes as any, ls, false, true)
     expect(el.colorStrip).toBeUndefined()
     expect(el.box.stroke).toHaveBeenCalledWith('#ff0000')
-    // a layout with no border would otherwise hide the colour entirely
+    // a layout with no border would otherwise hide the color entirely
     expect(el.box.strokeWidth).toHaveBeenCalledWith(2)
   })
 

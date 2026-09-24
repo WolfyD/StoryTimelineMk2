@@ -24,9 +24,9 @@ describe('HighlightedTextarea', () => {
 		expect(spans[1]!.attributes('style')).toBeUndefined()
 	})
 
-	// The bug: a character's own colour can be near-black, which washed the field darker than its
+	// The bug: a character's own color can be near-black, which washed the field darker than its
 	// background and drew an underline nobody could see.
-	it('lifts a near-black colour to a visible lightness, keeping its hue', () => {
+	it('lifts a near-black color to a visible lightness, keeping its hue', () => {
 		const style = mountWith('#00011f').findAll('.hl-mirror span')[0]!.attributes('style')!
 		expect(lightness(style)).toBeGreaterThanOrEqual(60)
 		expect(style).toMatch(/hsl\(\s*23[0-9]\s/)   // still blue
@@ -40,7 +40,7 @@ describe('HighlightedTextarea', () => {
 		expect(style).not.toMatch(/padding/)
 	})
 
-	it('falls back when there is no usable colour', () => {
+	it('falls back when there is no usable color', () => {
 		for (const color of [null, 'rebeccapurple']) {
 			const style = mountWith(color).findAll('.hl-mirror span')[0]!.attributes('style')!
 			expect(lightness(style)).toBeGreaterThanOrEqual(60)

@@ -1,3 +1,7 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+
 namespace StoryTimelineMk2.Database.Migrations
 {
     /// <summary>
@@ -24,8 +28,14 @@ namespace StoryTimelineMk2.Database.Migrations
             new(8, "session day log", "1.1.0", V8_SessionDays),
             new(9, "character names, portrait and generated items", "1.1.1", V9_CharacterDetails),
             new(10, "character date precision", "1.1.1", V10_CharacterDatePrecision),
-            new(11, "character highlight colour opt-in", "1.1.1", V11_CharacterHighlightColor),
+            new(11, "character highlight color opt-in", "1.1.1", V11_CharacterHighlightColor),
             new(12, "separate caption font sizes", "1.1.1", V12_CaptionFontSizes),
+            new(13, "relationship types and dated relations", "1.1.1", V13_CharacterRelations),
+            new(14, "character gender and the full relation vocabulary", "1.1.1", V14_RelationVocabulary),
+            new(15, "open-ended ages and periods", "1.1.1", V15_OpenEndedSpans),
+            new(16, "shared characters, relation meaning and absolute dates", "1.1.1", V16_CharacterMeaning),
+            new(17, "faction, and where things happened", "1.1.1", V17_FactionAndPlace),
+            new(18, "the fade on an open-ended span", "1.1.1", V18_OpenEndFade),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -878,6 +888,21 @@ namespace StoryTimelineMk2.Database.Migrations
         }
 
         /// <summary>
+        /// The column to read in a backfill, or the literal <c>NULL</c> when this database has never
+        /// had it. Pre-1.0.1 files were built column by column, so a source column is not a given —
+        /// and NULL propagating through the arithmetic is exactly "no date", which is the truth.
+        /// </summary>
+        private static string Col(MigrationDb db, string table, string column) =>
+            HasColumn(db, table, column) ? column : "NULL";
+
+        /// <summary>Needs SQLite 3.35+, which Microsoft.Data.Sqlite 10 carries; no index may name the column.</summary>
+        private static void DropCol(MigrationDb db, string table, string column)
+        {
+            if (HasColumn(db, table, column))
+                db.Execute($"ALTER TABLE {table} DROP COLUMN {column}");
+        }
+
+        /// <summary>
         /// Row fix-ups that used to run after every import (DatabaseImporter.ApplyLegacyMigrations) and
         /// the NULL-coalescing the V2 importer applied while copying. Doing them here means an imported
         /// backup is normalised by the same code as a live database.
@@ -1139,11 +1164,11 @@ namespace StoryTimelineMk2.Database.Migrations
                 ALTER TABLE characters ADD COLUMN death_granularity INTEGER NOT NULL DEFAULT 3;");
         }
 
-        // ── 11: character highlight colour ────────────────────────────────────────────────────────
+        // ── 11: character highlight color ────────────────────────────────────────────────────────
 
         /// <summary>
         /// BL-15, after phase 2. A portrait with transparency sat straight on the character's
-        /// colour, which drowned the face. The disc is neutral now and the colour rides the ring
+        /// color, which drowned the face. The disc is neutral now and the color rides the ring
         /// instead, unless the character asks for the fill back — so this defaults to off,
         /// existing rows included.
         /// </summary>
@@ -1166,6 +1191,253 @@ namespace StoryTimelineMk2.Database.Migrations
             db.Execute(@"UPDATE layout_settings
                             SET timeline_picture_caption_font_size   = timeline_event_font_size,
                                 timeline_character_caption_font_size = timeline_event_font_size");
+        }
+
+        // ── 13: character relations ───────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-15 phase 4 / BL-17. <c>relationship_types</c> came over from v1 but was never seeded, so
+        /// there was no kind to relate two characters by. A starter set goes in — family first, because
+        /// that is what the lifeline's family portraits will read — and the relation itself gains
+        /// optional dates at both ends. Most relations are implied by their kind (a son is one from
+        /// birth), so a NULL year means "for as long as both were here", not year 0; the subtick and
+        /// granularity beside it are the same pair every dated thing in this schema carries.
+        /// </summary>
+        private static void V13_CharacterRelations(MigrationDb db)
+        {
+            foreach (string end in new[] { "start", "end" })
+            {
+                AddCol(db, "character_relationships", $"{end}_year",        "INTEGER");
+                AddCol(db, "character_relationships", $"{end}_subtick",     "INTEGER NOT NULL DEFAULT 0");
+                AddCol(db, "character_relationships", $"{end}_granularity", "INTEGER NOT NULL DEFAULT 3");
+            }
+
+            // OR IGNORE, so a database that already carries one of these ids keeps the user's wording.
+            db.Execute(@"
+                INSERT OR IGNORE INTO relationship_types (id, name, type, a_to_b, b_to_a, one_way) VALUES
+                    ('parent',  'Parent / child',   'family', 'parent of',  'child of',   0),
+                    ('sibling', 'Siblings',         'family', 'sibling of', 'sibling of', 0),
+                    ('spouse',  'Spouses',          'family', 'spouse of',  'spouse of',  0),
+                    ('ally',    'Allies',           'social', 'ally of',    'ally of',    0),
+                    ('rival',   'Rivals',           'social', 'rival of',   'rival of',   0),
+                    ('mentor',  'Mentor / student', 'social', 'mentor of',  'student of', 0)");
+        }
+
+        // ── 14: relation vocabulary ──────────────────────────────────────────────
+
+        /// <summary>
+        /// The six kinds V13 seeded were a starting point; this is the vocabulary v1 offered, folded
+        /// into pairs — "parent" carries "child of" as its reverse, so one row is one relation.
+        ///
+        /// Half of those words are gendered in English, so the kind carries up to three phrasings per
+        /// direction and the character's own <c>gender</c> picks one: "mother of" / "father of" /
+        /// "parent of". Gender is free text with a suggested list behind it, because a writer's world
+        /// may not use ours — anything the reader does not recognise falls back to the neutral phrase,
+        /// which is also what an unstated gender gets. NULL in a gendered column means the same thing:
+        /// there is no gendered word for this kind (nobody is a "female cousin").
+        /// </summary>
+        private static void V14_RelationVocabulary(MigrationDb db)
+        {
+            AddCol(db, "characters", "gender", "TEXT");
+
+            foreach (string col in new[] { "a_to_b_f", "a_to_b_m", "b_to_a_f", "b_to_a_m" })
+                AddCol(db, "relationship_types", col, "TEXT");
+
+            // OR IGNORE: a database that already carries one of these ids keeps the user's wording.
+            db.Execute(@"
+                INSERT OR IGNORE INTO relationship_types
+                    (id, name, type, a_to_b, b_to_a, one_way, a_to_b_f, a_to_b_m, b_to_a_f, b_to_a_m)
+                VALUES
+                    ('parent',         'Parent / child',              'family', 'parent of',         'child of',          0, 'mother of',         'father of',         'daughter of',       'son of'),
+                    ('sibling',        'Siblings',                    'family', 'sibling of',        'sibling of',        0, 'sister of',         'brother of',        'sister of',         'brother of'),
+                    ('half-sibling',   'Half-siblings',               'family', 'half-sibling of',   'half-sibling of',   0, 'half-sister of',    'half-brother of',   'half-sister of',    'half-brother of'),
+                    ('grandparent',    'Grandparent / grandchild',    'family', 'grandparent of',    'grandchild of',     0, 'grandmother of',    'grandfather of',    'granddaughter of',  'grandson of'),
+                    ('aunt-uncle',     'Aunt or uncle / niece or nephew', 'family', 'aunt or uncle of', 'niece or nephew of', 0, 'aunt of',        'uncle of',          'niece of',          'nephew of'),
+                    ('cousin',         'Cousins',                     'family', 'cousin of',         'cousin of',         0, NULL,                NULL,                NULL,                NULL),
+                    ('spouse',         'Spouses',                     'family', 'spouse of',         'spouse of',         0, 'wife of',           'husband of',        'wife of',           'husband of'),
+                    ('step-parent',    'Step-parent / step-child',    'family', 'step-parent of',    'step-child of',     0, 'step-mother of',    'step-father of',    'step-daughter of',  'step-son of'),
+                    ('step-sibling',   'Step-siblings',               'family', 'step-sibling of',   'step-sibling of',   0, 'step-sister of',    'step-brother of',   'step-sister of',    'step-brother of'),
+                    ('parent-in-law',  'Parent-in-law / child-in-law','family', 'parent-in-law of',  'child-in-law of',   0, 'mother-in-law of',  'father-in-law of',  'daughter-in-law of','son-in-law of'),
+                    ('sibling-in-law', 'Siblings-in-law',             'family', 'sibling-in-law of', 'sibling-in-law of', 0, 'sister-in-law of',  'brother-in-law of', 'sister-in-law of',  'brother-in-law of'),
+                    ('friend',         'Friends',                     'social', 'friend of',         'friend of',         0, NULL, NULL, NULL, NULL),
+                    ('best-friend',    'Best friends',                'social', 'best friend of',    'best friend of',    0, NULL, NULL, NULL, NULL),
+                    ('acquaintance',   'Acquaintances',               'social', 'acquaintance of',   'acquaintance of',   0, NULL, NULL, NULL, NULL),
+                    ('colleague',      'Colleagues',                  'social', 'colleague of',      'colleague of',      0, NULL, NULL, NULL, NULL),
+                    ('neighbor',       'Neighbors',                   'social', 'neighbor of',       'neighbor of',       0, NULL, NULL, NULL, NULL),
+                    ('ally',           'Allies',                      'social', 'ally of',           'ally of',           0, NULL, NULL, NULL, NULL),
+                    ('rival',          'Rivals',                      'social', 'rival of',          'rival of',          0, NULL, NULL, NULL, NULL),
+                    ('enemy',          'Enemies',                     'social', 'enemy of',          'enemy of',          0, NULL, NULL, NULL, NULL),
+                    ('mentor',         'Mentor / student',            'social', 'mentor of',         'student of',        0, NULL, NULL, NULL, NULL)");
+
+            // The three V13 already inserted have no gendered wording yet. Only fill what is still
+            // empty, so a user who reworded one of them in between keeps their version.
+            db.Execute(@"
+                UPDATE relationship_types SET a_to_b_f = 'mother of', a_to_b_m = 'father of',
+                                              b_to_a_f = 'daughter of', b_to_a_m = 'son of'
+                WHERE id = 'parent' AND a_to_b_f IS NULL");
+            db.Execute(@"
+                UPDATE relationship_types SET a_to_b_f = 'sister of', a_to_b_m = 'brother of',
+                                              b_to_a_f = 'sister of', b_to_a_m = 'brother of'
+                WHERE id = 'sibling' AND a_to_b_f IS NULL");
+            db.Execute(@"
+                UPDATE relationship_types SET a_to_b_f = 'wife of', a_to_b_m = 'husband of',
+                                              b_to_a_f = 'wife of', b_to_a_m = 'husband of'
+                WHERE id = 'spouse' AND a_to_b_f IS NULL");
+        }
+
+        // ── 15: open-ended ages and periods ──────────────────────────────────────
+
+        /// <summary>
+        /// BL-72: an age or period that runs off into the past or the future. The alternative was
+        /// stretching the timeline out to a year nobody means, so this is a property of the item and
+        /// not of its dates. Two flags rather than a direction enum — "open at both ends" is a real
+        /// answer, and an enum would need four values to say the same thing.
+        /// </summary>
+        private static void V15_OpenEndedSpans(MigrationDb db)
+        {
+            AddCol(db, "items", "open_start", "INTEGER NOT NULL DEFAULT 0");
+            AddCol(db, "items", "open_end",   "INTEGER NOT NULL DEFAULT 0");
+        }
+
+        // ── 18: the fade on an open-ended span ──────────────────────────────
+
+        /// <summary>
+        /// BL-72 follow-up. The arrowhead shipped with its fade welded on, which is the one part of
+        /// the original ask that was meant to be a choice. It is a column rather than a layout
+        /// setting because it is a fact about the span: "this age trails off" and "this age runs on
+        /// at full strength, we simply have not dated its end" are different claims about the story,
+        /// and two ages side by side can want different answers.
+        ///
+        /// Defaults to 0. The fade this flag turns on is not the one that shipped — that one
+        /// dissolved the arrowhead to nothing, this one takes the bar itself to half and back over
+        /// the first year — so there is no old appearance to preserve.
+        /// </summary>
+        private static void V18_OpenEndFade(MigrationDb db)
+        {
+            AddCol(db, "items", "open_fade", "INTEGER NOT NULL DEFAULT 0");
+        }
+
+        // ── 16: shared characters, relation meaning and absolute dates ───────
+
+        /// <summary>One timeline and the LOD profile its calendar points at, for the backfill below.</summary>
+        private sealed class TimelineLod
+        {
+            public int TimelineId { get; set; }
+            public string? Profile { get; set; }
+        }
+
+        /// <summary>
+        /// <c>CASE &lt;column&gt; WHEN 0 THEN 1000.0 … ELSE 1.0 END</c> — a granularity index turned into the
+        /// fraction of a year it steps by, built from one timeline's own profile. A level the profile
+        /// does not list falls back to a whole year, which is what an unconverted row already meant.
+        /// </summary>
+        private static string StepCase(string? profileJson, string column)
+        {
+            var whens = new StringBuilder();
+            try
+            {
+                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(profileJson) ? "[]" : profileJson);
+                foreach (var level in doc.RootElement.EnumerateArray())
+                    whens.Append($" WHEN {level.GetProperty("index").GetInt32()} THEN ")
+                         .Append(level.GetProperty("stepFraction").GetDouble().ToString("R", CultureInfo.InvariantCulture));
+            }
+            catch (Exception ex)
+            {
+                // A profile we cannot read is not worth failing an upgrade over: every level then
+                // reads as a whole year, which is where these dates were before subticks existed.
+                Logger.Warn("MainDbMigrations", $"V16: unreadable LOD profile, treating every level as a year. {ex.Message}");
+            }
+            // A CASE with no WHEN is a syntax error, and an empty profile means whole years anyway.
+            return whens.Length == 0 ? "1.0" : $"CASE {column}{whens} ELSE 1.0 END";
+        }
+
+        /// <summary>
+        /// BL-75. Three changes to the same two tables, so they share one step:
+        ///
+        ///  - <c>characters.shared</c>: a character every timeline's cast includes. <c>timeline_id</c>
+        ///    stays put as where they came from, so unticking it puts them back.
+        ///  - Characters and relations get the <c>absolute_*</c> pair items have carried since BL-02:
+        ///    the year with the subtick multiplied out by its LOD step, so a lifeline and the birth
+        ///    item it belongs to land on the same pixel. The subtick columns go — the editor derives
+        ///    one back from the absolute and the granularity, which is the point of storing it.
+        ///  - <c>custom_relationship_type</c> and <c>is_bidirectional</c> go: kinds have been rows in
+        ///    <c>relationship_types</c> since V13, and a relation is stored once for the pair either way.
+        ///
+        /// The backfill reads each timeline's own profile rather than assuming ours, because a step
+        /// fraction belongs to the calendar — a world with ten-month years has its own.
+        /// </summary>
+        private static void V16_CharacterMeaning(MigrationDb db)
+        {
+            AddCol(db, "characters", "shared", "INTEGER NOT NULL DEFAULT 0");
+            foreach (string table in new[] { "characters", "character_relationships" })
+            {
+                AddCol(db, table, "absolute_start", "REAL");
+                AddCol(db, table, "absolute_end",   "REAL");
+            }
+
+            string bY = Col(db, "characters", "birth_year"), bS = Col(db, "characters", "birth_subtick"),
+                   dY = Col(db, "characters", "death_year"), dS = Col(db, "characters", "death_subtick"),
+                   sY = Col(db, "character_relationships", "start_year"), sS = Col(db, "character_relationships", "start_subtick"),
+                   eY = Col(db, "character_relationships", "end_year"),   eS = Col(db, "character_relationships", "end_subtick");
+
+            foreach (var tl in db.Query<TimelineLod>(@"
+                SELECT t.id AS TimelineId, p.profile AS Profile
+                FROM timelines t
+                JOIN calendars c     ON c.id = t.calendar_id
+                JOIN lod_profiles p  ON p.id = c.lod_profile_id"))
+            {
+                db.Execute($@"
+                    UPDATE characters SET
+                        absolute_start = {bY} + {bS} * ({StepCase(tl.Profile, Col(db, "characters", "birth_granularity"))}),
+                        absolute_end   = {dY} + {dS} * ({StepCase(tl.Profile, Col(db, "characters", "death_granularity"))})
+                    WHERE timeline_id = @Id", new { Id = tl.TimelineId });
+
+                db.Execute($@"
+                    UPDATE character_relationships SET
+                        absolute_start = {sY} + {sS} * ({StepCase(tl.Profile, Col(db, "character_relationships", "start_granularity"))}),
+                        absolute_end   = {eY} + {eS} * ({StepCase(tl.Profile, Col(db, "character_relationships", "end_granularity"))})
+                    WHERE timeline_id = @Id", new { Id = tl.TimelineId });
+            }
+
+            // Rows whose timeline has no calendar to look up, and relations that never belonged to
+            // one: the year on its own is still the right answer to a subtick of nothing.
+            db.Execute($@"
+                UPDATE characters SET absolute_start = {bY} WHERE absolute_start IS NULL AND {bY} IS NOT NULL;
+                UPDATE characters SET absolute_end   = {dY} WHERE absolute_end   IS NULL AND {dY} IS NOT NULL;
+                UPDATE character_relationships SET absolute_start = {sY} WHERE absolute_start IS NULL AND {sY} IS NOT NULL;
+                UPDATE character_relationships SET absolute_end   = {eY} WHERE absolute_end   IS NULL AND {eY} IS NOT NULL;");
+
+            // Strength drives how thick an edge draws and how hard its spring pulls, so it needs a
+            // number rather than a NULL: 50 is the middle, and what the column already defaults to.
+            db.Execute("UPDATE character_relationships SET relationship_strength = 50 WHERE relationship_strength IS NULL");
+
+            DropCol(db, "characters", "birth_subtick");
+            DropCol(db, "characters", "death_subtick");
+            DropCol(db, "character_relationships", "start_subtick");
+            DropCol(db, "character_relationships", "end_subtick");
+            DropCol(db, "character_relationships", "custom_relationship_type");
+            DropCol(db, "character_relationships", "is_bidirectional");
+        }
+
+        /// <summary>
+        /// Four columns, one of them used today.
+        ///
+        /// <c>characters.faction</c> is free text like <c>race</c> — a writer's allegiances are
+        /// their own, and a lookup table would only be a list of words with ids bolted on. It
+        /// groups the cast in the relations views.
+        ///
+        /// The three <c>*_location_id</c> columns are groundwork for BL-16 (the Map feature) and
+        /// have no UI yet. They are TEXT because that is what a location id will be once locations
+        /// exist; no foreign key, for the same reason — there is no table to point at. BL-16 owns
+        /// deciding whether these stay as they are or become a junction, so nothing reads them
+        /// until then and they cost one ALTER TABLE each to change course.
+        /// </summary>
+        private static void V17_FactionAndPlace(MigrationDb db)
+        {
+            AddCol(db, "characters", "faction", "TEXT");
+            AddCol(db, "characters", "birth_location_id", "TEXT");
+            AddCol(db, "characters", "death_location_id", "TEXT");
+            AddCol(db, "items", "location_id", "TEXT");
         }
     }
 }

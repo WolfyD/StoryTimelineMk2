@@ -203,14 +203,16 @@ namespace StoryTimelineMk2.Database
                         year, end_year,
                         absolute_start, absolute_end,
                         book_title, chapter, page, color, creation_granularity,
-                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement, centered, show_title, item_notes
+                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement, centered, show_title, item_notes,
+                        open_start, open_end, open_fade, location_id
                     )
                     VALUES (
                         @Id, @Title, @Description, @Content, @StoryId, @TypeId,
                         @Year, @EndYear,
                         @AbsoluteStart, @AbsoluteEnd,
                         @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
-                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask, @Placement, @Centered, @ShowTitle, @ItemNotes
+                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask, @Placement, @Centered, @ShowTitle, @ItemNotes,
+                        @OpenStart, @OpenEnd, @OpenFade, @LocationId
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title, description = excluded.description, content = excluded.content,
@@ -223,6 +225,9 @@ namespace StoryTimelineMk2.Database
                         importance = excluded.importance, min_lod_level = excluded.min_lod_level,
                         lod_visibility_mask = excluded.lod_visibility_mask, placement = excluded.placement,
                         centered = excluded.centered, show_title = excluded.show_title, item_notes = excluded.item_notes,
+                        open_start = excluded.open_start, open_end = excluded.open_end,
+                        open_fade = excluded.open_fade,
+                        location_id = excluded.location_id,
                         updated_at = CURRENT_TIMESTAMP;";
 
                 db.Execute(sql, item, tx);

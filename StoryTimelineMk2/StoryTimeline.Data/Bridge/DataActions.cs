@@ -51,6 +51,13 @@ namespace StoryTimelineMk2.Bridge
                 case "FocusTimelineItem":        HandleFocusTimelineItem(message); break;
                 case "DismissCharacterLink":     HandleDismissCharacterLink(message); break;
                 case "GetCharacterIdForItem":    HandleGetCharacterIdForItem(message); break;
+                case "GetCharacterRelations":    HandleGetCharacterRelations(message); break;
+                case "GetTimelineRelations":     HandleGetTimelineRelations(message); break;
+                case "SaveCharacterRelation":    HandleSaveCharacterRelation(message); break;
+                case "DeleteCharacterRelation":  HandleDeleteCharacterRelation(message); break;
+                case "GetRelationshipTypes":     HandleGetRelationshipTypes(message); break;
+                case "SaveRelationshipType":     HandleSaveRelationshipType(message); break;
+                case "DeleteRelationshipType":   HandleDeleteRelationshipType(message); break;
                 case "GetAllStories":            HandleGetAllStories(message); break;
                 case "SearchBooks":              HandleSearchBooks(message); break;
                 case "GetBookChapters":          HandleGetBookChapters(message); break;
@@ -379,6 +386,80 @@ namespace StoryTimelineMk2.Bridge
         {
             string itemId = message.Payload.GetProperty("itemId").GetString()!;
             ReplyToVue(message.MessageId, new { characterId = new CharacterRepo().GetCharacterIdByItem(itemId) });
+        }
+
+        // ── Relations (BL-15 phase 4 / BL-17) ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// Both ends of the panel in one reply: the character's relations and the kinds they can be.
+        /// The kinds barely change and the list is tiny, so one round trip beats two.
+        /// </summary>
+        private void HandleGetCharacterRelations(BridgeMessage message)
+        {
+            string characterId = message.Payload.GetProperty("characterId").GetString()!;
+            var repo = new CharacterRepo();
+            ReplyToVue(message.MessageId, new
+            {
+                Relations = repo.GetRelationships(characterId),
+                Types = repo.GetRelationshipTypes(),
+            });
+        }
+
+        /// <summary>
+        /// BL-73: the whole web in one reply — everyone, every tie, every kind. The relations
+        /// window draws all three together, and splitting it would only mean three waits.
+        /// </summary>
+        private void HandleGetTimelineRelations(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            var repo = new CharacterRepo();
+            ReplyToVue(message.MessageId, new
+            {
+                Characters = repo.GetCharactersByTimeline(timelineId),
+                Relations = repo.GetRelationshipsByTimeline(timelineId),
+                Types = repo.GetRelationshipTypes(),
+            });
+        }
+
+        private void HandleSaveCharacterRelation(BridgeMessage message)
+        {
+            var relation = JsonSerializer.Deserialize<CharacterRepo.CharacterRelationship>(
+                message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveCharacterRelation received an empty payload.");
+            if (relation.Character1Id == relation.Character2Id)
+                throw new InvalidOperationException("A character cannot be related to themselves.");
+
+            relation.Id = new CharacterRepo().SaveRelationship(relation);
+            ReplyToVue(message.MessageId, new { status = "ok", relation });
+        }
+
+        private void HandleDeleteCharacterRelation(BridgeMessage message)
+        {
+            new CharacterRepo().DeleteRelationship(message.Payload.GetProperty("id").GetInt64());
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleGetRelationshipTypes(BridgeMessage message)
+        {
+            ReplyToVue(message.MessageId, new CharacterRepo().GetRelationshipTypes());
+        }
+
+        private void HandleSaveRelationshipType(BridgeMessage message)
+        {
+            var type = JsonSerializer.Deserialize<CharacterRepo.RelationshipType>(
+                message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveRelationshipType received an empty payload.");
+            if (string.IsNullOrWhiteSpace(type.Id) || string.IsNullOrWhiteSpace(type.Name))
+                throw new InvalidOperationException("A relationship type needs an id and a name.");
+
+            new CharacterRepo().SaveRelationshipType(type);
+            ReplyToVue(message.MessageId, new { status = "ok", type });
+        }
+
+        private void HandleDeleteRelationshipType(BridgeMessage message)
+        {
+            new CharacterRepo().DeleteRelationshipType(message.Payload.GetProperty("id").GetString()!);
+            ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
         /// <summary>

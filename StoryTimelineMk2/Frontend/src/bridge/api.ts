@@ -6,6 +6,8 @@ import type {
 	Calendar,
 	CharacterItem,
 	CharacterAppearance,
+	CharacterRelationship,
+	RelationshipType,
 	MediaItem,
 	Story,
 	Book,
@@ -356,6 +358,53 @@ export const BackendAPI = {
 	/** The character a birth/death item belongs to — null for every other item. */
 	async GetCharacterIdForItem(itemId: string) {
 		return await this.request<{ characterId: string | null }>('GetCharacterIdForItem', { itemId });
+	},
+
+	/** Both halves in one round trip: the character's relations and the kinds to read them by. */
+	async GetCharacterRelations(characterId: string) {
+		return await this.request<{
+			Relations: CharacterRelationship[];
+			Types: RelationshipType[];
+		}>('GetCharacterRelations', { characterId });
+	},
+
+	/** BL-73: the whole web at once — the relations window draws all three together. */
+	async GetTimelineRelations(timelineId: number) {
+		return await this.request<{
+			Characters: CharacterItem[];
+			Relations: CharacterRelationship[];
+			Types: RelationshipType[];
+		}>('GetTimelineRelations', { timelineId });
+	},
+
+	/** `characterId` centres the graph and roots the family tree on them. */
+	async OpenRelationsWindow(timelineId: number, characterId?: string) {
+		return await this.request<{ status: string }>('OpenRelationsWindow', { timelineId, characterId });
+	},
+
+	async SaveCharacterRelation(relation: CharacterRelationship) {
+		// The saved row comes back, so a new relation picks up its backend-side id.
+		return await this.request<{ status: string; relation: CharacterRelationship }>(
+			'SaveCharacterRelation',
+			relation,
+		);
+	},
+
+	async DeleteCharacterRelation(id: number) {
+		return await this.request<{ status: string }>('DeleteCharacterRelation', { id });
+	},
+
+	async GetRelationshipTypes() {
+		return await this.request<RelationshipType[]>('GetRelationshipTypes', {});
+	},
+
+	async SaveRelationshipType(type: RelationshipType) {
+		return await this.request<{ status: string }>('SaveRelationshipType', type);
+	},
+
+	/** Relations that used the kind keep its id, and show it raw until pointed at another. */
+	async DeleteRelationshipType(id: string) {
+		return await this.request<{ status: string }>('DeleteRelationshipType', { id });
 	},
 
 	/** Opens a file dialog on the host; replies `status: 'cancelled'` if the user closes it. */

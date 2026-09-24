@@ -62,7 +62,7 @@ namespace StoryTimelineMk2.Forms
             // Top = 0: WebView2 sits flush with the top edge — no visible strip.
             // Left/Right/Bottom = ResizeBorder: expose a resize-grip rim on three sides.
             Padding = new Padding(ResizeBorder, 0, ResizeBorder, ResizeBorder);
-            // Matches the Vue title-bar gradient start colour so the side/bottom rim
+            // Matches the Vue title-bar gradient start color so the side/bottom rim
             // is invisible against the dark content.
             BackColor = Color.FromArgb(6, 12, 25);   // #060c19 — matches title bar top
             // 3 window-control buttons × 36 px each = 108 px; 200 gives comfortable drag room.
@@ -83,7 +83,7 @@ namespace StoryTimelineMk2.Forms
         }
 
         // Pre-warmed forms are constructed long before they are shown and the user may
-        // have switched theme in between, so the rim colour is re-read on every show.
+        // have switched theme in between, so the rim color is re-read on every show.
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
@@ -91,7 +91,7 @@ namespace StoryTimelineMk2.Forms
         }
 
         /// <summary>
-        /// Paints the resize rim with the current theme's title-bar start colour so it
+        /// Paints the resize rim with the current theme's title-bar start color so it
         /// blends with the Vue chrome. Called on show and when the theme is saved.
         /// </summary>
         public void ApplyChromeColor()
@@ -100,7 +100,7 @@ namespace StoryTimelineMk2.Forms
             try { BackColor = ColorTranslator.FromHtml(hex); }
             catch (Exception ex)
             {
-                // The theme editor accepts free text; an unparsable colour keeps the previous rim
+                // The theme editor accepts free text; an unparsable color keeps the previous rim
                 Logger.Error("BorderlessFormBase.ApplyChromeColor", new FormatException($"tbBgFrom '{hex}'", ex));
             }
         }

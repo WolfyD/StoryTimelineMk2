@@ -16,9 +16,9 @@ function apply() {
 </script>
 
 <template>
-    <BaseModal title="Colour Swatches" width="min(420px, 92vw)" :z-index="1100" @close="emit('close')">
+    <BaseModal title="Color Swatches" width="min(420px, 92vw)" :z-index="1100" @close="emit('close')">
         <div class="swatch-body">
-            <p class="hint">The quick-pick colours offered in the edit item window. Each timeline keeps its own set.</p>
+            <p class="hint">The quick-pick colors offered in the edit item window. Each timeline keeps its own set.</p>
             <div class="swatch-grid">
                 <label v-for="(_, i) in draft" :key="i" class="swatch-cell">
                     <input type="color" class="swatch-input" v-model="draft[i]" />

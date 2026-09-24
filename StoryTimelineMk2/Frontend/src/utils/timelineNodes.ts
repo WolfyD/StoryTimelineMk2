@@ -11,6 +11,10 @@ const NO_GROW = { x: 1, y: 1 };
 // geometry, same loader, only rounder. Everything that special-cases pictures means both.
 export const isPortraitType = (typeName: string) => typeName === "Picture" || typeName === "Character";
 
+// A character's own timeline also carries their family's births and deaths. They are context, not
+// the subject, and a full-size portrait says the opposite — so kin draw at this fraction.
+export const KIN_SCALE = 0.6;
+
 export const buildNode = (
     id: string,
     typeName: string,
@@ -21,7 +25,11 @@ export const buildNode = (
 	layoutSettings: LayoutSettings,
     showTitle = false,   // pictures: caption strip along the bottom edge (items.show_title)
     lowRes = false,      // low resource mode: fewer nodes per item, no cached hover bitmap
-    useHighlightColor = false, // characters: fill the disc with their colour (characters.use_highlight_color)
+    useHighlightColor = false, // characters: fill the disc with their color (characters.use_highlight_color)
+    scale = 1,           // portraits only: KIN_SCALE for a relative on someone else's timeline
+    openStart = false,   // ages/periods: reaches back past its start year (items.open_start)
+    openEnd = false,     // ages/periods: carries on past its end year (items.open_end)
+    openFade = false,    // ages/periods: soften the open side instead of a flat edge (items.open_fade)
 ) => {
     const safeColor = color || (typeName === "Event" ? '#ffffff' : '#888888');
     const elements: any = {}; // Standard JS object to hold references
@@ -37,20 +45,51 @@ export const buildNode = (
 			offsetY: height / 2
         });
 
-		if(typeName == "Age"){
-			elements.box.cornerRadius(layoutSettings.TimelineAgeCornerRounding);
-		} else {
-			elements.box.cornerRadius(layoutSettings.TimelinePeriodCornerRounding);
-		}
+		const round = typeName == "Age"
+			? layoutSettings.TimelineAgeCornerRounding
+			: layoutSettings.TimelinePeriodCornerRounding;
+		// An open side ends in the arrowhead and the bar stops short to make room for it, so that
+		// corner has to be square: a rounded one leaves a notch between the head's base and the bar.
+		elements.box.cornerRadius(openStart || openEnd
+			? [openStart ? 0 : round, openEnd ? 0 : round, openEnd ? 0 : round, openStart ? 0 : round]
+			: round);
 
         // Ages/Periods don't have stems, just add the box to the upper layer
         boxesMaster.add(elements.box);
+
+        // BL-72: "and on from there, who knows". A bar that simply stops reads as a hard boundary,
+        // so an open side gets an arrowhead. Solid by default: an age whose end is merely undated
+        // still happened at full strength, and dissolving it says something the writer did not.
+        // `openFade` is the other claim — this one trails off — and it is the bar that fades, not
+        // just the head, so the two cannot be separate gradients meeting at a seam.
+        // Points and gradient are absolute, set in updateAbsolutePositions; the shape stays at 0,0.
+        const soft = openFade ? fadedColor(safeColor, 0.5) : safeColor;
+        for (const side of ['Start', 'End'] as const) {
+            if (!(side === 'Start' ? openStart : openEnd)) continue;
+            elements[`arrow${side}`] = new Konva.Line({
+                id: `arrow${side}-${id}`,
+                points: [],
+                closed: true,
+                fill: safeColor,
+                fillPriority: openFade ? 'linear-gradient' : 'color',
+                fillLinearGradientColorStops: openFade ? [0, soft, 1, safeColor] : [],
+            });
+            boxesMaster.add(elements[`arrow${side}`]);
+        }
+        // Read back by updateAbsolutePositions, which is the only place the bar's width is known.
+        if (openFade && (openStart || openEnd)) {
+            elements.box.fillPriority('linear-gradient');
+            elements.fade = { soft, solid: safeColor, start: openStart, end: openEnd };
+        }
     } else if (isPortraitType(typeName)) {
-        const size = layoutSettings.TimelineBoxTypesBoxWidth || layoutSettings.TimelineEventBoxHeight;
+        const size = (layoutSettings.TimelineBoxTypesBoxWidth || layoutSettings.TimelineEventBoxHeight) * scale;
         const round = typeName === "Character";
-        // A portrait with transparency over a filled disc drowns the face, so the colour rides the
-        // ring unless the character asks for the fill back — and then the ring earns a minimum width.
-        const ringOnly = round && !useHighlightColor;
+        // Two things can carry a character's color: the disc behind the portrait, and the ring
+        // around it. A portrait with transparency over a filled disc drowns the face, so the fill is
+        // opt-in — but an opaque portrait covers the disc completely, so the same tick thickens the
+        // ring too. Without that, the highlight does nothing at all for anyone with a solid portrait.
+        const highlighted = round && useHighlightColor;
+        const ring = highlighted ? Math.max(3, size * 0.08) : round ? 2 : 0;
         elements.stem = new Konva.Line({
             id: `stem-${id}`,
             points: [0, 0, 0, 0],
@@ -62,11 +101,9 @@ export const buildNode = (
             image: undefined as any,
             width: size,
             height: size,
-            fill: ringOnly || !round ? '#00000022' : safeColor,
+            fill: highlighted ? safeColor : '#00000022',
             stroke: safeColor,
-            strokeWidth: ringOnly
-                ? Math.max(2, layoutSettings.TimelineEventBorderWidth)
-                : layoutSettings.TimelineEventBorderWidth,
+            strokeWidth: Math.max(ring, layoutSettings.TimelineEventBorderWidth),
             cornerRadius: round ? size / 2 : 4,
         });
         stemsMaster.add(elements.stem);
@@ -76,9 +113,9 @@ export const buildNode = (
             elements.label = new Konva.Label({ id: `caption-${id}` });
             elements.label.add(new Konva.Tag({ fill: 'rgba(0, 0, 0, 0.55)', cornerRadius: round ? 4 : [0, 0, 4, 4] }));
             // A portrait's caption is often a generated sentence, a picture's is a title — own size each.
-            const captionSize = round
+            const captionSize = (round
                 ? layoutSettings.TimelineCharacterCaptionFontSize
-                : layoutSettings.TimelinePictureCaptionFontSize;
+                : layoutSettings.TimelinePictureCaptionFontSize) * scale;
             const caption = new Konva.Text({
                 id: `label-${id}`, text: title || 'Untitled', fill: '#ffffff', padding: 4, width: size, align: 'center',
                 ellipsis: true, wrap: 'word', lineHeight: 1,
@@ -117,7 +154,7 @@ export const buildNode = (
         boxesMaster.add(elements.box, elements.label);
 
         if (layoutSettings.TimelineEventBoxShowColor && lowRes) {
-            // The colour rides the border the box already has rather than a second Rect per item:
+            // The color rides the border the box already has rather than a second Rect per item:
             // same information, one fewer node to walk and draw on every frame.
             elements.box.stroke(safeColor);
             elements.box.strokeWidth(Math.max(2, layoutSettings.TimelineEventBorderWidth));
@@ -207,6 +244,65 @@ export const setNodeVisibility = (elements: any, isVisible: boolean) => {
     if (elements.label) elements.label.visible(isVisible);
     if (elements.stem) elements.stem.visible(isVisible);
     if (elements.colorStrip) elements.colorStrip.visible(isVisible);
+    if (elements.arrowStart) elements.arrowStart.visible(isVisible);
+    if (elements.arrowEnd) elements.arrowEnd.visible(isVisible);
+};
+
+/** The same color at a fraction of its alpha. Konva's parser so named colors work, not just hex. */
+const fadedColor = (color: string, alpha: number) => {
+    const c = Konva.Util.colorToRGBA(color);
+    return c ? `rgba(${c.r},${c.g},${c.b},${(c.a * alpha).toFixed(3)})` : color;
+};
+
+/**
+ * How long the arrowhead is. Capped by what the span has to give, so two heads on a short age meet
+ * in the middle instead of running out past each other.
+ */
+const headLength = (height: number, span: number, sides: number) =>
+    sides ? Math.min(Math.max(14, height * 1.6), span / sides) : 0;
+
+/**
+ * BL-72: the arrowhead on an open side. Isosceles, a little taller than the bar so it reads as a
+ * head and not a taper. `dir` is -1 for the left end, +1 for the right.
+ *
+ * The **point sits on the date** and the head runs back *over* the bar from there. Drawing it the
+ * other way up — base on the date, point beyond it — put the arrow a headlength past the year it
+ * belongs to, and left a rounded corner poking out behind the tip on any age with a corner radius.
+ *
+ * `fadePx` is one year in pixels, 0 when this span does not fade. The gradient runs tip → inward
+ * over that distance, matching the bar's, so head and bar are one surface rather than two.
+ */
+const placeOpenArrow = (line: any, edgeX: number, centerY: number, height: number, dir: -1 | 1, len: number, fadePx: number) => {
+    const half = height * 0.85;
+    const baseX = edgeX - dir * len;
+    line.points([baseX, centerY - half, edgeX, centerY, baseX, centerY + half]);
+    if (fadePx > 0) {
+        line.fillLinearGradientStartPoint({ x: edgeX, y: centerY });
+        line.fillLinearGradientEndPoint({ x: edgeX - dir * fadePx, y: centerY });
+    }
+};
+
+/**
+ * The bar's own share of the fade: half-transparent at an open edge, full color one year in. The
+ * gradient is in the Rect's local space (0 → width), unlike the arrow's, because the box is the
+ * one shape here that carries a position.
+ *
+ * ponytail: one year measured at the start edge and reused at the end. They differ only across a
+ * hidden range; measure per edge if that ever shows.
+ */
+const applyOpenFade = (elements: any, span: number, lenStart: number, fadePx: number) => {
+    const f = elements.fade;
+    // Never past the middle from both sides at once, or the stops cross and Konva throws.
+    const run = Math.min(Math.max(fadePx, 1), span / (f.start && f.end ? 2 : 1)) / span;
+    const stops: (number | string)[] = [0, f.start ? f.soft : f.solid];
+    if (f.start) stops.push(run, f.solid);
+    if (f.end) stops.push(1 - run, f.solid);
+    stops.push(1, f.end ? f.soft : f.solid);
+    // The endpoints are the span's real edges — the two dates — not the shortened bar's, so the bar
+    // picks the fade up at exactly the alpha the arrowhead left off at. Konva clamps past them.
+    elements.box.fillLinearGradientStartPoint({ x: -lenStart, y: 0 });
+    elements.box.fillLinearGradientEndPoint({ x: span - lenStart, y: 0 });
+    elements.box.fillLinearGradientColorStops(stops);
 };
 
 // Calculate absolute coordinates directly
@@ -221,10 +317,9 @@ export const updateAbsolutePositions = (
     stageCenterY: number,
 	layoutSettings: LayoutSettings,
     centered = false,   // box straddles the stem instead of the sideways offset (items.centered)
+    fadePx = 0,         // BL-72: one year in pixels, 0 when this span does not fade
 ) => {
     if (typeName === "Age" || typeName === "Period") {
-        elements.box.position({ x: anchorX, y: targetY });
-        elements.box.width(Math.max(1, endX - anchorX));
 		const height = typeName === "Age" ? layoutSettings.TimelineAgeHeight : layoutSettings.TimelinePeriodHeight;
 
 		let boxy = targetY;
@@ -232,11 +327,22 @@ export const updateAbsolutePositions = (
 			boxy = targetY - layoutSettings.TimelinePeriodHeight;
 		}
 
-		// Set the width
-		elements.box.width(Math.max(1, endX - anchorX));
+		// BL-72: an open side is not an arrow laid over the bar — the bar stops short and the
+		// arrowhead *is* that last stretch of it. Overlaid, the bar's own edge showed through the
+		// half-transparent head, which is the one thing the fade must not do.
+		const span = Math.max(1, endX - anchorX);
+		const len  = headLength(height, span, (elements.arrowStart ? 1 : 0) + (elements.arrowEnd ? 1 : 0));
+		const lenS = elements.arrowStart ? len : 0;
+		const lenE = elements.arrowEnd ? len : 0;
 
-		// Set position, adding half the height because the shape's anchor is now in its center
-		elements.box.position({ x: anchorX, y: boxy + (height / 2) });
+		// Position adds half the height because the shape's anchor is in its center.
+		const centerY = boxy + height / 2;
+		elements.box.width(Math.max(1, span - lenS - lenE));
+		elements.box.position({ x: anchorX + lenS, y: centerY });
+
+		if (elements.fade) applyOpenFade(elements, span, lenS, fadePx);
+		if (elements.arrowStart) placeOpenArrow(elements.arrowStart, anchorX, centerY, height, -1, len, fadePx);
+		if (elements.arrowEnd) placeOpenArrow(elements.arrowEnd, anchorX + span, centerY, height, 1, len, fadePx);
     } else if (isPortraitType(typeName)) {
         // Square image centered on the stem; stem runs straight up/down
         const size = boxWidth;

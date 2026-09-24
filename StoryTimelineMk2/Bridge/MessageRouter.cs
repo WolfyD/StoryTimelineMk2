@@ -27,6 +27,9 @@ namespace StoryTimelineMk2.Bridge
         // One characters window per app (BL-15): it is a view onto the timeline already open.
         private static f_Characters? _charactersWindow;
 
+        // Same deal for the relations window (BL-73).
+        private static f_Relations? _relationsWindow;
+
         /// <summary>
         /// BL-18 (H1): where data-layer actions run, instead of on the UI thread. One chain for
         /// every window's router, so messages still run one at a time and in arrival order —
@@ -52,6 +55,11 @@ namespace StoryTimelineMk2.Bridge
             var chars = _charactersWindow;
             if (chars != null && !chars.IsDisposed && chars.IsHandleCreated)
                 chars.BeginInvoke((MethodInvoker)chars.Close);
+
+            // Relations window
+            var rels = _relationsWindow;
+            if (rels != null && !rels.IsDisposed && rels.IsHandleCreated)
+                rels.BeginInvoke((MethodInvoker)rels.Close);
 
             // Calendar editor windows
             var toClose = new List<Form>();
@@ -203,6 +211,9 @@ namespace StoryTimelineMk2.Bridge
 
                 // Characters window (BL-15)
                 case "OpenCharactersWindow":        HandleOpenCharactersWindow(message); break;
+
+                // Relations window (BL-73)
+                case "OpenRelationsWindow":         HandleOpenRelationsWindow(message); break;
 
                 // Year calendar window
                 case "OpenYearCalendarWindow":      HandleOpenYearCalendarWindow(message); break;
@@ -776,6 +787,43 @@ namespace StoryTimelineMk2.Bridge
             {
                 if (ReferenceEquals(_charactersWindow, window)) _charactersWindow = null;
                 f_Characters.BeginPrewarm();   // closing it is the best hint it will be opened again
+            };
+            window.Show(_parentForm);
+            window.TopMost = _parentForm?.TopMost ?? false;
+            window.Activate();
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// BL-73: the relations window. One per app for the same reason the characters window is —
+        /// it is another view onto the timeline already open — and it takes the character to centre
+        /// on the same two ways: query string when it is new, broadcast when it is already up.
+        /// </summary>
+        private void HandleOpenRelationsWindow(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            string? characterId = message.Payload.TryGetProperty("characterId", out var cid)
+                ? cid.GetString()
+                : null;
+
+            if (_relationsWindow is { IsDisposed: false })
+            {
+                _relationsWindow.Activate();
+                if (!string.IsNullOrEmpty(characterId))
+                    BridgeHub.Broadcast("FocusCharacter", new { CharacterId = characterId });
+                ReplyToVue(message.MessageId, new { status = "ok" });
+                return;
+            }
+
+            var window = f_Relations.TakePrewarmed() ?? new f_Relations();
+            window.TimelineId  = timelineId;
+            window.CharacterId = characterId;
+            _relationsWindow = window;
+            window.FormClosed += (_, _) =>
+            {
+                if (ReferenceEquals(_relationsWindow, window)) _relationsWindow = null;
+                f_Relations.BeginPrewarm();   // closing it is the best hint it will be opened again
             };
             window.Show(_parentForm);
             window.TopMost = _parentForm?.TopMost ?? false;

@@ -1,6 +1,6 @@
 # Frontend Components Reference
 
-Complete reference for every Vue component in `Frontend/src/components/` (31 components, alphabetical). Each section documents the component's purpose, its exact public contract (props / emits / slots / `defineExpose`), key internal behaviour, consumers, and gotchas.
+Complete reference for every Vue component in `Frontend/src/components/` (alphabetical). Each section documents the component's purpose, its exact public contract (props / emits / slots / `defineExpose`), key internal behaviour, consumers, and gotchas.
 
 Conventions used throughout this document:
 
@@ -164,6 +164,60 @@ Conventions used throughout this document:
 **Used by** — `CalendarViewModal.vue`.
 
 **Gotchas** — the modal z-index stack is Manager (1000) → View (1100) → Year (1200); all three can be open simultaneously.
+
+---
+
+## CharacterFamilyModal.vue
+
+**Purpose** — "Build the family" bulk helper: guesses the likely parent/child/sibling/spouse ties in the cast from shared surnames and birth years, and lets the writer tick the ones that are real rather than adding thirty relations one dialog at a time.
+
+| Contract | Details |
+|---|---|
+| Props | `character: CharacterItem`, `characters: CharacterItem[]`, `types: RelationshipType[]`, `timelineId: number` |
+| Emits | `close: []`, `changed: []` (fired after a save so the panel reloads) |
+| Slots / Expose | *(none)* |
+
+**Key behaviour** — Rows come from `utils/characterRelations.familyGuesses`, which pairs on last name and reads a `GENERATION_YEARS` gap as parenthood. Ties that already exist are shown but never pre-ticked. Saving loops `SaveCharacterRelation` over the ticked rows.
+
+**Used by** — `CharacterRelationsPanel`.
+
+**Gotchas** — a guess is a guess: nothing is ticked for you where the relation already exists, and nothing is deleted here.
+
+---
+
+## CharacterRelateModal.vue
+
+**Purpose** — Add or edit one relation: who, what kind, and when it held. Doubles as the editor for the kinds themselves — the gendered wordings (`AToBF`/`AToBM`/`BToAF`/`BToAM`) that make "mother of" and "father of" one row.
+
+| Contract | Details |
+|---|---|
+| Props | `character: CharacterItem`, `characters: CharacterItem[]`, `relations: CharacterRelationship[]`, `types: RelationshipType[]`, `editing: CharacterRelationship \| null` (null starts a new one), `timelineId: number`, `lodProfile: LodLevel[]`, `monthNames: string[]`, `monthLengths: number[]`, `seasonNames: string[]`, `weekCount: number` |
+| Emits | `close: []`, `changed: []` |
+| Slots / Expose | *(none)* |
+
+**Key behaviour** — The draft starts from `editing` or `blankRelation`. Start/end use `LodDateInput`, so a relation is dated at whatever precision the writer has. The kind list is app-wide, not per timeline; a new kind's id comes from `slugifyTypeId(Name)`.
+
+**Used by** — `CharacterRelationsPanel`.
+
+**Gotchas** — one row says both directions. Reversing who is who is a matter of which end you read from (`relationLabel`), not a second row.
+
+---
+
+## CharacterRelationsPanel.vue
+
+**Purpose** — The relations section of the characters window: every tie this character has, worded from their end, with the kind's colour, when it held, and buttons to add one, build the family, or open the relations window on them.
+
+| Contract | Details |
+|---|---|
+| Props | `character: CharacterItem`, `characters: CharacterItem[]`, `timelineId: number`, `lodProfile: LodLevel[]`, `monthNames: string[]`, `monthLengths: number[]`, `seasonNames: string[]`, `weekCount: number` |
+| Emits | *(none)* |
+| Slots / Expose | *(none)* |
+
+**Key behaviour** — Loads through one `GetCharacterRelations(characterId)` call (relations and kinds together) and reloads on `changed` from either modal. Labels come from `relationLabel(rel, character.Id, type, character.Gender)`, so the words follow the subject's gender.
+
+**Used by** — `pages/CharactersApp.vue`.
+
+**Gotchas** — the panel is per character; the whole web is the relations window (`pages/RelationsApp.vue`), not this.
 
 ---
 
@@ -392,7 +446,7 @@ Conventions used throughout this document:
 
 ## MemorableDaysModal.vue
 
-**Purpose** — The calendar editor's memorable-day editor (BL-46): list of days on the left, the selected day's colour / name / type and its picker (`CalendarDayPicker`, `WeekDayPicker` or `RelativeRuleEditor`) on the right. Also exports the `MemorableDay` interface (plain `<script>` block).
+**Purpose** — The calendar editor's memorable-day editor (BL-46): list of days on the left, the selected day's color / name / type and its picker (`CalendarDayPicker`, `WeekDayPicker` or `RelativeRuleEditor`) on the right. Also exports the `MemorableDay` interface (plain `<script>` block).
 
 | Contract | Details |
 |---|---|
@@ -478,7 +532,7 @@ Conventions used throughout this document:
 | Emits | `close: []` |
 | Slots / Expose | *(none; wraps `BaseModal`)* |
 
-**Gotchas** — untitled timelines show as "Untitled"; the colour swatch falls back to the border colour. Opened by the strip's Reference button or `R` (`TimelineApp`). The underlay is session state — reopening the timeline window starts without one.
+**Gotchas** — untitled timelines show as "Untitled"; the color swatch falls back to the border color. Opened by the strip's Reference button or `R` (`TimelineApp`). The underlay is session state — reopening the timeline window starts without one.
 
 ---
 
@@ -514,7 +568,7 @@ Conventions used throughout this document:
 
 ## SwatchEditorModal.vue
 
-**Purpose** — Edits the 12 quick-pick colour swatches in a grid of `<input type="color">`s with a hex label each.
+**Purpose** — Edits the 12 quick-pick color swatches in a grid of `<input type="color">`s with a hex label each.
 
 | Contract | Details |
 |---|---|
@@ -524,7 +578,7 @@ Conventions used throughout this document:
 
 **Key behaviour** — works on a local `draft`; **Apply** emits and closes, Cancel discards, **Reset to defaults** loads `DEFAULT_SWATCHES` into the draft (still needs Apply).
 
-**Used by** — `TimelineSettingsModal.vue` (Colour Swatches chip).
+**Used by** — `TimelineSettingsModal.vue` (Color Swatches chip).
 
 ---
 
@@ -555,12 +609,12 @@ Conventions used throughout this document:
 
 ## TimelineActivityStrip.vue
 
-**Purpose** — The 48 px vertical VS Code-style navigation strip on the left edge of the timeline window: actions slot (3-dot menu), filter toggle, year calendar, Tags, Mass add items, Reference timeline, nav icons (Timeline active; Characters/Map/Search/Statistics ghosted "coming soon"), help flyout and a settings gear pinned to the bottom.
+**Purpose** — The 48 px vertical VS Code-style navigation strip on the left edge of the timeline window: actions slot (3-dot menu), filter toggle, year calendar, Tags, Mass add items, Reference timeline, nav icons (Timeline active; Characters and Relations open their windows; Map/Search/Statistics ghosted "coming soon"), help flyout and a settings gear pinned to the bottom.
 
 | Contract | Details |
 |---|---|
 | Props | `filterActive: boolean` (green "tool active" styling on the funnel), `miniMode: boolean`, `yearCalendarOpen: boolean`, `readOnly?: boolean` (BL-66 reference window: hides the actions slot, year calendar, Tags, Mass add, Reference and Settings — filter, mini mode, nav and help stay), `referenceActive?: boolean` (BL-66 underlay on: tool-active styling + filled icon on the Reference button) |
-| Emits | `toggle-filter`, `toggle-mini`, `toggle-year-calendar`, `open-tags`, `open-mass-add`, `open-reference`, `open-help`, `open-shortcuts`, `open-about`, `open-settings` (all `[]`) |
+| Emits | `toggle-filter`, `toggle-mini`, `toggle-year-calendar`, `open-tags`, `open-mass-add`, `open-reference`, `open-export`, `open-characters`, `open-relations`, `open-help`, `open-shortcuts`, `open-about`, `open-settings` (all `[]`) |
 | Slots | `actions` — rendered at the very top (TimelineApp puts `TimelineActionsMenu` here) |
 | Expose | *(none)* |
 
@@ -568,7 +622,7 @@ Conventions used throughout this document:
 
 **Used by** — `pages/TimelineApp.vue`.
 
-**Gotchas** — nav icons other than Timeline do nothing by design; the strip renders no routing logic at all.
+**Gotchas** — `navClick` is the whole of the strip's routing: Characters and Relations emit, the rest are placeholders that do nothing by design.
 
 ---
 
@@ -841,8 +895,8 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 **Key behaviour**
 
 - Two reactive mirrors: `local` (per-timeline `TimelineSettings` + `selectedLayoutId`) and `localLayout` (a fully defaulted `LayoutSettings` built by `initLayout()`, which supplies a hard-coded default for **every** field — this doubles as the canonical default table).
-- On mount loads layout presets, system fonts and the two `timelinePrefs` values (colour swatches, default LOD mask) in parallel (`GetLayoutSettingsList`, `GetSystemFonts`, `GetMiscSetting`×2). Escape closes (window keydown listener).
-- **Colour Swatches** is a chip of 12 dots (`.swatch-preview`) that opens `SwatchEditorModal`; **New Items Visible At** is a summary chip (`.lod-summary`, text from `lodMaskSummary`) that opens `LodMaskModal`. Both modals hand a value back only on Apply; the settings Save then persists it.
+- On mount loads layout presets, system fonts and the two `timelinePrefs` values (color swatches, default LOD mask) in parallel (`GetLayoutSettingsList`, `GetSystemFonts`, `GetMiscSetting`×2). Escape closes (window keydown listener).
+- **Color Swatches** is a chip of 12 dots (`.swatch-preview`) that opens `SwatchEditorModal`; **New Items Visible At** is a summary chip (`.lod-summary`, text from `lodMaskSummary`) that opens `LodMaskModal`. Both modals hand a value back only on Apply; the settings Save then persists it.
 - Switching preset (`selectedLayoutId` watcher) fetches that preset's values via `GetLayoutSettingsById` and `Object.assign`s them into `localLayout`. "New preset" clones the current one via `CreateLayoutPreset(name, sourceId)` and auto-selects it. Built-in presets (`ls_default`, `ls_dark`) show a "Reset to defaults" button → `ResetLayoutPreset` (errors are alert()-ed with details).
 - **Search**: a watcher on `searchQuery` does direct DOM classwork — removes all `.search-hl`, then adds it to `.section-title` and `.s-label` elements whose text matches, and smooth-scrolls the first match into view. No virtualization; purely cosmetic.
 - **Data-range color + alpha**: `TimelineDataRangeColor` supports `#RGBA`/`#RRGGBBAA`; `parseHexAlpha`/`buildHexAlpha` split it into an RGB color input + a 0–100% opacity slider that recombine via a watcher.
@@ -903,6 +957,9 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 | CalendarMonthGrid | CalendarYearView, pages/YearCalendarApp.vue |
 | CalendarViewModal | CalendarManagerModal |
 | CalendarYearView | CalendarViewModal |
+| CharacterFamilyModal | CharacterRelationsPanel |
+| CharacterRelateModal | CharacterRelationsPanel |
+| CharacterRelationsPanel | pages/CharactersApp.vue |
 | ConfirmDeleteModal | ProjectContainer |
 | ConfirmModal | pages/EditItem.vue, MassAddItemsModal |
 | DuplicateTimelineModal | ProjectContainer |
@@ -932,4 +989,4 @@ Also: an FPS tracker samples every 20 ms and pushes a 100-sample average to `sto
 | TimelineNotesPanel | pages/TimelineApp.vue |
 | TimelineSettingsModal | pages/TimelineApp.vue |
 | WeekDayPicker | RelativeRuleEditor, MemorableDaysModal |
-| WindowTitleBar | pages/TimelineApp.vue, pages/EditItem.vue, pages/CalendarApp.vue |
+| WindowTitleBar | pages/TimelineApp.vue, pages/EditItem.vue, pages/CalendarApp.vue, pages/CharactersApp.vue, pages/RelationsApp.vue |

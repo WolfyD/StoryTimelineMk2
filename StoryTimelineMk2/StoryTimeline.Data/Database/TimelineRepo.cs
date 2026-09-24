@@ -183,18 +183,22 @@ namespace StoryTimelineMk2.Database
                     charMap[(string)ch.id] = newCharId;
                     db.Execute(@"
                         INSERT INTO characters (id, name, nicknames, aliases, race, description, notes,
-                            birth_year, birth_date, birth_alternative_year,
-                            death_year, death_date, death_alternative_year,
+                            birth_year, birth_date, birth_alternative_year, birth_granularity,
+                            death_year, death_date, death_alternative_year, death_granularity,
+                            absolute_start, absolute_end,
                             importance, color, timeline_id)
                         VALUES (@NewId, @name, @nicknames, @aliases, @race, @description, @notes,
-                            @birth_year, @birth_date, @birth_alternative_year,
-                            @death_year, @death_date, @death_alternative_year,
+                            @birth_year, @birth_date, @birth_alternative_year, @birth_granularity,
+                            @death_year, @death_date, @death_alternative_year, @death_granularity,
+                            @absolute_start, @absolute_end,
                             @importance, @color, @NewTimelineId)",
                         new {
                             NewId = newCharId, ch.name, ch.nicknames, ch.aliases, ch.race,
                             ch.description, ch.notes, ch.birth_year, ch.birth_date,
-                            ch.birth_alternative_year, ch.death_year, ch.death_date,
-                            ch.death_alternative_year, ch.importance, ch.color, NewTimelineId = newId
+                            ch.birth_alternative_year, ch.birth_granularity, ch.death_year, ch.death_date,
+                            ch.death_alternative_year, ch.death_granularity,
+                            ch.absolute_start, ch.absolute_end,
+                            ch.importance, ch.color, NewTimelineId = newId
                         }, tx);
                 }
 

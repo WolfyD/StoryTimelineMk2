@@ -39,7 +39,7 @@ defineEmits<{ close: [] }>()
                         <tr><td>Funnel</td><td>Show or hide the filter panel</td></tr>
                         <tr><td>Arrows in / out</td><td>Minimise the view to just the timeline</td></tr>
                         <tr><td>Calendar</td><td>Open the year view for the timeline's calendar</td></tr>
-                        <tr><td>Tag</td><td>Manage tags — rename, recolour, merge, delete</td></tr>
+                        <tr><td>Tag</td><td>Manage tags — rename, recolor, merge, delete</td></tr>
                         <tr><td>List</td><td>Mass add — type many items at once instead of one form at a time</td></tr>
                         <tr><td>Books</td><td>Draw another timeline underneath this one for reference, without changing either <em>(R)</em></td></tr>
                         <tr><td>Export</td><td>Save this timeline, or just the days you worked on it, to a file</td></tr>
@@ -96,7 +96,7 @@ defineEmits<{ close: [] }>()
             <!-- FILTERS -->
             <section>
                 <h2>Filters</h2>
-                <p>Click the <strong>funnel</strong> icon in the activity strip to open the filter panel. Filter by type, tags, characters, stories, or colour. Filtered items can be <em>hidden</em> or <em>dimmed</em>. Save combinations as <strong>presets</strong>.</p>
+                <p>Click the <strong>funnel</strong> icon in the activity strip to open the filter panel. Filter by type, tags, characters, stories, or color. Filtered items can be <em>hidden</em> or <em>dimmed</em>. Save combinations as <strong>presets</strong>.</p>
             </section>
 
             <!-- NOTES -->
@@ -109,13 +109,13 @@ defineEmits<{ close: [] }>()
             <section>
                 <h2>Calendar &amp; dates</h2>
                 <p>Create custom calendars with configurable months, weeks, and days via <strong>Manage Calendars</strong> (calendar icon in the main menu). When a timeline uses a custom calendar, all dates use its month and day names.</p>
-                <p>At <strong>Months LOD</strong> the canvas shows season bands; at <strong>Days LOD</strong> it shows week bands — if those divisions exist in the calendar. Toggle and colour these in <strong>Timeline Settings → Calendar Overlay</strong>.</p>
+                <p>At <strong>Months LOD</strong> the canvas shows season bands; at <strong>Days LOD</strong> it shows week bands — if those divisions exist in the calendar. Toggle and color these in <strong>Timeline Settings → Calendar Overlay</strong>.</p>
             </section>
 
             <!-- TIME BREAKS -->
             <section>
                 <h2>Time breaks</h2>
-                <p>Hide large empty gaps with a <strong>hidden range</strong> — the canvas shows a striped break strip instead. Click the strip to temporarily expand it. Colours are set in <strong>Timeline Settings → Time Breaks</strong>.</p>
+                <p>Hide large empty gaps with a <strong>hidden range</strong> — the canvas shows a striped break strip instead. Click the strip to temporarily expand it. Colors are set in <strong>Timeline Settings → Time Breaks</strong>.</p>
             </section>
 
             <!-- IMPORT / EXPORT -->
@@ -198,7 +198,7 @@ defineEmits<{ close: [] }>()
             <!-- PERFORMANCE -->
             <section>
                 <h2>If the timeline feels slow</h2>
-                <p>Turn on <strong>Low resource mode</strong> in <strong>App settings → Performance</strong>. It trades some polish for speed on a busy timeline: the view jumps straight to where it is going instead of gliding there, changing detail level is instant, the marker that follows your cursor is off, the minimap is hidden, and the canvas is drawn at 1:1 rather than at your screen's full pixel density. Items are drawn more simply too — their colour shows on the box border rather than as a separate stripe, and hovering one makes it grow a little instead of glow.</p>
+                <p>Turn on <strong>Low resource mode</strong> in <strong>App settings → Performance</strong>. It trades some polish for speed on a busy timeline: the view jumps straight to where it is going instead of gliding there, changing detail level is instant, the marker that follows your cursor is off, the minimap is hidden, and the canvas is drawn at 1:1 rather than at your screen's full pixel density. Items are drawn more simply too — their color shows on the box border rather than as a separate stripe, and hovering one makes it grow a little instead of glow.</p>
                 <p>Reopen the timeline window for it to take effect. The <strong>FPS counter</strong> at the bottom of the window will tell you whether it helped.</p>
             </section>
 

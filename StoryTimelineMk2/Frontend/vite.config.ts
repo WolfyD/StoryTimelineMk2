@@ -29,7 +29,8 @@ export default defineConfig({
         editItem: resolve(__dirname, 'editItem.html'),
         calendar: resolve(__dirname, 'calendar.html'),
         yearCalendar: resolve(__dirname, 'yearCalendar.html'),
-        characters: resolve(__dirname, 'characters.html')
+        characters: resolve(__dirname, 'characters.html'),
+        relations: resolve(__dirname, 'relations.html')
       }
     }
   }

@@ -59,7 +59,7 @@ Click the **filter icon** in the toolbar to open the filter panel. You can filte
 - Tags
 - Characters
 - Stories
-- Colour
+- Color
 
 Filtered items can be **hidden** entirely or shown **dimmed** — toggle with the mode button in the filter panel. Use **filter presets** to save and restore combinations.
 
@@ -80,11 +80,11 @@ The **Notes panel** (pen icon) displays notes anchored to the current visible ra
 
 ### Calendar Overlay
 
-At certain zoom levels the canvas shows a subtle colour band overlay:
+At certain zoom levels the canvas shows a subtle color band overlay:
 - **Months LOD** → season bands (if seasons are defined in the calendar)
 - **Days LOD** → week bands (if weeks are defined)
 
-Toggle the overlay and set its colours in **Timeline Settings → Calendar Overlay**.
+Toggle the overlay and set its colors in **Timeline Settings → Calendar Overlay**.
 
 ---
 
@@ -93,19 +93,19 @@ Toggle the overlay and set its colours in **Timeline Settings → Calendar Overl
 If your story has a large gap (e.g. centuries of nothing), you can **hide** part of the timeline so the canvas doesn't feel empty. Hidden ranges appear as a striped break strip.
 
 - Expand a break strip by clicking it to peek at the hidden range temporarily.
-- Break strip colours (fill and border) are set in **Timeline Settings → Time Breaks**.
+- Break strip colors (fill and border) are set in **Timeline Settings → Time Breaks**.
 
 ---
 
 ## Themes & Layout Settings
 
 Open **Timeline Settings** (gear icon on the timeline toolbar) to customise:
-- Box sizes, fonts, colours for every item type
-- Hover line, Now line, axis and tick colours
-- Calendar overlay colours
-- Time break strip colours
-- Measurement overlay line colour
-- Panel colours (Notes, Gallery, Calendar, Data)
+- Box sizes, fonts, colors for every item type
+- Hover line, Now line, axis and tick colors
+- Calendar overlay colors
+- Time break strip colors
+- Measurement overlay line color
+- Panel colors (Notes, Gallery, Calendar, Data)
 
 Two built-in presets are available: **Default** (light) and **Dark Mode**. Applying a preset resets all layout settings for that timeline.
 

@@ -304,7 +304,7 @@ function applyCalendarPanelDark() {
     calDayHlRGB.value  = '#818cf8'; calDayHlAlpha.value  = 21
 }
 
-const swatches = ref<string[]>([...DEFAULT_SWATCHES])   // quick-pick colours of the edit item window
+const swatches = ref<string[]>([...DEFAULT_SWATCHES])   // quick-pick colors of the edit item window
 const defaultLodMask = ref(ALL_LODS_MASK)                // LOD visibility new items start with
 const showSwatchEditor = ref(false)
 const showLodPicker = ref(false)
@@ -434,10 +434,10 @@ async function save() {
                     <span class="s-label">Keyboard Pan Speed (px/s) <SettingHint tip="How fast ← / → pan the timeline while held; Shift triples it" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="local.KeyboardPanSpeed" :step="50" min="50" max="5000" />
 
-                    <span class="s-label">Default Item Color <SettingHint tip="Colour pre-filled for every new item on this timeline" /></span>
+                    <span class="s-label">Default Item Color <SettingHint tip="Color pre-filled for every new item on this timeline" /></span>
                     <input class="s-color" type="color" v-model="local.DefaultItemColor" />
 
-                    <span class="s-label">Colour Swatches <SettingHint tip="The quick-pick colours offered in the edit item window" /></span>
+                    <span class="s-label">Color Swatches <SettingHint tip="The quick-pick colors offered in the edit item window" /></span>
                     <button class="swatch-preview" type="button" title="Edit swatches" @click="showSwatchEditor = true">
                         <span v-for="(c, i) in swatches" :key="i" class="swatch-dot" :style="{ background: c }" />
                     </button>

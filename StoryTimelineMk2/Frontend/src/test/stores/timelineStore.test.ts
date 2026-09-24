@@ -424,6 +424,18 @@ describe('timelineStore', () => {
       expect(store.items.map(i => i.Id).sort()).toEqual(['birth', 'start', 'theirs'])
     })
 
+    // BL-17: the family's own birth/death items carry no appearance link — they come in by relation.
+    it('keeps the items of characters the focus is related to', () => {
+      const store = useTimelineStore()
+      store.characterFocus = focus
+      store.focusKinItemIds = new Set(['sisters-birth'])
+
+      store.upsertItem(makeItem({ Id: 'sisters-birth' }))
+      store.upsertItem(makeItem({ Id: 'strangers-birth' }))
+
+      expect(store.items.map(i => i.Id)).toEqual(['sisters-birth'])
+    })
+
     it('takes everything when no character is focused', () => {
       const store = useTimelineStore()
       store.upsertItem(makeItem({ Id: 'stranger' }))

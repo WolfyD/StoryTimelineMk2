@@ -164,8 +164,8 @@ public class DbStressTests
 
             // Character relationship
             db.Execute(@"INSERT INTO character_relationships
-                         (character_1_id, character_2_id, relationship_type, relationship_strength, is_bidirectional, timeline_id)
-                         VALUES (@c1, @c2, 'rival', 90, 1, @tl)",
+                         (character_1_id, character_2_id, relationship_type, relationship_strength, timeline_id)
+                         VALUES (@c1, @c2, 'rival', 90, @tl)",
                 new { c1 = char1, c2 = char2, tl = tl1Id });
 
             // Notes
@@ -323,8 +323,8 @@ public class DbStressTests
             db.Execute("INSERT INTO item_character_appearances (item_id, character_id, role) VALUES (@i, @c, 'protagonist')",
                 new { i = itemId, c = c1 });
             db.Execute(@"INSERT INTO character_relationships
-                         (character_1_id, character_2_id, relationship_type, relationship_strength, is_bidirectional, timeline_id)
-                         VALUES (@c1, @c2, 'ally', 80, 1, @tl)",
+                         (character_1_id, character_2_id, relationship_type, relationship_strength, timeline_id)
+                         VALUES (@c1, @c2, 'ally', 80, @tl)",
                 new { c1, c2, tl = tl1Id });
         }
 
@@ -785,8 +785,8 @@ public class DbStressTests
         using (var db = ctx.OpenConnection())
         {
             db.Execute(@"INSERT INTO character_relationships
-                         (character_1_id, character_2_id, relationship_type, relationship_strength, is_bidirectional, timeline_id)
-                         VALUES (@h, @v, 'nemesis', 100, 0, @tl)",
+                         (character_1_id, character_2_id, relationship_type, relationship_strength, timeline_id)
+                         VALUES (@h, @v, 'nemesis', 100, @tl)",
                 new { h = hero, v = villain, tl = tl1Id });
             var bookId = Guid.NewGuid().ToString();
             var chapId = Guid.NewGuid().ToString();

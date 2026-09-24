@@ -439,13 +439,13 @@ namespace StoryTimelineMk2.Database
                             // v1 uses character_1_id / character_2_id (not character_id_1 / character_id_2)
                             dbV2.Execute(@"
                                 INSERT OR IGNORE INTO character_relationships
-                                    (character_1_id, character_2_id, relationship_type, custom_relationship_type,
+                                    (character_1_id, character_2_id, relationship_type,
                                      relationship_degree, relationship_modifier, relationship_strength,
-                                     is_bidirectional, notes, timeline_id)
+                                     notes, timeline_id)
                                 VALUES
-                                    (@character_1_id, @character_2_id, @relationship_type, @custom_relationship_type,
+                                    (@character_1_id, @character_2_id, @relationship_type,
                                      @relationship_degree, @relationship_modifier, @relationship_strength,
-                                     @is_bidirectional, @notes, @timeline_id)",
+                                     @notes, @timeline_id)",
                                 (object)cr, transaction);
                         }
                     }

@@ -171,6 +171,112 @@ public class SchemaMigratorTests
         Assert.Contains(rows, r => r.Event == 16);
     }
 
+    /// <summary>
+    /// V13 seeded <c>relationship_types</c>, which came over from v1 empty, and dated both ends of a
+    /// relation; V14 widened the seed to the vocabulary v1 offered. An upgraded database has to reach
+    /// the same kinds a fresh one gets, or the relations panel would have nothing to offer on exactly
+    /// the timelines that have characters.
+    /// </summary>
+    [Fact]
+    public void RelationshipTypes_AreSeeded_AndRelationsCarryOptionalDates()
+    {
+        using var ctx = new DbTestContext();
+
+        using var verify = Open(ctx.DbPath);
+        var kinds = verify.Query<string>("SELECT id FROM relationship_types ORDER BY id").ToList();
+        Assert.Equal(
+            new[]
+            {
+                "acquaintance", "ally", "aunt-uncle", "best-friend", "colleague", "cousin", "enemy",
+                "friend", "grandparent", "half-sibling", "mentor", "neighbor", "parent",
+                "parent-in-law", "rival", "sibling", "sibling-in-law", "spouse", "step-parent",
+                "step-sibling",
+            },
+            kinds);
+
+        var cols = verify.Query<string>("SELECT name FROM pragma_table_info('character_relationships')").ToList();
+        foreach (string col in new[] { "start_year", "start_granularity", "end_year", "end_granularity", "absolute_start", "absolute_end" })
+            Assert.Contains(col, cols);
+
+        // Both years nullable: an undated relation is the normal one, and NULL is not year 0.
+        Assert.All(
+            verify.Query<long>("SELECT \"notnull\" FROM pragma_table_info('character_relationships') WHERE name IN ('start_year', 'end_year')"),
+            notNull => Assert.Equal(0, notNull));
+    }
+
+    /// <summary>
+    /// V14: the wording a gendered subject takes. Half the family kinds have one and half of English
+    /// has none — a cousin is a cousin — so the columns exist for every kind but only some are filled,
+    /// and the three V13 seeded have to be filled in on the way past rather than left neutral.
+    /// </summary>
+    [Fact]
+    public void GenderedWording_IsSeeded_OnlyWhereEnglishHasAWord()
+    {
+        using var ctx = new DbTestContext();
+        using var verify = Open(ctx.DbPath);
+
+        Assert.Contains(
+            "gender",
+            verify.Query<string>("SELECT name FROM pragma_table_info('characters')"));
+
+        var parent = verify.QuerySingle<(string F, string M, string RF, string RM)>(
+            "SELECT a_to_b_f, a_to_b_m, b_to_a_f, b_to_a_m FROM relationship_types WHERE id = 'parent'");
+        Assert.Equal(("mother of", "father of", "daughter of", "son of"), parent);
+
+        // Seeded by V13, worded by V14 — the upgrade path is the one that can silently miss this.
+        Assert.Equal(
+            "wife of",
+            verify.QuerySingle<string>("SELECT a_to_b_f FROM relationship_types WHERE id = 'spouse'"));
+
+        Assert.Null(
+            verify.QuerySingle<string?>("SELECT a_to_b_f FROM relationship_types WHERE id = 'cousin'"));
+    }
+
+    /// <summary>
+    /// V16 (BL-75): characters and relations get the absolute_* pair items have carried since BL-02,
+    /// multiplied out of the subtick through the timeline's own LOD profile, and the columns that
+    /// stopped meaning anything are dropped. Built by running the chain to 15 and then the rest, so
+    /// the real backfill runs against the schema it was written for.
+    /// </summary>
+    [Fact]
+    public void CharactersAndRelations_GetAbsoluteDates_BackfilledThroughTheirOwnLodProfile()
+    {
+        using var ctx = new DbTestContext();
+        string oldDb = Path.Combine(ctx.TempDir, "v15.sqlite");
+        using (var db = Open(oldDb))
+        {
+            SchemaMigrator.Migrate(db, oldDb, MainDbMigrations.Steps.Take(15).ToList(), "test", backupFirst: false);
+            db.Execute(@"
+                INSERT INTO timelines (id, title, author, description, start_year) VALUES (1, 'T', '', '', 0);
+                INSERT INTO characters (id, name, timeline_id, birth_year, birth_subtick, birth_granularity,
+                                        death_year, death_subtick, death_granularity)
+                VALUES ('c1', 'Risha', 1, 1000, 3, 5, 1050, 0, 3);
+                INSERT INTO characters (id, name, timeline_id) VALUES ('c2', 'Undated', 1);
+                INSERT INTO character_relationships (character_1_id, character_2_id, relationship_type,
+                                                     timeline_id, start_year, start_subtick, start_granularity)
+                VALUES ('c1', 'c2', 'spouse', 1, 1020, 2, 4);");
+        }
+
+        DbInitializer.Initialize(oldDb, backupFirst: false);
+
+        Assert.Equal(MainDbMigrations.LatestVersion, Version(oldDb));
+        using var verify = Open(oldDb);
+        // Months is LOD 5, a step of 1/12: three months into 1000. Seasons is 4, a quarter: 1020½.
+        Assert.Equal(1000 + 3 * 0.08333333333, verify.QuerySingle<double>("SELECT absolute_start FROM characters WHERE id = 'c1'"), 6);
+        Assert.Equal(1050d, verify.QuerySingle<double>("SELECT absolute_end FROM characters WHERE id = 'c1'"), 6);
+        Assert.Equal(1020.5, verify.QuerySingle<double>("SELECT absolute_start FROM character_relationships"), 6);
+        // No year is not year 0: an undated end stays NULL on both sides.
+        Assert.Null(verify.QuerySingle<double?>("SELECT absolute_start FROM characters WHERE id = 'c2'"));
+        Assert.Null(verify.QuerySingle<double?>("SELECT absolute_end FROM character_relationships"));
+        Assert.Equal(0L, verify.QuerySingle<long>("SELECT shared FROM characters WHERE id = 'c1'"));
+
+        var cols = Columns(oldDb);
+        foreach (string gone in new[] { "start_subtick", "end_subtick", "custom_relationship_type", "is_bidirectional" })
+            Assert.DoesNotContain(cols["character_relationships"], c => c.StartsWith(gone + " "));
+        foreach (string gone in new[] { "birth_subtick", "death_subtick" })
+            Assert.DoesNotContain(cols["characters"], c => c.StartsWith(gone + " "));
+    }
+
     [Fact]
     public void Initialize_IsIdempotent_OnCurrentDb()
     {

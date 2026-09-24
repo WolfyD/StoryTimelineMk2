@@ -5,6 +5,7 @@ import { BackendAPI } from '@/bridge/api';
 import { buildFormatRegistry, DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
 import type { MemDayMarker } from '@/types/models';
 import { applyFilters, buildItemDataMap } from '@/utils/filterMatcher';
+import { relationOtherId } from '@/utils/characterRelations';
 
 interface LastDeletedState {
     item: TimelineItem;
@@ -68,13 +69,41 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// character itself comes out of the load — session-only, never written back.
 	const characterFocusId = ref<string | null>(null);
 	const characterFocus = ref<CharacterItem | null>(null);
+	// BL-17: the birth and death items of everyone the focus is related to — a life reads better
+	// with the family in it. Filled from the relations once, at load, and read by belongsToFocus.
+	const focusKinItemIds = ref<Set<string>>(new Set());
 
 	/** Boundary markers carry the timeline's extent, so they belong to every character. */
 	function belongsToFocus(item: TimelineItem, charLinks?: ItemCharacterLink[]): boolean {
 		const c = characterFocus.value;
 		if (!c) return true;
 		if (item.TypeId >= 8 || item.Id === c.BirthItemId || item.Id === c.DeathItemId) return true;
+		if (focusKinItemIds.value.has(item.Id)) return true;
 		return (charLinks ?? itemCharacterMap.value.get(item.Id) ?? []).some(l => l.CharacterId === c.Id);
+	}
+
+	/**
+	 * Who counts as family: relations, not surnames — an in-law shares no name and belongs, a
+	 * namesake who is nobody's relative does not. Only the two generated items can be shown, so a
+	 * relative with <em>Show on timeline</em> off stays absent, same as they are everywhere else.
+	 */
+	async function loadKinItemIds(focus: CharacterItem): Promise<Set<string>> {
+		const ids = new Set<string>();
+		try {
+			const res = await BackendAPI.GetCharacterRelations(focus.Id);
+			const kin = new Set((res?.Relations ?? []).map(r => relationOtherId(r, focus.Id)));
+			for (const c of allTimelineCharacters.value) {
+				if (!kin.has(c.Id)) continue;
+				if (c.BirthItemId) ids.add(c.BirthItemId);
+				if (c.DeathItemId) ids.add(c.DeathItemId);
+			}
+		} catch (ex) {
+			// The window still works without the family, so this must not take the whole load down.
+			console.error('Could not load the relations for the character window', ex);
+			const why = ex instanceof Error ? ex.message : String(ex);
+			window.alert(`${focus.Name}'s family could not be loaded, so only their own items are shown.\n\n${why}`);
+		}
+		return ids;
 	}
 
 	const readOnly = ref<boolean>(false); // BL-66: reference window — view only, no edit affordances
@@ -231,6 +260,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 			characterFocus.value = characterFocusId.value
 				? allTimelineCharacters.value.find(c => c.Id === characterFocusId.value) ?? null
 				: null;
+			focusKinItemIds.value = characterFocus.value
+				? await loadKinItemIds(characterFocus.value)
+				: new Set();
 			if (characterFocus.value) items.value = items.value.filter(i => belongsToFocus(i));
 
 			const seenStories = new Map<string, string>();
@@ -634,7 +666,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
 		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference, referenceError,
-		characterFocusId, characterFocus,
+		characterFocusId, characterFocus, focusKinItemIds,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,

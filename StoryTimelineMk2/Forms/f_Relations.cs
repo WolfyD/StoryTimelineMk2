@@ -1,4 +1,4 @@
-using Microsoft.Web.WebView2.Core;
+﻿using Microsoft.Web.WebView2.Core;
 using StoryTimelineMk2.Bridge;
 using System;
 using System.ComponentModel;
@@ -10,11 +10,11 @@ using System.Windows.Forms;
 namespace StoryTimelineMk2.Forms
 {
     /// <summary>
-    /// BL-15: the characters window. Same shell as the calendar editor — a borderless form that is
-    /// nothing but a WebView2 pointed at one more SPA entry point.
+    /// BL-73: the relations window — the same borderless WebView2 shell as the characters window,
+    /// pointed at one more SPA entry point.
     /// ponytail: no saved window position — it opens centred.
     /// </summary>
-    public partial class f_Characters : BorderlessFormBase
+    public partial class f_Relations : BorderlessFormBase
     {
         private MessageRouter _messageRouter = null!;
 
@@ -25,19 +25,19 @@ namespace StoryTimelineMk2.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int TimelineId { get; set; }
 
-        /// <summary>Character to open on, when the window was opened from one. Null selects nothing.</summary>
+        /// <summary>Character to centre the graph and the family tree on. Null picks the first.</summary>
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string? CharacterId { get; set; }
 
-        public f_Characters()
+        public f_Relations()
         {
             InitializeComponent();
             FormBorderStyle = FormBorderStyle.None;
-            Load += F_Characters_Load;
+            Load += F_Relations_Load;
         }
 
         // ── Pre-warm: initialise WebView2 before the user requests the window ──
-        private static f_Characters? _prewarmed;
+        private static f_Relations? _prewarmed;
         private static bool _isPrewarming;
 
         internal static void BeginPrewarm()
@@ -51,21 +51,20 @@ namespace StoryTimelineMk2.Forms
         {
             try
             {
-                var form = new f_Characters();
+                var form = new f_Relations();
                 _ = form.Handle; // force HWND without Show()
-                var env = await WebView2EnvironmentFactory.GetAsync("characters");
-                await form.wv_Characters.EnsureCoreWebView2Async(env);
+                var env = await WebView2EnvironmentFactory.GetAsync("relations");
+                await form.wv_Relations.EnsureCoreWebView2Async(env);
 
-                // Warming only the WebView2 left the whole page load — fetch, parse, mount, first
-                // bridge calls — in front of the user, which is where the seconds were going.
-                // Navigate now; the timeline id is not known yet, so it follows as
-                // SetCharactersContext, the same trick f_Timeline plays with SetTimelineId.
+                // Same two-stage warm as the characters window: the Chromium process is only half
+                // of it, and the fetch/parse/mount/handshake is the half the user actually waits
+                // on. Pre-navigate now, push the ids later as SetRelationsContext.
                 // Release builds only: in dev there is no dist and Vite serves from localhost.
                 string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
                 if (Directory.Exists(distPath))
                 {
-                    var coreWV = form.wv_Characters.CoreWebView2!;
-                    form.wv_Characters.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
+                    var coreWV = form.wv_Relations.CoreWebView2!;
+                    form.wv_Relations.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
                     string mediaFolder = AppConfig.Instance.GetMediaFolder();
                     Directory.CreateDirectory(mediaFolder);
                     coreWV.SetVirtualHostNameToFolderMapping(
@@ -75,7 +74,7 @@ namespace StoryTimelineMk2.Forms
                     // The router must exist before Navigate: the page calls the bridge on mount.
                     form._messageRouter = new MessageRouter(coreWV, form);
                     coreWV.NavigationCompleted += (_, _) => form._preNavComplete = true;
-                    coreWV.Navigate("https://app.local/characters.html");
+                    coreWV.Navigate("https://app.local/relations.html");
                     form._didPreNavigate = true;
                 }
 
@@ -83,7 +82,7 @@ namespace StoryTimelineMk2.Forms
             }
             catch (Exception ex)
             {
-                Logger.Error("f_Characters.Prewarm", ex);
+                Logger.Error("f_Relations.Prewarm", ex);
             }
             finally
             {
@@ -91,7 +90,7 @@ namespace StoryTimelineMk2.Forms
             }
         }
 
-        internal static f_Characters? TakePrewarmed()
+        internal static f_Relations? TakePrewarmed()
         {
             var form = _prewarmed;
             _prewarmed = null;
@@ -99,17 +98,17 @@ namespace StoryTimelineMk2.Forms
             return form;
         }
 
-        private async void F_Characters_Load(object? sender, EventArgs e)
+        private async void F_Relations_Load(object? sender, EventArgs e)
         {
             try
             {
-                if (wv_Characters.CoreWebView2 == null)
+                if (wv_Relations.CoreWebView2 == null)
                 {
-                    var webEnvironment = await WebView2EnvironmentFactory.GetAsync("characters");
-                    await wv_Characters.EnsureCoreWebView2Async(webEnvironment);
+                    var webEnvironment = await WebView2EnvironmentFactory.GetAsync("relations");
+                    await wv_Relations.EnsureCoreWebView2Async(webEnvironment);
                 }
-                var coreWV = wv_Characters.CoreWebView2!;
-                wv_Characters.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
+                var coreWV = wv_Relations.CoreWebView2!;
+                wv_Relations.DefaultBackgroundColor = Color.FromArgb(15, 23, 42);
 
                 coreWV.WindowCloseRequested += (_, _) => Invoke((MethodInvoker)Close);
 
@@ -127,12 +126,12 @@ namespace StoryTimelineMk2.Forms
                     // from a query string it was navigated without.
                     string idMsg = JsonSerializer.Serialize(new
                     {
-                        action = "SetCharactersContext",
+                        action = "SetRelationsContext",
                         payload = new { timelineId = TimelineId, characterId = CharacterId },
                     });
                     void SendContext()
                     {
-                        Logger.Info("f_Characters.Load", $"Sending SetCharactersContext={TimelineId}");
+                        Logger.Info("f_Relations.Load", $"Sending SetRelationsContext={TimelineId}");
                         coreWV.PostWebMessageAsString(idMsg);
                     }
 
@@ -150,15 +149,15 @@ namespace StoryTimelineMk2.Forms
                 {
                     coreWV.SetVirtualHostNameToFolderMapping(
                         "app.local", distPath, CoreWebView2HostResourceAccessKind.Allow);
-                    coreWV.Navigate($"https://app.local/characters.html{query}");
+                    coreWV.Navigate($"https://app.local/relations.html{query}");
                 }
                 else
-                    coreWV.Navigate($"http://localhost:5173/characters.html{query}");
+                    coreWV.Navigate($"http://localhost:5173/relations.html{query}");
             }
             catch (Exception ex)
             {
-                Logger.Error("f_Characters.Load", ex);
-                MessageBox.Show($"Failed to open the characters window:\n\n{ex}", "Error",
+                Logger.Error("f_Relations.Load", ex);
+                MessageBox.Show($"Failed to open the relations window:\n\n{ex}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Close();
             }

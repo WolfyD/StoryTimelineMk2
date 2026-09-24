@@ -155,7 +155,11 @@ Seeded rows (`MainDbMigrations.cs`): 1=Event, 2=Period, 3=Age, 4=Picture, 5=Note
 | `placement` | INTEGER | DEFAULT 0 — side of the line: `0` unassigned, `1` above, `2` below (migration 2). `SaveItemFull` picks a side whenever it is saved as `0` (`PickSide`: balance against the 6 nearest neighbours of the same kind, periods and non-periods separately; tie → opposite of the nearest) — "Auto" in the edit window sends `0` to re-pick. Full-width types (3, 6, 7, 8, 9) stay `0`. Migration 2 backfills existing rows with the parity the canvas used to compute. |
 | `centered` | INTEGER | NOT NULL DEFAULT 0 — box centered on its stem instead of the sideways `TimelineEventBoxStemOffset` offset; only drawn for events and notes (migration 4) |
 | `show_title` | INTEGER | NOT NULL DEFAULT 0 — draw the title as a caption strip along the bottom of the picture; only read for pictures (migration 5) |
+| `open_start` | INTEGER | NOT NULL DEFAULT 0 — the span reaches back past its start year; drawn as a fading arrowhead off the left instead of a hard edge. Only read for ages and periods (migration 15) |
+| `open_end` | INTEGER | NOT NULL DEFAULT 0 — the span carries on past its end year, same treatment to the right. Independent of `open_start`: both may be set (migration 15) |
+| `open_fade` | INTEGER | NOT NULL DEFAULT 0 — soften whichever side is open: half alpha at the arrow's point, full colour a year in, across both the head and the bar. Ignored unless one of the two above is set (migration 18) |
 | `item_notes` | TEXT | nullable — writer's private notes; saved, duplicated and exported with the item, never rendered (migration 6) |
+| `location_id` | TEXT | BL-16 groundwork: where it happened. No FK and nothing reads it yet (migration 17) |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
@@ -246,6 +250,7 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 | `nicknames` | TEXT | |
 | `aliases` | TEXT | |
 | `race` | TEXT | |
+| `faction` | TEXT | free text like `race` — house, guild, army, cult; groups the cast in the relations views *(step 17)* |
 | `description` | TEXT | |
 | `notes` | TEXT | |
 | `birth_year` | INTEGER | nullable |
@@ -258,6 +263,22 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 | `color` | TEXT | |
 | `timeline_id` | INTEGER | NOT NULL, FK → `timelines(id)` ON DELETE CASCADE |
 | `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
+| **Migration-added** (`MainDbMigrations.cs`) | | |
+| `first_name` / `last_name` | TEXT | NOT NULL DEFAULT '' *(step 9)* |
+| `portrait_picture_id` | TEXT | `pictures(id)`, no FK *(step 9)* |
+| `state` | TEXT | alive / dead / missing, or the writer's own word *(step 9)* |
+| `show_on_timeline` | INTEGER | NOT NULL DEFAULT 0 *(step 9)* |
+| `birth_item_id` / `death_item_id` | TEXT | the generated type-7 items *(step 9)* |
+| `birth_granularity` / `death_granularity` | INTEGER | NOT NULL DEFAULT 3 — the LOD each date was picked at *(step 10)* |
+| `use_highlight_color` | INTEGER | NOT NULL DEFAULT 0 *(step 11)* |
+| `gender` | TEXT | free text; picks the gendered relation wording *(step 14)* |
+| `absolute_start` / `absolute_end` | REAL | birth and death as canvas positions, NULL for no date *(step 16)* |
+| `shared` | INTEGER | NOT NULL DEFAULT 0 — in every timeline's cast; `timeline_id` stays as their origin *(step 16)* |
+| `birth_location_id` / `death_location_id` | TEXT | BL-16 groundwork, no FK and nothing reads them yet *(step 17)* |
+
+Step 16 dropped `birth_subtick` / `death_subtick`: the sub-year part now lives in the absolutes,
+and the editor derives a subtick back out of them (`Frontend/src/utils/lodDates.ts`), the same
+split items have had since BL-02.
 
 ### `relationship_types` — lookup table, no repo owner (`MainDbMigrations.cs`)
 
@@ -342,7 +363,10 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `data_panel_background_color` / `_card_background_color` / `_h1_color` / `_h2_color` / `_h3_color` / `_h4_color` / `_font_family` | TEXT | light defaults |
 | `data_panel_font_size` | INTEGER | DEFAULT 14 |
 
-### `character_relationships` — read by `CharacterRepo.GetNetwork`; rows written only by importer/duplication (`MainDbMigrations.cs`)
+### `character_relationships` — owner: `CharacterRepo` (`MainDbMigrations.cs`)
+
+One row per pair, read from whichever end's panel is open. `relationship_type` is a
+`relationship_types(id)`; a deleted kind leaves the relation in place, reading by its raw id.
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -350,14 +374,25 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `character_1_id` | TEXT | NOT NULL, FK → `characters(id)` ON DELETE CASCADE |
 | `character_2_id` | TEXT | NOT NULL, FK → `characters(id)` ON DELETE CASCADE |
 | `relationship_type` | TEXT | NOT NULL |
-| `custom_relationship_type` | TEXT | |
-| `relationship_degree` | TEXT | |
-| `relationship_modifier` | TEXT | |
-| `relationship_strength` | INTEGER | DEFAULT 50 |
-| `is_bidirectional` | INTEGER | DEFAULT 0 |
+| `relationship_degree` | TEXT | genealogical qualifier — `half-`, `step-`, `once removed`; folded into the wording |
+| `relationship_modifier` | TEXT | state word — `estranged`, `secret`, `adoptive`, `former`, `alleged`; also the line's dash |
+| `relationship_strength` | INTEGER | DEFAULT 50, 0–100 — edge thickness and spring weight |
 | `notes` | TEXT | |
 | `timeline_id` | INTEGER | NOT NULL, FK → `timelines(id)` ON DELETE CASCADE |
 | `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
+| **Migration-added** (`MainDbMigrations.cs`) | | |
+| `start_year` / `end_year` | INTEGER | nullable — when the relation held *(step 13)* |
+| `start_granularity` / `end_granularity` | INTEGER | NOT NULL DEFAULT 3 *(step 13)* |
+| `absolute_start` / `absolute_end` | REAL | both ends as canvas positions, NULL for no date *(step 16)* |
+
+Step 16 dropped `custom_relationship_type` and `is_bidirectional` — the first was never written
+once kinds became rows of their own, the second never meant anything, since a relation is stored
+once and read from both ends either way — and `start_subtick` / `end_subtick`, for the reason
+given under `characters`.
+
+`GetRelationshipsByTimeline` joins both ends through `characters` rather than filtering on
+`timeline_id`, so a shared character brings their web into every timeline they appear in;
+`timeline_id` stays as where the relation was made.
 
 ### `item_story_refs` — junction, owner: `ItemRepo` (`MainDbMigrations.cs`)
 
@@ -458,7 +493,7 @@ Key-value store, explicitly **not** exported/imported.
 | `value` | TEXT | |
 
 Keys in use: `filter_and_mode`, `filter_panel_open` (per timeline), `filter_display_mode`
-(global), `color_swatches` (per timeline, JSON array of 12 hex colours) and `default_lod_mask`
+(global), `color_swatches` (per timeline, JSON array of 12 hex colors) and `default_lod_mask`
 (per timeline, integer bitmask new items start with — also read by `HandleGetItemForEdit`). The
 last two are wrapped by `Frontend/src/utils/timelinePrefs.ts`.
 
@@ -690,7 +725,7 @@ The only repo that does **not** set `MatchNamesWithUnderscores` (it only queries
 |---|---|---|
 | `TimelineItem` (`TimelineItem.cs`) | `items` | `Id` (GUID default), `Title`, `Description`, `Content`, `StoryId`, `TypeId` (=1), `Year`, `EndYear`, `AbsoluteStart`, `AbsoluteEnd`, `BookTitle`, `Chapter`, `Page`, `Color`, `CreationGranularity`, `TimelineId`, `ItemIndex`, `ShowInNotes` (=true), `MinLodLevel`, `LodVisibilityMask` (=255), `Importance` (=5), `CreatedAt`, `UpdatedAt` |
 | `TimelineInfo` (`TimelineInfo.cs`) | `timelines` + composed aggregate | `Id`, `Title`, `Author`, `Description`, `StartYear`, `Color?`, `CalendarId` (="cal_default_gregorian"), `Calendar` (`CalendarItem`), `Settings` (`SettingsItem`), `LayoutSettingsId`, `LayoutSettings` (`LayoutSettingsItem`) — the last four are hydrated by `TimelineRepo.GetTimelineById` |
-| `CharacterItem` (`CharacterItem.cs`) | `characters` | `Id` (GUID), `Name`, `Nicknames`, `Aliases`, `Race`, `Description`, `Notes`, `BirthYear?`, `BirthDate`, `BirthAlternativeYear`, `DeathYear?`, `DeathDate`, `DeathAlternativeYear`, `Importance` (=5), `Color`, `TimelineId`, `CreatedAt`, `UpdatedAt` |
+| `CharacterItem` (`CharacterItem.cs`) | `characters` | `Id` (GUID), `Name`, `FirstName`, `LastName`, `Nicknames`, `Aliases`, `Race`, `Gender`, `State`, `Description`, `Notes`, `BirthYear?`, `BirthDate`, `BirthAlternativeYear`, `BirthGranularity` (=3), `DeathYear?`, `DeathDate`, `DeathAlternativeYear`, `DeathGranularity` (=3), `AbsoluteStart?`, `AbsoluteEnd?`, `Importance` (=5), `Color`, `UseHighlightColor`, `PortraitPictureId`, `ShowOnTimeline`, `BirthItemId`, `DeathItemId`, `Shared`, `TimelineId`, `CreatedAt`, `UpdatedAt`, plus the nested `Relationships` / `Appearances` lists |
 | `SettingsItem` (`SettingsItem.cs`) | `settings` | `Id` (GUID — note the table PK is INTEGER), `Font`, `FontSizeScale`, `PixelsPerSubtick`, `CustomCss`, `UseCustomCss`, `IsFullscreen`, `ShowGuides`, `WindowSizeX/Y`, `WindowPositionX/Y`, `UseCustomScaling`, `CustomScale`, `DisplayRadius`, `CanvasSettings`, `UpdatedAt`, `TimelineId` |
 | `CalendarItem` (`CalendarItem.cs`) | `calendars` | `Id` (GUID), `Name`, `AlternateName`, `ShortName`, `NameBefore0`, `NameAfter0`, `LodProfileId`, `YearDefinition` (JSON string), `LodProfile` (`LodItem`, hydrated by `CalendarRepo.GetCalendarById`) |
 | `LodItem` (`LodItem.cs`) | `lod_profiles` | `Id` (GUID), `Name`, `Profile` (JSON string) |
@@ -761,8 +796,12 @@ Since 1.0.2 both databases carry a **`PRAGMA user_version`** and are upgraded by
    - `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` for tables and indexes;
    - column probing + `ALTER TABLE ADD COLUMN` (`ApplyColumnMigrations`, `AddCol`/`HasColumn`) for `timelines.calendar_id`/`layout_settings_id`/`color`, the progressively-added `items` columns (incl. `lod_visibility_mask`), `characters`, `settings`, `notes.absolute_time`, and the layout-settings tick/axis/notes-panel/data-panel columns;
    - `absolute_start`/`absolute_end` backfill for NULL rows, branching on whether the legacy `subtick` column still exists (`year + subtick/10`) or not (plain `year`);
-   - seed-value fix-ups (`ls_default.timeline_period_height` → 15, tick marker colour, dark-preset panel colours);
+   - seed-value fix-ups (`ls_default.timeline_period_height` → 15, tick marker color, dark-preset panel colors);
    - `NormaliseLegacyRows` (NULL calendar ids / era names / `min_lod_level`).
 3. **Every later change is a new step** — never an edit to step 1's DDL.
 4. `PruneOldBackups` never deletes `pre v…` migration snapshots (timeline or `(usage stats)`).
 5. `DatabaseImporter` migrates a scratch copy of the backup through the same chain before copying rows (§6), so backups from any earlier build import without per-column probing.
+6. **A step that backfills must probe its source columns.** Pre-1.0.1 files were built column by
+   column, so step 1's `CREATE TABLE IF NOT EXISTS characters` never ran on them and a column the
+   schema "has always had" may be missing. Step 16 substitutes the literal `NULL` for any absent
+   source column (`Col`), which is also the right answer: no date in, no date out.

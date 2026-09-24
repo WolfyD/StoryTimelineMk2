@@ -78,6 +78,23 @@ html, body, #app {
 	cursor: col-resize;
 }
 
+// A strip to grab beside a panel, rather than the CSS `resize` handle: that one sits in the
+// element's bottom-right corner, which on a full-height panel is the bottom of the window, where
+// nobody looks for it. `flex` for a flex row, `width` for a grid column.
+.side-grip {
+	flex: 0 0 5px;
+	width: 5px;
+	margin-left: -3px;
+	cursor: col-resize;
+	background: transparent;
+	transition: background 0.12s ease;
+
+	&:hover,
+	&:active {
+		background: var(--app-accent, #6366f1);
+	}
+}
+
 .button {
 	position: inherit;
 	display: block;

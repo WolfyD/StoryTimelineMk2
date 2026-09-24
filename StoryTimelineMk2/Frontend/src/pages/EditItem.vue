@@ -82,6 +82,9 @@ const item = ref<TimelineItem>({
   Placement: 0,
   Centered: false,
   ShowTitle: false,
+  OpenStart: false,
+  OpenEnd: false,
+  OpenFade: false,
   ItemNotes: '',
   ShowInNotes: true,
   Importance: 5,
@@ -164,6 +167,8 @@ const isRangeType = computed(() => item.value.TypeId === 2 || item.value.TypeId 
 const hasSide     = computed(() => ![3, 6, 8, 9].includes(item.value.TypeId))
 // Types drawn as a box on a stem — the only ones "Centered" changes (events, notes)
 const hasStemBox  = computed(() => item.value.TypeId === 1 || item.value.TypeId === 5)
+// BL-72: only a span can run off the edge. Period and Age are the two drawn as a bar.
+const hasOpenEnds = computed(() => item.value.TypeId === 2 || item.value.TypeId === 3)
 
 const filteredCharacters = computed(() => {
   const q = charPickerFilter.value.toLowerCase()
@@ -219,6 +224,9 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
     Placement: 0,
     Centered: false,
     ShowTitle: false,
+    OpenStart: false,
+    OpenEnd: false,
+    OpenFade: false,
     ItemNotes: '',
     ShowInNotes: true,
     Importance: 5,
@@ -444,8 +452,8 @@ function handlePushMessage(event: MessageEvent) {
   )
 }
 
-// ---- Colour helpers ----
-const swatches = ref<string[]>([...DEFAULT_SWATCHES])   // per-timeline quick-pick colours, see Timeline Settings
+// ---- Color helpers ----
+const swatches = ref<string[]>([...DEFAULT_SWATCHES])   // per-timeline quick-pick colors, see Timeline Settings
 const paletteOpen = ref(false)
 function randomColor() {
   item.value.Color = '#' + Math.floor(Math.random() * 0x1000000).toString(16).padStart(6, '0')
@@ -569,7 +577,7 @@ function characterInitials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 }
 
-/** The portrait of an already-linked character: the appearance row only carries name and colour. */
+/** The portrait of an already-linked character: the appearance row only carries name and color. */
 function portraitOf(characterId: string) {
   return allCharacters.value.find(c => c.Id === characterId)?.PortraitPath ?? null
 }
@@ -900,7 +908,7 @@ async function removeImage(pictureId: string) {
           </div>
         </div>
 
-        <div class="row" v-if="hasSide || hasStemBox || item.TypeId === 4">
+        <div class="row" v-if="hasSide || hasStemBox || hasOpenEnds || item.TypeId === 4">
           <!-- Side of the axis. Auto sends 0 and the backend picks the emptier side again on save -->
           <div class="field" v-if="hasSide">
             <label>Side</label>
@@ -925,6 +933,24 @@ async function removeImage(pictureId: string) {
             <label>
               <input type="checkbox" v-model="item.ShowTitle" />
               Show title
+            </label>
+          </div>
+          <div class="field checkbox-field" v-if="hasOpenEnds" title="It began before this — draw an arrow off the left instead of a hard edge, so the timeline needn't stretch back to say so">
+            <label>
+              <input type="checkbox" v-model="item.OpenStart" />
+              Open start
+            </label>
+          </div>
+          <div class="field checkbox-field" v-if="hasOpenEnds" title="It carries on after this — draw an arrow off the right instead of a hard edge">
+            <label>
+              <input type="checkbox" v-model="item.OpenEnd" />
+              Open end
+            </label>
+          </div>
+          <div class="field checkbox-field" v-if="hasOpenEnds && (item.OpenStart || item.OpenEnd)" title="Trail the open side off instead of ending it flat: half-transparent at the arrow's point, full color a year in">
+            <label>
+              <input type="checkbox" v-model="item.OpenFade" />
+              Fade out
             </label>
           </div>
         </div>

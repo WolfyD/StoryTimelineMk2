@@ -46,6 +46,41 @@ public class ItemRepoTests
 
     // ── SaveItemFull / GetItemById ────────────────────────────────────────────
 
+    /// <summary>
+    /// BL-72: the open-end flags (V15) and the fade that softens them (V18). The upsert names its
+    /// columns one by one, so a new column that reads back fine after the insert can still be
+    /// dropped by the update half — save twice.
+    /// </summary>
+    [Fact]
+    public void SaveItemFull_RoundTripsOpenEnds_OnInsertAndUpdate()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var item = MakeItem(tlId);
+        item.TypeId    = 3;   // Age
+        item.OpenStart = true;
+        item.OpenEnd   = false;
+        item.OpenFade  = true;
+        repo.SaveItemFull(item, [], [], [], []);
+
+        var saved = repo.GetItemById(item.Id);
+        Assert.True(saved.OpenStart);
+        Assert.False(saved.OpenEnd);
+        Assert.True(saved.OpenFade);
+
+        saved.OpenStart = false;
+        saved.OpenEnd   = true;
+        saved.OpenFade  = false;
+        repo.SaveItemFull(saved, [], [], [], []);
+
+        var again = repo.GetItemById(item.Id);
+        Assert.False(again.OpenStart);
+        Assert.True(again.OpenEnd);
+        Assert.False(again.OpenFade);
+    }
+
     [Fact]
     public void SaveItemFull_CreatesNewItem_AndReturnsId()
     {

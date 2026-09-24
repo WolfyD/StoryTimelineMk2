@@ -44,9 +44,9 @@ const runs = computed(() => {
 })
 
 /**
- * A hex colour turned into a wash. Anything else falls back, rather than producing `undefined40`.
+ * A hex color turned into a wash. Anything else falls back, rather than producing `undefined40`.
  *
- * The colour is lifted to a lightness floor first: a character can be near-black (#00011f), and
+ * The color is lifted to a lightness floor first: a character can be near-black (#00011f), and
  * against the dark field that wash comes out darker than the background with an underline nobody
  * can see. Clamping lightness keeps the hue that tells characters apart and still shows up.
  */

@@ -433,7 +433,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-	<div id="timeline-center">
+	<div
+		id="timeline-center"
+		:class="{ 'is-character-window': !!store.characterFocus }"
+		:style="{ '--focus-tint': store.characterFocus?.Color || '#6366f1' }"
+	>
 		<WindowTitleBar :title="(store.title || 'Story Timeline') + (store.characterFocus ? ' — ' + store.characterFocus.Name : store.readOnly ? ' (reference)' : '')" />
 		<div v-if="(store.isLoading || waitingForId) && !loadError" id="status-container">
 			<PhSpinner class="spinner-icon" :size="48" color="#79876b" />
@@ -465,6 +469,7 @@ onBeforeUnmount(() => {
                 @open-export="showExport = true"
                 @toggle-year-calendar="toggleYearCalendar"
                 @open-characters="BackendAPI.OpenCharactersWindow(store.currentProject?.Id ?? 0)"
+                @open-relations="BackendAPI.OpenRelationsWindow(store.currentProject?.Id ?? 0)"
             >
                 <template #actions>
                     <TimelineActionsMenu ref="actionsMenuRef" @shift-complete="onShiftComplete" />
@@ -776,6 +781,21 @@ onBeforeUnmount(() => {
         border-radius: 3px;
         &:hover { background: var(--app-surface-high, #1e2b44); color: var(--app-text, #e2e8f0); }
     }
+}
+
+// BL-17: this window is one life, not the timeline. A title suffix is easy to miss, so the whole
+// frame takes the character's color. Pure CSS on the page, which is why the browser build gets it
+// for free. Under --z-modal (9000) on purpose: a dialog should cover the glow, not fight it.
+// ponytail: only the character window. The reference window wants the same in a neutral color —
+// one more class here the day someone asks.
+.is-character-window::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 100;
+	pointer-events: none;
+	border: 2px solid var(--focus-tint, #6366f1);
+	box-shadow: inset 0 0 24px -6px var(--focus-tint, #6366f1);
 }
 
 #timeline-center {

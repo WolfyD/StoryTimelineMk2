@@ -17,7 +17,7 @@ import {
     isLeftOfNow, getAssignedLane, laneSpanFor, type LaneLock
 } from '@/utils/timelineLayout';
 import {
-    buildNode, updateAbsolutePositions, setNodeVisibility, isPortraitType,
+    buildNode, updateAbsolutePositions, setNodeVisibility, isPortraitType, KIN_SCALE,
     buildMiniNode, setMiniNodePosition, setMiniNodeVisibility,
     type MiniNodeElements,
 } from '@/utils/timelineNodes';
@@ -75,7 +75,7 @@ const WAVE_AMP = 7, WAVE_LEN = 44, WAVE_STEP = 4;
 const refStripeLayer = new Konva.Layer({ opacity: 0.4, listening: false });
 const refStripes = new Konva.Group();
 refStripeLayer.add(refStripes);
-const STRIPE_SPACING = 16;   // half colour, half gap — strokeWidth is half the spacing
+const STRIPE_SPACING = 16;   // half color, half gap — strokeWidth is half the spacing
 referenceLayer.add(refStems, refBoxes);
 const refNodeCache = new Map<string, any>();
 const refLanes = new Map<string, LaneLock>();
@@ -128,10 +128,11 @@ const renderedItem = new Map<string, TimelineItem>();
 function evictNode(itemId: string) {
     const els = nodeCache.get(itemId);
     if (els) {
-        els.box?.destroy();
-        els.label?.destroy();
-        els.stem?.destroy();
-        els.colorStrip?.destroy();
+        // Everything buildNode made, rather than a list of names the next new shape gets left out
+        // of. BL-72's arrowheads were exactly that: not destroyed here, so toggling an open side
+        // left an orphan pinned to the canvas at whatever stage coordinates it last had. `fade` is
+        // bookkeeping rather than a node, which is what the test is for.
+        for (const n of Object.values(els)) if (n instanceof Konva.Node) n.destroy();
         nodeCache.delete(itemId);
     }
     const bm = bookmarkNodeCache.get(itemId);
@@ -144,6 +145,18 @@ function evictNode(itemId: string) {
 
 const expandedRangeIds = new Set<number>();
 const getActiveRanges = () => store.hiddenRanges.filter(r => !expandedRangeIds.has(r.Id));
+
+/**
+ * BL-72: how wide one year is in pixels at the current zoom, for the fade on an open-ended span —
+ * 0 for every item that does not fade, which is nearly all of them. Measured from the item's own
+ * start rather than once per frame because a hidden range in between changes the answer, and
+ * `getXFromTime` already knows about those. Under a pixel a year this rounds to nothing, and so
+ * does the fade — correct, since at that zoom the whole span is a few pixels wide.
+ */
+const yearPx = (item: TimelineItem, absoluteStart: number, itemX: number, ls: LayoutSettings, ranges: HiddenRange[]) =>
+    item.OpenFade && (item.OpenStart || item.OpenEnd)
+        ? getXFromTime(absoluteStart + 1, viewport.centerTime, viewport.lodStepFraction, viewport.width, ls, ranges) - itemX
+        : 0;
 
 // Pan state: gridPanOffset tracks how far we've panned since the last full grid rebuild.
 // When it exceeds DRIFT_THRESHOLD, the grid ticks are stale and we rebuild them.
@@ -839,7 +852,7 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         const itemIdStr = getId(item);
         const typeName = getTypeName(item);
 
-        // upsertItem replaces the item object — rebuild its node so title/colour/picture edits show without a reload
+        // upsertItem replaces the item object — rebuild its node so title/color/picture edits show without a reload
         if (renderedItem.get(itemIdStr) !== item) {
             evictNode(itemIdStr);
             renderedItem.set(itemIdStr, item);
@@ -1014,9 +1027,13 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
             continue;
         }
 
+        // BL-17: a relative's birth or death. Cached with the node, which is safe because the kin
+        // set is filled once at load and a focus window never changes character.
+        const scale = store.focusKinItemIds.has(itemIdStr) ? KIN_SCALE : 1;
+
         let elements = nodeCache.get(itemIdStr);
         if (!elements) {
-            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls, !!item.ShowTitle, store.lowResourceMode, !!item.UseHighlightColor);
+            elements = buildNode(itemIdStr, typeName, getTitle(item), getColor(item), stemsMaster, boxesMaster, ls, !!item.ShowTitle, store.lowResourceMode, !!item.UseHighlightColor, scale, !!item.OpenStart, !!item.OpenEnd, !!item.OpenFade);
             nodeCache.set(itemIdStr, elements);
             if (typeName === 'Age' || typeName === 'Period' || isPortraitType(typeName)) {
                 const itemTitle = getTitle(item);
@@ -1034,14 +1051,20 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         setNodeVisibility(elements, true);
         const isDimmed = dimmableIds?.has(itemIdStr) ?? false;
         // BL-15: an age in an appearances window is a backdrop to the life running under it.
-        const base = store.characterFocus && typeName === 'Age' ? 0.55 : 1;
+        // Kin are dimmed for the same reason they are small — they are there, they are not the point.
+        const base = store.characterFocus && typeName === 'Age' ? 0.55 : scale < 1 ? 0.8 : 1;
         if (elements.box)   { elements.box.opacity(isDimmed ? 0.25 : base);   elements.box.listening(!isDimmed); }
         if (elements.label) { elements.label.opacity(isDimmed ? 0.25 : base); elements.label.listening(!isDimmed); }
         if (elements.stem)  { elements.stem.opacity(isDimmed ? 0.25 : base);  elements.stem.listening(!isDimmed); }
+        // BL-72: the open-end arrows belong to the bar and dim with it; they are never click targets.
+        for (const a of [elements.arrowStart, elements.arrowEnd]) {
+            if (a) { a.opacity(isDimmed ? 0.25 : base); a.listening(false); }
+        }
 
         let targetY = 0;
+        // Must match the size buildNode used, or the packer reserves lanes the portrait never fills.
         const boxWidth = isAgeOrPeriod ? Math.max(1, endX - itemX)
-            : isPortraitType(typeName) ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight)
+            : isPortraitType(typeName) ? (ls.TimelineBoxTypesBoxWidth || ls.TimelineEventBoxHeight) * scale
             : ls.TimelineEventBoxWidth;
 
         if (typeName === "Age") {
@@ -1060,7 +1083,11 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         }
 
         const isLeft = isLeftOfNow(itemX, viewport.width);
-        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeft, stageCenterY, ls, !!item.Centered);
+        // BL-72: the fade reaches a year into the bar, and a year is a different number of pixels
+        // at every zoom — so it is measured here, where the time→x mapping lives, rather than
+        // guessed as a constant in the node builder. Below a pixel per year it rounds to nothing,
+        // which is right: at that zoom the whole span is a smudge and there is no fade to see.
+        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeft, stageCenterY, ls, !!item.Centered, yearPx(item, absoluteStart, itemX, ls, ranges));
     }
 
     if (isMini) {
@@ -1113,7 +1140,7 @@ const renderWithDimming = (ls: LayoutSettings) => {
 
 /**
  * BL-15: one character's life as a wave along the centre axis — birth to death, in their own
- * colour. Wavy rather than a bar so it stays legible where it passes under an age band, and
+ * color. Wavy rather than a bar so it stays legible where it passes under an age band, and
  * unmistakable for the axis it rides on. An end with no date runs off that edge of the window
  * dashed: an unrecorded death is not a short life.
  */
@@ -1123,8 +1150,8 @@ function renderLifeline(ls: LayoutSettings) {
     // or was, a lifeline to draw.
     if (!c && !lifelineLayer.hasChildren()) return;
     lifelineLayer.destroyChildren();
-    const birth = c ? characterAbsolute('Birth', c, store.lodProfile) : null;
-    const death = c ? characterAbsolute('Death', c, store.lodProfile) : null;
+    const birth = c ? characterAbsolute('Birth', c) : null;
+    const death = c ? characterAbsolute('Death', c) : null;
     if (!c || props.miniMode || (birth === null && death === null)) { lifelineLayer.batchDraw(); return; }
 
     const ranges = getActiveRanges();
@@ -1168,7 +1195,7 @@ function clearReferenceNodes() {
  * Only that stretch: solid everywhere the ghost does not reach, so the slits themselves show
  * where it starts and ends.
  *
- * ponytail: the slits paint the ghost's colour over the real age rather than cutting a hole in
+ * ponytail: the slits paint the ghost's color over the real age rather than cutting a hole in
  * it, so the ghost's own label stays hidden. Clip the age node itself if the label ever needs
  * to read through.
  */
@@ -1271,7 +1298,7 @@ function renderReference(ls: LayoutSettings) {
 
         let elements = refNodeCache.get(id);
         if (!elements) {
-            elements = buildNode(id, typeName, getTitle(item), getColor(item), refStems, refBoxes, ls, false, store.lowResourceMode, !!item.UseHighlightColor);
+            elements = buildNode(id, typeName, getTitle(item), getColor(item), refStems, refBoxes, ls, false, store.lowResourceMode, !!item.UseHighlightColor, 1, !!item.OpenStart, !!item.OpenEnd, !!item.OpenFade);
             refNodeCache.set(id, elements);
             const tip = `${getTitle(item)} — ${ref.project.Title || 'Untitled'} (reference · Alt+click to view)`;
             elements.box.on('mouseenter', () => { const pos = stage?.getPointerPosition(); if (pos) showTooltip(tip, pos.x, pos.y); });
@@ -1297,7 +1324,7 @@ function renderReference(ls: LayoutSettings) {
                 isPortraitType(typeName) ? laneSpanFor(boxWidth, ls) : 1
             );
         }
-        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeftOfNow(itemX, viewport.width), stageCenterY, ls, !!item.Centered);
+        updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeftOfNow(itemX, viewport.width), stageCenterY, ls, !!item.Centered, yearPx(item, absoluteStart, itemX, ls, ranges));
     }
 
     for (const [id, elements] of refNodeCache) if (!shown.has(id)) setNodeVisibility(elements, false);

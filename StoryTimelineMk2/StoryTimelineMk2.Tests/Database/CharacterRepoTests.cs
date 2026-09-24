@@ -111,6 +111,7 @@ public class CharacterRepoTests
             Name = "Gandalf",
             Nicknames = "The Grey",
             Race = "Wizard",
+            Faction = "The Istari",
             Description = "A powerful wizard",
             Notes = "Has a staff",
             BirthYear = -1000,
@@ -127,6 +128,7 @@ public class CharacterRepoTests
         Assert.Equal("Gandalf", retrieved.Name);
         Assert.Equal("The Grey", retrieved.Nicknames);
         Assert.Equal("Wizard", retrieved.Race);
+        Assert.Equal("The Istari", retrieved.Faction);
         Assert.Equal(-1000, retrieved.BirthYear);
         Assert.Null(retrieved.DeathYear);
         Assert.Equal(10, retrieved.Importance);
@@ -268,8 +270,9 @@ public class CharacterRepoTests
         character.ShowOnTimeline = true;
         character.BirthItemId = "birth-item";
         character.DeathItemId = "death-item";
-        character.BirthSubtick = 47;
+        character.AbsoluteStart = 1000 + 47 / 12.0;
         character.BirthGranularity = 5;
+        character.AbsoluteEnd = 1080;
         character.UseHighlightColor = true;
         repo.SaveCharacter(character);
 
@@ -278,9 +281,10 @@ public class CharacterRepoTests
         Assert.True(saved.ShowOnTimeline);
         Assert.Equal("birth-item", saved.BirthItemId);
         Assert.Equal("death-item", saved.DeathItemId);
-        Assert.Equal(47, saved.BirthSubtick);
+        Assert.Equal(1000 + 47 / 12.0, saved.AbsoluteStart!.Value, 9);
         Assert.Equal(5, saved.BirthGranularity);
-        Assert.Equal(0, saved.DeathSubtick);
+        Assert.Equal(1080, saved.AbsoluteEnd!.Value, 9);
+        Assert.Equal(3, saved.DeathGranularity);
         Assert.True(saved.UseHighlightColor);
     }
 
@@ -360,6 +364,234 @@ public class CharacterRepoTests
 
         Assert.Single(network);
         Assert.Contains(character.Id, network);
+    }
+
+    // ── Relations (BL-15 phase 4) ───────────────────────────────────────
+
+    /// <summary>
+    /// One row per pair, read from either end: the parent's panel and the child's panel both have
+    /// to find it, because there is no mirror row. An undated end stays NULL rather than becoming
+    /// year 0 — the difference between "since birth, as their kind implies" and "since year 0".
+    /// </summary>
+    [Fact]
+    public void SaveRelationship_RoundTrips_AndIsFoundFromBothEnds()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var parent = MakeCharacter(tlId, "Alpha");
+        var child = MakeCharacter(tlId, "Beta");
+        repo.SaveCharacter(parent);
+        repo.SaveCharacter(child);
+
+        long id = repo.SaveRelationship(new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = parent.Id,
+            Character2Id = child.Id,
+            RelationshipType = "parent",
+            Notes = "adopted",
+            StartYear = 1020,
+            StartGranularity = 5,
+            AbsoluteStart = 1020 + 4 / 12.0,
+            RelationshipStrength = 80,
+            RelationshipModifier = "adoptive",
+            RelationshipDegree = "half-",
+            TimelineId = tlId
+        });
+
+        Assert.NotEqual(0, id);
+
+        var fromParent = Assert.Single(repo.GetRelationships(parent.Id));
+        var fromChild = Assert.Single(repo.GetRelationships(child.Id));
+        Assert.Equal(id, fromChild.Id);
+        Assert.Equal("parent", fromParent.RelationshipType);
+        Assert.Equal("adopted", fromParent.Notes);
+        Assert.Equal(1020, fromParent.StartYear);
+        Assert.Equal(1020 + 4 / 12.0, fromParent.AbsoluteStart!.Value, 9);
+        Assert.Equal(5, fromParent.StartGranularity);
+        Assert.Equal(80, fromParent.RelationshipStrength);
+        Assert.Equal("adoptive", fromParent.RelationshipModifier);
+        Assert.Equal("half-", fromParent.RelationshipDegree);
+        Assert.Null(fromParent.EndYear);
+        Assert.Null(fromParent.AbsoluteEnd);
+    }
+
+    // ── shared characters (BL-75) ─────────────────────────────────────────────
+
+    [Fact]
+    public void SharedCharacter_IsInEveryTimelinesCast_WithoutLeavingTheirOwn()
+    {
+        using var ctx = new DbTestContext();
+        int home = InsertTimeline(ctx, "Home");
+        int other = InsertTimeline(ctx, "Other");
+
+        var repo = new CharacterRepo();
+        var wanderer = MakeCharacter(home, "Wanderer");
+        wanderer.Shared = true;
+        repo.SaveCharacter(wanderer);
+        repo.SaveCharacter(MakeCharacter(other, "Local"));
+
+        Assert.Equal(new[] { "Local", "Wanderer" }, repo.GetCharactersByTimeline(other).Select(c => c.Name));
+        var seenFromAway = repo.GetCharactersByTimeline(other).Single(c => c.Name == "Wanderer");
+        Assert.True(seenFromAway.Shared);
+        Assert.Equal(home, seenFromAway.TimelineId);   // shared, not moved
+
+        // Unticking puts them back rather than stranding them.
+        wanderer.Shared = false;
+        repo.SaveCharacter(wanderer);
+        Assert.Equal(new[] { "Local" }, repo.GetCharactersByTimeline(other).Select(c => c.Name));
+        Assert.Single(repo.GetCharactersByTimeline(home));
+    }
+
+    [Fact]
+    public void GetRelationshipsByTimeline_FollowsSharedCharacters_IntoTheirOtherTimelines()
+    {
+        using var ctx = new DbTestContext();
+        int home = InsertTimeline(ctx, "Home");
+        int other = InsertTimeline(ctx, "Other");
+
+        var repo = new CharacterRepo();
+        var a = MakeCharacter(home, "Alpha");
+        var b = MakeCharacter(home, "Beta");
+        a.Shared = b.Shared = true;
+        repo.SaveCharacter(a);
+        repo.SaveCharacter(b);
+        var stayHome = MakeCharacter(home, "Gamma");
+        repo.SaveCharacter(stayHome);
+
+        repo.SaveRelationship(new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = a.Id, Character2Id = b.Id, RelationshipType = "spouse", TimelineId = home
+        });
+        repo.SaveRelationship(new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = a.Id, Character2Id = stayHome.Id, RelationshipType = "friend", TimelineId = home
+        });
+
+        // Both ends shared: the tie travels. One end left at home: it does not.
+        Assert.Equal(new[] { "spouse" }, repo.GetRelationshipsByTimeline(other).Select(r => r.RelationshipType));
+        Assert.Equal(2, repo.GetRelationshipsByTimeline(home).Count());
+    }
+
+    [Fact]
+    public void SaveRelationship_UpdatesInPlace_AndDeleteRemovesIt()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var a = MakeCharacter(tlId, "Alpha");
+        var b = MakeCharacter(tlId, "Beta");
+        repo.SaveCharacter(a);
+        repo.SaveCharacter(b);
+
+        var rel = new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = a.Id,
+            Character2Id = b.Id,
+            RelationshipType = "ally",
+            TimelineId = tlId
+        };
+        rel.Id = repo.SaveRelationship(rel);
+
+        rel.RelationshipType = "rival";
+        rel.EndYear = 1075;
+        Assert.Equal(rel.Id, repo.SaveRelationship(rel));
+
+        var saved = Assert.Single(repo.GetRelationships(a.Id));
+        Assert.Equal("rival", saved.RelationshipType);
+        Assert.Equal(1075, saved.EndYear);
+
+        repo.DeleteRelationship(rel.Id);
+        Assert.Empty(repo.GetRelationships(a.Id));
+    }
+
+    /// <summary>
+    /// BL-73: the relations window asks for the whole web at once, so the timeline query has to be
+    /// the timeline's relations and only those — a second project's ties must not leak in.
+    /// </summary>
+    [Fact]
+    public void GetRelationshipsByTimeline_ReturnsTheWholeWeb_AndNoOtherTimelines()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        int otherId = InsertTimeline(ctx, "Other Timeline");
+
+        var repo = new CharacterRepo();
+        var a = MakeCharacter(tlId, "Alpha");
+        var b = MakeCharacter(tlId, "Beta");
+        var c = MakeCharacter(tlId, "Gamma");
+        var outsider = MakeCharacter(otherId, "Elsewhere");
+        repo.SaveCharacter(a);
+        repo.SaveCharacter(b);
+        repo.SaveCharacter(c);
+        repo.SaveCharacter(outsider);
+
+        repo.SaveRelationship(new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = a.Id, Character2Id = b.Id, RelationshipType = "parent", TimelineId = tlId
+        });
+        repo.SaveRelationship(new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = b.Id, Character2Id = c.Id, RelationshipType = "spouse", TimelineId = tlId
+        });
+        repo.SaveRelationship(new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = outsider.Id, Character2Id = outsider.Id, RelationshipType = "ally", TimelineId = otherId
+        });
+
+        var web = repo.GetRelationshipsByTimeline(tlId).ToList();
+
+        Assert.Equal(2, web.Count);
+        Assert.All(web, r => Assert.Equal(tlId, r.TimelineId));
+        Assert.Contains(web, r => r.RelationshipType == "parent");
+        Assert.Contains(web, r => r.RelationshipType == "spouse");
+        Assert.Single(repo.GetRelationshipsByTimeline(otherId));
+    }
+
+    /// <summary>
+    /// The kinds are app-wide, so a user's own kind survives alongside the seeded ones, and
+    /// deleting a kind leaves the relations that used it alone — they keep the id they were saved
+    /// with rather than vanishing with it.
+    /// </summary>
+    [Fact]
+    public void RelationshipTypes_AreSeeded_AndUserKindsSurviveTheRelationsThatUseThem()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var a = MakeCharacter(tlId, "Alpha");
+        var b = MakeCharacter(tlId, "Beta");
+        repo.SaveCharacter(a);
+        repo.SaveCharacter(b);
+
+        var seeded = repo.GetRelationshipTypes().ToList();
+        Assert.Contains(seeded, t => t.Id == "parent" && t.AToB == "parent of" && t.BToA == "child of");
+        Assert.Contains(seeded, t => t.Id == "mentor" && t.Type == "social");
+
+        repo.SaveRelationshipType(new CharacterRepo.RelationshipType
+        {
+            Id = "liege",
+            Name = "Liege / sworn",
+            Type = "social",
+            AToB = "liege of",
+            BToA = "sworn to",
+            OneWay = 0
+        });
+        repo.SaveRelationship(new CharacterRepo.CharacterRelationship
+        {
+            Character1Id = a.Id,
+            Character2Id = b.Id,
+            RelationshipType = "liege",
+            TimelineId = tlId
+        });
+
+        repo.DeleteRelationshipType("liege");
+
+        Assert.DoesNotContain(repo.GetRelationshipTypes(), t => t.Id == "liege");
+        Assert.Equal("liege", Assert.Single(repo.GetRelationships(a.Id)).RelationshipType);
     }
 
     [Fact]

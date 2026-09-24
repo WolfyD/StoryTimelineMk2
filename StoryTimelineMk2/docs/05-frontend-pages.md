@@ -4,7 +4,7 @@ This document describes the top-level Vue pages under `Frontend/src/` — what m
 
 ## Entry Points Overview
 
-Vite builds five HTML entry points (`Frontend/vite.config.ts` → `build.rollupOptions.input`). Each entry file follows the identical bootstrap pattern: import `assets/main.scss`, `createApp(<RootComponent>)`, `app.use(createPinia())`, `app.mount('#app')`, then fade out and remove the `#app-loading` splash element.
+Vite builds seven HTML entry points (`Frontend/vite.config.ts` → `build.rollupOptions.input`). Each entry file follows the identical bootstrap pattern: import `assets/main.scss`, `createApp(<RootComponent>)`, `app.use(createPinia())`, `app.mount('#app')`, then fade out and remove the `#app-loading` splash element.
 
 | Entry TS file | HTML entry | Root component | WinForms host | URL query params |
 |---|---|---|---|---|
@@ -12,6 +12,9 @@ Vite builds five HTML entry points (`Frontend/vite.config.ts` → `build.rollupO
 | `src/timeline.ts` | `timeline.html` | `pages/TimelineApp.vue` | `Forms/f_Timeline.cs` | `?id=<timelineId>` |
 | `src/editItem.ts` | `editItem.html` | `pages/EditItem.vue` | `Forms/f_AddEditItem.cs` | `?timelineId=` + (`itemId` \| `typeId`,`year`,`granularity`) |
 | `src/calendar.ts` | `calendar.html` | `pages/CalendarApp.vue` | `Forms/f_Calendar.cs` | `?calendarId=<guid>` (absent = new calendar) |
+| `src/yearCalendar.ts` | `yearCalendar.html` | `pages/YearCalendarApp.vue` | `Forms/f_YearCalendar.cs` | `?timelineId=&year=` |
+| `src/characters.ts` | `characters.html` | `pages/CharactersApp.vue` | `Forms/f_Characters.cs` | `?timelineId=` + optional `characterId` |
+| `src/relations.ts` | `relations.html` | `pages/RelationsApp.vue` | `Forms/f_Relations.cs` | `?timelineId=` + optional `characterId` |
 | `src/settings.ts` | `settings.html` | `pages/SettingsApp.vue` | **none** (no form navigates to `settings.html`) | n/a |
 
 Each form navigates to `Frontend/dist/<entry>.html` in Release, or `http://localhost:5173/<entry>.html` in Debug, appending its query string.
@@ -362,7 +365,7 @@ No Pinia store usage.
 | Weeks: Enabled checkbox, days-per-week, "Day names"/"Short names" checkboxes, day name inputs, weekend checkboxes | `v-model`, `toggleWeekend(d)` | edit week structure; without day names only weekend indices are shown |
 | Seasons: Enabled checkbox, "Short names", per-season name/short/start/end/significance, "×", "+ Add Season" | `v-model`, `removeSeason`, `addSeason` | edit seasons; colored proportional track visualizes segments |
 | Seasons "Auto DOY" | `openSeasonDoyModal` → `applySeasonDOY` | modal asks for first day of season 1, then divides `yearLength` evenly across seasons (wrapping start/end day-of-year) |
-| Memorable Days: Enabled checkbox; one colour-dot chip per day; **Manage days…** | `openMemDays(id?)` | opens `MemorableDaysModal` (on that day, or the first) |
+| Memorable Days: Enabled checkbox; one color-dot chip per day; **Manage days…** | `openMemDays(id?)` | opens `MemorableDaysModal` (on that day, or the first) |
 | `MemorableDaysModal` Add / Delete | `addMemorableDay`, `removeMemorableDayById` | the page owns the list; the modal edits the day objects live (fixed → `CalendarDayPicker` + Range, weekly → `WeekDayPicker`, relative → `RelativeRuleEditor`) |
 | DOY modal backdrop click / Cancel | — | close modal |
 
@@ -389,6 +392,445 @@ No Pinia store usage.
 - No modals.
 
 The application's real settings UIs live elsewhere: `AppSettingsModal` (opened from `App.vue`) and `TimelineSettingsModal` (opened from `TimelineApp.vue`). Treat `SettingsApp.vue` as a placeholder pending a real implementation or removal.
+
+---
+
+## RelationsApp.vue — Relations (`relations.html`)
+
+### Purpose
+BL-73, BL-76, BL-77. The cast as a web rather than a list. Seven views over the same data, all on
+the same Konva stage with the same node rendering, so switching is a re-layout, not a different
+screen:
+
+| Mode | Button | What it lays out |
+|---|---|---|
+| `clusters` | Knots | The spring sim with the knots shoved apart, each under a named blob |
+| `matrix` | Matrix | Adjacency grid, factions blocked on the diagonal |
+| `tree` | Genogram | Hourglass generations from parent/spouse, everything else overlaid |
+| `arc` | Arc | One axis by birth year, ties as bows — family above, the rest below |
+| `sociogram` | Sociogram | A box per faction in a ring, boundary-crossing ties picked out |
+| `chord` | Chord | Groups round a circle, ribbons as thick as the ties between them |
+| `chain` | Chain | The shortest route between two people, each with a ring of their other ties |
+
+`clusters` is the only view that runs the sim, so `isForce` doubles as "is this the view
+`paintGraph` paints" — there was a second computed saying exactly that until **Graph**, **Rings**
+and **Rows** were cut (2026-09-24). Everything else builds its own shapes and never moves them
+again. Graph was indistinguishable from Knots once Knots worked, and a BFS rank is not a fact
+about a story: `radialLayout` and `layeredLayout` went with their views.
+
+### Layout
+A `WindowTitleBar`, a sidebar and the stage filling the rest. The sidebar starts at 260px and is
+dragged by `.side-grip`, a 5px strip beside it, wired up by `useSideWidth(key, fallback, min, max)`
+in `composables/useSideWidth.ts`: `startResize` captures the pointer on the strip, so the drag
+survives the cursor crossing the canvas, and since the panel starts at the left edge of the page
+the pointer's own `clientX` *is* the width — clamped to 200–560 and written to `localStorage` on
+release. Per machine rather than per timeline: how wide a panel of names wants to be is about the
+monitor in front of you, not about the story. The stage's `ResizeObserver` picks the rest up.
+
+The CSS `resize` property would have been free, but its grip sits in the element's bottom-right
+corner — on a full-height panel that is the bottom of the window, where nobody looks for it.
+
+The Characters window's list uses the same composable and the same `.side-grip` class, under the
+key `charactersSideWidth`; its `.ch-body` grid takes the width inline as
+`${listWidth}px 5px 1fr`. The strip's own styling lives in `assets/main.scss` beside the other
+shared chrome, with both `flex` and `width` set so it works in a flex row and a grid column.
+
+Sidebar, top to bottom: a seven-button mode grid with a one-line hint for the current view, a
+search box that centres the stage on a match, the knots' distance slider and the arc's spread
+slider (that view only), the chord's Factions/Kinds toggle and its pick list (that view only), the
+sociogram's crossing-ties slider and a note when it has no factions to draw, the chain's *Side
+circles* checkbox (each in that view only), an "as of year" checkbox with a range scrubber, a category legend whose checkboxes hide kinds, a
+two-picker "How are they related?" readout — which is also what the chain view draws — the
+selected character's ties worded from their end, and the list of characters no relation mentions.
+The unpin controls only show in the knots.
+
+Over the stage's top-right corner sit two buttons, **Copy** and **Save**, which take the picture
+(`stageBlob()`): `stage.toCanvas({ pixelRatio: 2 })` onto a canvas pre-filled with `--app-bg`,
+since Konva draws on transparency and a PNG of a dark chart on nothing is unreadable wherever it
+is pasted. Copy needs `ClipboardItem`, which is guarded for. Both say so afterwards through
+`notice`, a line that clears itself after 2.5s, next to where `error` prints and dimmer.
+
+### State
+| Group | Refs |
+|---|---|
+| Data | `characters`, `relations`, `types`, `loading`, `error` |
+| View | `mode` (`clusters` \| `matrix` \| `tree` \| `arc` \| `sociogram` \| `chord` \| `chain`), `selectedId`, `treeRootId`, `search`, `menu` + `menuId`, `notice`, `arcSpread`, `knotRoom`, `crossFade`, `haloOn`, `chordBy`, `chordPick` |
+| Filters | `yearOn`, `year`, `hiddenCategories`, `treeShown`, `pathFrom`, `pathTo` |
+| Context | `timelineId` (a **ref** — the pre-warmed window is navigated before the id is known) |
+
+All the maths lives in two canvas-free, unit-tested modules. `utils/relationsGraph.ts`
+(`src/test/utils/relationsGraph.test.ts`): the spring sim and its optional knot gravity, the BFS
+shortest path and its plain-English wording, the generation layout and its union nodes.
+`utils/relationsLayouts.ts` (`src/test/utils/relationsLayouts.test.ts`): ids and edges in,
+positions out — `communities()` (label propagation), `clusterSeed()`, `matrixOrder()`,
+`arcLayout()`, `sociogramLayout()`, `chordLayout()`, `chainLayout()` and `convexHull()`.
+
+`hiddenCategories` lists what to **hide** and `treeShown` lists what to **show**: the genogram's
+checkboxes only decide what is laid over a chart that is always drawn, and they start empty, so
+they cannot be the same list. `toggleCategory()` picks whichever one is behind the checkbox in
+this view. Keeping them apart is also what stops a blanked genogram overlay from emptying
+`visibleEdges` and telling the path finder that nobody is related to anybody.
+
+### Knots (`clusters`)
+`communities()` (label propagation) says who is in which knot and `clusterSeed()` starts them in
+separate rings; what keeps them separate is in `stepForces`. Pulling each member toward its own
+knot's centroid was never enough on its own — nothing pushed two centroids apart, and the global
+pull toward the stage centre stacked them, so the knots settled concentric and the view was
+indistinguishable from `graph`. Centroids now shove each other: a knot claims `clusterRoom` (46px)
+per √member, and any pair closer than the sum splits the shortfall, applied to every member
+equally so the knot moves as one.
+
+`clusterRepulsion` sets a *distance*, not a speed. The shove is opposed by the centre gravity the
+whole way and settles where they cancel, so the constant decides how close to the wanted gap the
+knots actually get — at 0.12 they stopped ~180px short and still overlapped, at 0.3 the worst pair
+on the test cast is 39px short of 365.
+
+`clusterRoom` is not a constant but the *Knot distance* slider, `KNOT_ROOM` mapping 0–100 onto
+14–160px per √member, **geometrically** (`min * (max / min) ** (v / 100)`). The dial was 14–78
+until it was asked to go further (2026-09-24); stretching the top linearly would have dragged the
+midpoint from 46px to 87 and changed what every existing timeline looked like on reopening, where
+a geometric dial keeps 50 at ~47px — the module default, and where the measured numbers below were
+taken. Changing it calls `kick()` rather
+than `buildGraph()` — the knots have not changed, only how much room they want, and a rebuild
+would discard a layout the writer had dragged into shape — and re-arms `fitOnSettle`, because the
+picture changes size. `knotRoomPx()` turns the 0–100 into px per √member over **two** geometric
+halves, `min`→`mid` and `mid`→`max` (14 / 46 / 200): the top of the range has been raised twice
+(78 → 160 → 200, both asked for), and on a single curve each of those would have dragged the
+midpoint up with it and changed what every saved setting drew on reopening. Two halves pin 50 at
+46px for good. Measured on the test cast the mean gap between knots runs 288 / 306 / 373 /
+477 / 565px at 0 / 25 / 50 / 75 / 100 of the old 14–160 dial, with the fitted zoom falling
+0.97 → 0.51 to match; on the 14–200 dial the whole layout measures 882 / 1114 / 3492px wide at
+0 / 50 / 100 and the fit follows it down, 1 → 0.72 → 0.21. The top of the range buys daylight at
+the price of a smaller picture. Near the top the knots stop short of
+what they ask for (11 of 21 pairs on the test cast, worst by 154px) because seven mutual
+constraints plus centre gravity cannot all be satisfied at once; the picture still grows
+monotonically, which is what the control promises. This, `arcSpread` and `crossFade` persist per timeline
+through `rememberedSlider(key, what, fallback)`, a small factory over
+`GetMiscSetting`/`SetMiscSetting` that debounces the write, starts at `fallback` if the read
+fails, and only surfaces a *write* failure — losing a setting you deliberately moved is the one
+you would notice.
+
+The dial does a second thing, and has to. Ties that *leave* a knot are what holds the knots open:
+with the centroids shoved 1200px apart, a cross-knot tie is a spring stretched a thousand past its
+150px rest length, and that beats the pull back toward a member's own centroid — so the cross-tied
+members get dragged out to the rim and the knot smears toward its neighbours instead of staying a
+knot. Measured at the top of the dial, the median knot doubled, 202 → 442px, and the biggest
+tripled to 1019px, while the singletons sat unchanged at ~160. So `stepForces` reads
+`slack = max(1, clusterRoom / CLUSTER_ROOM)` and gives a tie whose two ends are in different knots
+that much extra rest length, and exactly as much less pull (`linkStrength / slack`) as it gained
+reach — a tie that has to stretch further should not stretch harder. Never the other way: at or
+below the dial's midpoint `slack` is 1 and every number is what it was before this existed, which
+is what three of the unit tests pin down. After it the median knot runs 202 / 203 / 217px across
+the dial and the biggest 293 / 366 / 530, with the layout still 3311px wide at 100 — the knots
+keep their size and the space between them is what grows.
+
+`paintHulls()` draws the blob behind each knot, in its own group in front of nothing and behind
+the links, `listening: false` so it never eats a click meant for a character. The blob is
+`convexHull()` stroked `HULL_PAD * 2` wide with round joins and caps — the stroke *is* the
+padding, so there is no offsetting maths and the corners round themselves. It runs inside the sim
+loop, so the shapes are rebuilt only when the knots change and every other frame just moves the
+points. Knots of one get no blob (`HULL_MIN`); a knot of two draws as a capsule, since
+`convexHull` hands back fewer than three points unchanged and the caller only closes the path at
+three or more. Hues are spread evenly round the wheel rather than hashed through
+`categoryColor` — a hash collides, and two neighbouring knots in the same colour defeats the
+view. Each blob is labelled with its best-connected member ("Bran Grimsby and 25 others").
+
+Knots shoved apart run wider than the stage, so this is the one force view that fits itself —
+once, when the sim first settles after `buildGraph`. Refitting on every settle would yank the view
+from under anyone who had just dragged somebody, because a drag reheats the sim. The other views
+that draw their own shapes never reach `paintHulls`, so `rebuild()` hides the hull group; without
+that, switching to the chord left the last knots drawn underneath it.
+
+### The matrix (`matrix`)
+`matrixOrder(ids, edges, clusters, factionOf)` decides the order rows and columns go in, so the
+blocks that mean something land on the diagonal. **Faction first**, because a faction is a fact the
+writer wrote down and a knot is one the file guessed — biggest house first, ties by name, and
+everyone with no faction last. Inside a faction it falls back to knot-then-degree, which is the
+whole order when no factions exist. Ties keep their input order, which is why the page hands it a
+cast already sorted by name.
+
+Clicking is how the grid asks the question it cannot answer itself: **a cell** puts the row's
+person into *Relation A* and the column's into *Relation B* and leaves the finder to spell the
+relation out; **a name down the side** sets A, **across the top** sets B, and either also selects.
+The diagonal is nobody's relation with themselves, so it just selects. **The pair you picked is
+marked**: a faint band along A's row and B's column, and a white outline on both of the symmetric
+cells — drawn over the coloured squares, because an empty cell is exactly the pair you ask about
+to find out there is nothing there. Without it a click off the diagonal changed two dropdowns and
+nothing on the grid, and on an eighty-row grid the bands are how you find the square again. It is
+one transparent
+`Konva.Rect` over the whole grid rather than a listening rect per pair — every square answers,
+including the empty ones, and "how are these two related" is a question you ask precisely about
+the pairs with no line between them.
+
+**Show the route** (`showPath`, session-only, shared with the genogram) draws the finder's answer
+on the grid as a staircase. `pathRoute` is `shortestPath().nodes` kept *in order* — `pathNodes`, the set the other
+views trace with, is now derived from it, since a set cannot say which step came third. Each step
+is ringed at the square where its two people meet and numbered in reading order, and the elbow
+joining one step to the next turns on the diagonal square of the person the two steps have in
+common, which is what going *through* somebody looks like on a grid. Gated on
+`pathRoute.length > 2`: two people directly related are already the pair mark above, and drawing
+a one-step staircase over it says the same thing twice. On an eighty-row grid at the fitted zoom
+the ring is what you see first and the numbers want a zoom in, which is the right way round —
+the ring answers "where", the number answers "in what order".
+
+The stage is `draggable`, so a pan that starts on the grid still fires `click` on it afterwards
+and would set a pair every time the view was shoved sideways. One `panned` flag at the stage level
+(`mousedown` clears it, `dragmove` sets it) catches every pan however it started, because Konva
+bubbles the stage's own drag.
+
+### The genogram (`tree`)
+`hourglassLayout()` places the generations and their union nodes; everything else is decoration
+`buildTree()` adds on top.
+
+`overlayEdges(edges, present)` is the rest of the web: every tie that is neither `PARENT_KINDS`
+nor `SPOUSE_KINDS` and has both ends on the chart. Each draws through `bowPoints()` — a three-
+point curve, inset by `FRAME_R` so it stops at the discs rather than under them — or
+`jaggedPoints()` for the `hostile` category, whose teeth are forced to zero at both ends for the
+same reason. Both survive coincident endpoints (the layout can produce them before a row spreads),
+which is what the `Number.isFinite` test pins down. `overlayFade(distance)` drops a tie's opacity
+from 0.9 to 0.25 between two and ten `TREE_ROW` of reach; an eighty-person cast is otherwise a
+hairball of full-strength diagonals.
+
+`genderFrame()` puts the genogram shape — square `M`, circle `F`, diamond otherwise, via the same
+`genderKey()` the relation wording uses — *around* the shared portrait disc rather than replacing
+it, so `buildNode()` stays the one node renderer for all six views. `deathCross()` is added when
+`lifeStateAt(c, asOfYear ?? +Infinity)` says dead: with the scrubber off the cross is a fact about
+the person, with it on it is a fact about that year.
+
+`buildTree()` tracks the node bounds and ends in `fitOrHold()`, which it used to leave alone —
+the chart inherited the previous view's zoom. `fitOrHold(minX, minY, maxX, maxY, focus, floor)`
+fits with `fitStage()` while the result stays at or above `floor`; below that it holds `floor`,
+centres on `focus` and runs both axes through `clampPan()` so the content keeps covering the
+stage. The genogram's floor is `MIN_READABLE_SCALE` (0.45) and its focus is the root. An
+eighty-person cast that is one bloodline lays out around 8000px wide, so the floor is the usual
+branch. `clampPan()` lives in `relationsGraph.ts` and is unit-tested; content smaller than the
+stage on an axis is centred rather than pinned to an edge.
+
+**Show the route on the chart** is the same `showPath` checkbox the matrix uses, and the only
+view-specific thing about it is where the route comes from. The genogram draws one hourglass
+around one root, so `shortestPath()` is run over a *filtered* edge list — both ends in `at` (the
+chart's own position map) and not in a category `treeShown` has hidden — rather than over
+`visibleEdges` whole. A path through the full web can step through people this chart never drew,
+and a numbered trail with gaps in it is worse than none; filtering also keeps the legend honest,
+since a category it has hidden is not a step the route may take. Gated on both ends being on the
+chart, which is why the hint says so.
+
+Each step is traced along the chart's *own* elbows rather than cut straight across it: the union
+joining the two is looked up, and each end contributes either a parent's drop into the union node
+or a child's rise to the sibling bar — the same two shapes `buildTree()` already drew, which is
+why `barAt` remembers each union's bar `y` as the elbows go down. A step with no union between it
+(a friendship, a rivalry) falls back to the `bowPoints()` curve the overlay drew it as, and takes
+the `tension: 0.5` that turns three points into a bow; an elbow keeps `tension: 0`, since it is
+already the shape it means. The rings and numbers go into `nodeGroup` *after* every face, the
+same fix the chain's step wording needed, and are numbered per person so the digits count off the
+names in the sidebar's sentence.
+
+The scrubber and the legend are shown in this view too (they were `mode !== 'tree'` until the
+genogram read either). Note the asymmetry: `visibleEdges` gates the **overlay**, but the chart
+itself comes from `hourglassLayout(characters, relations, root)` — unfiltered, because hiding
+`family` would otherwise leave nothing to overlay onto. The legend says so in a hint.
+
+### The arc (`arc`)
+`arcLayout(ids, years, spread, gap)` places everyone on `y = 0` in birth order. `spread` (the
+sidebar slider, 0–100, divided by 100) blends between even spacing and true-to-the-year; a
+left-to-right pass guarantees `ARC_GAP` minimum separation whatever the blend asks for. Full
+spread scales off the **median** step between consecutive births — the smallest step would let one
+pair born a year apart in a centuries-wide cast stretch the axis into whitespace. Characters with
+no birth year are bucketed past `undatedFrom`, drawn behind a dashed fence with a caption.
+
+`buildArc()` draws each visible edge with `bowPoints(l, r, 0, above ? -rise : rise)` at
+`tension: 0.5`. A left-to-right chord makes `bowPoints`' perpendicular offset vertical, so a
+negative bow arcs above and a positive one below; `above` is `category === 'family'`. `rise` is
+42% of the span, clamped to `[30, ARC_RISE_MAX]`. With someone selected, their ties stay at 0.85
+and the rest drop to 0.1.
+
+**Rows by generation** (`arcRows`, a session-only checkbox) keeps `arcLayout`'s x positions and
+writes `p.y = generationOf(relations, ids) * ARC_ROW` onto them before anything is drawn, so the
+axis line, the undated fence, the bows, the discs and the fit all follow from the one array.
+`generationOf()` lives in `relationsGraph.ts` beside the genogram's kin helpers: 0 for anyone
+whose parents are not in the cast, one more per step of descent, spouses levelled to the later of
+the pair. It is a *longest* path — a character with a grandparent and a parent on screen belongs
+under the parent — relaxed in bounded rounds rather than topologically sorted, because nothing
+stops a writer making somebody their own great-grandparent; the depth is capped at the size of the
+cast so a cycle flattens instead of climbing until the rounds run out. In rows the bow is capped
+at `ARC_ROW * 0.45` rather than `ARC_RISE_MAX`, or it wanders into the discs of the row below.
+
+Each node's name — the `Konva.Text` `buildNode()` tags `name: 'label'`, which exists for this —
+moves above the disc and alternates between two rows, so the nearest name on the same row is two
+people away and has two gaps of room. The birth year goes under it in grey. The alternation is
+counted **along each row** rather than by position in the list: once the rows are on, the person
+to your left is not the one before you in birth order.
+
+The arc passes `floor = 1` to `fitOrHold()`: the genogram's shape still reads at 0.45, but an arc
+is a row of names and years and nothing else, so it holds 1 and pans. It also passes the layer's
+own `getClientRect({ skipTransform: true })` rather than bounds derived from the constants — a
+real cast is nearly all `family`, so reserving symmetric room for the bows would centre the axis
+in a half-empty stage.
+
+### The sociogram (`sociogram`)
+`sociogramLayout(groups, loose)` puts one box per faction at equal angles on a ring and everyone
+with no faction on a ring outside it. The `factions` computed splits the cast on
+`Faction?.trim()` and sorts the groups alphabetically, so the ring keeps its order across
+sessions. Box size comes from a roughly square grid of `SOCIO_CELL_W`×`SOCIO_CELL_H` member
+cells plus `SOCIO_HEADER` for the label the caller draws.
+
+The ring radius is solved over **every pair** of boxes, not just neighbours: each box is treated
+as the disc covering it, two boxes `steps` apart have `2R·sin(π·steps/n)` between their centres,
+and the largest radius any pair asks for wins. Neighbour-only sizing never asks about the two
+biggest boxes facing each other across the middle.
+
+`buildSociogram()` draws the boxes into `linkGroup` first, so ties draw over them. Edges are
+straight — `bowPoints(a, b, NODE_R, 0)` with no tension — because a crossing tie is read by where
+it lands and the ring already leaves it an empty middle to be seen in. A tie is internal only when
+both ends share the same *named* faction, so the unaffiliated cross by definition. Internal ties
+draw at `SOCIO_INSIDE` (0.12) against 0.85 for crossings; with somebody selected their own ties go
+to 0.9 and everyone else keeps their value at `SOCIO_BACKDROP` (0.35) of it, rather than being
+flattened — the window always opens with a character selected, so an override would hide the
+contrast the view exists for.
+
+The *Crossing ties* slider (`crossFade`, 0–100, default 100) scales `SOCIO_CROSS` (0.85), the
+opacity a tie that leaves its box draws at. It starts where the view was before the slider existed
+— the crossings are the point of it — and exists for the cast where every house deals with every
+other, whose middle fills in solid and hides the boxes the view is about. The selected
+character's own ties stay at 0.9 whatever it says: turning the background down should not take
+away the threads you asked for.
+
+Unlike the genogram and the arc this view calls `fitStage()` with no floor: a ring is read whole,
+and holding a minimum scale just clips it.
+
+### The chord circle (`chord`)
+`chordLayout(names, counts)` takes a symmetric matrix and returns the arcs, the ribbons and the
+radius. **An arc is as wide as the group's tie-ends, not its headcount** — a house of forty who
+keep to themselves earns less of the circle than a house of five everybody deals with. An
+internal tie spends two ends, both on the same arc, which is what gives a self-contained group
+its width. Gaps are `CHORD_PAD` but never more than a third of the circle between them, and the
+radius grows with the cast (`CHORD_PX_PER_END`) so a hundred ribbons are not squeezed through the
+same gap. Every arc is filled by its own ribbons end to end with no gap and no overlap; that is
+the invariant the unit tests pin.
+
+`chordMatrix` builds the matrix two ways. **Factions**: an arc per faction plus a `No faction`
+arc, `counts[i][j]` the number of relations running between them. **Kinds**: an arc per relation
+category, but counted *per person*, not per pair — `counts[i][j]` is how many characters have
+both kinds of tie and `counts[i][i]` how many have only that one. The pair-level reading (how
+many pairs are family *and* hostile) was the original design and was dropped after checking the
+live data: 298 relations across 298 distinct pairs, not one carrying two categories, so that
+chart is always empty.
+
+`buildChord()` draws ribbons as custom `Konva.Shape`s — two arcs on the inner radius joined by
+quadratics through the origin — and puts them in `nodeGroup`, not `linkGroup`, because
+`linkGroup` is `listening: false` and here the ribbon is the thing you click. Own loops draw
+first so crossings sit over them, and take `CHORD_SELF` (0.2) against `CHORD_REST` (0.62), the
+same internal/crossing contrast the sociogram makes. Clicking an arc or a ribbon lifts it to
+`CHORD_LIT` (0.85), drops the rest to `CHORD_BACKDROP` (0.14) and lists what it is made of;
+clicking it again, clicking empty stage, or changing mode or grouping lets go.
+
+The fit is computed from the radius and the stage rather than measured, and labels are sized
+`CHORD_LABEL_PX / scale` so names stay a constant 13 screen px however big the cast. Measuring
+would not work anyway: a custom `Konva.Shape` with a `sceneFunc` reports a 0×0 client rect, so
+ribbons are invisible to `getClientRect` and can only be found through `stage.getIntersection`.
+
+### The chain (`chain`)
+The view for the question the sidebar has always asked in prose. `G.shortestPath` gives the route
+between *Relation A* and *Relation B*; `chainLayout(path, edges)` lays it left to right at
+`CHAIN_GAP` and fans everyone else each of them is directly tied to around them at `CHAIN_HALO_R`.
+
+- **Nobody is drawn twice.** A neighbour two people on the route share is placed once, at the
+  earlier of them — two circles for one person read as two people.
+- **A satellite says a tie exists, not what it connects to.** One thin spoke to whoever on the
+  route knows them, and nothing else: the first cut of this view drew every edge between everyone
+  on the picture and buried the one line it is about under the mesh (2026-09-24). The mesh is what
+  the knots are for.
+- **The fan skips the horizontal.** Half go above the chain and half below, over arcs of
+  ±(35°–145°); a satellite at dead level would sit on the one line this chart cannot afford to
+  lose, and on the words written along it.
+- **Past `CHAIN_HALO_MAX` (5) the least connected are dropped**, and the last slot in the ring
+  becomes a dashed `+n` instead of a sixth face — always the same five circles, one of them saying
+  how many you are not seeing. A hub hanging off the route says more about where it runs than a
+  walk-on does, which is why the cut is by degree.
+
+Satellites are `buildNode()` scaled to `HALO_SCALE` with the name label **destroyed** and the
+selection ring counter-scaled: five names round one person run into each other at any radius that
+still fits between two chain members, so the disc's initials carry it and a click says who in
+full. They keep the portrait, the double-click and the right-click menu, because a satellite is a
+character. The *Side circles* checkbox (`haloOn`) drops the lot for the route on its own.
+
+Each step of the route is labelled with `relationLabel()` read from the *left* end, so the chart
+reads left to right whichever way round the relation happens to have been written down. The labels
+are added to `nodeGroup` **last of all**, after the discs: what a step is called is the sentence
+this view exists to draw, and in `linkGroup` it was written underneath the very circles it
+names. With no
+route — or no pair picked — the stage says so instead, which is `pathText` where there is one.
+
+**Everything is draggable**, and `dragChain()` is what keeps the picture honest afterwards: it
+holds the lines (`chainLines`), the words over them (`chainWords`) and each ring (`chainRing`) as
+id pairs rather than coordinates, and reads the positions back out of `shapes` on every
+`dragmove`. Drag someone on the route and their ring travels with them at its stored offset; drag
+a satellite and the offset is rewritten, so it stays where you put it the next time its owner
+moves. A route of six people with a ring each will overlap somewhere, and letting you shove one
+aside is cheaper than a placer clever enough never to need it.
+
+The knots run the sim on a `requestAnimationFrame` loop that `kick()` reheats and
+`tick()` cools: `stepForces` takes an `alpha` the caller decays by `ALPHA_DECAY` each frame, and
+the loop exits at `ALPHA_MIN` or once `moved` — a sum over the nodes, so the bar scales with the
+cast — drops below `simNodes.length * 0.05`. Cooling is the one that guarantees a stop; a big
+enough web never quite settles on its own. The sim also caps the push between any pair and each
+node's speed, without which a close pair flings itself across the stage and the graph never
+recovers. The year scrubber reheats to 0.4 rather than 1, so dragging it does not keep the layout
+moving under the writer's hand.
+
+### User Interactions
+| Action | Effect |
+|---|---|
+| Click a node | Select; a white ring marks them in every view that draws discs. In the knots everything more than one hop away also dims; the matrix re-bands their row and column, the genogram re-roots on them |
+| Double-click | `OpenCharactersWindow(timelineId, characterId)` |
+| Right-click a character | Menu: their timeline, open in characters, centre the tree here, unpin, then **Relation A** / **Relation B**. Rings them, but moves nothing |
+| Right-click the background | Menu: **Fit to window**, **Unpin all** |
+| Click a matrix cell or edge name | Sets the pair, or the one end, the finder and the chain view read |
+| Drag a node | Pins it; the sim leaves it alone and the position is saved (debounced) |
+| Wheel / drag the background | Zoom about the pointer / pan |
+| "As of year" | Relations outside their span vanish; the unborn fade to 0.12 and the dead to 0.45, so the layout does not jump |
+| Copy / Save (stage corner) | The picture to the clipboard, or to `relations-<mode>.png` |
+
+The browser's own context menu is suppressed over the whole window except inside `input`,
+`textarea` and `select`, where it is the only cut and paste a WebView offers: the native menu is a
+list of things to do to a *web page* — reload it, view its source, save the canvas — and none of
+them are true of this window. Both menus are one `menu` ref, `{ x, y, id }`, with `id: ''` meaning
+the one about the view; `menuId` is the same thing typed, because narrowing `menu?.id` in the
+template is not worth the fight. The **Relation A / B** pair is in the character menu because a
+right-click on a person should always offer at least that — it is how you pick the two ends of a
+chain from any view, including the ones with no dropdown in reach.
+
+Konva fires `click` for **every** mouse button — there is no button test anywhere in its
+`_pointerup`, which turns a right-click into `contextmenu` *and* `click`. The node handler
+therefore opens with `if ('button' in evt.evt && evt.evt.button !== 0) return`, asking whether
+there is a button at all first because a tap carries none. That alone is not enough: the menu
+handler sets `selectedId` so you can see whose menu it is, and the watcher below re-lays out and
+re-fits three of the views, which would walk the character out from under the cursor that picked
+them. A `menuPick` flag, set by the menu handler and cleared on every `mousedown` (which always
+runs before both), makes that one watcher pass ring and stop.
+
+The selection is marked by a `'sel'` circle `buildNode()` adds to every character, built hidden
+unless it is them and flipped by `markSelection()` — so a view that re-lays out under the click
+gets the mark for free and one that does not still gets it. `holdSelection()` then pans the stage
+to centre them **only if they have gone off it**: the genogram re-roots under a click and the arc
+and the sociogram re-thread, so the person you just picked can end up past the edge, but a view
+that already shows them should not lurch every time you click. It is skipped in the knots, where
+the sim goes on moving everyone for a second or two after a build and the hold would aim at where
+somebody was. `focusCharacter()` — search and sidebar clicks — falls back from `simNodes` to the
+drawn shape's own position, which is the only answer the laid-out views have.
+
+Pinned positions live in `misc_settings` under the key `relations_positions`, the arc's spread
+under `relations_arc_spread`, the knot distance under `relations_knot_room` and the sociogram's
+crossing opacity under `relations_cross_fade`, all scoped to the timeline — no table of their own.
+They follow the same shape: a `load*` that logs and falls back rather than blocking the window, and a
+600ms-debounced `save*Soon` that surfaces a failure in `error`.
+
+### Data Flow on Load
+1. `timelineId` comes from the query string, or later from a `SetRelationsContext` host push when
+   the window was pre-warmed (`Forms/f_Relations.cs`).
+2. One bridge call, **`GetTimelineRelations(timelineId)`** → `{ Characters, Relations, Types }`.
+3. `GetMiscSetting('relations_positions', timelineId)` restores the pinned nodes.
+4. A `FocusCharacter` broadcast re-centres an already-open window on a different character.
 
 ---
 

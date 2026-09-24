@@ -19,6 +19,12 @@ namespace StoryTimelineMk2.Database
         public string Nicknames { get; set; } = null!;
         public string Aliases { get; set; } = null!;
         public string Race { get; set; } = null!;
+
+        /// <summary>
+        /// Free text like <see cref="Race"/>: house, guild, army, cult — whatever this world
+        /// divides itself into. The relations views group the cast by it.
+        /// </summary>
+        public string? Faction { get; set; }
         public string Description { get; set; } = null!;
         public string Notes { get; set; } = null!;
 
@@ -31,12 +37,17 @@ namespace StoryTimelineMk2.Database
         public string DeathDate { get; set; } = null!;
         public string? DeathAlternativeYear { get; set; }
 
-        // Where inside the year, and at which LOD that was picked — the pair every item carries, so
-        // a generated birth/death item lands exactly where the date input said (3 = years).
-        public int BirthSubtick { get; set; }
+        // At which LOD the date was picked (3 = years), and where that put it on the timeline.
+        // BL-75: the absolute is stored and the subtick is not, exactly as items have worked since
+        // BL-02 — the editor derives one back from the absolute when it needs a date input to fill.
         public int BirthGranularity { get; set; } = 3;
-        public int DeathSubtick { get; set; }
         public int DeathGranularity { get; set; } = 3;
+
+        /// <summary>Birth and death as timeline positions: the year plus the subtick multiplied out
+        /// by its LOD step, so a lifeline and the birth item it belongs to land on the same pixel.
+        /// NULL when that end has no year, which is not the same as year 0.</summary>
+        public double? AbsoluteStart { get; set; }
+        public double? AbsoluteEnd { get; set; }
 
         public int Importance { get; set; } = 5;
         public string Color { get; set; } = null!;
@@ -54,19 +65,40 @@ namespace StoryTimelineMk2.Database
         /// </summary>
         public string? State { get; set; }
 
+        /// <summary>
+        /// Free text with a suggested list behind it: a writer's world need not use ours. Only the
+        /// relation wording reads it, and only to pick "mother of" over "parent of" — anything it
+        /// does not recognise, including nothing at all, gets the neutral phrase.
+        /// </summary>
+        public string? Gender { get; set; }
+
         /// <summary>Draw this character's birth and death on the timeline as two owned items.</summary>
         public bool ShowOnTimeline { get; set; }
 
         /// <summary>
         /// Fill the portrait disc with <see cref="Color"/> instead of leaving it neutral. Off by
         /// default: a portrait with transparency over a filled disc drowns the face, and the ring
-        /// carries the colour either way.
+        /// carries the color either way.
         /// </summary>
         public bool UseHighlightColor { get; set; }
         public string? BirthItemId { get; set; }
         public string? DeathItemId { get; set; }
 
+        /// <summary>
+        /// Where they were born and where they died. Groundwork for BL-16 (the Map feature): these
+        /// will hold location ids once locations exist. Nothing sets or reads them yet.
+        /// </summary>
+        public string? BirthLocationId { get; set; }
+        public string? DeathLocationId { get; set; }
+
         public int TimelineId { get; set; }
+
+        /// <summary>
+        /// In every timeline's cast, not only <see cref="TimelineId"/>'s. That stays as where they
+        /// came from, so unticking this puts them back rather than stranding them.
+        /// </summary>
+        public bool Shared { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 

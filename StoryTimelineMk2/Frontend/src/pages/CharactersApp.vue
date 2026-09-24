@@ -4,9 +4,14 @@ import { BackendAPI } from '@/bridge/api'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { parseCalendarDef } from '@/utils/calendarDef'
 import { mediaUrl } from '@/utils/mediaUrl'
-import { planGeneratedItems, buildGeneratedItem, blankCharacter } from '@/utils/characterItems'
+import {
+    planGeneratedItems, buildGeneratedItem, blankCharacter, effectiveState, initials,
+} from '@/utils/characterItems'
+import { toAbsolute, toSubtick } from '@/utils/lodDates'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
+import { useSideWidth } from '@/composables/useSideWidth'
 import LodDateInput from '@/components/LodDateInput.vue'
+import CharacterRelationsPanel from '@/components/CharacterRelationsPanel.vue'
 import {
     PhPlus, PhTrash, PhFloppyDisk, PhImage, PhMagnifyingGlass, PhUser, PhPencilSimple, PhUserFocus,
 } from '@phosphor-icons/vue'
@@ -14,10 +19,15 @@ import type { CharacterAppearance, CharacterItem, LodLevel } from '@/types/model
 
 useAppTheme()
 
+/** How wide the list is, dragged by the grip beside it. */
+const { width: listWidth, startResize } = useSideWidth('charactersSideWidth')
+
 const params     = new URLSearchParams(window.location.search)
-const timelineId = parseInt(params.get('timelineId') ?? '0', 10)
+// A ref, not a const: the host pre-navigates this page before it knows which timeline to show, so
+// on that path both ids arrive later as a SetCharactersContext push.
+const timelineId = ref(parseInt(params.get('timelineId') ?? '0', 10))
 // Set when the window was opened from a character's birth/death item on the timeline.
-const openOnCharacterId = params.get('characterId')
+let openOnCharacterId = params.get('characterId')
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const characters = ref<CharacterItem[]>([])
@@ -29,6 +39,12 @@ const error      = ref('')
 
 const appearances  = ref<CharacterAppearance[]>([])
 
+/**
+ * Where inside the year each date sits, in steps of its own LOD. Editor-local on purpose: the
+ * character stores the absolute (BL-75), and a step only means anything next to a granularity.
+ */
+const subticks = ref<Record<'Birth' | 'Death', number>>({ Birth: 0, Death: 0 })
+
 const lodProfile   = ref<LodLevel[]>([])
 const monthNames   = ref<string[]>([])
 const monthLengths = ref<number[]>([])
@@ -38,28 +54,32 @@ const weekCount    = ref(52)
 /** Free text, so a writer can invent one; these are only the ones worth suggesting. */
 const STATE_SUGGESTIONS = ['alive', 'dead', 'missing', 'presumed dead', 'undead', 'unknown']
 
+/** Every faction name already spelled out somewhere in this cast, for the editor's datalist. */
+const factionsInUse = computed(() =>
+    [...new Set(characters.value.map(c => c.Faction?.trim()).filter(Boolean) as string[])].sort())
+
+/**
+ * Also free text — a world may have its own — and read by one thing only: whether a relation says
+ * “mother of” or “parent of”. Anything outside the two English has words for reads neutrally,
+ * which is not a gap in the list but how the wording works.
+ */
+const GENDER_SUGGESTIONS = [
+    'female', 'male', 'non-binary', 'genderfluid', 'agender', 'intersex', 'prefer not to say',
+]
+
 const filtered = computed(() => {
     const needle = search.value.trim().toLowerCase()
     if (!needle) return characters.value
     return characters.value.filter(c =>
-        [c.Name, c.Nicknames, c.Aliases, c.Race].some(f => f?.toLowerCase().includes(needle)))
+        [c.Name, c.Nicknames, c.Aliases, c.Race, c.Faction].some(f => f?.toLowerCase().includes(needle)))
 })
 
 /** Item type names, by TypeId — the same order the store keeps them in. */
 const TYPE_NAMES = ['Event', 'Period', 'Age', 'Picture', 'Note', 'Bookmark', 'Character', 'Start', 'End']
 
-/** What the list shows when no state was typed: the dates already say it. */
-function effectiveState(c: CharacterItem): string {
-    return c.State?.trim() || (c.DeathYear !== null ? 'dead' : 'alive')
-}
-
-function initials(c: CharacterItem): string {
-    return ((c.FirstName[0] ?? '') + (c.LastName[0] ?? '')).toUpperCase() || '?'
-}
-
 // ── Loading ───────────────────────────────────────────────────────────────────
 async function loadCharacters(selectId?: string) {
-    characters.value = (await BackendAPI.GetTimelineCharacters(timelineId)) ?? []
+    characters.value = (await BackendAPI.GetTimelineCharacters(timelineId.value)) ?? []
     if (selectId) draft.value = clone(characters.value.find(c => c.Id === selectId) ?? null)
 }
 
@@ -99,9 +119,15 @@ function showAppearance(a: CharacterAppearance) {
     })
 }
 
-onMounted(async () => {
+async function load() {
+    loading.value = true
     try {
-        const calendar = await BackendAPI.GetTimelineCalendar(timelineId)
+        // Two independent reads, and how long this window takes to open is the whole point — so
+        // they go together rather than one after the other.
+        const [calendar] = await Promise.all([
+            BackendAPI.GetTimelineCalendar(timelineId.value),
+            loadCharacters(openOnCharacterId ?? undefined),
+        ])
         if (calendar) {
             const raw = calendar.LodProfile?.Profile
             if (raw) lodProfile.value = typeof raw === 'string' ? JSON.parse(raw) : raw
@@ -111,14 +137,31 @@ onMounted(async () => {
             seasonNames.value  = def.seasonNames
             weekCount.value    = def.weekCount
         }
-        await loadCharacters(openOnCharacterId ?? undefined)
     } catch (ex) {
         error.value = `Failed to load: ${ex}`
         console.error('CharactersApp load failed', ex)
     } finally {
         loading.value = false
     }
+}
+
+/**
+ * The pre-warmed path: the page was navigated with no query string, so the host pushes the ids once
+ * the window is actually asked for. Mirrors SetTimelineId on the timeline window.
+ */
+const stopContextListener = BackendAPI.onHostMessage(msg => {
+    if (msg?.action !== 'SetCharactersContext') return
+    timelineId.value = msg.payload.timelineId
+    openOnCharacterId = msg.payload.characterId ?? null
+    // The pre-warmed URL carries no ids, so without this F5 would land on an empty window.
+    history.replaceState(null, '', `?timelineId=${timelineId.value}`
+        + (openOnCharacterId ? `&characterId=${encodeURIComponent(openOnCharacterId)}` : ''))
+    load()
 })
+onBeforeUnmount(stopContextListener)
+
+// No id yet means the pre-warm navigated us; the spinner stays up until the push lands.
+onMounted(() => { if (timelineId.value) load() })
 
 // ── Selection ─────────────────────────────────────────────────────────────────
 function clone(c: CharacterItem | null): CharacterItem | null {
@@ -130,11 +173,16 @@ const isNew = computed(() => !!draft.value && !characters.value.some(c => c.Id =
 function select(c: CharacterItem) {
     error.value = ''
     draft.value = clone(c)
+    subticks.value = {
+        Birth: toSubtick(c.AbsoluteStart, c.BirthYear, c.BirthGranularity, lodProfile.value),
+        Death: toSubtick(c.AbsoluteEnd, c.DeathYear, c.DeathGranularity, lodProfile.value),
+    }
 }
 
 function newCharacter() {
     error.value = ''
-    draft.value = blankCharacter(timelineId)
+    draft.value = blankCharacter(timelineId.value)
+    subticks.value = { Birth: 0, Death: 0 }
 }
 
 // ── Birth / death toggles ─────────────────────────────────────────────────────
@@ -142,6 +190,7 @@ function toggleDate(kind: 'Birth' | 'Death', on: boolean) {
     const c = draft.value!
     if (kind === 'Birth') c.BirthYear = on ? (c.BirthYear ?? 0) : null
     else c.DeathYear = on ? (c.DeathYear ?? 0) : null
+    if (!on) subticks.value[kind] = 0
     if (c.BirthYear === null && c.DeathYear === null) c.ShowOnTimeline = false
 }
 
@@ -152,7 +201,7 @@ async function writeItems(c: CharacterItem, dropped: string[]) {
         const itemId = kind === 'Birth' ? c.BirthItemId : c.DeathItemId
         if (!itemId) continue
         await BackendAPI.SaveItem(
-            buildGeneratedItem(kind, c, itemId, lodProfile.value),
+            buildGeneratedItem(kind, c, itemId),
             [kind.toLowerCase()],
             [{ CharacterId: c.Id, Role: kind.toLowerCase() }],
             [], [],
@@ -180,6 +229,9 @@ async function save() {
     error.value = ''
     saving.value = true
     try {
+        // The date inputs work in steps; the row stores where that put them.
+        c.AbsoluteStart = toAbsolute(c.BirthYear, subticks.value.Birth, c.BirthGranularity, lodProfile.value)
+        c.AbsoluteEnd   = toAbsolute(c.DeathYear, subticks.value.Death, c.DeathGranularity, lodProfile.value)
         const dropped = planGeneratedItems(c)
         const result = await BackendAPI.SaveCharacter(c)
         if (result?.status !== 'ok') throw new Error('The character was not saved.')
@@ -240,7 +292,7 @@ async function pickPortrait() {
 
         <div v-if="loading" class="ch-loading">Loading…</div>
 
-        <div v-else class="ch-body">
+        <div v-else class="ch-body" :style="{ gridTemplateColumns: `${listWidth}px 5px 1fr` }">
             <!-- ── List ─────────────────────────────────────────────── -->
             <aside class="ch-list">
                 <div class="ch-list-head">
@@ -277,6 +329,7 @@ async function pickPortrait() {
                     </li>
                 </ul>
             </aside>
+            <div class="side-grip" title="Drag to resize" @pointerdown="startResize" />
 
             <!-- ── Detail ───────────────────────────────────────────── -->
             <section v-if="!draft" class="ch-detail ch-detail--blank">
@@ -318,10 +371,32 @@ async function pickPortrait() {
                         <input v-model="draft.Race" type="text" />
                     </label>
                     <label class="ch-field">
+                        <span>Faction</span>
+                        <input v-model="draft.Faction" type="text" list="ch-factions" />
+                        <!-- The names already in use, so a cast does not end up split between
+                             "Night Watch" and "night watch" — the relations views group by this. -->
+                        <datalist id="ch-factions">
+                            <option v-for="f in factionsInUse" :key="f" :value="f" />
+                        </datalist>
+                    </label>
+                    <label class="ch-field">
                         <span>State</span>
                         <input v-model="draft.State" type="text" list="ch-states" :placeholder="effectiveState(draft)" />
                         <datalist id="ch-states">
                             <option v-for="s in STATE_SUGGESTIONS" :key="s" :value="s" />
+                        </datalist>
+                    </label>
+                    <label class="ch-field">
+                        <span>Gender</span>
+                        <input
+                            v-model="draft.Gender"
+                            type="text"
+                            list="ch-genders"
+                            placeholder="not stated"
+                            title="Only used to word relations — mother of, brother of"
+                        />
+                        <datalist id="ch-genders">
+                            <option v-for="g in GENDER_SUGGESTIONS" :key="g" :value="g" />
                         </datalist>
                     </label>
                     <label class="ch-field ch-field--narrow">
@@ -329,7 +404,7 @@ async function pickPortrait() {
                         <input v-model.number="draft.Importance" type="number" min="1" max="10" />
                     </label>
                     <label class="ch-field ch-field--narrow">
-                        <span>Colour</span>
+                        <span>Color</span>
                         <input v-model="draft.Color" type="color" />
                     </label>
                 </div>
@@ -361,9 +436,9 @@ async function pickPortrait() {
                                 :seasonNames="seasonNames"
                                 :weekCount="weekCount"
                                 :year="draft[`${kind}Year`] ?? 0"
-                                :subtick="draft[`${kind}Subtick`]"
+                                :subtick="subticks[kind]"
                                 @update:year="draft[`${kind}Year`] = $event"
-                                @update:subtick="draft[`${kind}Subtick`] = $event"
+                                @update:subtick="subticks[kind] = $event"
                             />
                         </template>
                     </div>
@@ -380,8 +455,14 @@ async function pickPortrait() {
 
                     <label class="ch-check ch-check--timeline">
                         <input v-model="draft.UseHighlightColor" type="checkbox" />
-                        <span>Use highlight colour</span>
-                        <em>fills the portrait disc — off leaves the colour on the ring only</em>
+                        <span>Use highlight color</span>
+                        <em>fills the portrait disc — off leaves the color on the ring only</em>
+                    </label>
+
+                    <label class="ch-check ch-check--timeline">
+                        <input v-model="draft.Shared" type="checkbox" />
+                        <span>Shared character</span>
+                        <em>appears in every timeline's cast — they still belong to this one</em>
                     </label>
                 </div>
 
@@ -421,6 +502,19 @@ async function pickPortrait() {
                     </ul>
                 </div>
 
+                <CharacterRelationsPanel
+                    v-if="!isNew"
+                    :key="draft.Id"
+                    :character="draft"
+                    :characters="characters"
+                    :timelineId="timelineId"
+                    :lodProfile="lodProfile"
+                    :monthNames="monthNames"
+                    :monthLengths="monthLengths"
+                    :seasonNames="seasonNames"
+                    :weekCount="weekCount"
+                />
+
                 <p v-if="error" class="ch-error">{{ error }}</p>
 
                 <div class="ch-actions">
@@ -458,7 +552,8 @@ async function pickPortrait() {
 .ch-body {
     flex: 1;
     display: grid;
-    grid-template-columns: 260px 1fr;
+    // Overridden inline by the width the grip was last dragged to; this is the first run's.
+    grid-template-columns: 260px 5px 1fr;
     min-height: 0;
 }
 

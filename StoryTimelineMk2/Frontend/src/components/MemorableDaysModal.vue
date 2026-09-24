@@ -80,7 +80,7 @@ function summary(md: MemorableDay): string {
 
             <section v-if="selected" class="md-editor">
                 <div class="md-editor-top">
-                    <input type="color" class="md-color" v-model="selected.color" title="Colour" />
+                    <input type="color" class="md-color" v-model="selected.color" title="Color" />
                     <input type="text" class="md-input md-name" v-model="selected.name" placeholder="Holiday…" />
                     <select class="md-input md-type" v-model="selected.type">
                         <option value="fixed">Fixed Date</option>

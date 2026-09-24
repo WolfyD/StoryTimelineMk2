@@ -30,7 +30,7 @@ Remove in `ReferenceTimelineModal`, tool-active Reference button on the strip.
 Step 3 done for 1.1.1 (2026-09-23): ghosts now pack around the active timeline's lanes instead of
 hiding underneath its items (`getAssignedLane` takes a read-only `avoidLanes` map, so the active
 pass packs exactly as before); a real age drawn over a reference age gets diagonal slits in the
-ghost's colour across the overlapping stretch only (`refStripeLayer` in `TimelineCanvas`); and the
+ghost's color across the overlapping stretch only (`refStripeLayer` in `TimelineCanvas`); and the
 chosen reference plus its shift are remembered per timeline in `misc_settings`
 (`reference_timeline`, restored by `loadTimelineData`, dropped with a message in the modal when it
 will not load). Not done, by decision: ghost pictures are still frames without images; no locate /
@@ -62,6 +62,422 @@ zoom apply to them too). Rules:
 - Hover shows the tooltip; `Alt`+click opens the item in the view popup (never the edit window).
 - The data panel gets a separate **Reference** section below the active timeline's data.
 - Closing the underlay = a button in the strip icon's flyout / the same modal.
+
+---
+
+## [BL-77] Relation views that tell you something
+
+**Status:** Done 2026-09-24 for 1.1.1. All five steps — schema, Genogram, Arc, Sociogram and
+Chord; see the sections below. **Knots was reprieved the same day** and fixed rather than cut
+(asked for 2026-09-24). Rings and Rows are gone, Grid is the Matrix and has its interactions, and
+a batch of ten further changes asked for the same day is in the last section.
+
+BL-76 added four views on the strength of "it is a different arrangement of the same nodes".
+Reviewed side by side, three of them do not earn their place: **Graph and Knots are visually
+indistinguishable** (the cluster gravity is too weak to read against the spring forces — fixed
+2026-09-24 instead of cutting the view, see the end), and
+**Rings and Rows show shape without meaning** — a BFS rank is not a fact about the story. Grid
+and the family tree are the two worth keeping. Four replacements, all of which answer a question
+a writer actually has:
+
+1. **Genogram** *(done)* — the family tree, but carrying the relations it currently throws away. It is
+   built from `parent` / `step-parent` / `spouse` only; everything else between two people on it
+   is drawn as nothing. Keep the hourglass layout, overlay the rest as styled connectors (the
+   `hostile` category and `RelationshipModifier` — estranged, secret, adoptive, former, alleged —
+   each get their own line treatment), add gendered node shapes and a death mark.
+2. **Arc** *(done)* — everyone on one axis, ties as arcs above it. **Axis = birth year** (decided
+   2026-09-23); people with no birth year bucket at one end rather than being dropped.
+3. **Sociogram** *(done)* — replaces Knots. Hard faction boxes rather than gravity wells, with the
+   ties that cross a boundary drawn to stand out. Needs `characters.faction`, which is why the
+   schema went first.
+4. **Chord** *(done)* — factions (and later locations) round the circle, ribbon weight = how many
+   ties cross between them.
+
+**Grid keeps its place and gets the interactions it is missing** *(done 2026-09-24)*, and is
+called **Matrix** now — "grid" was the drawing, not the reading. A square already tells you two
+people are connected and says nothing about how; the finder already answers that and sits three
+feet away unused. So the matrix was wired to it rather than given a second way to say the same
+thing (decided 2026-09-24):
+
+- **Click a cell** → the row's person into *From*, the column's into *To*. The finder panel then
+  names both and spells the relation out, and the traced path follows you into the other views.
+- **Click a name on the side** → *From*. **On the top** → *To*. One fixed job per axis, nothing to
+  remember and no hidden click-order state. Selection still moves to whoever was clicked, so the
+  row-and-column banding keeps working.
+- **Rows go by faction first**, biggest faction leading and the unaffiliated last, knots and then
+  degree inside each — a block labelled *House Varden* is worth more than a block that merely
+  hangs together. `matrixOrder` takes the faction map as an optional argument, so with no factions
+  it is exactly the old knot order.
+
+Fixed here: the cell hit-test subtracted the gutter **twice**. `getRelativePointerPosition()` on
+the grid sheet is already relative to the sheet, whose origin *is* the grid's top-left corner, so
+every click read about seven rows up and to the left of itself and clicks near the top-left
+silently did nothing at all (`order[-3]` is `undefined`). Verified live before and after.
+
+**Cut when the replacements land** *(done 2026-09-24)*: Rings and Rows are gone, and
+`radialLayout` and `layeredLayout` went with them — nothing else had picked them up. Knots was on
+this list until 2026-09-24, when the decision went the other way: the view was worth keeping if it
+could be made to *show* the knots, which it now does.
+
+Build order: Genogram, then Arc, then Sociogram and Chord.
+
+### Step 1 — schema (done 2026-09-24, migration 17)
+
+`characters.faction` (TEXT, free text like `race`, with a datalist of the names already used in
+the timeline so a cast is not split between two spellings of the same house). Searchable in the
+character list; the grouping key for Sociogram and Chord.
+
+`characters.birth_location_id`, `characters.death_location_id` and `items.location_id` were added
+in the same step as groundwork for **BL-16** — no UI, nothing reads them. See the note on BL-16:
+that feature owns whether they survive as they are.
+
+### Step 2 — Genogram (done 2026-09-24)
+
+The `tree` view, renamed. The hourglass layout is untouched; what changed is what is drawn on it.
+
+- Everything that is not descent or marriage between two people already on the chart is overlaid:
+  a bowed curve in its category colour, carrying the same width-by-closeness and dash-by-modifier
+  the other views use. Hostile ties draw as a sawtooth instead of a curve.
+- Overlaid ties fade with the distance they cross — full within two generations, a quarter past
+  about ten. Without it an eighty-person cast is a hairball of long diagonals.
+- Node shapes: square for a man, circle for a woman, diamond for anyone else, read through the
+  same `genderKey` the relation wording uses. Drawn as a frame *around* the portrait disc, so a
+  face is still a face.
+- A cross through the frame means dead. With the scrubber off that is anyone with a death date;
+  with it on, anyone dead by that year.
+- The chart fits itself to the stage on build — it used to inherit whatever zoom the previous
+  view left behind. The fit stops at `TREE_MIN_SCALE` (0.45), below which a portrait is a dot:
+  past that it opens at the root instead, panned by `clampPan()` so the stage is never half blank
+  with chart still off the edge. A cast that is one connected family lays out ~8000px wide, so
+  this is the normal case, not the exception.
+
+New in `relationsGraph.ts`: `overlayEdges()`, `bowPoints()`, `jaggedPoints()` — all unit-tested.
+
+The year scrubber and the category legend used to be hidden in this view and are now shown in
+it, since the genogram reads both (decided 2026-09-24). Hiding a category takes away the overlaid
+ties of that kind only — the tree itself is drawn from `relations` unfiltered, because hiding
+`family` would otherwise leave no chart to hide anything on.
+
+### Step 3 — Arc (done 2026-09-24)
+
+The whole cast on one horizontal axis in birth order, ties as bowed curves. `family` arcs above
+the line, everything else below — two halves to spend instead of one, and which side a curve is
+on already says what kind it is without reading its colour.
+
+- **Spacing is a slider, not a decision.** Asked for 2026-09-24: even spacing is readable but
+  says nothing, true-to-the-year is honest but bunches a cast written in three generations into
+  three knots. `arcLayout(ids, years, spread, gap)` blends between them, and a left-to-right pass
+  guarantees nobody ends up closer than `gap` whatever the blend says — which is what keeps a
+  proportional axis readable at all. How wide a year is at full spread comes from the **median**
+  step between consecutive births, not the smallest: one pair born a year apart in a cast
+  spanning centuries would otherwise blow the axis out to whitespace.
+- The slider persists per timeline in `misc_settings` under `relations_arc_spread`, next to
+  `relations_positions`.
+- Characters with no birth year are not dropped and not guessed at: they wait past a dashed fence
+  at the right-hand end, captioned.
+- Names alternate between two rows above the discs, so a full name has two gaps of room rather
+  than one; the birth year sits under the name in grey.
+- Selecting someone leaves their ties lit and drops everyone else's to 0.1. On an eighty-person
+  cast that is the only way to follow one person's threads across the width.
+- The view never zooms out: `fitOrHold(..., floor = 1)`. The genogram can stand 0.45 because its
+  shape still reads when the faces have gone; an arc is a row of names and years and nothing
+  else, so it holds 1 and pans. The fit block at the end of `buildTree()` was lifted into
+  `fitOrHold()` for this, and the arc passes Konva's own `getClientRect()` rather than bounds
+  guessed from the constants — the bows are nearly all on one side on a real cast, and reserving
+  symmetric room for them centres the axis in a half-empty stage.
+
+New in `relationsLayouts.ts`: `arcLayout()` and `ArcLayout`, unit-tested. **Not** exercised live:
+the undated bucket and its fence — every character in the test timeline has a birth year, so only
+the unit tests cover that branch.
+
+### Step 4 — Sociogram (done 2026-09-24)
+
+One box per faction in a ring, everyone with no faction on a ring outside it. Decided 2026-09-24
+from four questions: a ring of boxes rather than a packed grid, the unaffiliated loose around the
+outside rather than in a box of their own, and the ties *inside* a box dimmed rather than the
+crossing ones highlighted — same contrast, but it leaves the crossings in their own category
+colours instead of repainting them.
+
+- **The ring is what makes a crossing legible**: every box faces an open middle, so a line leaving
+  one has nothing to hide behind. Boxes sit at equal angles in alphabetical order — spacing them
+  by size would reorder the ring every time somebody changed houses, and a chart that moves under
+  you is one you cannot learn.
+- **Sizing the ring uses every pair, not just the neighbours.** Each box is treated as the disc
+  that covers it; two boxes `steps` apart have `2R·sin(π·steps/n)` between their centres, so each
+  pair names a radius and the largest wins. Neighbour-only sizing never asks about the two big
+  boxes facing each other across the middle. The layout test pins the pairwise gap directly,
+  because whether that gap being too small clips the *rectangles* depends on which way round they
+  happen to sit — it does not on the 5-faction test cast, and the bug would have shipped.
+- **A tie is internal only when both ends are in the same named faction.** Nobody shares a box
+  with the unaffiliated, so every one of their ties counts as a crossing, which is right.
+- **Selecting somebody dims the rest rather than replacing the contrast.** The window always opens
+  with the first character selected, so an override would mean the crossing contrast the view
+  exists for is never what you see first. Their ties go to 0.9 and everyone else keeps their
+  crossing/internal value at 35% of it.
+- **This view fits, with no floor under it.** The genogram and the arc hold a minimum scale and
+  pan because they are read a branch at a time; a ring is read whole. Held at the genogram's 0.45
+  the test cast's ring was simply clipped, which is not a ring.
+
+The cast generator now hands out factions by surname rather than per person, so a house mostly
+shares one and the people who marry in bring another — which is what produces crossing ties to
+look at instead of a uniform mesh. One slot in the list is empty, so some of the cast belong to
+nothing.
+
+Live on the 80-person test cast: 5 boxes (35 / 12 / 12 / 8 / 1 members) with no overlaps, 12
+unaffiliated on the outer ring, 296 ties splitting 138 crossing / 158 internal, whole ring inside
+the stage at scale 0.295, no console errors. The empty case was checked too, by clearing the
+factions: no boxes, all 80 on one ring, and the sidebar note explaining how to get a box.
+
+New in `relationsLayouts.ts`: `sociogramLayout()`, `SociogramBox`, `SociogramLayout` and
+`SOCIO_HEADER`, unit-tested.
+
+### Step 5 — Chord (done 2026-09-24)
+
+Groups round a circle, each arc as wide as the group has ties, joined by ribbons as thick as the
+number running between them. Decided 2026-09-24 from four questions: factions round the circle
+with a toggle to relation category, ribbons weighted by tie count, a group's own ties drawn as a
+loop on its own arc, and a click highlighting *and* listing what the ribbon is made of.
+
+- **An arc is as wide as the group's ties, not its headcount.** A house of forty who keep to
+  themselves earns less of the circle than a house of five everybody deals with — which is the
+  only reading of "who matters here" this chart can honestly give. An internal tie spends two
+  tie-ends, both of them on the same arc, so a group that only talks to itself still gets its
+  width.
+- **The second mode is not what was asked for, because the data cannot carry it.** "Relation
+  category round the circle" was meant to be pair-level: how many pairs are family *and* hostile.
+  Checked against the live database first — 298 relations across 298 distinct pairs, and **not
+  one pair carries more than one category**, so that chart renders empty every time. Kinds mode
+  is therefore *person*-level: an arc per category, and a ribbon between two of them is the
+  people who have both kinds of tie. `race` is the obvious alternative second dimension if the
+  pair-level reading is ever wanted back.
+- **A group's own loop gets 0.2 opacity against 0.62 for a crossing** — the same call the
+  sociogram makes, for the same reason. On the test cast the Merchant League's internal ties are
+  125 of its 224, and at equal weight that one loop is the whole picture.
+- **The fit is computed, not measured.** Labels are laid out in whatever world units come to a
+  fixed 13 screen pixels (`fontSize = 13 / scale`), so the names stay readable on a big cast
+  instead of shrinking with the circle. Measuring the drawn ring would not have worked anyway: a
+  custom `Konva.Shape` with a `sceneFunc` reports a 0×0 client rect, so the ribbons are invisible
+  to `getClientRect` — which is also why the probe that verified this had to sweep
+  `stage.getIntersection` rather than aim at a bounding box.
+- **The ribbons had to move out of `linkGroup`.** It is built `listening: false`, which is right
+  for the views with hundreds of edges nobody can click and wrong for the one where the ribbon is
+  the thing you click. They are drawn into `nodeGroup` instead, own loops first so the crossings
+  sit over them. Arcs and ribbons occupy different radii, so nothing is hidden by the reorder.
+
+Fixed on the way: `.rel-block--grow` was a class with **no CSS at all**, so the tie list shrank
+below its own content in the sidebar's column flex and painted over the year slider and the
+finder. It now holds its height and scrolls its own rows — which also fixes the same latent
+overlap on the selected-character block.
+
+Live on the 80-person test cast: 6 arcs (5 factions + "No faction"), 16 ribbons, 344.53° of arc
+with the rest exactly `CHORD_PAD` of gap, labels at exactly 13 screen px, whole circle in the
+stage at scale 0.38, no console errors. Clicking a crossing gave "City Watch ↔ Merchant League —
+38 ties" with 38 rows, the loop gave "Inside Merchant League — 125 ties", the arc gave "Merchant
+League — 224 ties", and kinds mode gave "family only — 46 characters"; clicking the same shape
+again lets go, and switching mode or grouping clears the pick.
+
+New in `relationsLayouts.ts`: `chordLayout()`, `ChordArc`, `ChordRibbon`, `ChordLayout` and
+`CHORD_BAND`, unit-tested — including that each arc is filled by its own ribbons end to end with
+no gap and no overlap, which is the invariant the whole picture rests on. Spans are laid out in
+group order rather than sorted to minimise crossings; `ponytail:` note in the file says to sort
+by target angle if a project ever reaches fifty factions.
+
+### Knots, kept rather than cut (2026-09-24)
+
+Reprieved on the condition it actually separate the groups. It does now, and the diagnosis was
+not the one in the original write-up: the cluster gravity was not *too weak*, it was pulling the
+wrong way round. `stepForces` only ever pulled each member toward **its own knot's centroid** —
+nothing pushed two centroids apart, and the global pull toward the stage centre was actively
+stacking them. So the knots settled concentric, laced through each other, and the view came out
+indistinguishable from the plain graph. `clusterSeed` had separated them at t=0 and the sim spent
+the next two hundred frames undoing it.
+
+- **Centroids now shove each other.** Each knot claims `clusterRoom` (46px) per √member — a knot
+  of forty is not forty times wider than a knot of one — and any pair closer than the sum splits
+  the shortfall between them, big knot and small alike. Applied to every member equally, so a
+  knot moves as one rather than being torn open on the way.
+- **`clusterRepulsion` is a *distance* knob, not a speed one.** The shove fights the pull to the
+  stage centre the whole way and settles where the two cancel, so the constant decides how close
+  to `want` the knots actually get. At the first value (0.12) they stopped ~180px short and still
+  overlapped; at 0.3 the worst pair on the test cast is 39px short of a 365px target.
+- **The view fits itself once, on the way in.** Knots shoved apart run wider than the stage, and
+  the force views never fitted because they had always relied on centre gravity to contain them.
+  Refitting on *every* settle would yank the view out from under anyone who had just dragged
+  somebody, since a drag reheats the sim — so the flag is set in `buildGraph` and cleared the
+  first time the sim stops.
+- **The distance is a slider, not a constant.** `clusterRoom` is what the *Knot distance* control
+  writes, 14px per √member at the bottom of the range to **200px** at the top — 78px until
+  2026-09-24, then 160, then 200 when "maybe up to 200" was asked for the same day. The dial is
+  two **geometric** halves either side of a fixed midpoint (`knotRoomPx`): on one curve each of
+  those two raises would have dragged the middle of the dial up with it — 46px to 87, then to 53 —
+  and changed what every existing timeline drew on reopening. Two halves pin 50 at 46px whatever
+  the top says. Measured on the test cast the mean gap between knots ran 288 → 306 → 373 → 477 →
+  565px across the old range; on the current one the whole layout measures 882 / 1114 / 3492px
+  wide at 0 / 50 / 100 and the fit follows it down, 1 → 0.72 → 0.21, so the top of the range
+  buys daylight at the price of a smaller picture. Moving it reheats the
+  sim rather than rebuilding: the knots have not changed, only how much room they want, and a
+  rebuild would throw away a layout the writer had spent a while dragging into shape. The setting
+  is remembered per timeline, through the same `rememberedSlider` helper as the arc spread.
+- **Hues are spread evenly round the wheel, not hashed.** `categoryColor`'s hash was the lazy
+  reuse and it was the wrong call here: it collided, and two knots side by side in the same dusty
+  pink is the one thing this view cannot afford.
+- **A knot of one is a stray, not a group** (`HULL_MIN = 2`), so loners get no blob. A knot of two
+  draws as a capsule, because `convexHull` returns fewer than three points as they are and the
+  caller only closes the path at three or more.
+
+The blob itself needs no offsetting maths: it is the convex hull stroked `HULL_PAD * 2` wide with
+round joins and caps, so the stroke *is* the padding and the corners come rounded for free. Hulls
+live in their own group behind the links, `listening: false` — a blob that ate the click meant for
+the character standing on it would be worse than no blob. The views that draw their own shapes
+never reach `paintHulls`, so `rebuild()` hides the group; otherwise switching to the chord left
+the last knots sitting underneath it.
+
+Each knot is named after whoever in it has the most ties ("Bran Grimsby and 25 others") — "Knot 3"
+says nothing, and the best-connected member is usually why the rest of them are in it.
+
+Live on the 80-person test cast: 7 knots (26 / 20 / 8 / 8 / 7 / 7 / 4), each its own colour and
+name, whole layout inside the stage at scale 0.8, no console errors.
+
+New in `relationsLayouts.ts`: `convexHull()` and `HULL_PAD`, unit-tested — the inside dropped, the
+points in order round the outside, collinear points dropped, and the degenerate knots of one and
+two. `relationsGraph.ts` gained `clusterRepulsion` and `clusterRoom`, with a test that two knots
+started all but on top of each other end up with every member nearer its own middle than the
+other's — and actually apart, not merely sorted.
+
+### The batch of ten (2026-09-24)
+
+Asked for in one go after the five steps landed, once the whole set could be looked at side by
+side. Four of them are in the sections above (knot distance, the matrix's interactions and
+rename, cutting Rings and Rows); the rest are here.
+
+- **Right-click is the app's menu now, everywhere in the window.** The native one is suppressed
+  over the whole page except inside text inputs, where "paste" is the only menu anybody wants.
+  Right-clicking a character gives *Their timeline*, *Open in characters*, *Centre the genogram
+  here*, *Unpin* (knots only) and — below a rule, in **every** view — *Relation A* and *Relation
+  B*. Right-clicking the background gives *Fit to window* and *Unpin all*. The two ends of the
+  finder are on the character menu unconditionally because the whole point of spotting somebody in
+  a chart of eighty is that you may not find them twice.
+- **Copy and Save moved to buttons in the top-right corner of the stage**, roughly where the
+  native menu's "Save image as…" used to be — the bottom left is the error line's, and the views
+  fill from there. `ClipboardItem` is missing outside a secure context, so a `file://` build says
+  "use Save instead" rather than throwing about `undefined`.
+- **The genogram's overlay starts unticked.** All three kind boxes off: a chart you have to clear
+  before you can read it is one nobody reads twice. Held in `treeShown` (what to *show*) rather
+  than in `hiddenCategories` (what to hide), so switching views cannot carry a blank overlay into
+  the knots and an empty list needs nothing seeded from `categories`, which does not exist until
+  the cast loads.
+- **The selected character is ringed, and kept on screen.** A white ring is built into every disc
+  in every view, hidden unless it is them, so a view that re-lays out under the click gets the
+  mark for free and one that does not still gets it. `holdSelection()` re-centres the stage **only
+  when they are actually off the edge** — a view that already shows them should not lurch every
+  time you click.
+- **The sociogram has a *Crossing ties* slider.** It starts at 100, which is exactly what the view
+  looked like before it existed, because the crossings are the point of it. On a cast where every
+  house deals with every other the middle of the ring fills in solid, and turning them down is the
+  only way to see the boxes at all. Remembered per timeline like the arc spread and the knot room.
+  Measured live on the test cast: the 136 crossing lines go 0.297 → 0.149 → 0 across the slider
+  while the 153 internal ones hold 0.042 and the selected character's seven hold 0.9, which is the
+  invariant — the slider fades the crossings only, and the selection contrast survives it.
+
+### The chain (new view, 2026-09-24)
+
+The seventh mode. Two people picked in the finder, the route between them laid left to right, each
+step written over its line, and round everybody on the way the people *they* are directly related
+to. It answers the question the finder's sentence cannot: not just how two people connect, but
+what else is hanging off the connection.
+
+**Simplified the same day, on sight of the first cut.** It drew every edge between everyone on the
+picture, which buried the one line the view exists for under a mesh — the mesh is what the knots
+are for. What it draws now (asked for 2026-09-24):
+
+- **A satellite says a tie exists, not what it connects to**: one thin spoke to whoever on the
+  route knows them, and nothing else.
+- **Five satellites at most** (`CHAIN_HALO_MAX`, was 8), least-connected dropped first, and the
+  last slot becomes a dashed `+n` — a hub hanging off the route says more about where it runs than
+  a walk-on does, which is why the cut is by degree.
+- **Initials only.** The name label is destroyed on a satellite: five names round one person run
+  into each other at any radius that still fits between two chain members. A click says who in
+  full, and they keep the portrait, the double-click and the right-click menu, because a satellite
+  is a character.
+- **Wider apart** — `CHAIN_GAP` 250 → 330, `CHAIN_HALO_R` 88 → 104 — and the fan angles moved off
+  the horizontal to ±35–145°, since the chain's own line *and* the words written along it run
+  there.
+- **Everything is draggable.** `dragChain()` holds the lines, the words over them and each ring as
+  id pairs rather than coordinates and reads positions back out of `shapes` on every `dragmove`:
+  drag someone on the route and their ring travels with them; drag a satellite and its offset is
+  rewritten, so it stays where you put it the next time its owner moves. A route of six people
+  with a ring each will overlap somewhere, and letting you shove one aside is cheaper than a
+  placer clever enough never to need it.
+- **A *Side circles* checkbox** (`haloOn`) drops the lot for the route on its own.
+
+New in `relationsLayouts.ts`: `chainLayout()`, `ChainStep`, `CHAIN_GAP`, `CHAIN_HALO_R` and
+`CHAIN_HALO_MAX`, unit-tested. Live on the 80-person test cast: the route with
+its relation words, 16 satellites over 19 lines, the checkbox taking them to 0 and back, and a
+drag carrying a ring with it.
+
+### Seen and said, 2026-09-24 (second pass)
+
+Six off a screenshot review of the finished set, plus four asked for while they were being
+built. The sidebar one is two bullets because the Characters list got the same grip.
+
+- **The sidebar is draggable.** 200–560px off a 5px grip, remembered in `localStorage` per
+  machine. Per machine and not per timeline on purpose: how wide a column of names wants to be is
+  about the monitor you are at, not about the story. The CSS `resize` property was the free
+  option and lost on placement — its grip is in the element's bottom-right corner, which on a
+  full-height panel is the bottom of the window, where nobody looks.
+- **The matrix marks the square you picked.** A click off the diagonal filled the two dropdowns
+  and changed nothing on the grid. Now A's row and B's column get a faint band and both symmetric
+  cells get a white outline, drawn *over* the coloured squares — an empty cell is exactly the pair
+  you ask about to find out there is nothing there.
+- **The chain's step wording draws over the discs**, not under them. It was in `linkGroup`, which
+  is behind the nodes by design, so *mentor of* was being written underneath the very circles it
+  named. The labels go into `nodeGroup` last of all instead.
+- **Knot distance reaches 200** — see the knots section for the two-part dial that made room for
+  it without moving the middle.
+- **The arc stacks into rows by generation**, on a checkbox in its sidebar block. "Separate on
+  generations or something" was asked for and then pinned down to one row per generation, birth
+  order still running left to right. The generation is `generationOf()` in `relationsGraph.ts`,
+  next to the genogram's kin helpers and reusing `collectKin`: longest path down from whoever has
+  no parents in the cast, couples levelled onto one row, capped at the size of the cast so a
+  writer who makes somebody their own great-grandparent flattens the chart instead of hanging the
+  window. Unit-tested six ways; live on the test cast it comes out 3 rows of 35 / 50 / 15 people.
+- **The Characters list drags too**, off one `useSideWidth()` composable and one `.side-grip`
+  class in `main.scss` rather than a second copy of the grip above. Relations 260 → 400 → 260,
+  Characters 260 → 420 → clamped 560 → clamped 200 → 260, both remembered, no console errors.
+
+- **Knot distance now loosens the ties between knots instead of pulling the knots apart.**
+  Asked for as "keep the tighter knots but with looser external connections", and it turned out
+  to be the same bug: cross-knot springs stretched ~1000px past rest were beating the pull toward
+  a member's own centroid, so at the top of the dial the median knot doubled (202 → 442px) and the
+  biggest tripled (1019px). A cross-knot tie now gets the extra room as rest length and gives up
+  as much pull as it gained reach. Median 202 / 203 / 217px across the dial afterwards; below the
+  midpoint nothing changes at all, which three unit tests hold down.
+- **The matrix can draw the route.** A *Show the route on the grid* checkbox under the finder:
+  each step of the A→B answer is ringed at the square where its two people meet and numbered in
+  order, with a dashed elbow between steps turning on the diagonal square of whoever they have in
+  common. Only with a middle step — a direct pair is the existing pair mark. `pathNodes` is now
+  derived from an ordered `pathRoute`, since a set cannot say which step came third.
+- **Only a left click re-roots the genogram.** A right-click was re-rooting the chart *and*
+  opening the menu, walking the character out from under the cursor that had just picked them.
+  Konva fires `click` for every mouse button — there is no button test anywhere in its
+  `_pointerup` — so the node handler takes `evt.evt.button !== 0` as its cue to stand down, asking
+  whether there *is* a button first because a tap carries none. The menu handler sets a `menuPick`
+  flag that makes the `selectedId` watcher ring the person and stop, rather than re-laying out and
+  re-fitting three views; `mousedown` clears it, and always runs before both. Checked live on a
+  100-person chart: right-click opens the menu with the root and the view held and the ring moved,
+  middle-click does nothing at all, left-click still re-roots.
+- **The genogram can draw the route too.** The matrix checkbox became `showPath` and serves both
+  views. The difference is that the genogram is one hourglass around one root, not the whole cast,
+  so the route is searched **inside this chart**: only edges with both ends drawn here, minus any
+  category the legend has hidden. A shortest path through the whole web could otherwise step
+  through people who are not on screen, and a numbered trail with gaps in it is worse than none.
+  Each step is traced along the chart's *own* elbows — down into the union, along the sibling bar
+  — because a straight line from a grandparent to a grandchild says nothing about how they are
+  related; a non-kin step takes the bow the overlay already drew it as. Live: 14 people ringed and
+  numbered 1–14 with 26 highlight segments, matching the sidebar's sentence name for name.
+
+The sociogram's inter-group dimming was the one thing on the list already built: the *Crossing
+ties* slider is what was meant.
 
 ---
 
@@ -157,14 +573,14 @@ were done for 1.1.1 (2026-09-23); see the sections below. Nothing known is left 
 ### Styling consolidation (staged plan in AUDIT_FINDINGS §8)
 
 - ~~**No design tokens; three competing accent systems; two surface systems** (ST-H1–H4): ~230
-  colour literals, 9 backdrop darknesses, a z-index ladder with real conflicts, no global
+  color literals, 9 backdrop darknesses, a z-index ladder with real conflicts, no global
   font-family (some windows fall back to serif).~~ **DONE** — `:root` token block in `main.scss`
   (`--app-bg/surface/border/text/accent` family + new `--app-save-accent`, `--app-danger`);
   `font-family: system-ui` + global scrollbar rule added; 18 component/page `<style>` sections
   swept; `canvasTheme.ts` created so Konva reads tokens at runtime; `applyAppTheme` clears
   canvas cache on theme change; `ChromeTheme` (TS + C#) includes save-accent. Remaining bare
   literals are intentional: DB-stored LayoutSettings defaults (TimelineSettingsModal script),
-  canvas context-menu semantic colours (dark-canvas overlay), and data-driven item colour
+  canvas context-menu semantic colors (dark-canvas overlay), and data-driven item color
   fallbacks. Icon convention settled in CLAUDE.md instead of a sweep.
 - ~~**z-index ladder with real conflicts** (part of ST-H3)~~ — **Fixed for 1.1.1.** The app-wide
   rungs are named in `main.scss` — `--z-modal`, `--z-notification`, `--z-lightbox`,
@@ -184,9 +600,12 @@ were done for 1.1.1 (2026-09-23); see the sections below. Nothing known is left 
 
 ## [BL-15] Characters module
 
-**Status:** In progress (2026-09-23). Design agreed with the user; **Phases 0, 1, 2 and 3 done**,
-plus the six phase-2 follow-ups the user asked for after using it and the two phase-3 ones below.
-Phases 4 and 5 are BL-17.
+**Status:** Done for 1.1.1 (2026-09-24). Design agreed with the user; **all six phases (0–5)
+done**, plus the six phase-2 follow-ups the user asked for after using it and the two phase-3 ones
+below. Phase 5 is BL-17, shipped as BL-73 (the window), BL-76 and BL-77 (the views). What is left
+is "Later, not in this plan" at the end of the design — optional ideas the user has for this area,
+never specified because the phases were not finished until now. Worth a conversation before 1.1.1
+closes.
 Six phases below, each shippable on its own. Phases 4 and 5 are BL-17.
 **Priority:** 1
 
@@ -265,7 +684,7 @@ Own window on the calendar-editor shell: `Forms/f_Characters.cs` + `characters.h
 `CharactersApp.vue` + a sixth Vite entry, opened by `OpenCharactersWindow` from the Characters
 button in the activity strip. One window per app, closed with the timeline. List + detail split:
 the list carries portraits, the form covers every column plus portrait, state, the split names,
-colour and importance, and birth/death go through `LodDateInput` on the timeline's own calendar.
+color and importance, and birth/death go through `LodDateInput` on the timeline's own calendar.
 
 Migration 10 (`V10_CharacterDatePrecision`): `birth_subtick` / `birth_granularity` and the death
 pair. A year alone cannot place an item — the canvas works in `absolute_start = year + subtick *
@@ -314,7 +733,7 @@ the `type_id != 7` filters in `ItemRepo.GetItemsByTimeline` / `GetItemsByYear`, 
 live database first — no type-7 rows exist, so nothing was resurrected. On the canvas they reuse
 the Picture geometry and image loader through one shared predicate,
 `timelineNodes.isPortraitType(typeName)`, and differ only in being round: a portrait disc on a
-stem, falling back to the character's colour when there is no portrait. Filterable as *Character*,
+stem, falling back to the character's color when there is no portrait. Filterable as *Character*,
 and the type shows in the editor's dropdown but is disabled unless the item already is one.
 
 **Both directions of the appearance list.** `CharacterRepo.GetAppearances` is the reverse of
@@ -345,10 +764,10 @@ Departures from the plan, all deliberate:
   length these fields run to it is not measurable. Ceiling noted in the component.
 - **The mirror duplicates the field metrics** rather than inheriting them — a scoped parent style
   cannot reach inside a child component. If they drift the highlight drifts with them.
-- **The highlight does not use the character's colour raw.** The first build did, and the first
+- **The highlight does not use the character's color raw.** The first build did, and the first
   character it met was `#00011f`: against the dark field the wash came out darker than the
   background and the underline was invisible, so it read as "the matcher does not highlight". The
-  colour is now clamped to a lightness floor in HSL, which keeps the hue that tells characters
+  color is now clamped to a lightness floor in HSL, which keeps the hue that tells characters
   apart. `HighlightedTextarea.test.ts` holds that floor.
 
 Checks: 452 .NET tests (1 new: the detected-link round trip), 626 vitest (10 new:
@@ -371,8 +790,8 @@ code, in this order:
    settles, and again whenever the characters window is closed. The phase-1 "no prewarm" note is
    gone with it.
 3. **`characters.use_highlight_color`** (migration 11). A portrait with transparency sat straight
-   on the character's colour and drowned the face. The disc is neutral now and the colour rides
-   the ring and the stem; ticking *Use highlight colour* on the character puts the fill back.
+   on the character's color and drowned the face. The disc is neutral now and the color rides
+   the ring and the stem; ticking *Use highlight color* on the character puts the fill back.
    Off by default, existing rows included. The flag reaches the canvas as a `LEFT JOIN` on
    `GetItemsByTimeline` — the alternative was a bridge call per character on screen.
 4. **Captions fold to two rows.** Picture captions and character names wrap instead of losing
@@ -385,7 +804,7 @@ code, in this order:
    Reference ghosts pack the same way.
 6. **The name highlight has padding and a border.** An inline span cannot take horizontal padding
    without shifting the text off the textarea it mirrors, so the breathing room is `box-shadow`
-   spread — a 2px ring in the wash colour, a 1px border outside it — plus vertical padding, which
+   spread — a 2px ring in the wash color, a 1px border outside it — plus vertical padding, which
    a line box ignores.
 
 Departures worth recording:
@@ -438,7 +857,7 @@ Both asked for after using the appearances window.
   the disc, and the two-row clamp follows the size in use. New settings section, *Pictures &
   Portraits* — the `TimelineBoxTypes*` fields still have no control and did not grow one here.
 - **The character lifeline.** In an appearances window, a wave along the centre axis in the
-  character's colour, from birth to death. Wavy rather than a bar so it reads where it passes under
+  character's color, from birth to death. Wavy rather than a bar so it reads where it passes under
   an age band and is never mistaken for the axis it rides on; with an end the character has no date
   for, the whole wave is dashed and runs off that edge of the window, because an unrecorded death is
   not a short life — and the phase is anchored to the dated end so that one still holds still. Drawn
@@ -450,25 +869,68 @@ Both asked for after using the appearances window.
   that window only, so the life shows through the bands it runs under.
   Defaults chosen, none of them settings yet: amplitude 7px, wavelength 44px, sampled every 4px.
 
-**Deferred to after phase 4:** family members as smaller, slightly dimmed portraits along the
-lifeline — the user's call, since who counts as family is exactly what phase 4 defines.
+**Deferred to after phase 4 — DONE (2026-09-23), differently.** Family members show on a
+character's own timeline as the portraits they already are: `loadKinItemIds` in `timelineStore`
+reads the focus character's relations once at load and keeps the birth/death items of everyone
+they are tied to, so `belongsToFocus` lets them through. Not smaller and not dimmed — the items
+already draw as portraits, and a second size for them would have been a rendering path of its own
+for no reading the normal one does not give. Relations, not surnames: an in-law belongs, a
+namesake does not.
 
-#### Phase 4 — relations, as a list (BL-17)
+#### Phase 4 — relations, as a list (BL-17) — **DONE (2026-09-23)**
 
 **Decided (2026-09-23):** the relations designer is a **panel in the Characters window**, not a
 window of its own — the same place the character being related is already open.
 
-Repo over `character_relationships` plus a section on the character form: A → type → B, with the
-other side's row generated when it is bidirectional. `relationship_types` seeds nothing today, so
-this phase also needs a small type editor and a starter set (parent/child, sibling, ally, rival).
+Repo over `character_relationships` plus a section on the character form: A → type → B.
+
+- **One row per pair, not one per direction** — a deliberate deviation from the plan's "other
+  side's row generated when it is bidirectional". `relationship_types` already carries `a_to_b`,
+  `b_to_a` and `one_way`, so direction is a property of the kind: the panel reads the row from
+  whichever end is open (`relationLabel` in `utils/characterRelations.ts`) and there is no mirror
+  row to keep in step, or to leave behind when one side is deleted.
+- **Migration 13** seeds the starter set the user picked — family (parent/child, sibling, spouse)
+  and social (ally, rival, mentor/student) — and gives a relation optional dates at both ends:
+  `start_year` / `end_year` nullable beside the `subtick` + `granularity` pair every dated thing
+  here carries. NULL means "for as long as both were here", which is what most relations are: a
+  son is one from birth. Dates are for the ones that are not — adopted, estranged, remarried.
+- **A kind editor** folds out of the panel header: name, the two readings, a group, delete.
+  Deleting a kind leaves the relations that used it showing its raw id rather than silently
+  cutting somebody out of a family tree. Ids are slugged from the name once, on the way in,
+  because relations store them.
+- Backend is `CharacterRepo` (six methods, beside `GetAppearances`) plus six `DataActions` cases,
+  so both hosts get it; `GetCharacterRelations` returns relations and kinds in one round trip.
+
+#### Phase 4, round two — what the user asked for after using it (2026-09-23) — **DONE**
+
+- **Twenty kinds, not six.** Migration 14 seeds the vocabulary v1 offered: family out to
+  grandparent, aunt/uncle, cousin, the steps, the halves and the in-laws, plus friend, best
+  friend, colleague, neighbor, acquaintance and enemy beside the social six. `OR IGNORE`, so a
+  database that already carries an id keeps the user's wording.
+- **Gendered wording.** `relationship_types` gained `a_to_b_f` / `a_to_b_m` / `b_to_a_f` /
+  `b_to_a_m`, filled only where English has a word — *mother of* / *father of*, nothing at all
+  for cousin — and `characters` gained a free-text `gender` with a suggestion list behind it.
+  `relationLabel` picks the gendered phrase when it has one and falls back to the neutral reading
+  otherwise, so a gender outside the two English has words for reads neutrally by design.
+- **`CharacterRelateModal`** replaces the inline form: every other character as a searchable row
+  with portrait, years and state, the chosen kind spelled out both ways round with each end's own
+  gender, a swap button, and the existing relations listed beside it to edit or delete. The kind
+  editor moved into it, four wording fields wider.
+- **`CharacterFamilyModal`** — the same-last-name banner. `familyGuesses` pairs every member and
+  guesses from the birth years (`GENERATION_YEARS = 16` apart → parent, closer → sibling); each
+  row is re-kindable, swappable and untickable. Pairs that are already related are shown but
+  never ticked, which is how duplicates are kept out — `SaveRelationship` has no pair dedupe, so
+  that is the UI's job. The check fans `GetCharacterRelations` over the family (small N) and
+  compares `pairKey`s; if the family ever stops being small, that is one backend call to add.
 
 #### Phase 5 — the relations graph (BL-17)
 
 Centred on one character, one degree at a time, click to recentre; `GetNetwork` already walks the
 graph, so this is rendering. Two calls to make with the user when the phase starts, not before:
 the layout library (`d3-force` against drawing it in Konva, which the app already ships), and
-whether the graph answers to the timeline's current year — the relationship rows have no
-start/end year columns, so time-aware relations need a Phase 4 schema addition.
+whether the graph answers to the timeline's current year — **that one is answered**: phase 4 gave
+relations optional `start_year` / `end_year`, so the graph can dim what had not begun or had
+already ended, and treat an undated relation as always true.
 
 #### Later, not in this plan
 
@@ -478,10 +940,16 @@ The user has further optional ideas for this area, to be specified when the phas
 
 ## [BL-17] Character relations screen
 
-**Status:** Pending — phases 4 and 5 of the BL-15 plan (2026-09-23). The agreed design lives in
-BL-15; the two open calls are recorded there too (layout library, and whether relations get
-start/end years so the graph can answer to the timeline's current year). Decided 2026-09-23: it
-lives as a panel in the Characters window.
+**Status:** Done for 1.1.1 (2026-09-24). **Phase 4 done (2026-09-23)**, including its second
+round: twenty seeded kinds, gendered wording, the relate modal, the same-last-name family
+suggestion, and family on a character's own timeline. A third round the same day followed the user
+living with it: kin portraits draw at `KIN_SCALE` (0.6) and 0.8 opacity so the window still reads
+as one person's, and `#timeline-center` takes an inset ring in the focus character's color — CSS on
+the page, so the browser build gets it too.
+**Phase 5, the graph, shipped 2026-09-23/24**: BL-73 is the window, BL-76 added four views and
+BL-77 replaced the ones that said nothing, leaving seven. The open call recorded here — `d3-force`
+against drawing it in Konva — went to **Konva**: `stepForces` in `relationsGraph.ts` is the whole
+simulation, no dependency added, and six of the seven views are laid out rather than simulated.
 **Priority:** 1 (same track as BL-15, last in line)
 
 A visual network graph showing characters and their relationships (family, rival, ally, etc.), centered on a selected character, with relationship types as labeled edges.
@@ -646,6 +1114,13 @@ Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two
 
 A multi-layer interactive map screen: a world map containing regions, each region drillable into a sub-map, locations pinned on each map, locations linked to items/events, time-scrubbing to animate events and character movement across the map over time.
 
+> **Columns are already waiting for this (migration 17).** `characters.birth_location_id`,
+> `characters.death_location_id` and `items.location_id` were added ahead of time so the relations
+> views could be built without a second migration later. They are TEXT, have no foreign key and
+> nothing reads or writes them — placeholders, not a decision. **This feature owns them:** if the
+> design lands on a junction table, or on coordinates rather than ids, change or drop them in the
+> step that builds locations. Do not treat them as a constraint.
+
 > **Aside:** This is the most architecturally complex feature in the backlog by a significant margin. The data model alone needs careful design: a tree of map layers (world → region → sub-region), map images per layer (uploaded by the user), locations (x/y coordinates on a specific layer's image), and associations between locations and timeline items / characters. The time dimension is what makes this special — a scrubber that moves through the timeline and highlights which events are "current", with character movement paths drawn as animated lines between locations. For the canvas, Konva.js could handle this (we already use it for the timeline) but something like OpenLayers or Leaflet would give better image-overlay and zoom/pan behavior for map-style navigation. I'd strongly recommend a dedicated design sprint for this one before any code is written — the scope is large enough that getting the data model wrong early would be expensive to undo. Start with static display (locations visible on map, click to see linked events) before tackling the time animation.
 
 ---
@@ -713,7 +1188,7 @@ assets needed).
 - In the calendar overlay (BL-28) and year calendar (BL-29), each day cell can show a row
   of small phase icons (one per moon) beneath the day number.
 - Hovering a phase icon shows a tooltip: moon name + phase name + days to next full/new moon.
-- Recurring celestial events appear as a small coloured dot on their active days, with a
+- Recurring celestial events appear as a small colored dot on their active days, with a
   hover tooltip giving the event name and description.
 - A settings toggle (per calendar, not global) controls whether celestial data is shown —
   off by default so it doesn't clutter the default calendar view.
@@ -722,7 +1197,7 @@ assets needed).
 
 A new "Celestial" section in the timeline's calendar settings (alongside months, seasons,
 weeks). Add / remove moons and recurring events. Each moon has: name, synodic period, phase
-anchor date picker, colour. The anchor date picker reuses `LodDateInput` at DAY granularity.
+anchor date picker, color. The anchor date picker reuses `LodDateInput` at DAY granularity.
 
 ### Scope notes
 
@@ -1048,15 +1523,15 @@ region and `toggleMaximize()` calls `BackendAPI.WindowMaximizeRestore()`, which 
 
 ---
 
-## [BL-22] Theme / colour scheme settings for the window chrome
+## [BL-22] Theme / color scheme settings for the window chrome
 
-**Status:** Done. Full `AppThemeModal.vue` with colour pickers for 10+ chrome properties (appBg, appSurface, appBorder, appText, etc.), dark/light presets, live preview via `applyAppTheme()`, and persistence through `SaveChromeTheme`.
+**Status:** Done. Full `AppThemeModal.vue` with color pickers for 10+ chrome properties (appBg, appSurface, appBorder, appText, etc.), dark/light presets, live preview via `applyAppTheme()`, and persistence through `SaveChromeTheme`.
 
 Now that the title bar and resize rim are rendered by Vue, the window chrome participates
 in the same theming system as the rest of the UI. A settings panel section (or a dedicated
-"Window theme" picker) should expose at minimum: title bar background colour, title bar
-text/icon colour, border rim colour. Bonus: pre-built dark/light/accent presets that cascade
-into the existing timeline colour tokens.
+"Window theme" picker) should expose at minimum: title bar background color, title bar
+text/icon color, border rim color. Bonus: pre-built dark/light/accent presets that cascade
+into the existing timeline color tokens.
 
 > This is the natural companion to the design-token consolidation work in BL-18 (ST-H1–H4).
 > Doing that token sweep first will make the chrome theme settings much cheaper to implement.
@@ -1174,7 +1649,7 @@ calendar isn't recomputing every wheel event during fast scroll.
   doesn't need to persist to DB unless it should survive page reload (probably not necessary).
 - Season view is a separate layout mode — not a month grid with something highlighted, but
   a dedicated N-tile display reusing the visual language of the calendar setup screen (tile
-  name, colour swatch if seasons are coloured, day-range label). The active tile animates
+  name, color swatch if seasons are colored, day-range label). The active tile animates
   with the same debounced soft-fade as the calendar highlight.
 - If the calendar has no month structure (flat day-of-year only), fall back to showing a
   linear strip of day numbers for the current "month-sized" window instead of a grid.
@@ -1194,7 +1669,7 @@ to the year view already present in the calendar setup screen — but read-only 
 
 - Full 12-month (or N-month for custom calendars) grid for the displayed year.
 - Days that correspond to timeline items are **highlighted** (background tint using the item's
-  colour or a default accent). Multiple items on the same day stack — show a count badge or
+  color or a default accent). Multiple items on the same day stack — show a count badge or
   dot cluster rather than overlapping.
 - **Hover tooltips** on highlighted days: list item titles (and optionally types) for that day.
 - The year shown in the calendar header tracks `store.centerAbsoluteTime`: when the user
@@ -1293,7 +1768,7 @@ reading surface.
 
 **Timeline rail layout (top → bottom):**
 
-1. **Age / era bands** — Age and Period items rendered as flat colour bars stacked above the
+1. **Age / era bands** — Age and Period items rendered as flat color bars stacked above the
    axis. Heights TBD; exact stacking order is: Age at the top (tallest), Periods below,
    all fitting within the 100 px budget.
 2. **Axis** — the standard tick/label row, abbreviated to year-level labels only at this size.
@@ -1703,7 +2178,7 @@ existing `SaveSettings` action. Compact is a single small left-aligned title lin
 the strip (the window title bar still shows the title).
 
 `#timeline-header` (`TimelineApp.vue`) takes a fixed strip at the top of the timeline window for
-the title, author and colour strip. Add a compact mode (single line, smaller type) and a way to
+the title, author and color strip. Add a compact mode (single line, smaller type) and a way to
 hide it entirely, persisted per timeline in `settings` like `timeline_minimised` (BL-32). A
 hidden header should still expose the title somewhere (window title bar already has it).
 
@@ -1735,8 +2210,8 @@ until they press *Finished*, at which point all listed items are saved to the ti
 
 **Status:** Done (1.0.3). The section collapses via `toggleCollapse('memdays')` with an entry count
 badge while collapsed. The per-day cards moved out of the section into
-`components/MemorableDaysModal.vue` (list on the left, colour / name / type / picker on the right,
-live edits, Add Day / Delete / Close); the section body is a row of colour-dot chips (click = open
+`components/MemorableDaysModal.vue` (list on the left, color / name / type / picker on the right,
+live edits, Add Day / Delete / Close); the section body is a row of color-dot chips (click = open
 the modal on that day) plus **Manage days…**.
 
 The Memorable Days list in the calendar editor (`CalendarApp.vue`) grows with the calendar and
@@ -1852,7 +2327,7 @@ a summary chip ("All levels" / "Years, Months" / "No levels") that opens
 `components/LodMaskModal.vue` — a checklist with the full level names and All / None. The
 three-letter `LodMaskToggles` stay in the edit window. The backend's new-item
 stub in `HandleGetItemForEdit` carries the mask, so `EditItem.vue` picks it up the same way it
-picks up the default colour.
+picks up the default color.
 
 Timeline Settings gets a "New items are visible at" row of per-LOD toggles (same control as the
 edit window's per-level toggles, BL-05). New items start with that mask instead of 255. Stored per
@@ -1946,19 +2421,19 @@ node builder + edit window checkbox.
 
 ---
 
-## [BL-62] Configurable colour swatches
+## [BL-62] Configurable color swatches
 
 **Status:** Done (1.0.3). `utils/timelinePrefs.ts` — 12 hex strings stored per timeline in
 `misc_settings` under `color_swatches` (existing `Get/SetMiscSetting` bridge, no migration);
-malformed values fall back to the defaults. Timeline Settings → General shows a chip of 12 colour
+malformed values fall back to the defaults. Timeline Settings → General shows a chip of 12 color
 dots that opens `components/SwatchEditorModal.vue` (12 pickers, Reset to defaults, Cancel / Apply);
-`EditItem.vue` loads them per timeline. The filter colour rule builds its palette from the colours
+`EditItem.vue` loads them per timeline. The filter color rule builds its palette from the colors
 actually in use (`store.allTimelineColors`), not these 12, so it was left alone.
 
-The 12 quick-pick colours in the edit window (`COLOR_PALETTE` in `EditItem.vue`) are hardcoded.
-Add a "Colour swatches" row to Timeline Settings — 12 colour pickers with a "reset to defaults"
+The 12 quick-pick colors in the edit window (`COLOR_PALETTE` in `EditItem.vue`) are hardcoded.
+Add a "Color swatches" row to Timeline Settings — 12 color pickers with a "reset to defaults"
 button — stored per timeline, and have `EditItem.vue` read them from the timeline instead of the
-constant. Also used by any other palette that shows the same 12 (filter colour rule).
+constant. Also used by any other palette that shows the same 12 (filter color rule).
 
 ---
 
@@ -2213,7 +2688,7 @@ server.
         that existed at setup; `cache()` passes `Konva.pixelRatio` to the two offscreen canvases
         it allocates, so cached bitmaps were still 4× on a Retina screen. The global closes that
         and covers the minimap and mini-mode stages too.
-     2. The item colour is painted onto the event box's existing stroke (min width 2, so a
+     2. The item color is painted onto the event box's existing stroke (min width 2, so a
         zero-border layout still shows it) instead of a second `Konva.Rect` per item — events
         drop from 4 nodes to 3. `updateAbsolutePositions()` already guards on `elements.colorStrip`,
         so it needed no change.
@@ -2239,6 +2714,173 @@ server.
        Mac that has neither. It is now a common set plus a per-platform one (Mac, Windows or the
        fontconfig/Liberation families on Linux) plus the generic CSS names. Only the fallback
        changed; `queryLocalFonts()` still wins where the user grants it.
+
+---
+
+## [BL-72] Ages and periods that run off the edge
+
+**Status:** Done (2026-09-23), reopened and finished 2026-09-24 — see "What 2026-09-23 got wrong".
+
+A user asked for spans that carry on into the past or the future without the timeline being
+stretched to a year nobody means. `items.open_start` / `items.open_end` (migration 15) — two flags
+rather than a direction enum, because "open at both ends" is a real answer and an enum would need
+four values to say the same thing. Only ages and periods offer them (`hasOpenEnds` in `EditItem`,
+type 2 or 3); everything else ignores the columns.
+
+The open side draws a `Konva.Line` arrowhead — `placeOpenArrow` in `timelineNodes.ts` sets its
+points and gradient endpoints in absolute stage coordinates, the way the portrait stems already do.
+
+### What 2026-09-23 got wrong
+
+Three things, all found by the user rather than by us, and worth keeping written down because two
+of them were *decisions* we made on their behalf and one was a plain bug.
+
+**The option was unreachable for ages.** `hasOpenEnds` was right — types 2 and 3 — but the `.row`
+holding the two checkboxes was gated on `hasSide || hasStemBox || TypeId === 4`, and an age is none
+of those. So a period offered the checkboxes and an age hid the whole row, which is why the user
+reported the option as simply absent. `hasOpenEnds` is now in that `v-if` too. The lesson is dull
+and repeatable: a new field's own `v-if` is not enough, the container's has to admit it.
+
+**The fade was ours, not theirs.** The original ask said *optional* fade and we shipped it always
+on, reasoning that a square arrowhead reads as a decoration. That reasoning still holds as a
+default — the arrow is now solid, since an age whose end is merely undated still happened at full
+strength — but "it trails off" is a claim about the story, and the writer is the one entitled to
+make it. Hence `items.open_fade` (migration 18) and a third checkbox, shown only once a side is
+actually open.
+
+**The fade stopped at the arrow.** It now runs into the bar: half alpha at the point, full color a
+year in, both on the head and on the bar itself. One gradient on each, sharing endpoints, rather
+than a fade on the head meeting a solid bar at a seam. The head's is absolute and the bar's is in
+the Rect's local space, because the box is the one shape here that carries a position — a mismatch
+that cost half an hour the first time. A year is measured per item in `TimelineCanvas.yearPx`, not
+assumed as a constant, so a hidden range between here and there does not skew it; below a pixel a
+year it rounds to nothing, which is correct.
+
+**And the arrow pointed the wrong way round.** The head used to sit with its base on the date and
+its point a headlength past it, so the arrow marked a year nobody meant. The point is now *on* the
+date and the head runs back from there over the last stretch of the span.
+
+### The head is the bar's end, not a lid on it
+
+A fourth round, and the most useful one to have written down, because the fix that looked right on
+a solid bar was visibly wrong on a faded one. The head was *overlaid*: the bar still ran its full
+length underneath, and at 50% alpha the bar's own square edge showed through the triangle as a
+vertical line. The user's words for it: "it's like the end of the line turns into an arrow not
+really an overlay".
+
+So the bar now stops short and the head occupies that length. Four things had to move together:
+
+- **One head length, computed once** (`headLength`) and passed to both the box and the arrow, so
+  they cannot disagree about where they meet. Capped at `span / sides`, so two heads on a short age
+  meet in the middle instead of overrunning each other.
+- **The box is shortened and shifted** by a head length per open side — `x = anchorX + lenStart`,
+  `width = span - lenStart - lenEnd` — so head and bar abut exactly. Exactly, not overlapping: two
+  translucent fills over each other double-darken, which is the same class of bug as the edge.
+- **The bar's gradient endpoints are the two dates, not the shortened bar's edges** (local
+  `-lenStart` → `span - lenStart`). That is what makes the seam invisible: the arrow's alpha at its
+  base and the bar's at its local 0 are the same number, because they are the same point on the
+  same ramp. Konva clamps outside its endpoints, so a gradient running past the shape is fine.
+- **The corner radius goes square on the open side only**, via Konva's array form
+  `[topLeft, topRight, bottomRight, bottomLeft]`. A rounded corner sits just inboard of the head's
+  base, and a triangle is widest at its base and covers nothing beyond it, so a round corner there
+  leaves a notch. The closed side keeps its radius.
+
+Checked live on both: a solid period open at both ends runs `-3430..722` with heads `-3454` and
+`746`, `cornerRadius [0,0,0,0]`; a faded age gets heads of 48px, a bar of 904 between them, and a
+gradient spanning local `-48 → 952` — the two dates, 1000px apart, a year being 100. Open at one
+end only, the same period keeps `cornerRadius [10, 0, 0, 10]`.
+
+### The orphaned arrowhead
+
+Reported right after the above: toggling *Fade out* either way left a second arrowhead stuck to the
+canvas, floating at fixed screen coordinates. `evictNode` in `TimelineCanvas` destroyed `box`,
+`label`, `stem` and `colorStrip` by name, so the two new `arrow*` shapes were dropped from the
+cache without being taken off the layer — they kept whatever absolute points they last had, which
+is why the ghost did not move with the timeline.
+
+Fixed at the root rather than by adding two more names: `evictNode` now destroys every Konva node
+in the cached element object, so the next shape anyone adds to `buildNode` is covered without
+anyone remembering to come back here. `fade` is the one non-node value in there and the
+`instanceof` skips it. The other two teardown paths were already fine — the layout-settings watcher
+and `clearReferenceNodes` both call `destroyChildren()` on the layers.
+
+Checked live: ten fade toggles on an open period leave the stage at 4 arrow nodes and 69 shapes,
+the same as one toggle. Before the fix that was 20 orphans.
+
+ponytail: the head is no longer part of the bar's hit area, so a click on the last 24px of an open
+span misses. Nobody aims at an arrow tip; give the head a hit region if anyone does.
+
+The ask was the **timeline canvas**, and that is where it is: `TimelineCanvas` passes
+`OpenStart` / `OpenEnd` / `OpenFade` into `buildNode` for both the live items and the reference
+ghosts. The
+minimap still draws the bar square — at 8–14px an arrowhead is a smear, so the two views disagree
+by choice, not by omission. That is a note to ourselves, not an unmet request; revisit only if
+anyone notices.
+
+ponytail: `open_start` / `open_end` / `open_fade` are not carried by `DatabaseImporter`,
+`TimelineExporter` or `TimelineRepo.DuplicateTimeline` — pre-existing for the first two flags, and
+the third inherits it. An open-ended age comes back closed from an import, an export or a
+duplicate. Small and mechanical to fix; not fixed here because it is nothing to do with what was
+asked and the three belong in one pass with whatever else those three have drifted apart on.
+
+---
+
+## [BL-73] Character relations window — graph and family tree
+
+**Status:** Done for 1.1.1 (2026-09-23). BL-17 phase 5.
+
+Shipped as described. `relations.html` / `pages/RelationsApp.vue`, hosted by `Forms/f_Relations.cs`
+with the same two-stage pre-warm the characters window uses (`SetRelationsContext` pushes the ids
+in after the page is already up). One round trip feeds it: `GetTimelineRelations` returns the
+characters, the relations and the kinds together, because the window draws all three and splitting
+it would only mean three waits.
+
+All the maths is in `utils/relationsGraph.ts` — canvas-free and covered by
+`src/test/utils/relationsGraph.test.ts` (19 tests): the spring sim on four nodes and on a crowded
+hundred, the BFS shortest path and its gendered wording, the generation assignment and the union
+nodes. Pinned node positions live in
+`misc_settings` under `relations_positions`, scoped to the timeline, rather than a table of their
+own.
+
+Two things worth knowing. The year scrubber **dims** rather than hides — the unborn to 0.12, the
+dead to 0.45 — because hiding makes the layout jump under the writer's hand as they drag. And the
+tree is built only from `parent` / `step-parent` and `spouse`: a grandparent tie says nothing about
+the generation between the two, so letting it into the layout would put people on the wrong row.
+
+**The sim has to be made to stop (fixed 2026-09-23).** With a cast of eighty or more, Graph and
+Knots never settled: `moved` was still climbing after four thousand ticks, so the loop never exited
+and the layout writhed. Repulsion goes as 1/d² with nothing bounding it, so one pair landing on top
+of each other flung itself across the stage, hit a third node and set the whole graph off. Three
+changes in `stepForces`: the per-pair push is capped, so does a node's speed per tick, and the
+caller now passes a decaying `alpha` (`ALPHA_DECAY` / `ALPHA_MIN`, about two hundred ticks from a
+kick) that scales the movement — settling is not guaranteed for an arbitrary web, cooling is. The
+stop threshold in `RelationsApp` was also a fixed `moved > 0.8`, which is a *sum over the nodes*:
+at eighty it demanded a hundredth of a pixel each. It now scales with the cast. Measured over
+generated groups, 20 to 250 people, both views settle in 116–184 ticks with no node flung off.
+
+ponytail: repulsion is O(n²) — every pair, every frame. Fine for a cast of a few hundred; a
+Barnes-Hut quadtree is the upgrade if a project ever needs thousands.
+
+One new entry point (`relations.html`) with two modes over the same data and the same node
+rendering, on Konva — no new dependency, because a spring sim is about thirty lines and a
+generation-row layout about forty.
+
+**Graph mode.** Force-directed, drag-to-pin with positions persisted per timeline. The feature it
+is built around is a year scrubber: `character_relationships` already carries `start_year` /
+`end_year`, so showing the web *as of* a year costs almost nothing and is the thing no other tool
+gives a writer. Also: click a node and everything more than one hop away dims; edges colored by
+`relationship_types.type` with per-category toggles; a "how is X related to Y" shortest-path
+readout that spells the chain out in the gendered wording; search that pulls a match to centre;
+double-click → characters window, right-click → *Their timeline*, reusing the existing menu; a
+sidebar listing characters with no relations at all.
+
+**Tree mode.** An hourglass chart — selected character in the middle, ancestors up, descendants
+down, one row per generation. The convention that matters is the **union node**: a family tree is a
+DAG, not a tree, because a child has two parents, so each couple gets a small connector that
+parents drop into and children hang off. Without it the lines cross as soon as anyone on screen has
+both parents. Orthogonal elbow connectors, which is both the genealogical convention and the easier
+thing to follow. Generations being fixed rows means only horizontal ordering is left: lay out the
+children, centre the parent over them.
 
 ---
 
@@ -2271,3 +2913,197 @@ guard at all; they use `useModal` now too.
 
 ---
 
+## [BL-74] __stl cast generators — a web worth laying out
+
+**Status:** Done for 1.1.1 (2026-09-23). The generator gained factions, a depth floor and then a
+depth *setting* 2026-09-24 — see the end.
+
+The relations window was built against a five-person fixture, which says nothing about what two
+hundred characters look like. Six new console commands generate one, and two clear up after them:
+
+- `__stl.createCharacters(n)` — n people, mostly in small families, with social ties thrown across
+  the lot and a few left unconnected on purpose (the window has a panel for exactly those).
+- `__stl.createFamily(n, gens)` — one family down the generations: a founding couple, their
+  children, the people some of those children marry, and so on. Blood keeps the surname,
+  in-marrying spouses keep their own, and spouse ties are dated so the year scrubber has something
+  to move through. `gens` says how many generations to spread the n people over; left out it is
+  one per eight people.
+- `__stl.createPlausibleGroup(n)` — a cast that reads like a real file rather than a shape: one main
+  line at least five generations deep, smaller families married into it, and the aunts, uncles,
+  cousins and in-laws that fall out of all that. Each family is built around the marriage that joins
+  it on — an unmarried person already in the web sets the era, so the family's own unmarried child
+  comes out their age — which is why nearly everyone is reachable through blood or marriage rather
+  than a friendship, and why a second cousin sits four steps from a first.
+- `__stl.connectCharacters()` — one tie between two random unrelated people.
+- `__stl.connectClusters()` — one tie between the two biggest disconnected groups.
+- `__stl.clearTestCast()` — deletes them again. Every generated character carries a marker in
+  `notes`; their relations go with them, because `character_relationships` cascades on delete.
+- `__stl.clearCharacters(n)` — deletes every character on the timeline, generated or not. It will
+  not run until you pass the count back, so a mistyped command in the wrong window cannot empty a
+  real timeline.
+
+The shapes are in `utils/devCast.ts`, pure and tested (`src/test/utils/devCast.test.ts`, 17 tests:
+sizes, no self-ties, no duplicate pairs, children born after their parents, connected components,
+the derived kinds and their pair order, and the five-generation and cousin guarantees).
+
+Two things are worth knowing about the group. `planFamily` takes a `minGenerations` and holds back a
+child and a spouse for every generation still owed, or a wide first generation spends the whole
+budget and the line stops three deep; it holds back three more for a second line of descent, because
+a family with one line has no cousins in it — everyone is someone's parent or child. And
+`planKinship` writes only about a third of the ties it derives (a file where every cousin is written
+down does not look like one a person kept), but always keeps at least one of every kind it found.
+The saving is a frontend loop over `SaveCharacter` / `SaveCharacterRelation` rather than a new
+bridge action, so it works in the browser build too.
+
+`installDevHelpers()` now also runs on the relations page, where the timeline id comes from the
+query string rather than the store.
+
+### The generator, revisited 2026-09-24
+
+Two changes, both for the sociogram's sake and both in `devCast.ts`:
+
+- **Factions are handed out by surname, not per person.** A house mostly shares one and the people
+  who marry in bring another with them, which is what gives the sociogram crossing ties to draw
+  instead of a uniform mesh. One slot in the list is empty, so part of the cast belongs to nothing.
+  Same surname, same faction, every run — a family that reshuffles its loyalties is no test.
+- **`minGenerations` now has a floor of one generation per eight people**, whether or not the
+  caller asks. Left to the dice a big family came out as a single enormous sibling set, and seventy
+  brothers is a far stranger thing to write than great-grandparents. A floor, not a setting: a
+  caller wanting more depth than that still gets it.
+
+The depth floor took three goes to get right, because the headcount has to land *exactly* and the
+reserve leaks in more than one place. Worth knowing if it is ever touched again: the reserve is two
+people per generation still owed, and **every loop that adds a person has to respect it** — the
+child loop, the spouse loop, and the forced carry-the-line child, which is worth exactly one couple
+per generation rather than one per couple. The generation cap also has to sit well past `minGens`:
+while depth is owed a generation only adds the two people carrying the line, so the rest of the
+headcount is spent in the generations after the depth is paid, and a tight cap strands it. A soak
+over every size from 2 to 400, fifty families each, held both the exact headcount and the depth.
+
+### A depth you can ask for, 2026-09-24
+
+`createFamily` now takes a second argument: **how many generations to spread the people over**. The
+floor above could only ever push a family *deeper*, so "forty people across three generations" —
+the obvious thing to want once the arc could stack into rows — was unaskable: forty asked for five
+and got five. `planFamily` gained a `generations` opt that beats both the floor and the default,
+leaving `minGenerations` alone for the one caller that wants a floor (`planPlausibleGroup`).
+
+Three things had to give for a target depth to hold, and they are worth knowing together:
+
+- **The descent is capped**, `maxGens = gens - 1`, so the loop stops going down with headcount
+  still in hand rather than spending it on another generation.
+- **The width takes over.** A fixed one-to-five children cannot fit forty people into three
+  generations, so under a cap each generation claims its share of whoever is unplaced, split over
+  the couples in it and the generations left to go. That is why `40 over 2` comes out 2/38 — one
+  enormous sibling set is exactly what two generations of forty people *is*.
+- **A top-up catches the remainder**, round-robin over the couples the loop reached, because the
+  cap can strand people the width did not quite spend. Every couple the loop touched is one the cap
+  allows children, so the top-up cannot deepen the family by accident. It is unconditional: in the
+  uncapped path the headcount already lands on its own and it does nothing.
+
+Two smaller things. The second line's grandchild is skipped at a depth of two — a cousin stands a
+generation below the line and there is nowhere to put one — and the top-up makes those people back
+up as siblings instead. And the ask is capped at `n / 2`, since carrying a line down one generation
+costs a couple: `createFamily(6, 30)` gives three rows, not thirty. One reads as two, a couple
+being a couple rather than a family.
+
+Checked both ways, which is the point of a generator whose output another feature reads: the
+headcount and the depth land exactly for 40/2, 40/3, 40/6, 12/4, 80/3 and 200/4 in unit tests, and
+in the running app the arc's own `generationOf()` — a different algorithm, in a different module,
+written for the chart rather than for the fixture — counts the same rows back.
+
+ponytail: one round trip per row, so a 200-strong cast takes a second or two. A batch bridge action
+if that ever stops being fast enough.
+
+---
+
+## [BL-75] Shared characters, relations that mean something, and finer dates
+
+**Status:** Done for 1.1.1 (2026-09-23).
+
+One schema pass (migration 16) over three things that all wanted the same table touched.
+
+**Shared characters.** `characters.shared` — ticked, the character appears in every timeline's
+cast; `timeline_id` stays as where they were made. `GetCharactersByTimeline` matches
+`timeline_id = @Id OR shared = 1`, and `GetRelationshipsByTimeline` joins both ends through
+`characters` instead of filtering on the relation's own `timeline_id`, so a shared character
+brings their web with them — but only the ties whose other end is also in the cast.
+
+**Relation meaning.** `custom_relationship_type` and `is_bidirectional` dropped: the first was
+dead once kinds became rows, the second never meant anything, since a relation is stored once and
+read from both ends. The three that stayed got a job:
+
+- `relationship_strength` (0–100, default 50) → `edgeWidth` for the line and a `0.4 + s/100`
+  factor on the spring, so close people sit closer in the laid-out web.
+- `relationship_modifier` — *estranged, secret, adoptive, former, alleged* → leads the wording and
+  picks the dash pattern (`edgeDash`: long for secret/alleged, short for estranged/former).
+- `relationship_degree` — *half-, step-, great-, once removed* → reads into the label; a trailing
+  hyphen prefixes the noun, anything else follows it and before "of".
+
+Both fold in through `qualify()` inside `relationLabel`, so the panel, the relate modal, the
+family modal, the graph and the path description all say it without a call-site change.
+
+**Dates, the BL-02 way.** `absolute_start` / `absolute_end` on both `characters` and
+`character_relationships`; `birth_subtick` / `death_subtick` / `start_subtick` / `end_subtick`
+dropped. The migration reads each timeline's LOD profile out of `lod_profiles.profile` and emits
+one `CASE granularity WHEN … END` per column, so each table takes one UPDATE per timeline rather
+than one per level. A NULL year propagates to a NULL absolute, which is exactly "no date". The
+subtick is now derived in the editor (`utils/lodDates.ts`, shared by the character form and the
+relate modal) — the year/granularity pair is still what `LodDateInput` binds to.
+
+Two robustness gaps surfaced under test and were fixed at the root: a timeline whose LOD profile
+is empty or unreadable would have produced `CASE x ELSE y END` with no `WHEN`, a SQLite syntax
+error (now a bare `1.0`), and a pre-1.0.1 file has no `birth_year` at all to read (`Col()`
+substitutes the literal `NULL`).
+
+`SchemaMigratorTests` builds a genuine v15 file with `Steps.Take(15)` and runs the real backfill
+against it; `CharacterRepoTests` covers a shared character appearing in another timeline without
+leaving their own, and their relations travelling with them.
+
+ponytail: the backfill is one UPDATE per timeline per table — fine for a writer's database, and
+it only ever runs once per file.
+
+---
+
+## [BL-76] Four more ways to look at the same web
+
+**Status:** Done for 1.1.1 (2026-09-23).
+
+The relations window had a force graph and a family tree. Four views added between them, all over
+the same data, the same Konva stage, the same selection and the same node drawings — only the
+positions differ, so nothing new had to be plumbed through.
+
+- **Knots** — the force graph with community detection behind it: `communities()` labels everyone,
+  `clusterSeed()` starts each knot in its own patch of the stage, and `stepForces` gained a
+  `clusterOf` / `clusterGravity` option that pulls members toward their knot's centroid every step.
+- **Rings** — `radialLayout()`: BFS from the selected character, one ring per step out, closest
+  ties expanded first so a family stays side by side, alternate rings turned half a slot so the
+  spokes do not line up into false columns. Anyone unreachable goes on an outer ring rather than
+  being dropped. Clicking someone re-centres on them.
+- **Rows** — `layeredLayout()`: BFS ranks from the best-connected character (or the selected one),
+  four barycentre sweeps to stop the connectors crossing into a hedge, and edges drawn as
+  down/across/down elbows. Each disconnected group starts its own run.
+- **Grid** — an adjacency matrix: `matrixOrder()` puts the big knots first and the best-connected
+  first inside each, so the blocks that mean something sit on the diagonal. Cell brightness is
+  closeness, every fifth line is drawn heavier, and the selected character's row and column are
+  banded. Both axes of names are clickable.
+
+BL-77 cut Rings and Rows on 2026-09-24 and renamed Grid to **Matrix**; what follows is what
+was built here, not what is in the window now.
+
+Rings and the grid rebuild on selection — re-centring is the point of one and re-banding the point
+of the other. Rows stays frozen, so a click does not reshuffle the diagram under the cursor. The
+one-hop dimming is now limited to the two force views: in a fixed layout the shape is the answer,
+and greying out everyone but one person hides it, so there the selection gets a thicker ring
+instead.
+
+The plan named `graphology` + `graphology-communities-louvain` and `@dagrejs/dagre`. All three
+skipped: label propagation is about forty lines and finds the same families on a cast this size,
+and BFS ranks plus barycentre ordering is about fifty. `Frontend/src/utils/relationsLayouts.ts` is
+pure — ids and edges in, positions out — and covered by 14 tests over a two-triangles-and-a-loner
+fixture.
+
+ponytail: label propagation, not Louvain (can smear a dense web into one knot — upgrade is
+graphology-communities-louvain); BFS + barycentre, not full Sugiyama (no dummy nodes, so a tie
+that skips three rows draws as one long elbow — upgrade is dagre). Named in the source at both
+sites.

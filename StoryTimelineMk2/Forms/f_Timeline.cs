@@ -229,6 +229,8 @@ namespace StoryTimelineMk2.Forms
             f_Calendar.BeginPrewarm();
             await Task.Delay(200);
             f_Characters.BeginPrewarm();
+            await Task.Delay(200);
+            f_Relations.BeginPrewarm();
             await Task.Delay(400); // start next timeline pre-warm last so it's ready before the user closes
             BeginPrewarm();
         }

@@ -6,7 +6,7 @@ import type { LodLevel } from '@/types/models'
 
 async function loadPref(key: string, timelineId: number): Promise<string | null> {
   // A preference that cannot be read falls back to its default rather than stopping the caller:
-  // losing a colour swatch is not worth an error dialog over the window it was opening.
+  // losing a color swatch is not worth an error dialog over the window it was opening.
   try {
     const res = await BackendAPI.GetMiscSetting(key, timelineId)
     return res?.value ?? null
@@ -20,7 +20,7 @@ function savePref(key: string, timelineId: number, value: string) {
   return BackendAPI.SetMiscSetting(key, value, timelineId)
 }
 
-// ---- Colour swatches: the 12 quick-pick colours of the edit item window ----
+// ---- Color swatches: the 12 quick-pick colors of the edit item window ----
 
 export const SWATCHES_KEY = 'color_swatches'
 

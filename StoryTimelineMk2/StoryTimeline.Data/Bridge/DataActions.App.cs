@@ -19,7 +19,7 @@ namespace StoryTimelineMk2.Bridge
         /// </summary>
         public Action<SettingsItem>? OnSettingsApplied { get; set; }
 
-        /// <summary>Set by the host: the window chrome colours changed and should be repainted.</summary>
+        /// <summary>Set by the host: the window chrome colors changed and should be repainted.</summary>
         public Action? OnChromeThemeApplied { get; set; }
 
         /// <summary>

@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { planGeneratedItems, buildGeneratedItem, characterAbsolute } from '@/utils/characterItems'
-import type { CharacterItem, LodLevel } from '@/types/models'
-
-const LOD: LodLevel[] = [
-	{ index: 3, formatKey: 'years', stepFraction: 1 },
-	{ index: 5, formatKey: 'months', stepFraction: 1 / 12 },
-]
+import type { CharacterItem } from '@/types/models'
 
 function character(overrides: Partial<CharacterItem> = {}): CharacterItem {
 	return {
@@ -16,6 +11,7 @@ function character(overrides: Partial<CharacterItem> = {}): CharacterItem {
 		Nicknames: null,
 		Aliases: null,
 		Race: null,
+		Faction: null,
 		Description: null,
 		Notes: null,
 		BirthYear: null,
@@ -24,19 +20,23 @@ function character(overrides: Partial<CharacterItem> = {}): CharacterItem {
 		DeathYear: null,
 		DeathDate: null,
 		DeathAlternativeYear: null,
-		BirthSubtick: 0,
 		BirthGranularity: 3,
-		DeathSubtick: 0,
 		DeathGranularity: 3,
+		AbsoluteStart: null,
+		AbsoluteEnd: null,
 		Color: '#abcdef',
 		Importance: 5,
 		PortraitPictureId: null,
 		PortraitPath: null,
 		State: null,
+		Gender: null,
 		ShowOnTimeline: false,
 		UseHighlightColor: false,
 		BirthItemId: null,
 		DeathItemId: null,
+		BirthLocationId: null,
+		DeathLocationId: null,
+		Shared: false,
 		TimelineId: 7,
 		...overrides,
 	}
@@ -76,33 +76,37 @@ describe('planGeneratedItems', () => {
 // character owns no items, and an unset date is an open end rather than year 0.
 describe('characterAbsolute', () => {
 	it('returns null for a date that is not set', () => {
-		const c = character({ BirthYear: 100, DeathYear: null })
-		expect(characterAbsolute('Birth', c, LOD)).toBeCloseTo(100)
-		expect(characterAbsolute('Death', c, LOD)).toBeNull()
+		const c = character({ BirthYear: 100, AbsoluteStart: 100, DeathYear: null })
+		expect(characterAbsolute('Birth', c)).toBeCloseTo(100)
+		expect(characterAbsolute('Death', c)).toBeNull()
 	})
 
 	it('lands on the same time as the generated item', () => {
-		const c = character({ BirthYear: 100, BirthSubtick: 3, BirthGranularity: 5 })
-		expect(characterAbsolute('Birth', c, LOD)).toBe(buildGeneratedItem('Birth', c, 'i', LOD).AbsoluteStart)
+		const c = character({ BirthYear: 100, AbsoluteStart: 100.25, BirthGranularity: 5 })
+		expect(characterAbsolute('Birth', c)).toBe(buildGeneratedItem('Birth', c, 'i').AbsoluteStart)
+	})
+
+	it('reads the year when the row predates the absolute columns', () => {
+		expect(characterAbsolute('Birth', character({ BirthYear: 100 }))).toBe(100)
 	})
 })
 
 describe('buildGeneratedItem', () => {
-	it('places the item at year + subtick * the granularity step', () => {
-		const c = character({ BirthYear: 100, BirthSubtick: 3, BirthGranularity: 5 })
-		const item = buildGeneratedItem('Birth', c, 'item-1', LOD)
+	it('places the item where the character says it is', () => {
+		const c = character({ BirthYear: 100, AbsoluteStart: 100.25, BirthGranularity: 5 })
+		const item = buildGeneratedItem('Birth', c, 'item-1')
 		expect(item.AbsoluteStart).toBeCloseTo(100.25)
 		expect(item.AbsoluteStart).toBe(item.AbsoluteEnd)
 		expect(item.Year).toBe(100)
+		expect(item.CreationGranularity).toBe(5)
 		expect(item.Title).toBe('Birth of Anna Vas')
 		expect(item.TypeId).toBe(7)
 		expect(item.Color).toBe('#abcdef')
 		expect(item.TimelineId).toBe(7)
 	})
 
-	it('falls back to whole years when the granularity is not in the profile', () => {
-		const c = character({ DeathYear: 160, DeathSubtick: 2, DeathGranularity: 99 })
-		const item = buildGeneratedItem('Death', c, 'item-2', LOD)
-		expect(item.AbsoluteStart).toBe(162)
+	it('sits on the year when the character carries no absolute', () => {
+		const item = buildGeneratedItem('Death', character({ DeathYear: 160 }), 'item-2')
+		expect(item.AbsoluteStart).toBe(160)
 	})
 })

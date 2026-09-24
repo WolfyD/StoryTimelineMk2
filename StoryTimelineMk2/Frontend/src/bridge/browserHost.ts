@@ -265,6 +265,15 @@ const handlers: Record<string, (payload: Payload) => unknown> = {
 		)
 	},
 
+	OpenRelationsWindow: (p) => {
+		openPopup(
+			'storytimeline-relations',
+			`relations.html${query({ timelineId: p.timelineId as number, characterId: p.characterId as string })}`,
+			1280,
+			860,
+		)
+	},
+
 	OpenYearCalendarWindow: (p) => {
 		const open = popups.get('storytimeline-year-calendar')
 		if (open && !open.closed) {

@@ -2,6 +2,7 @@
 import {
     PhRuler,
     PhUsersThree,
+    PhGraph,
     PhMapPin,
     PhMagnifyingGlass,
     PhChartBar,
@@ -46,13 +47,21 @@ const emit = defineEmits<{
     'open-reference': []
     'open-export': []
     'open-characters': []
+    'open-relations': []
 }>()
 
 const helpMenuOpen = ref(false)
 
+/** Only two of the nav icons lead anywhere yet; the rest are placeholders. */
+function navClick(id: string) {
+    if (id === 'chars') emit('open-characters')
+    else if (id === 'relations') emit('open-relations')
+}
+
 const navItems = [
     { id: 'timeline', icon: PhRuler,            label: 'Timeline',            active: true,  available: true  },
     { id: 'chars',    icon: PhUsersThree,        label: 'Characters',          active: false, available: true  },
+    { id: 'relations',icon: PhGraph,             label: 'Relations',           active: false, available: true  },
     { id: 'map',      icon: PhMapPin,            label: 'Map',                 active: false, available: false },
     { id: 'search',   icon: PhMagnifyingGlass,   label: 'Search',              active: false, available: false },
     { id: 'stats',    icon: PhChartBar,          label: 'Statistics',          active: false, available: false },
@@ -131,7 +140,7 @@ const navItems = [
             }"
             :title="item.available ? item.label : `${item.label} (coming soon)`"
             :tabindex="item.available ? 0 : -1"
-            @click="item.id === 'chars' && emit('open-characters')"
+            @click="navClick(item.id)"
         >
             <component :is="item.icon" :size="20" :weight="item.active ? 'duotone' : 'regular'" />
         </button>

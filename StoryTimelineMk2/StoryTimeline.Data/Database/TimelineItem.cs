@@ -29,10 +29,22 @@ namespace StoryTimelineMk2.Database
         public bool Centered { get; set; }
         /// <summary>Draw the title as a caption strip on the canvas (pictures only).</summary>
         public bool ShowTitle { get; set; }
+        /// <summary>BL-72: the span reaches back past its start year — drawn as an arrow, not an edge.</summary>
+        public bool OpenStart { get; set; }
+        /// <summary>BL-72: the span carries on past its end year. Both may be set.</summary>
+        public bool OpenEnd { get; set; }
+        /// <summary>BL-72: soften the open side — half-transparent at the arrow tip, solid a year in.</summary>
+        public bool OpenFade { get; set; }
         /// <summary>Not a column: the owning character's flag, joined in for type 7. False for everything else.</summary>
         public bool UseHighlightColor { get; set; }
         /// <summary>Writer's private notes — stored and exported, never rendered on the canvas, data panel or view modal.</summary>
         public string? ItemNotes { get; set; }
+
+        /// <summary>
+        /// Where it happened. Groundwork for BL-16 (the Map feature) — it will hold a location id
+        /// once locations exist. Nothing sets or reads it yet.
+        /// </summary>
+        public string? LocationId { get; set; }
         public bool ShowInNotes { get; set; } = true;
         public int MinLodLevel { get; set; }
         public int LodVisibilityMask { get; set; } = 255;

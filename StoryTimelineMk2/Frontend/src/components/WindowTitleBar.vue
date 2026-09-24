@@ -259,8 +259,8 @@ function cancelDrag() {
 
 // ── Window controls ────────────────────────────────────────────────────────────
 //
-// Default colour matches the strip's inactive icon (#3d5166).
-// Hover colour matches the strip's hover (#8ca5bc).
+// Default color matches the strip's inactive icon (#3d5166).
+// Hover color matches the strip's hover (#8ca5bc).
 // This makes the entire left edge of the window feel visually unified.
 
 .title-bar__controls {

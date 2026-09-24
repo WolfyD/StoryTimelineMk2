@@ -229,7 +229,7 @@ describe('TimelineSettingsModal', () => {
     wrapper.unmount()
   })
 
-  it('colour swatches load per timeline, edit in their own modal, and save alongside the settings', async () => {
+  it('color swatches load per timeline, edit in their own modal, and save alongside the settings', async () => {
     ;(BackendAPI.GetMiscSetting as ReturnType<typeof vi.fn>).mockImplementation(async (key: string) =>
       ({ status: 'ok', value: key === 'color_swatches' ? JSON.stringify(['#111111', ...Array(11).fill('#222222')]) : null }))
     ;(BackendAPI.SaveLayoutSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })

@@ -224,10 +224,18 @@ export interface TimelineItem {
 	Centered?: boolean;
 	/** Draw the title as a caption strip on the canvas (pictures only) */
 	ShowTitle?: boolean;
+	/** BL-72, ages and periods: reaches back past the start year — drawn as an arrow, not an edge. */
+	OpenStart?: boolean;
+	/** BL-72, ages and periods: carries on past the end year. Both may be set. */
+	OpenEnd?: boolean;
+	/** BL-72: soften whichever side is open — half-transparent at the tip, solid a year in. */
+	OpenFade?: boolean;
 	/** Read-only, type 7 only: the owning character's UseHighlightColor, joined in by the backend. */
 	UseHighlightColor?: boolean;
 	/** Writer's private notes: stored and exported, never rendered anywhere */
 	ItemNotes?: string | null;
+	/** BL-16 groundwork: will hold a location id once locations exist. Nothing reads it yet. */
+	LocationId?: string | null;
 	ShowInNotes: boolean;
 	Importance: number;
 	MinLodLevel: number;
@@ -271,6 +279,8 @@ export interface CharacterItem {
 	Nicknames: string | null;
 	Aliases: string | null;
 	Race: string | null;
+	/** Free text like Race: house, guild, army, cult. The relations views group the cast by it. */
+	Faction: string | null;
 	Description: string | null;
 	Notes: string | null;
 	BirthYear: number | null;
@@ -279,11 +289,12 @@ export interface CharacterItem {
 	DeathYear: number | null;
 	DeathDate: string | null;
 	DeathAlternativeYear: string | null;
-	/** Where inside the year, at the LOD it was picked at — the pair every item carries. */
-	BirthSubtick: number;
+	/** The LOD each date was picked at; the sub-year part lives in the absolutes below. */
 	BirthGranularity: number;
-	DeathSubtick: number;
 	DeathGranularity: number;
+	/** Birth and death as timeline positions, the same pair an item carries. Null means no date. */
+	AbsoluteStart: number | null;
+	AbsoluteEnd: number | null;
 	Color: string | null;
 	Importance: number;
 	PortraitPictureId: string | null;
@@ -291,13 +302,67 @@ export interface CharacterItem {
 	PortraitPath: string | null;
 	/** Overrides what the dates imply; null (the normal case) means derive it from DeathYear. */
 	State: string | null;
+	/**
+	 * Free text with a suggested list behind it. Only the relation wording reads it, and only to
+	 * pick 'mother of' over 'parent of'; anything it does not recognise gets the neutral phrase.
+	 */
+	Gender: string | null;
 	/** Draw birth and death as two items this character owns. */
 	ShowOnTimeline: boolean;
-	/** Fill the portrait disc with Color instead of leaving it neutral; the ring is coloured either way. */
+	/** Fill the portrait disc with Color instead of leaving it neutral; the ring is colored either way. */
 	UseHighlightColor: boolean;
 	BirthItemId: string | null;
 	DeathItemId: string | null;
+	/** BL-16 groundwork: will hold location ids once locations exist. Nothing reads them yet. */
+	BirthLocationId: string | null;
+	DeathLocationId: string | null;
+	/** In every timeline's cast, not only TimelineId's — which stays as where they came from. */
+	Shared: boolean;
 	TimelineId: number;
+}
+
+/**
+ * One relation between two characters, stored once for the pair: the kind carries both readings
+ * (`AToB` / `BToA`), so there is no mirror row to keep in step.
+ */
+export interface CharacterRelationship {
+	Id: number;
+	Character1Id: string;
+	Character2Id: string;
+	/** A `RelationshipType.Id`; kept as written even if the kind is later deleted. */
+	RelationshipType: string;
+	Notes: string | null;
+	/** Null means the relation is implied by its kind — a son is one from birth — not year 0. */
+	StartYear: number | null;
+	StartGranularity: number;
+	EndYear: number | null;
+	EndGranularity: number;
+	/** Both ends as timeline positions; null where that end has no year. */
+	AbsoluteStart: number | null;
+	AbsoluteEnd: number | null;
+	/** How close they are, 0–100: the edge's thickness and how hard its spring pulls. */
+	RelationshipStrength: number;
+	/** A state word on the tie — estranged, secret, adoptive, former, alleged. Also its line style. */
+	RelationshipModifier: string | null;
+	/** A genealogical qualifier — half-, step-, once removed — folded into the wording. */
+	RelationshipDegree: string | null;
+	TimelineId: number;
+}
+
+/** A kind of relation, and how it reads from each end. Seeded with a starter set, editable. */
+export interface RelationshipType {
+	Id: string;
+	Name: string;
+	/** Loose grouping for the picker — 'family', 'social', or whatever the user types. */
+	Type: string | null;
+	AToB: string | null;
+	BToA: string | null;
+	/** The same phrase for a female or male subject; null where English has no gendered word. */
+	AToBF: string | null;
+	AToBM: string | null;
+	BToAF: string | null;
+	BToAM: string | null;
+	OneWay: number;
 }
 
 export interface Tag {
