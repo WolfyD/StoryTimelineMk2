@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BL-76 / BL-77: more ways to lay the same web out — knots, a matrix, an arc, faction boxes,
  * a chord circle and the chain between two people. All pure: ids and edges in, positions out,
  * so the page only has to draw them.
@@ -107,6 +107,29 @@ export function clusterSeed(
 
 /** How far a knot's blob is drawn outside its outermost member. */
 export const HULL_PAD = 34
+
+/**
+ * Where to put a stage so a box of content sits centred in it, with a 20px margin all round.
+ *
+ * `ease` under 1 is for a fit running every frame against a layout that is still moving: it closes
+ * *in* that fraction of the way from `now` each call, while pulling *out* is always immediate.
+ * Easing both directions is the obvious thing and is wrong — a force layout expanding faster than
+ * the fit can follow spends the whole expansion with its edges cut off, which is a worse fault than
+ * the late fit it was meant to smooth. One-way means the content is inside the frame every frame,
+ * and the view still closes in gently once the layout stops growing. At 1 it simply lands.
+ */
+export function fitView(
+	box: { w: number; h: number },
+	stage: { w: number; h: number },
+	now = 1,
+	ease = 1,
+) {
+	const w = Math.max(1, box.w)
+	const h = Math.max(1, box.h)
+	const want = Math.max(0.15, Math.min(1, (stage.w - 40) / w, (stage.h - 40) / h))
+	const k = Math.min(want, now + (want - now) * ease)
+	return { k, x: (stage.w - w * k) / 2, y: (stage.h - h * k) / 2 }
+}
 
 /**
  * Convex hull, monotone chain — the points round the outside of a knot, in order.

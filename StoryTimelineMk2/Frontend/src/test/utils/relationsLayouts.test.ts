@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest'
+﻿import { describe, it, expect } from 'vitest'
 import {
 	arcLayout, chainColumns, chainLayout, CHAIN_GAP, CHAIN_HALO_MAX, CHAIN_HALO_R, CHAIN_ROW,
 	chordLayout, communities,
-	clusterSeed, convexHull, matrixOrder, sociogramLayout, SOCIO_HEADER,
+	clusterSeed, convexHull, fitView, matrixOrder, sociogramLayout, SOCIO_HEADER,
 } from '@/utils/relationsLayouts'
 import { stepForces } from '@/utils/relationsGraph'
 import type { GraphEdge, SimNode } from '@/utils/relationsGraph'
@@ -529,5 +529,46 @@ describe('chainColumns', () => {
 
 	it('leaves a chain too short to be worth folding on the one line', () => {
 		expect(chainColumns(2, 1200, 800)).toBe(2)
+	})
+})
+
+describe('fitView', () => {
+	const STAGE = { w: 1000, h: 800 }
+	/** Is the box, drawn at this fit, entirely inside the stage? */
+	const inside = (box: { w: number; h: number }, f: { k: number; x: number; y: number }) =>
+		f.x >= -0.001 && f.y >= -0.001 &&
+		f.x + box.w * f.k <= STAGE.w + 0.001 && f.y + box.h * f.k <= STAGE.h + 0.001
+
+	it('centres a box with a 20px margin, and never enlarges past 1:1', () => {
+		const wide = fitView({ w: 1920, h: 400 }, STAGE)
+		expect(wide.k).toBeCloseTo((1000 - 40) / 1920)
+		expect(wide.x).toBeCloseTo(20)
+		expect(wide.y).toBeCloseTo((800 - 400 * wide.k) / 2)
+		expect(fitView({ w: 10, h: 10 }, STAGE).k).toBe(1)
+	})
+
+	it('pulls back at once however slow the ease, so nothing is ever cut off', () => {
+		// The case this exists for: a force layout doubling in size every few frames while a fit
+		// runs at ease 0.1. Easing both ways leaves it clipped the whole way out.
+		let now = 1
+		for (let w = 200; w < 6000; w = Math.round(w * 1.3)) {
+			const box = { w, h: w / 2 }
+			const f = fitView(box, STAGE, now, 0.1)
+			expect(inside(box, f)).toBe(true)
+			now = f.k
+		}
+	})
+
+	it('closes in gradually when the layout shrinks, and lands exactly at ease 1', () => {
+		const box = { w: 400, h: 300 }
+		const exact = fitView(box, STAGE).k
+		const eased = fitView(box, STAGE, 0.2, 0.1).k
+		expect(eased).toBeGreaterThan(0.2)
+		expect(eased).toBeLessThan(exact)
+		expect(fitView(box, STAGE, 0.2, 1).k).toBeCloseTo(exact)
+	})
+
+	it('refuses to shrink past 0.15, however big the layout gets', () => {
+		expect(fitView({ w: 1e6, h: 1e6 }, STAGE).k).toBe(0.15)
 	})
 })

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 /**
  * BL-73 / BL-76 / BL-77: the relations window. Nine views over the same web — a loose force
  * graph, the same graph with its knots pulled apart, rings around one character, rows by
@@ -756,6 +756,9 @@ function buildNode(c: CharacterItem, draggable: boolean): Konva.Group {
         // no adding up the sidebar width and the title bar height and getting it wrong.
         menu.value = { x: evt.evt.clientX, y: evt.evt.clientY, id: c.Id }
     })
+    // Grabbing somebody ends the opening fit. The view is not allowed to move under the hand that
+    // is moving somebody in it, and the fit now runs every frame rather than once at the end.
+    group.on('dragstart', () => { fitOnSettle = false })
     group.on('dragend', () => {
         const node = simNodes.find(n => n.id === c.Id)
         if (!node) return
@@ -806,8 +809,8 @@ function buildGraph() {
         nodeGroup.add(group)
     }
     paintGraph()
-    // Only on the way in. Refitting on every settle would yank the view out from under anyone who
-    // had just dragged somebody, and a drag reheats the sim.
+    // Only on the way in. The fit then runs every frame until the sim stops, and grabbing anybody
+    // cancels it, so the view never moves under a hand that is dragging somebody about.
     fitOnSettle = mode.value === 'clusters'
     kick()
 }
@@ -836,13 +839,19 @@ function tick() {
     // spring sim ever reaches. Or cooled off: a big enough web never quite settles, and a layout
     // that keeps crawling is unreadable and eats the battery.
     raf = alpha > G.ALPHA_MIN && moved > simNodes.length * 0.05 ? requestAnimationFrame(tick) : 0
-    if (raf || !fitOnSettle) return
-    fitOnSettle = false
+    if (!fitOnSettle) return
+    // Keep the picture framed while it is still moving, rather than only once it stops. Fitting on
+    // the settle alone made the first seconds of the window the layout flying out of view and then
+    // snapping back: the fit was always right, it just arrived three seconds late. `fitStage` eases
+    // the closing-in and not the widening, so nothing ever leaves the frame on the way; the last
+    // call is exact and lands where the eased one had all but arrived.
+    fitOnSettle = !!raf
     // Room for the blob round the outermost node and the name sitting above it.
     const pad = L.HULL_PAD + 34
     fitStage(
         Math.min(...simNodes.map(n => n.x)) - pad, Math.min(...simNodes.map(n => n.y)) - pad,
         Math.max(...simNodes.map(n => n.x)) + pad, Math.max(...simNodes.map(n => n.y)) + pad,
+        raf ? 0.1 : 1,
     )
 }
 
@@ -1005,16 +1014,17 @@ function paintHulls(byId: Map<string, G.SimNode>) {
 // ── Fitting ────────────────────────────────────────────────────────────────
 
 /** Zoom and pan so a worked-out layout is on screen, instead of half off the edge of it. */
-function fitStage(minX: number, minY: number, maxX: number, maxY: number) {
+/** Frame a rectangle of layout on the stage, centred. `ease` is `L.fitView`'s — see it. */
+function fitStage(minX: number, minY: number, maxX: number, maxY: number, ease = 1) {
     if (!stage) return
-    const w = Math.max(1, maxX - minX)
-    const h = Math.max(1, maxY - minY)
-    const scale = Math.max(0.15, Math.min(1, (stage.width() - 40) / w, (stage.height() - 40) / h))
-    stage.scale({ x: scale, y: scale })
-    stage.position({
-        x: (stage.width() - w * scale) / 2 - minX * scale,
-        y: (stage.height() - h * scale) / 2 - minY * scale,
-    })
+    const f = L.fitView(
+        { w: maxX - minX, h: maxY - minY },
+        { w: stage.width(), h: stage.height() },
+        stage.scaleX(),
+        ease,
+    )
+    stage.scale({ x: f.k, y: f.k })
+    stage.position({ x: f.x - minX * f.k, y: f.y - minY * f.k })
 }
 
 /**
@@ -2047,7 +2057,7 @@ watch(knotRoom, () => {
     // Reheat rather than rebuild: the knots have not changed, only how much room they want and
     // how much slack the ties between them get — `stepForces` reads both off `clusterRoom` — and
     // rebuilding would throw away a layout the writer may have spent a while dragging into shape.
-    // The picture changes size, so it has to be re-fitted once it settles again.
+    // The picture changes size, so it has to be re-framed while it moves and again when it stops.
     fitOnSettle = true
     kick()
 })
