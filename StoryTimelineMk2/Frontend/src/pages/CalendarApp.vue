@@ -116,6 +116,10 @@ function autoSetLod() {
         levels.push({ index: levels.length, formatKey: 'WEEKS', stepFraction: weekLength.value / yearLength.value })
     if (yearLength.value > 0)
         levels.push({ index: levels.length, formatKey: 'DAYS', stepFraction: 1 / yearLength.value })
+    for (const l of levels) {
+        const d = DEFAULT_TICK_DISTANCE[l.formatKey]
+        if (d) l.tickDistance = d
+    }
     lodLevels.value = levels
     lodManuallyEdited.value = false
 }
@@ -161,6 +165,7 @@ function toggleCollapse(key: string) { collapsed.value[key] = !collapsed.value[k
 const helpTexts: Record<string, string> = {
     info: 'The basic details of your calendar. Short Name appears in compact displays. Alternate Name is an unofficial or historical alias. Era Before/After Year 0 are the labels used for dates on either side of year zero (e.g. BCE / CE, or BK / AK for a custom calendar).',
     lod: 'Level of Detail (LOD) controls how the timeline zooms. Each level has a Format Key — the type of unit shown at that zoom — and a Step Fraction: how many years one tick represents. Lower index = broader view (millennia), higher index = finer detail (days). Built-in Format Keys: MILLENNIA, CENTURIES, DECADES, YEARS, SEASONS, MONTHS, WEEKS, DAYS. Use the ½ toggle to enter step fractions as N/D (e.g. 1/365 for a day).',
+    tickdist: 'How far apart two ticks are drawn, in pixels, at one zoom level. Leave a level blank and it uses the timeline\'s own Tick Distance setting — which is what every level did before this existed. Fill one in and that level alone gets its own spacing: room to breathe at millennia and centuries, tighter at weeks and days. Auto fills in the standard spread.',
     months: 'Define every month of your calendar year. Year Length is the total number of days in the year. Each month has a name, optional short name, and a day count. If Seasons are enabled, each month can be assigned a season index (0-based) to link it to one of your defined seasons.',
     weeks: 'Define how weeks work in your calendar. Set the number of days per week, optionally give each day a full and short name, and mark which days count as weekend. If day names are disabled, only the weekend day pattern is stored.',
     seasons: 'Define the seasons of your calendar. Each season has a name, optional short name, a start and end day-of-year (0-indexed), and an optional significance tag like "hottest" or "coldest". Months reference seasons by their index number (0-based) shown in the # column.',
@@ -337,6 +342,32 @@ function parseFraction(str: string): number {
 function updateStepFraction(lod: LodLevel, str: string) {
     const v = parseFraction(str)
     if (!isNaN(v) && v >= 0) lod.stepFraction = v
+}
+
+/**
+ * BL-80 defaults, in pixels against the stock tick distance of 100. The coarse rungs carry the most
+ * history per tick and want the room — a millennium of stripes at 100px is a smear — while a week or
+ * a day wants less, so a season of days fits on one screen. The middle of the ladder is deliberately
+ * absent: YEARS, SEASONS and MONTHS are what the stock distance was chosen for.
+ */
+const DEFAULT_TICK_DISTANCE: Record<string, number> = {
+    MILLENNIA: 300, CENTURIES: 200, DECADES: 130, WEEKS: 50, DAYS: 50,
+}
+
+/** Blank means inherit, so an emptied field drops the override rather than storing a zero divisor. */
+function updateTickDistance(lod: LodLevel, str: string) {
+    const v = parseFloat(str)
+    if (str.trim() === '' || isNaN(v) || v <= 0) delete lod.tickDistance
+    else lod.tickDistance = v
+}
+
+/** The defaults above, without resetting the step fractions the way Auto LOD does. */
+function autoSetTickDistances() {
+    for (const l of lodLevels.value) {
+        const d = DEFAULT_TICK_DISTANCE[(l.formatKey ?? '').toUpperCase()]
+        if (d) l.tickDistance = d
+        else delete l.tickDistance
+    }
 }
 
 // ---- Sync day arrays when week length changes ----
@@ -712,6 +743,35 @@ function toggleWeekend(d: number) {
               <p v-if="addLodKey.trim() === 'YEARS'" class="add-lod-warn">YEARS level already exists and cannot be duplicated.</p>
             </template>
             <button v-else class="btn-add mt-8" @click="openAddLodForm">+ Add Level</button>
+
+            <!-- BL-80: per-level tick distance, opt-in -->
+            <div class="sub-section">
+              <div class="sub-section-header">
+                <h4 class="sub-section-title">Tick Distance</h4>
+                <div class="header-right">
+                  <button class="btn btn-secondary btn-sm" @click="autoSetTickDistances"
+                    title="Fill in the standard spread and clear the rest">Auto</button>
+                  <button class="info-btn" :class="{ active: openHelp === 'tickdist' }"
+                    @click.stop="toggleHelp('tickdist')" title="Help">i</button>
+                </div>
+              </div>
+              <div v-if="openHelp === 'tickdist'" class="help-bubble">{{ helpTexts.tickdist }}</div>
+              <div class="tickdist-grid">
+                <div v-for="(lod, i) in lodLevels" :key="'td' + i" class="tickdist-row">
+                  <span class="tickdist-key">{{ lod.formatKey || 'Level ' + i }}</span>
+                  <input
+                    type="number"
+                    class="tbl-input tickdist-input"
+                    :value="lod.tickDistance ?? ''"
+                    min="10"
+                    step="5"
+                    placeholder="inherit"
+                    @input="updateTickDistance(lod, ($event.target as HTMLInputElement).value)"
+                  />
+                  <span class="tickdist-unit">px</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1367,6 +1427,60 @@ select.tbl-input option { background: var(--app-surface, #0c1524); color: var(--
 }
 
 .mt-8 { margin-top: 8px; }
+
+// ---- Sub-section inside a section (BL-80 tick distances) ----
+.sub-section {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--app-border, #2a3a52);
+}
+
+.sub-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sub-section-title {
+  margin: 0;
+  flex: 1;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--app-text-dim, #4a6080);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tickdist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 12px;
+}
+
+.tickdist-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tickdist-key {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tickdist-input { width: 74px; flex-shrink: 0; }
+
+.tickdist-unit {
+  font-size: 0.75rem;
+  color: var(--app-text-dim, #4a6080);
+  flex-shrink: 0;
+}
 
 // ---- Collapsible section headers ----
 .section-title-group {

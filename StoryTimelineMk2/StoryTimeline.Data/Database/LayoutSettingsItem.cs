@@ -57,6 +57,7 @@
         public string TimelineTickMarkerTextColor { get; set; } = string.Empty;
         public int TimelineTickMarkerFontSize { get; set; }
         public bool TimelineTickMarkerTextAlwaysOnTop { get; set; }
+        public bool TimelineTickMarkerTextAngled { get; set; }
 
         public bool TimelineShowHoverLine { get; set; }
         public string TimelineHoverLineColor { get; set; } = string.Empty;

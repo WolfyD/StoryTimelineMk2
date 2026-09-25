@@ -46,6 +46,28 @@ npm run test:e2e:ui     # Playwright UI mode
 - Config: `Frontend/playwright.config.ts` — `testDir: ./src/test/e2e`, single Chromium project, `baseURL: http://localhost:5173`.
 - Prerequisite: none beyond `npm install` — the `webServer` block auto-starts `npm run dev` (or reuses an already-running dev server).
 
+### 3b. The pan-cost probe
+
+`src/test/e2e/pan-perf.spec.ts` is a stopwatch, not a test. It sits in the mocked directory but skips
+itself unless `PERF=1`, because a timing number on a shared machine is not something to fail a build
+over.
+
+```bash
+# from Frontend/
+PERF=1 npx playwright test pan-perf --reporter=line --workers=1
+```
+
+It times the real thing rather than a proxy: `applyPan` is called synchronously from a window
+`mousemove` handler, so a burst of synthetic mousemoves inside one `page.evaluate` runs the whole pan
+path — grid, items, dimming, overlays — back to back, and wall time over N is the per-frame cost of a
+drag. Unlike an FPS reading it is not capped at the display's refresh rate, so a number well under
+16.7ms is headroom rather than a pass. Cases are 1 / 100 / 400 / 1000 items, plus 400 with angled
+tick labels and 400 with calendar bands.
+
+The numbers are Chromium and this machine. Use them to compare a change against the run before it,
+never as a threshold — and always `--workers=1`, since parallel workers contend for the same CPU.
+BL-84 has the run that found the two quadratics.
+
 ### 4. Playwright real E2E
 
 ```powershell
@@ -79,6 +101,12 @@ How it works:
 2. It installs a fake `window.chrome.webview` object with `postMessage` / `addEventListener` / `removeEventListener`.
 3. A `MOCK_RESPONSES` table maps action names (`GetAllTimelines`, `GetTimelineData`, `GetItemForEdit`, `SaveItem`, `SaveNote`, `GetSystemFonts`, ~40 more) to canned payloads shaped like the real C# replies (PascalCase keys, JSON-string `YearDefinition`, full `LayoutSettings`, etc.).
 4. When the app calls `postMessage`, the mock extracts `action` and `messageId`, then on `setTimeout(0)` (next tick, mimicking real async bridge I/O) dispatches a synthetic `MessageEvent` to all registered listeners with `{ messageId, payload }` (correlated request) or `{ action, payload }` (broadcast). Unknown actions get a `null` payload.
+
+`injectBridgeMock(page, overrides)` takes a second argument that merges into `MOCK_RESPONSES`, so a
+spec can swap one action's payload. Two keys are not actions but shortcuts into the canned
+`GetTimelineData` reply: `__items` replaces its item list and `__layout` merges into its
+`LayoutSettings`. The perf probe uses both to open a timeline with a thousand generated items and a
+setting flipped.
 
 This mirrors the handshake in `Frontend/src/bridge/api.ts` exactly, so `BackendAPI.request()` resolves normally. The Vitest layer has its own simpler stub: `src/test/setup.ts` replaces `window.chrome.webview` with `vi.fn()` no-ops (component tests additionally `vi.mock('@/bridge/api')` when they need resolved values).
 
@@ -164,8 +192,8 @@ Specs import `test`/`expect` from `./fixtures`, not from `@playwright/test`.
 
 | Suite | Spec files |
 |---|---|
-| Mocked (`test/e2e/`) | `timeline-app.spec.ts`, `timeline-canvas.spec.ts`, `edit-item.spec.ts`, `settings.spec.ts` |
-| Real (`test/e2e-real/`) | `main-app.spec.ts`, `main-management.spec.ts`, `timeline.spec.ts`, `timeline-navigation.spec.ts`, `timeline-items.spec.ts`, `timeline-actions.spec.ts`, `timeline-canvas.spec.ts`, `timeline-canvas-interaction.spec.ts`, `timeline-filter.spec.ts`, `timeline-settings.spec.ts`, `timeline-gallery.spec.ts`, `timeline-notes.spec.ts`, `timeline-reference.spec.ts`, `calendar.spec.ts`, `calendar-switching.spec.ts` |
+| Mocked (`test/e2e/`) | `timeline-app.spec.ts`, `timeline-canvas.spec.ts`, `timeline-ruler.spec.ts`, `edit-item.spec.ts`, `backup.spec.ts`, `import-export.spec.ts`, and `pan-perf.spec.ts` (the probe — skipped unless `PERF=1`) |
+| Real (`test/e2e-real/`) | `main-app.spec.ts`, `main-management.spec.ts`, `timeline.spec.ts`, `timeline-navigation.spec.ts`, `timeline-items.spec.ts`, `timeline-actions.spec.ts`, `timeline-canvas.spec.ts`, `timeline-canvas-interaction.spec.ts`, `timeline-filter.spec.ts`, `timeline-settings.spec.ts`, `timeline-gallery.spec.ts`, `timeline-notes.spec.ts`, `timeline-reference.spec.ts`, `timeline-ruler.spec.ts`, `calendar.spec.ts`, `calendar-switching.spec.ts` |
 
 ## Conventions for New Tests
 

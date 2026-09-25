@@ -344,6 +344,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `timeline_tick_marker_font_family` / `_font_style` / `_text_color` | TEXT | |
 | `timeline_tick_marker_font_size` | INTEGER | |
 | `timeline_tick_marker_text_always_on_top` | INTEGER | DEFAULT 1 |
+| `timeline_tick_marker_text_angled` | INTEGER | DEFAULT 0 |
 | `timeline_show_hover_line` | INTEGER | DEFAULT 1 |
 | `timeline_hover_line_color` / `_style` | TEXT | |
 | `timeline_hover_line_width` | INTEGER | |

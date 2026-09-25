@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { mediaUrl } from '@/utils/mediaUrl';
-import { parseCalendarDef } from '@/utils/calendarDef'
+import { parseCalendarDef, parseCalendarConfig } from '@/utils/calendarDef'
+import { holdDate, placeDate, type HeldDate } from '@/utils/lodDates'
+import { DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig } from '@/utils/timelineLayout'
 import { blankCharacter, characterEntity } from '@/utils/characterItems'
 import HighlightedTextarea from '@/components/HighlightedTextarea.vue'
 import { PhMagicWand } from '@phosphor-icons/vue'
@@ -116,6 +118,11 @@ const monthNames      = ref<string[]>([])
 const monthLengths    = ref<number[]>([])
 const seasonNames     = ref<string[]>([])
 const weekCount       = ref<number>(52)
+// The calendar's real month and season boundaries, which is where a sub-year date has to land.
+const calendarConfig  = ref<CalendarFormatConfig>(DEFAULT_CALENDAR_CONFIG)
+// The sub-year positions as loaded, so saving an untouched date leaves it exactly where it was.
+const heldStart = ref<HeldDate | null>(null)
+const heldEnd   = ref<HeldDate | null>(null)
 
 // ---------------------------------------------------------------------------
 // UI state
@@ -247,6 +254,8 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   monthLengths.value       = []
   seasonNames.value        = []
   weekCount.value          = 52
+  heldStart.value          = null
+  heldEnd.value            = null
   showImagePicker.value    = false
   showCharPicker.value     = false
   showStoryPicker.value    = false
@@ -303,11 +312,13 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
             ? JSON.parse(rawProfile)
             : rawProfile as unknown as LodLevel[]
         }
-        const calDef = parseCalendarDef(data.Calendar.YearDefinition ?? '')
+        const yearDef = data.Calendar.YearDefinition ?? ''
+        const calDef = parseCalendarDef(yearDef)
         monthNames.value   = calDef.monthNames
         monthLengths.value = calDef.monthLengths
         seasonNames.value  = calDef.seasonNames
         weekCount.value    = calDef.weekCount
+        calendarConfig.value = parseCalendarConfig(yearDef)
       }
 
       // For new items: choose the best granularity to represent the canvas position.
@@ -323,21 +334,15 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
         }
       }
 
-      // Derive sub-year UI position from AbsoluteStart/AbsoluteEnd, then sync date fields.
-      // For new items we use Math.floor ("which unit am I currently in") so that a position
-      // mid-summer doesn't round up to fall. For existing saved items Math.round is correct
-      // because AbsoluteStart was stored as an exact tick multiple.
+      // Derive sub-year UI position from AbsoluteStart/AbsoluteEnd, then sync date fields. Hold on
+      // to both, so a save that does not touch them cannot move the item.
       {
-        const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
-        const step = lod?.stepFraction ?? 1
-        const maxSubYear = step > 0 ? Math.round(1 / step) : 1
-        const startFrac = item.value.AbsoluteStart - item.value.Year
-        const endFrac   = item.value.AbsoluteEnd   - item.value.EndYear
-        const snapFn = isNew.value
-            ? (v: number) => Math.floor(v + 1e-9)   // "which unit am I in" (epsilon avoids fp rounding down)
-            : Math.round                              // "nearest saved tick"
-        startSubYear.value = startFrac > 0.000001 ? Math.max(0, Math.min(snapFn(startFrac / step), maxSubYear - 1)) : 0
-        endSubYear.value   = endFrac   > 0.000001 ? Math.max(0, Math.min(snapFn(endFrac   / step), maxSubYear - 1)) : 0
+        const g = item.value.CreationGranularity
+        const cal = calendarConfig.value
+        heldStart.value = holdDate(item.value.AbsoluteStart, item.value.Year, g, lodProfile.value, cal)
+        heldEnd.value   = holdDate(item.value.AbsoluteEnd, item.value.EndYear, g, lodProfile.value, cal)
+        startSubYear.value = heldStart.value.subtick
+        endSubYear.value   = heldEnd.value.subtick
       }
       startYear.value = item.value.Year
       endYear.value   = item.value.EndYear
@@ -677,10 +682,14 @@ async function save(closeOnSuccess = true) {
   item.value.Year    = startYear.value
   item.value.EndYear = isRangeType.value ? endYear.value : startYear.value
 
-  const lod = lodProfile.value.find(l => l.index === item.value.CreationGranularity)
-  const step = lod?.stepFraction ?? 1
-  item.value.AbsoluteStart = item.value.Year    + startSubYear.value * step
-  item.value.AbsoluteEnd   = item.value.EndYear + (isRangeType.value ? endSubYear.value : startSubYear.value) * step
+  const g = item.value.CreationGranularity
+  const cal = calendarConfig.value
+  const endSub = isRangeType.value ? endSubYear.value : startSubYear.value
+  item.value.AbsoluteStart =
+      placeDate(item.value.Year, startSubYear.value, g, heldStart.value, lodProfile.value, cal) ?? 0
+  item.value.AbsoluteEnd =
+      placeDate(item.value.EndYear, endSub, g, isRangeType.value ? heldEnd.value : heldStart.value,
+                lodProfile.value, cal) ?? 0
 
   try {
     const result = await BackendAPI.SaveItem(

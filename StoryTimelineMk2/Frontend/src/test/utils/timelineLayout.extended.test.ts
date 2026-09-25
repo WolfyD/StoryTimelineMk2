@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   FormatRegistry,
+  DEFAULT_CALENDAR_CONFIG,
   absoluteToVisual,
   visualToAbsolute,
   BREAK_TICKS,
@@ -13,201 +14,71 @@ function makeRange(startYear: number, endYear: number, id = 1): HiddenRange {
   return { Id: id, TimelineId: 1, StartYear: startYear, EndYear: endYear, Label: null }
 }
 
-// ── FormatRegistry — SEASONS ─────────────────────────────────────────────────
+// ── FormatRegistry — integer days (BL-44) ─────────────────────────────────────
+// A formatter is handed the integer day-of-year its tick falls on. The main suite covers each
+// rung's ordinary labels; what is worth keeping here is the awkward input — every single day of
+// the year swept through every rung, and the BC era.
 
-describe('FormatRegistry[SEASONS]', () => {
-  it('returns year string when fraction is 0', () => {
-    expect(FormatRegistry['SEASONS']!(2020, 0)).toBe('2020')
+describe('FormatRegistry over a whole year', () => {
+  const { yearLength, months, seasons } = DEFAULT_CALENDAR_CONFIG
+
+  it('only ever names a season the calendar defines', () => {
+    const names = seasons.map(s => s.name)
+    for (let d = 0; d < yearLength; d++) {
+      expect(names).toContain(FormatRegistry['SEASONS']!(2020, d))
+    }
   })
 
-  it('returns "Spring" for f=0.01 (early in year)', () => {
-    // Math.round(0.01 * 4) = 0 → seasons[0] = 'Spring'
-    expect(FormatRegistry['SEASONS']!(2020, 0.01)).toBe('Spring')
+  it('only ever names a month the calendar defines, and reaches every one of them', () => {
+    const seen = new Set<string>()
+    const valid = months.map(m => m.shortName)
+    for (let d = 0; d < yearLength; d++) {
+      const label = FormatRegistry['MONTHS']!(2020, d)
+      expect(valid).toContain(label)
+      seen.add(label)
+    }
+    // The February bug in one assertion: twelve ticks a year, twelve distinct names.
+    expect(seen.size).toBe(months.length)
   })
 
-  it('returns "Summer" for f=0.26', () => {
-    // Math.round(0.26 * 4) = Math.round(1.04) = 1 → seasons[1] = 'Summer'
-    expect(FormatRegistry['SEASONS']!(2020, 0.26)).toBe('Summer')
+  it('numbers quarters one to four and nothing else', () => {
+    const seen = new Set<string>()
+    for (let d = 0; d < yearLength; d++) seen.add(FormatRegistry['QUARTERS']!(2020, d))
+    expect([...seen].sort()).toEqual(['Q1', 'Q2', 'Q3', 'Q4'])
   })
 
-  it('returns "Fall" for f=0.51', () => {
-    // Math.round(0.51 * 4) = Math.round(2.04) = 2 → seasons[2] = 'Fall'
-    expect(FormatRegistry['SEASONS']!(2020, 0.51)).toBe('Fall')
+  it('numbers weeks from one, one number per seven days', () => {
+    for (let d = 0; d < yearLength; d++) {
+      expect(FormatRegistry['WEEKS']!(2020, d)).toBe(`W${Math.floor(d / 7) + 1}`)
+    }
   })
 
-  it('returns "Winter" for f=0.76', () => {
-    // Math.round(0.76 * 4) = Math.round(3.04) = 3 → seasons[3] = 'Winter'
-    expect(FormatRegistry['SEASONS']!(2020, 0.76)).toBe('Winter')
-  })
-
-  it('returns "Winter" at the last day of the year (f=0.998)', () => {
-    // Math.round(0.998 * 365) = 364 → last day → 'Winter'
-    expect(FormatRegistry['SEASONS']!(2020, 0.998)).toBe('Winter')
-  })
-
-  it('labels a fraction that rounds past the year boundary as the next year', () => {
-    // stepFraction is a rounded float; Math.round(0.9999 * 365) = 365 ≥ yearLength → '2021'
-    expect(FormatRegistry['SEASONS']!(2020, 0.9999)).toBe('2021')
-  })
-
-  it('only returns values from the seasons array', () => {
-    const valid = ['Spring', 'Summer', 'Fall', 'Winter']
-    for (const f of [0.01, 0.13, 0.26, 0.38, 0.51, 0.63, 0.76, 0.88, 0.998]) {
-      expect(valid).toContain(FormatRegistry['SEASONS']!(2020, f))
+  it('gives every day a date inside its own month', () => {
+    for (let d = 0; d < yearLength; d++) {
+      const m = [...months].reverse().find(mo => mo.startDay <= d)!
+      expect(FormatRegistry['DAYS']!(2020, d)).toBe(`${d - m.startDay + 1} ${m.shortName}`)
     }
   })
 })
 
-// ── FormatRegistry — MONTHS ──────────────────────────────────────────────────
-
-describe('FormatRegistry[MONTHS]', () => {
-  it('returns year string when fraction is 0', () => {
-    expect(FormatRegistry['MONTHS']!(1999, 0)).toBe('1999')
-  })
-
-  it('returns "Jan" for f=0.083', () => {
-    // Math.round(0.083 * 12) = Math.round(0.996) = 1 → months[1] = 'Feb'...
-    // Actually: Math.round(0.083 * 12) = Math.round(0.996) = 1 → 'Feb'
-    // Let's use a very small fraction to get Jan: Math.round(0.01 * 12) = 0 → 'Jan'
-    const result = FormatRegistry['MONTHS']!(2020, 0.01)
-    expect(result).toBe('Jan')
-  })
-
-  it('returns "Jan" for f=0.083 (day 30 — last day of January)', () => {
-    // Month labels are day-of-year based: floor(0.083 * 365) = day 30, and
-    // February starts at day 31 — so this is still January.
-    expect(FormatRegistry['MONTHS']!(2020, 0.083)).toBe('Jan')
-  })
-
-  it('returns "Feb" for f=0.09 (day 32 — early February)', () => {
-    // floor(0.09 * 365) = day 32 ≥ Feb.startDay (31)
-    expect(FormatRegistry['MONTHS']!(2020, 0.09)).toBe('Feb')
-  })
-
-  it('returns a valid month name for mid-year fractions', () => {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-    for (const f of [0.083, 0.166, 0.25, 0.333, 0.416, 0.5, 0.583, 0.666, 0.75, 0.833, 0.916]) {
-      expect(months).toContain(FormatRegistry['MONTHS']!(2020, f))
-    }
-  })
-
-  it('labels a fraction that rounds past the year boundary as the next year', () => {
-    // Math.round(0.9999 * 365) = 365 ≥ yearLength → '2021'
-    expect(FormatRegistry['MONTHS']!(2020, 0.9999)).toBe('2021')
-  })
-
-  it('returns "Dec" for f very close to 1', () => {
-    expect(FormatRegistry['MONTHS']!(2020, 0.99)).toBe('Dec')
-  })
-})
-
-// ── FormatRegistry — QUARTERS ─────────────────────────────────────────────────
-
-describe('FormatRegistry[QUARTERS]', () => {
-  it('returns year string when fraction is 0', () => {
-    expect(FormatRegistry['QUARTERS']!(2020, 0)).toBe('2020')
-  })
-
-  it('returns "Q1" for f close to 0 but non-zero', () => {
-    // Math.round(0.01/0.25)+1 = Math.round(0.04)+1 = 0+1 = 1 → Q1
-    expect(FormatRegistry['QUARTERS']!(2020, 0.01)).toBe('Q1')
-  })
-
-  it('returns "Q2" for f=0.26', () => {
-    // Math.round(0.26/0.25)+1 = Math.round(1.04)+1 = 1+1 = 2 → Q2
-    expect(FormatRegistry['QUARTERS']!(2020, 0.26)).toBe('Q2')
-  })
-
-  it('returns "Q3" for f=0.51', () => {
-    // Math.round(0.51/0.25)+1 = Math.round(2.04)+1 = 2+1 = 3 → Q3
-    expect(FormatRegistry['QUARTERS']!(2020, 0.51)).toBe('Q3')
-  })
-
-  it('returns "Q4" for f=0.76', () => {
-    // Math.round(0.76/0.25)+1 = Math.round(3.04)+1 = 3+1 = 4 → Q4
-    expect(FormatRegistry['QUARTERS']!(2020, 0.76)).toBe('Q4')
-  })
-})
-
-// ── FormatRegistry — MILLENNIA ────────────────────────────────────────────────
-
-describe('FormatRegistry[MILLENNIA]', () => {
-  it('returns "1000s" for year=1000', () => {
-    expect(FormatRegistry['MILLENNIA']!(1000, 0)).toBe('1000s')
-  })
-
-  it('returns "2000s" for year=2000', () => {
-    expect(FormatRegistry['MILLENNIA']!(2000, 0)).toBe('2000s')
-  })
-
-  it('floors fractional years', () => {
-    // Math.floor(1999.9) = 1999 → '1999s'
-    expect(FormatRegistry['MILLENNIA']!(1999.9, 0.9)).toBe('1999s')
-  })
-
-  it('works for BC-era negative years', () => {
-    // Math.floor(-1000) = -1000 → '-1000s'
+describe('FormatRegistry — years that are not plain positive integers', () => {
+  it('labels the BC era like any other', () => {
     expect(FormatRegistry['MILLENNIA']!(-1000, 0)).toBe('-1000s')
-  })
-})
-
-// ── FormatRegistry — WEEKS ────────────────────────────────────────────────────
-
-describe('FormatRegistry[WEEKS]', () => {
-  it('returns year string when fraction is 0', () => {
-    expect(FormatRegistry['WEEKS']!(2020, 0)).toBe('2020')
+    expect(FormatRegistry['CENTURIES']!(-300, 0)).toBe('-300')
+    expect(FormatRegistry['DECADES']!(-44, 0)).toBe('-44')
+    expect(FormatRegistry['YEARS']!(-44, 0)).toBe('-44')
+    expect(FormatRegistry['MONTHS']!(-44, 73)).toBe('Mar')
+    expect(FormatRegistry['DAYS']!(-44, 73)).toBe('15 Mar')
   })
 
-  it('returns "W27" for f=0.5 (approximately mid-year)', () => {
-    // floor(floor(0.5 * 365) / 7) + 1 = floor(182 / 7) + 1 = 26 + 1 = 27
-    expect(FormatRegistry['WEEKS']!(2020, 0.5)).toBe('W27')
+  it('floors a fractional year rather than rounding it', () => {
+    expect(FormatRegistry['MILLENNIA']!(1999.9, 0)).toBe('1999s')
+    expect(FormatRegistry['YEARS']!(2024.9, 0)).toBe('2024')
   })
 
-  it('returns "W1" for a very small fraction (start of year)', () => {
-    expect(FormatRegistry['WEEKS']!(2020, 0.001)).toBe('W1')
-  })
-
-  it('returns "W52" near end of year', () => {
-    // floor(floor(0.99 * 365) / 7) + 1 = floor(361 / 7) + 1 = 51 + 1 = 52
-    expect(FormatRegistry['WEEKS']!(2020, 0.99)).toBe('W52')
-  })
-
-  it('matches expected format "WN"', () => {
-    const result = FormatRegistry['WEEKS']!(2020, 0.25)
-    expect(result).toMatch(/^W\d+$/)
-  })
-})
-
-// ── FormatRegistry — DAYS ─────────────────────────────────────────────────────
-
-describe('FormatRegistry[DAYS]', () => {
-  it('returns year string when fraction is 0', () => {
-    expect(FormatRegistry['DAYS']!(2020, 0)).toBe('2020')
-  })
-
-  it('returns "Day 184" for f=0.5 (approximately mid-year)', () => {
-    // Math.round(0.5 * 365) + 1 = 183 + 1 = 184
-    expect(FormatRegistry['DAYS']!(2020, 0.5)).toBe('Day 184')
-  })
-
-  it('returns "Day 1" for a very small fraction (start of year)', () => {
-    // Math.floor(0.001 * 365) + 1 = 0 + 1 = 1
-    expect(FormatRegistry['DAYS']!(2020, 0.001)).toBe('Day 1')
-  })
-
-  it('returns "Day 365" near end of year', () => {
-    // Math.round(0.998 * 365) + 1 = 364 + 1 = 365
-    expect(FormatRegistry['DAYS']!(2020, 0.998)).toBe('Day 365')
-  })
-
-  it('labels a fraction that rounds past the year boundary as the next year', () => {
-    // Math.round(0.999 * 365) = 365 ≥ yearLength → '2021'
-    expect(FormatRegistry['DAYS']!(2020, 0.999)).toBe('2021')
-  })
-
-  it('matches expected format "Day N"', () => {
-    const result = FormatRegistry['DAYS']!(2020, 0.75)
-    expect(result).toMatch(/^Day \d+$/)
+  it('rolls a day at the year end into the next year, negative years included', () => {
+    expect(FormatRegistry['MONTHS']!(-44, 365)).toBe('-43')
+    expect(FormatRegistry['DAYS']!(2020, 365)).toBe('2021')
   })
 })
 

@@ -14,11 +14,12 @@ import {
     blankRelation, relationLabel, relationOtherId, relationWhen, slugifyTypeId,
     RELATION_DEGREES, RELATION_MODIFIERS,
 } from '@/utils/characterRelations'
-import { toAbsolute, toSubtick } from '@/utils/lodDates'
+import { holdDate, placeDate, type HeldDate } from '@/utils/lodDates'
 import {
     PhPlus, PhTrash, PhPencilSimple, PhFloppyDisk, PhX, PhArrowsLeftRight, PhSlidersHorizontal,
     PhMagnifyingGlass, PhCheck,
 } from '@phosphor-icons/vue'
+import type { CalendarFormatConfig } from '@/utils/timelineLayout'
 import type {
     CharacterItem, CharacterRelationship, LodLevel, RelationshipType,
 } from '@/types/models'
@@ -36,6 +37,8 @@ const props = defineProps<{
     monthLengths: number[]
     seasonNames: string[]
     weekCount: number
+    /** Real month and season boundaries, so a sub-year date is stored where its label says (BL-79). */
+    calendarConfig: CalendarFormatConfig
 }>()
 
 const emit = defineEmits<{ close: []; changed: [] }>()
@@ -46,11 +49,27 @@ const draft = ref<CharacterRelationship>(
         : blankRelation(props.character.Id, props.timelineId, props.types[0]?.Id ?? ''))
 /** Editor-local, like the character window's: the relation stores the absolute (BL-75). */
 const subticks  = ref<Record<'Start' | 'End', number>>({ Start: 0, End: 0 })
+/** The same positions as loaded, so saving a date nobody touched leaves it exactly where it was. */
+const held      = ref<Record<'Start' | 'End', HeldDate | null>>({ Start: null, End: null })
 const typeDraft = ref<RelationshipType | null>(null)
 const showTypes = ref(false)
 const search    = ref('')
 const error     = ref('')
 const busy      = ref(false)
+
+/**
+ * Read a relation's stored dates into the form. Opening the modal on one hands it through
+ * `props.editing` rather than through `edit()`, and that path used to skip this entirely — so a
+ * relation dated to a month or a season opened showing the first one, whatever it actually said.
+ */
+function loadDates(r: CharacterRelationship) {
+    held.value = {
+        Start: holdDate(r.AbsoluteStart, r.StartYear, r.StartGranularity, props.lodProfile, props.calendarConfig),
+        End: holdDate(r.AbsoluteEnd, r.EndYear, r.EndGranularity, props.lodProfile, props.calendarConfig),
+    }
+    subticks.value = { Start: held.value.Start!.subtick, End: held.value.End!.subtick }
+}
+if (props.editing) loadDates(props.editing)
 
 const byId     = computed(() => new Map(props.characters.map(c => [c.Id, c])))
 const typeById = computed(() => new Map(props.types.map(t => [t.Id, t])))
@@ -120,16 +139,14 @@ function startNew() {
     error.value = ''
     draft.value = blankRelation(props.character.Id, props.timelineId, props.types[0]?.Id ?? '')
     subticks.value = { Start: 0, End: 0 }
+    held.value = { Start: null, End: null }
 }
 
 function edit(r: CharacterRelationship) {
     error.value = ''
     showTypes.value = false
     draft.value = { ...r }
-    subticks.value = {
-        Start: toSubtick(r.AbsoluteStart, r.StartYear, r.StartGranularity, props.lodProfile),
-        End: toSubtick(r.AbsoluteEnd, r.EndYear, r.EndGranularity, props.lodProfile),
-    }
+    loadDates(r)
 }
 
 function swap() {
@@ -148,8 +165,8 @@ async function saveRelation() {
     const d = draft.value
     if (!d.RelationshipType) { error.value = 'Pick what kind of relation this is.'; return }
     if (!d.Character1Id || !d.Character2Id) { error.value = 'Pick the other character.'; return }
-    d.AbsoluteStart = toAbsolute(d.StartYear, subticks.value.Start, d.StartGranularity, props.lodProfile)
-    d.AbsoluteEnd   = toAbsolute(d.EndYear, subticks.value.End, d.EndGranularity, props.lodProfile)
+    d.AbsoluteStart = placeDate(d.StartYear, subticks.value.Start, d.StartGranularity, held.value.Start, props.lodProfile, props.calendarConfig)
+    d.AbsoluteEnd   = placeDate(d.EndYear, subticks.value.End, d.EndGranularity, held.value.End, props.lodProfile, props.calendarConfig)
     busy.value = true
     try {
         const res = await BackendAPI.SaveCharacterRelation(d)

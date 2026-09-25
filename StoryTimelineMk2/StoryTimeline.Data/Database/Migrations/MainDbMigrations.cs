@@ -36,6 +36,8 @@ namespace StoryTimelineMk2.Database.Migrations
             new(16, "shared characters, relation meaning and absolute dates", "1.1.1", V16_CharacterMeaning),
             new(17, "faction, and where things happened", "1.1.1", V17_FactionAndPlace),
             new(18, "the fade on an open-ended span", "1.1.1", V18_OpenEndFade),
+            new(19, "per-level tick distance", "1.1.1", V19_LodTickDistance),
+            new(20, "angled axis labels", "1.1.1", V20_AngledTickLabels),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1177,6 +1179,18 @@ namespace StoryTimelineMk2.Database.Migrations
             db.Execute("ALTER TABLE characters ADD COLUMN use_highlight_color INTEGER NOT NULL DEFAULT 0;");
         }
 
+        // ── 20: angled axis labels ─────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-82: per-rung tick distances (step 19) mean the axis can now be tight enough that a
+        /// horizontal date label runs into its neighbour. Off by default, so no existing timeline
+        /// changes appearance on upgrade.
+        /// </summary>
+        private static void V20_AngledTickLabels(MigrationDb db)
+        {
+            AddCol(db, "layout_settings", "timeline_tick_marker_text_angled", "INTEGER NOT NULL DEFAULT 0");
+        }
+
         // ── 12: caption font sizes ────────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -1316,6 +1330,34 @@ namespace StoryTimelineMk2.Database.Migrations
         {
             AddCol(db, "items", "open_fade", "INTEGER NOT NULL DEFAULT 0");
         }
+
+        // ── 19: per-level tick distance ──────────────────────────────────────────
+
+        /// <summary>
+        /// BL-80. One tick distance served every zoom level, so a millennium of history got the same
+        /// 100 pixels a day does. The frontend now reads an optional <c>tickDistance</c> off each LOD
+        /// level — stored in the profile JSON, so there is no column to add — and this fills in the
+        /// stock spread on the Gregorian profile every install already has: the coarse rungs wider, a
+        /// week and a day tighter, the middle of the ladder left to inherit.
+        ///
+        /// Matched on the exact baseline string rather than rewritten level by level, so a profile
+        /// anyone has edited is left alone. A fresh database is seeded with the baseline by step 1 and
+        /// then updated here, which is why step 1 stays as it shipped.
+        /// </summary>
+        private static void V19_LodTickDistance(MigrationDb db)
+        {
+            db.Execute(
+                "UPDATE lod_profiles SET profile = @New WHERE id = 'lod_default' AND profile = @Old",
+                new { Old = LodDefaultBaseline, New = LodDefaultWithTickDistance });
+        }
+
+        /// <summary>The profile string step 1 seeds, character for character — the only one step 19 touches.</summary>
+        private const string LodDefaultBaseline =
+            "[{\"index\":0,\"formatKey\":\"MILLENNIA\",\"stepFraction\":1000},{\"index\":1,\"formatKey\":\"CENTURIES\",\"stepFraction\":100},{\"index\":2,\"formatKey\":\"DECADES\",\"stepFraction\":10},{\"index\":3,\"formatKey\":\"YEARS\",\"stepFraction\":1},{\"index\":4,\"formatKey\":\"SEASONS\",\"stepFraction\":0.25},{\"index\":5,\"formatKey\":\"MONTHS\",\"stepFraction\":0.08333333333},{\"index\":6,\"formatKey\":\"WEEKS\",\"stepFraction\":0.01923076923},{\"index\":7,\"formatKey\":\"DAYS\",\"stepFraction\":0.00273972602}]";
+
+        /// <summary>The same ladder with the BL-80 defaults on the rungs that wanted them.</summary>
+        private const string LodDefaultWithTickDistance =
+            "[{\"index\":0,\"formatKey\":\"MILLENNIA\",\"stepFraction\":1000,\"tickDistance\":300},{\"index\":1,\"formatKey\":\"CENTURIES\",\"stepFraction\":100,\"tickDistance\":200},{\"index\":2,\"formatKey\":\"DECADES\",\"stepFraction\":10,\"tickDistance\":130},{\"index\":3,\"formatKey\":\"YEARS\",\"stepFraction\":1},{\"index\":4,\"formatKey\":\"SEASONS\",\"stepFraction\":0.25},{\"index\":5,\"formatKey\":\"MONTHS\",\"stepFraction\":0.08333333333},{\"index\":6,\"formatKey\":\"WEEKS\",\"stepFraction\":0.01923076923,\"tickDistance\":50},{\"index\":7,\"formatKey\":\"DAYS\",\"stepFraction\":0.00273972602,\"tickDistance\":50}]";
 
         // ── 16: shared characters, relation meaning and absolute dates ───────
 

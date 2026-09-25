@@ -2,12 +2,13 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import { useAppTheme } from '@/utils/useAppTheme'
-import { parseCalendarDef } from '@/utils/calendarDef'
+import { parseCalendarDef, parseCalendarConfig } from '@/utils/calendarDef'
+import { DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig } from '@/utils/timelineLayout'
 import { mediaUrl } from '@/utils/mediaUrl'
 import {
     planGeneratedItems, buildGeneratedItem, blankCharacter, effectiveState, initials,
 } from '@/utils/characterItems'
-import { toAbsolute, toSubtick } from '@/utils/lodDates'
+import { holdDate, placeDate, type HeldDate } from '@/utils/lodDates'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import { useSideWidth } from '@/composables/useSideWidth'
 import LodDateInput from '@/components/LodDateInput.vue'
@@ -44,11 +45,15 @@ const appearances  = ref<CharacterAppearance[]>([])
  * character stores the absolute (BL-75), and a step only means anything next to a granularity.
  */
 const subticks = ref<Record<'Birth' | 'Death', number>>({ Birth: 0, Death: 0 })
+/** The same positions as loaded, so saving a date nobody touched leaves it exactly where it was. */
+const held = ref<Record<'Birth' | 'Death', HeldDate | null>>({ Birth: null, Death: null })
 
 const lodProfile   = ref<LodLevel[]>([])
 const monthNames   = ref<string[]>([])
 const monthLengths = ref<number[]>([])
 const seasonNames  = ref<string[]>([])
+// Real month and season boundaries, so a sub-year date is stored where its label says (BL-79).
+const calendarConfig = ref<CalendarFormatConfig>(DEFAULT_CALENDAR_CONFIG)
 const weekCount    = ref(52)
 
 /** Free text, so a writer can invent one; these are only the ones worth suggesting. */
@@ -131,6 +136,7 @@ async function load() {
         if (calendar) {
             const raw = calendar.LodProfile?.Profile
             if (raw) lodProfile.value = typeof raw === 'string' ? JSON.parse(raw) : raw
+            calendarConfig.value = parseCalendarConfig(calendar.YearDefinition)
             const def = parseCalendarDef(calendar.YearDefinition ?? '')
             monthNames.value   = def.monthNames
             monthLengths.value = def.monthLengths
@@ -173,16 +179,18 @@ const isNew = computed(() => !!draft.value && !characters.value.some(c => c.Id =
 function select(c: CharacterItem) {
     error.value = ''
     draft.value = clone(c)
-    subticks.value = {
-        Birth: toSubtick(c.AbsoluteStart, c.BirthYear, c.BirthGranularity, lodProfile.value),
-        Death: toSubtick(c.AbsoluteEnd, c.DeathYear, c.DeathGranularity, lodProfile.value),
+    held.value = {
+        Birth: holdDate(c.AbsoluteStart, c.BirthYear, c.BirthGranularity, lodProfile.value, calendarConfig.value),
+        Death: holdDate(c.AbsoluteEnd, c.DeathYear, c.DeathGranularity, lodProfile.value, calendarConfig.value),
     }
+    subticks.value = { Birth: held.value.Birth!.subtick, Death: held.value.Death!.subtick }
 }
 
 function newCharacter() {
     error.value = ''
     draft.value = blankCharacter(timelineId.value)
     subticks.value = { Birth: 0, Death: 0 }
+    held.value = { Birth: null, Death: null }
 }
 
 // ── Birth / death toggles ─────────────────────────────────────────────────────
@@ -230,8 +238,8 @@ async function save() {
     saving.value = true
     try {
         // The date inputs work in steps; the row stores where that put them.
-        c.AbsoluteStart = toAbsolute(c.BirthYear, subticks.value.Birth, c.BirthGranularity, lodProfile.value)
-        c.AbsoluteEnd   = toAbsolute(c.DeathYear, subticks.value.Death, c.DeathGranularity, lodProfile.value)
+        c.AbsoluteStart = placeDate(c.BirthYear, subticks.value.Birth, c.BirthGranularity, held.value.Birth, lodProfile.value, calendarConfig.value)
+        c.AbsoluteEnd   = placeDate(c.DeathYear, subticks.value.Death, c.DeathGranularity, held.value.Death, lodProfile.value, calendarConfig.value)
         const dropped = planGeneratedItems(c)
         const result = await BackendAPI.SaveCharacter(c)
         if (result?.status !== 'ok') throw new Error('The character was not saved.')
@@ -513,6 +521,7 @@ async function pickPortrait() {
                     :monthLengths="monthLengths"
                     :seasonNames="seasonNames"
                     :weekCount="weekCount"
+                    :calendarConfig="calendarConfig"
                 />
 
                 <p v-if="error" class="ch-error">{{ error }}</p>

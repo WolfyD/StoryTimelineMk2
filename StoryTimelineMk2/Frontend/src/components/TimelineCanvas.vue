@@ -13,7 +13,7 @@ import { PhUserCircle, PhUserFocus } from '@phosphor-icons/vue';
 
 import {
 	BREAK_TICKS, absoluteToVisual, visualToAbsolute,
-	getXFromTime, getTimeFromX,
+	getXFromTime, getTimeFromX, tickDistanceOf, gridTicks, dayOfYearAt, boundaryDays,
     isLeftOfNow, getAssignedLane, laneSpanFor, type LaneLock
 } from '@/utils/timelineLayout';
 import {
@@ -110,7 +110,11 @@ const viewport = reactive({
     width: 0,
     height: 0,
     centerTime: store.centerAbsoluteTime || props.timelineInfo?.StartYear || 0,
-    lodStepFraction: 1 // Controls the physical math independent of the store
+    lodStepFraction: 1, // Controls the physical math independent of the store
+    // BL-80: pixels per tick, tweened alongside the step. Both are divisors of the same position
+    // maths, so a rung whose distance changed has to arrive over the same animation — set straight
+    // to the target and the whole view jumps out by the ratio before the step eases it back.
+    tickDistance: 100
 });
 
 const nodeCache = new Map<string, any>();
@@ -155,7 +159,7 @@ const getActiveRanges = () => store.hiddenRanges.filter(r => !expandedRangeIds.h
  */
 const yearPx = (item: TimelineItem, absoluteStart: number, itemX: number, ls: LayoutSettings, ranges: HiddenRange[]) =>
     item.OpenFade && (item.OpenStart || item.OpenEnd)
-        ? getXFromTime(absoluteStart + 1, viewport.centerTime, viewport.lodStepFraction, viewport.width, ls, ranges) - itemX
+        ? getXFromTime(absoluteStart + 1, viewport.centerTime, viewport.lodStepFraction, viewport.width, viewport.tickDistance, ranges) - itemX
         : 0;
 
 // Pan state: gridPanOffset tracks how far we've panned since the last full grid rebuild.
@@ -214,11 +218,11 @@ const contextMenu = reactive({
 // --- MEASUREMENT OVERLAY ---
 const measureFromX = computed(() => {
     if (store.distanceFrom === null || !props.layoutSettings) return null;
-    return getXFromTime(store.distanceFrom, viewport.centerTime, viewport.lodStepFraction, viewport.width, props.layoutSettings, store.hiddenRanges);
+    return getXFromTime(store.distanceFrom, viewport.centerTime, viewport.lodStepFraction, viewport.width, viewport.tickDistance, store.hiddenRanges);
 });
 const measureToX = computed(() => {
     if (store.distanceTo === null || !props.layoutSettings) return null;
-    return getXFromTime(store.distanceTo, viewport.centerTime, viewport.lodStepFraction, viewport.width, props.layoutSettings, store.hiddenRanges);
+    return getXFromTime(store.distanceTo, viewport.centerTime, viewport.lodStepFraction, viewport.width, viewport.tickDistance, store.hiddenRanges);
 });
 const measureColor = computed(() => props.layoutSettings?.MeasureLineColor || '#0077aa');
 const showMeasureOverlay = computed(() =>
@@ -440,6 +444,13 @@ watch(() => store.hiddenRanges, () => {
     renderWithDimming(props.layoutSettings);
 }, { deep: true });
 
+// The settled distance, for a global setting edited in the settings modal or a profile reloaded
+// with different overrides. Deliberately not watching store.tickDistance, which also changes on a
+// LOD change — that one is the animation's job.
+watch(() => [props.layoutSettings?.TimelineTickDistance, store.lodProfile], () => {
+    viewport.tickDistance = store.tickDistance;
+});
+
 // --- LOD ANIMATION WATCHER ---
 let lodAnim: number | null = null;
 watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
@@ -447,6 +458,9 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
 
     const oldStep = store.lodProfile?.[oldIdx]?.stepFraction || 1;
     const targetStep = store.lodProfile?.[newIdx]?.stepFraction || 1;
+    const base = props.layoutSettings?.TimelineTickDistance || 100;
+    const oldDist = tickDistanceOf(store.lodProfile, oldIdx, base);
+    const targetDist = tickDistanceOf(store.lodProfile, newIdx, base);
 
     if (props.layoutSettings?.TimelineAnimateLodChange && !store.lowResourceMode) {
         const duration = props.layoutSettings.TimelineLodChangeAnimationLength || 300;
@@ -459,6 +473,7 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
 
             // Dynamically stretch the math over time
             viewport.lodStepFraction = oldStep + (targetStep - oldStep) * ease;
+            viewport.tickDistance = oldDist + (targetDist - oldDist) * ease;
 
             // FIX: Clear the lane cache EVERY frame so they dynamically dodge
             // each other and re-pack as they compress or expand!
@@ -476,6 +491,7 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
         lodAnim = requestAnimationFrame(step);
     } else {
         viewport.lodStepFraction = targetStep;
+        viewport.tickDistance = targetDist;
         renderGrid(gridLayer, props.layoutSettings);
         setTimeout(()=>{
 			renderWithDimming(props.layoutSettings!);
@@ -545,7 +561,7 @@ function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSetting
     }
 
     // Visible absolute time range (with a margin for the overlay)
-    const halfAbs  = ((viewport.width / 2 + GRID_EXTRA_PX) / layoutSettings.TimelineTickDistance) * step;
+    const halfAbs  = ((viewport.width / 2 + GRID_EXTRA_PX) / viewport.tickDistance) * step;
     const leftAbs  = viewport.centerTime - halfAbs;
     const rightAbs = viewport.centerTime + halfAbs;
     const startYear = Math.floor(leftAbs) - 1;
@@ -591,8 +607,8 @@ function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSetting
 
     function paintBands(items: BandStart[], color: string): boolean {
         if (items.length < 2) return false;
-        const px0 = getXFromTime(items[0]!.abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-        const px1 = getXFromTime(items[1]!.abs, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const px0 = getXFromTime(items[0]!.abs, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
+        const px1 = getXFromTime(items[1]!.abs, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
         if (Math.abs(px1 - px0) < 2) return false;
 
         for (let i = 0; i < items.length - 1; i++) {
@@ -601,8 +617,8 @@ function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSetting
             const absEnd   = items[i + 1]!.abs;
             if (absEnd < leftAbs || absStart > rightAbs) continue;
 
-            const xS = getXFromTime(absStart, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-            const xE = getXFromTime(absEnd,   viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+            const xS = getXFromTime(absStart, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
+            const xE = getXFromTime(absEnd,   viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
             if (xE <= -GRID_EXTRA_PX || xS >= viewport.width + GRID_EXTRA_PX) continue;
 
             const cx = Math.max(xS, -GRID_EXTRA_PX);
@@ -634,68 +650,61 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
     const step = viewport.lodStepFraction;
     const ranges = getActiveRanges();
 
-    // Compute loop bounds in VISUAL time so the iteration count stays bounded
-    // at ~(viewport.width / tickDistance) regardless of how large any hidden range is.
-    const visualCenter    = absoluteToVisual(viewport.centerTime, ranges, step);
-    const halfVisual      = ((viewport.width / 2) / layoutSettings.TimelineTickDistance) * step;
-    const extraVisual     = (GRID_EXTRA_PX / layoutSettings.TimelineTickDistance) * step;
-    const leftMostVisual  = visualCenter - halfVisual - extraVisual;
-    const rightMostVisual = visualCenter + halfVisual + extraVisual;
-
-    // Precompute visual extents of each break strip so we can skip ticks inside them.
-    const breakExtents = ranges.map(r => {
-        const vs = absoluteToVisual(r.StartYear, ranges, step);
-        return { vs, ve: vs + BREAK_TICKS * step };
+    // BL-44: which ticks exist, and the day-of-year each one falls on, is pure maths — it lives in
+    // timelineLayout where it can be tested without a canvas. This loop only draws them.
+    const ticks = gridTicks({
+        centerTime: viewport.centerTime,
+        width: viewport.width,
+        step,
+        tickDistance: viewport.tickDistance,
+        ranges,
+        formatKey: currentLod.formatKey,
+        stepFraction: currentLod.stepFraction || 1,
+        cfg: store.calendarConfig,
+        extraPx: GRID_EXTRA_PX,
     });
 
-    const targetStep = currentLod.stepFraction || 1;
-    const startTickIndex = Math.floor(leftMostVisual / targetStep);
-    const endTickIndex   = Math.ceil(rightMostVisual / targetStep);
+    // BL-82: a rung with a short tick distance can put its labels closer together than the dates
+    // are wide, and a horizontal ruler then reads as one run-on string. Angled, each label leans out
+    // of its neighbour's way. 45 degrees fixed -- the angle every chart tool reaches for, and one
+    // nobody has to tune. The label's right end stays pinned to its own tick and the text runs down
+    // and to the left, so it reads up-to-the-right and never crosses the tick it belongs to.
+    // ponytail: always on when the setting is on, never on collision. Measuring every label against
+    // its neighbours each frame costs more than the ruler is worth, and a ruler that changes angle
+    // as you pan is worse than one that does not.
+    const angledLabels = layoutSettings.TimelineTickMarkerTextAngled;
+    const LABEL_W = 100;
+    const LABEL_LEAN = LABEL_W * Math.SQRT1_2;   // cos 45 deg, the reach of a rotated label box
 
-    const seenAbsTicks = new Set<number>();
-    for (let i = startTickIndex; i <= endTickIndex; i++) {
-        const visualTickTime = i * targetStep;
+    // A calendar with no YEARS entry would otherwise crash the whole grid draw.
+    const formatter = store.activeFormatRegistry[currentLod.formatKey]
+        ?? store.activeFormatRegistry['YEARS']
+        ?? ((y: number) => String(y));
 
-        // Skip ticks that land inside a break strip (visual check — fast)
-        if (breakExtents.some(b => visualTickTime > b.vs && visualTickTime < b.ve)) continue;
+    for (const t of ticks) {
+        const x = getXFromTime(t.absolute, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
+        const tickHalfH = (!t.isYearTick && layoutSettings.TimelineNonYearTicksSmaller) ? 6 : 10;
 
-        // Convert visual → absolute, then snap to nearest absolute grid position.
-        // Without snapping, the (hiddenSize - breakSize) offset is typically non-integer,
-        // which causes tick marks to appear offset from the NOW line after hidden ranges.
-        const rawAbsTime    = visualToAbsolute(visualTickTime, ranges, step);
-        const snappedAbs    = Math.round(rawAbsTime / targetStep) * targetStep;
-
-        // Deduplicate (two adjacent visual indices can snap to the same absolute tick)
-        if (seenAbsTicks.has(snappedAbs)) continue;
-        seenAbsTicks.add(snappedAbs);
-
-        // Also skip if the snapped tick landed inside an actual hidden range
-        if (ranges.some(r => snappedAbs > r.StartYear && snappedAbs < r.EndYear)) continue;
-
-        const cleanTime = parseFloat(snappedAbs.toFixed(8));
-        const year      = Math.floor(cleanTime);
-        const fraction  = cleanTime - year;
-
-        const x = getXFromTime(cleanTime, viewport.centerTime, step, viewport.width, store.layoutSettings!, ranges);
-        // A calendar with no YEARS entry would otherwise crash the whole grid draw.
-        const formatter = store.activeFormatRegistry[currentLod.formatKey]
-            ?? store.activeFormatRegistry['YEARS']
-            ?? ((y: number) => String(y));
-
-        const isYearTick = fraction < 0.000001;
-        const tickHalfH = (!isYearTick && layoutSettings.TimelineNonYearTicksSmaller) ? 6 : 10;
-        const tick = new Konva.Line({ points: [x, viewport.height / 2 - tickHalfH, x, viewport.height / 2 + tickHalfH], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth, listening: false });
-        const text = new Konva.Text({ x: x - 50, y: viewport.height / 2 + 15,
-            text: formatter(year, fraction), fill: layoutSettings.TimelineTickMarkerTextColor, align: 'center',
-            width: 100, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, fontSize: layoutSettings.TimelineTickMarkerFontSize, listening: false });
-
-        layer.add(tick, text);
+        layer.add(
+            new Konva.Line({ points: [x, viewport.height / 2 - tickHalfH, x, viewport.height / 2 + tickHalfH], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth, listening: false }),
+            // `grid-label` is how the ruler tests find these among every other Text on the stage.
+            new Konva.Text({ name: 'grid-label',
+                x: x - (angledLabels ? LABEL_LEAN : LABEL_W / 2),
+                y: viewport.height / 2 + 15 + (angledLabels ? LABEL_LEAN : 0),
+                rotation: angledLabels ? -45 : 0, align: angledLabels ? 'right' : 'center',
+                // The grid's own convention: a sub-year rung prints the bare year where one begins,
+                // rather than repeating January. A whole-year rung always asks its formatter, since
+                // "2000s" is what a millennium tick is for.
+                text: t.subYear && t.isYearTick ? String(t.year) : formatter(t.year, t.day),
+                fill: layoutSettings.TimelineTickMarkerTextColor,
+                width: LABEL_W, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, fontSize: layoutSettings.TimelineTickMarkerFontSize, listening: false }),
+        );
     }
 
     // --- Draw collapsed (active) break strips ---
-    const stripPx = BREAK_TICKS * layoutSettings.TimelineTickDistance;
+    const stripPx = BREAK_TICKS * viewport.tickDistance;
     for (const r of ranges) {
-        const xStart = getXFromTime(r.StartYear, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const xStart = getXFromTime(r.StartYear, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
         if (xStart + stripPx < 0 || xStart > viewport.width) continue;
 
         layer.add(new Konva.Rect({ x: xStart, y: 0, width: stripPx, height: viewport.height, fill: layoutSettings.TimelineBreakFillColor, listening: false }));
@@ -717,8 +726,8 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
 
     // --- Draw expanded (temporarily revealed) hidden ranges ---
     for (const r of store.hiddenRanges.filter(hr => expandedRangeIds.has(hr.Id))) {
-        const xLeft  = getXFromTime(r.StartYear, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
-        const xRight = getXFromTime(r.EndYear,   viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const xLeft  = getXFromTime(r.StartYear, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
+        const xRight = getXFromTime(r.EndYear,   viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
         if (xRight < 0 || xLeft > viewport.width) continue;
 
         const zoneWidth = Math.max(xRight - xLeft, 0);
@@ -760,7 +769,7 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
 
     // --- Note dots: small marker at the timeline center line for each note ---
     for (const note of store.notes) {
-        const nx = getXFromTime(note.AbsoluteTime, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const nx = getXFromTime(note.AbsoluteTime, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
         if (nx < -20 || nx > viewport.width + 20) continue;
         layer.add(new Konva.Circle({
             x: nx,
@@ -784,7 +793,7 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
     const endBoundaryItem   = endId   ? allLayoutItems.find(i => getId(i) === endId)   : null;
 
     if (startBoundaryItem) {
-        const xS = getXFromTime(bMin, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const xS = getXFromTime(bMin, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
         boundaryStartPx.value = xS;
         boundaryOverlayLayer.add(new Konva.Line({ points: [xS, 0, xS, viewport.height], stroke: '#22c55e', strokeWidth: 2 }));
         const startFlag = new Konva.Rect({
@@ -804,7 +813,7 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
     }
 
     if (endBoundaryItem) {
-        const xE = getXFromTime(bMax, viewport.centerTime, step, viewport.width, layoutSettings, ranges);
+        const xE = getXFromTime(bMax, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
         boundaryEndPx.value = xE;
         boundaryOverlayLayer.add(new Konva.Line({ points: [xE, 0, xE, viewport.height], stroke: '#ef4444', strokeWidth: 2 }));
         const endFlag = new Konva.Rect({
@@ -844,8 +853,17 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
     const currentLodIndex = store.currentLodIndex;
     const activeStep = viewport.lodStepFraction;
     const ranges = getActiveRanges();
+    // Two linear scans of a reactive array for a pair of numbers that cannot change inside one
+    // render. This used to run once per item, so a thousand-item timeline paid two million proxy
+    // reads a frame for the same two numbers.
+    const bounds = getBoundaries();
 
-    const sortedItems = [...items].sort((a, b) => getAbsoluteStart(a) - getAbsoluteStart(b));
+    // Ages and periods first: they are the backdrop the rest has to clear, and getAssignedLane
+    // measures that backdrop off the locks, so every bar has to be placed before the first box
+    // asks. It also builds their nodes first, which puts them behind the boxes for good.
+    const isBand = (x: TimelineItem) => getTypeName(x) === 'Age' || getTypeName(x) === 'Period';
+    const sortedItems = [...items].sort((a, b) =>
+        (isBand(a) ? 0 : 1) - (isBand(b) ? 0 : 1) || getAbsoluteStart(a) - getAbsoluteStart(b));
 
     for (let i = 0; i < sortedItems.length; i++) {
         const item = sortedItems[i];
@@ -877,26 +895,23 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
         const typeId = getTypeId(item);
         if (typeId === 8 || typeId === 9) continue;
 
-        // Hide items entirely outside the timeline boundaries
-        if (typeId !== 8 && typeId !== 9) {
-            const { min: bMin, max: bMax } = getBoundaries();
-            const outOfBounds = absoluteEnd < bMin || absoluteStart > bMax;
-            if (outOfBounds) {
-                const cached = nodeCache.get(itemIdStr);
-                if (cached) setNodeVisibility(cached, false);
-                lockedLanes.delete(itemIdStr);
-                continue;
-            }
+        // Hide items entirely outside the timeline boundaries. Both marker types are already gone
+        // by here, which is all the condition this replaced was testing for.
+        if (absoluteEnd < bounds.min || absoluteStart > bounds.max) {
+            const cached = nodeCache.get(itemIdStr);
+            if (cached) setNodeVisibility(cached, false);
+            lockedLanes.delete(itemIdStr);
+            continue;
         }
 
-        const itemX = getXFromTime(absoluteStart, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+        const itemX = getXFromTime(absoluteStart, viewport.centerTime, activeStep, viewport.width, viewport.tickDistance, ranges);
         const isAgeOrPeriod = typeName === "Age" || typeName === "Period";
         let endX = itemX;
 
         if (isAgeOrPeriod) {
             // `> start` not truthiness: an end of exactly 0.0 (period ending on year 0) is a valid end.
             const absEnd = absoluteEnd > absoluteStart ? absoluteEnd : absoluteStart + activeStep;
-            endX = getXFromTime(absEnd, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+            endX = getXFromTime(absEnd, viewport.centerTime, activeStep, viewport.width, viewport.tickDistance, ranges);
             if (Math.max(itemX, endX) < -screenBuffer || Math.min(itemX, endX) > viewport.width + screenBuffer) {
                 lockedLanes.delete(itemIdStr);
                 miniPinLanes.delete(itemIdStr); miniBarLanes.delete(itemIdStr);
@@ -1078,7 +1093,8 @@ const renderItems = (items: any[], ls: LayoutSettings, dimmableIds?: Set<string>
                 absoluteStart, absoluteEnd, viewport.centerTime, activeStep,
                 viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, lockedLanes, ls, ranges,
                 undefined,  // no ghosts to avoid: this is the real pass
-                isPortraitType(typeName) ? laneSpanFor(boxWidth, ls) : 1
+                isPortraitType(typeName) ? laneSpanFor(boxWidth, ls) : 1,
+                isPortraitType(typeName) ? boxWidth : undefined, viewport.tickDistance  // a portrait is square
             );
         }
 
@@ -1155,7 +1171,7 @@ function renderLifeline(ls: LayoutSettings) {
     if (!c || props.miniMode || (birth === null && death === null)) { lifelineLayer.batchDraw(); return; }
 
     const ranges = getActiveRanges();
-    const toX = (t: number) => getXFromTime(t, viewport.centerTime, viewport.lodStepFraction, viewport.width, ls, ranges);
+    const toX = (t: number) => getXFromTime(t, viewport.centerTime, viewport.lodStepFraction, viewport.width, viewport.tickDistance, ranges);
     const from = birth !== null ? toX(birth) : -WAVE_AMP;
     const to   = death !== null ? toX(death) : viewport.width + WAVE_AMP;
     const lo = Math.max(from, -WAVE_AMP);
@@ -1211,7 +1227,7 @@ function renderAgeStripes(
     const height = ls.TimelineAgeHeight;
     const top = viewport.height / 2 - height / 2;
     const activeStep = viewport.lodStepFraction;
-    const toX = (t: number) => getXFromTime(t, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+    const toX = (t: number) => getXFromTime(t, viewport.centerTime, activeStep, viewport.width, viewport.tickDistance, ranges);
 
     for (const real of realItems) {
         if (getTypeName(real) !== 'Age') continue;
@@ -1287,11 +1303,11 @@ function renderReference(ls: LayoutSettings) {
 
         const typeName = getTypeName(item);
         const isAgeOrPeriod = typeName === 'Age' || typeName === 'Period';
-        const itemX = getXFromTime(absoluteStart, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+        const itemX = getXFromTime(absoluteStart, viewport.centerTime, activeStep, viewport.width, viewport.tickDistance, ranges);
         let endX = itemX;
         if (isAgeOrPeriod) {
             const absEnd = absoluteEnd > absoluteStart ? absoluteEnd : absoluteStart + activeStep;
-            endX = getXFromTime(absEnd, viewport.centerTime, activeStep, viewport.width, ls, ranges);
+            endX = getXFromTime(absEnd, viewport.centerTime, activeStep, viewport.width, viewport.tickDistance, ranges);
         }
         if (Math.max(itemX, endX) < -screenBuffer || Math.min(itemX, endX) > viewport.width + screenBuffer) { refLanes.delete(id); continue; }
         shown.add(id);
@@ -1321,7 +1337,8 @@ function renderReference(ls: LayoutSettings) {
                 absoluteStart, absoluteEnd, viewport.centerTime, activeStep,
                 viewport.height - ls.TimelineEdgeMarginWidth * 2 + (isAboveLine ? 20 : 0), viewport.width, refLanes, ls, ranges,
                 lockedLanes,  // BL-66: pack around the real items, never under them
-                isPortraitType(typeName) ? laneSpanFor(boxWidth, ls) : 1
+                isPortraitType(typeName) ? laneSpanFor(boxWidth, ls) : 1,
+                isPortraitType(typeName) ? boxWidth : undefined, viewport.tickDistance
             );
         }
         updateAbsolutePositions(elements, typeName, itemX, endX, targetY, boxWidth, isLeftOfNow(itemX, viewport.width), stageCenterY, ls, !!item.Centered, yearPx(item, absoluteStart, itemX, ls, ranges));
@@ -1451,9 +1468,9 @@ function updateCursor(mouseX: number, mouseY: number) {
 
     const step = viewport.lodStepFraction;
     const ranges = getActiveRanges();
-    const rawTime = getTimeFromX(mouseX, viewport.centerTime, step, viewport.width, store.layoutSettings, ranges);
+    const rawTime = getTimeFromX(mouseX, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
     const snappedTime = shiftHeld ? rawTime : Math.round(rawTime / step) * step;
-    const snappedX = shiftHeld ? mouseX : getXFromTime(snappedTime, viewport.centerTime, step, viewport.width, store.layoutSettings, ranges);
+    const snappedX = shiftHeld ? mouseX : getXFromTime(snappedTime, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
 
     const year = Math.floor(snappedTime);
     const fraction = parseFloat((snappedTime - year).toFixed(8));
@@ -1475,10 +1492,18 @@ function updateCursor(mouseX: number, mouseY: number) {
         labelText = String(year);
         fracText = fraction.toFixed(6).replace(/0+$/, '').substring(1); // ".002447"
     } else {
-        const baseLabel = formatter ? formatter(year, fraction < 0.000001 ? 0 : fraction) : String(year);
+        // BL-44: the day the cursor is inside, so the label names that day rather than rounding to
+        // whichever boundary is nearest.
+        const { day } = dayOfYearAt(snappedTime, store.calendarConfig);
+        const name = (d: number) => formatter ? formatter(year, d) : String(year);
         // At sub-year LODs the formatter returns only the sub-label ("Summer", "March" etc.) without
-        // the year — append it so the cursor always shows the full date ("Summer 1995").
-        labelText = fraction < 0.000001 ? baseLabel : `${baseLabel} ${year}`;
+        // the year — append it so the cursor always shows the full date ("Summer 1995"). Resting
+        // exactly on a year tick, the year alone is the whole answer; a whole-year rung still asks
+        // its formatter there, because "2000s" is the answer a millennium wants to give.
+        const onYearTick = fraction < 0.000001;
+        labelText = onYearTick
+            ? (boundaryDays(formatKey, store.calendarConfig) ? String(year) : name(0))
+            : `${name(day)} ${year}`;
     }
 
     cursor.value = { visible: true, x: snappedX, lineY0, lineY1, labelRight, labelY, labelText, fracText };
@@ -1654,7 +1679,7 @@ function applyPan(deltaX: number) {
     const _step   = viewport.lodStepFraction;
     const _vc     = absoluteToVisual(viewport.centerTime, _ranges, _step);
     viewport.centerTime = clampToBoundaries(visualToAbsolute(
-        _vc - (deltaX / store.layoutSettings!.TimelineTickDistance) * _step,
+        _vc - (deltaX / viewport.tickDistance) * _step,
         _ranges, _step
     ));
     gridPanOffset += deltaX;
@@ -1694,6 +1719,10 @@ onMounted(() => {
         height: containerRef.value.clientHeight
     });
 
+    // The ruler tests read tick labels straight off the stage, and there is no other way in: Konva's
+    // own list of live stages is a module export, not a property of the global it installs.
+    (window as unknown as { __timelineStage?: Konva.Stage }).__timelineStage = stage;
+
     viewport.width = stage.width();
     viewport.height = stage.height();
     store.setViewportWidth(viewport.width);
@@ -1704,6 +1733,7 @@ onMounted(() => {
 
     // Set initial LOD to prevent NaN issues
     viewport.lodStepFraction = store.lodProfile?.[store.currentLodIndex]?.stepFraction || 1;
+    viewport.tickDistance = store.tickDistance;
 
     itemLayer.add(stemsMaster);
     itemLayer.add(boxesMaster);
@@ -1747,7 +1777,7 @@ onMounted(() => {
         if (!store.layoutSettings) return { absoluteTime: 0, year: 0, fraction: 0 };
         const step = viewport.lodStepFraction;
         const ranges = getActiveRanges();
-        const rawTime = getTimeFromX(posX, viewport.centerTime, step, viewport.width, store.layoutSettings, ranges);
+        const rawTime = getTimeFromX(posX, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
         const absoluteTime = shiftKey ? rawTime : Math.round(rawTime / step) * step;
         const cleanTime = parseFloat(absoluteTime.toFixed(8));
         return { absoluteTime, year: Math.floor(cleanTime), fraction: parseFloat((cleanTime - Math.floor(cleanTime)).toFixed(4)) };
@@ -1867,7 +1897,7 @@ onMounted(() => {
             const inDeadzone = Math.abs(offset) <= deadzoneHalf;
             if (!inDeadzone) {
                 const normalised = offset / halfWidth; // -1 … +1
-                const maxPx = store.layoutSettings.TimelineTickDistance * 0.35; // divided by 10 so default×10 = original speed
+                const maxPx = viewport.tickDistance * 0.35; // divided by 10 so default×10 = original speed
                 const deltaX = -normalised * maxPx * speedMult;
                 if (Math.abs(deltaX) > 0.5) applyPan(deltaX);
             }

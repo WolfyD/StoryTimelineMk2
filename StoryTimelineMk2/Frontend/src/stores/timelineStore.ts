@@ -2,8 +2,8 @@ import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote, type CharacterItem, type ItemTagLink, type ItemCharacterLink, type ItemStoryRefLink, type FilterRule, type FilterPreset, type FilterState } from '@/types/models';
 import { BackendAPI } from '@/bridge/api';
-import { buildFormatRegistry, DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
-import type { MemDayMarker } from '@/types/models';
+import { buildFormatRegistry, tickDistanceOf, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
+import { parseCalendarConfig } from '@/utils/calendarDef';
 import { applyFilters, buildItemDataMap } from '@/utils/filterMatcher';
 import { relationOtherId } from '@/utils/characterRelations';
 
@@ -606,60 +606,24 @@ export const useTimelineStore = defineStore('timeline', () => {
 		}
 	};
 
+	/**
+	 * BL-80: pixels per tick at the rung on screen now. The canvas tweens its own copy over a LOD
+	 * change; everything else — the panels, the minimap — renders on demand and wants the settled
+	 * value.
+	 */
+	const tickDistance = computed(() =>
+		tickDistanceOf(lodProfile.value, currentLodIndex.value, layoutSettings.value?.TimelineTickDistance || 100));
+
 	// Parse the loaded calendar's YearDefinition into a format config
-	const calendarConfig = computed((): CalendarFormatConfig => {
-		const ydStr = calendar.value?.YearDefinition
-		if (!ydStr) return DEFAULT_CALENDAR_CONFIG
-		try {
-			const yd = JSON.parse(ydStr)
-			const yearLength: number = yd.length ?? 365
-
-			const months: CalendarFormatConfig['months'] = []
-			if (yd.month_definition && yd.months) {
-				let cumulative = 0
-				for (let i = 0; i < (yd.months as number); i++) {
-					const m = yd.month_definition[String(i)]
-					const len: number = m?.length ?? 30
-					months.push({
-						name: m?.name ?? `Month ${i + 1}`,
-						shortName: m?.short_name ?? (m?.name ? String(m.name).slice(0, 3) : `M${i + 1}`),
-						startDay: cumulative,
-					})
-					cumulative += len
-				}
-			}
-
-			const seasons: CalendarFormatConfig['seasons'] = []
-			if (yd.season_definition && yd.seasons) {
-				for (let i = 0; i < (yd.seasons as number); i++) {
-					const s = yd.season_definition[String(i)]
-					seasons.push({
-						name: s?.name ?? `Season ${i + 1}`,
-						start: s?.start ?? 0,
-						end: s?.end ?? 0,
-						significance: s?.significance,
-					})
-				}
-			}
-
-			const memorableDays: MemDayMarker[] = Array.isArray(yd.memorable_days)
-				? (yd.memorable_days as MemDayMarker[])
-				: []
-
-			const weekLength: number = yd.week_definition?.length ?? 7
-			const yearStartDow: number = yd.year_start_dow ?? 0
-			return { yearLength, weekLength, yearStartDow, months, seasons, memorableDays }
-		} catch {
-			return DEFAULT_CALENDAR_CONFIG
-		}
-	})
+	const calendarConfig = computed((): CalendarFormatConfig =>
+		parseCalendarConfig(calendar.value?.YearDefinition))
 
 	const activeFormatRegistry = computed((): FormatRegistryType => buildFormatRegistry(calendarConfig.value))
 
 	// Expose everything so Vue components can use them
 	return {
 		// variables
-		items, currentNowYear, centerAbsoluteTime, viewportWidthPx, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex,
+		items, currentNowYear, centerAbsoluteTime, viewportWidthPx, zoomLevel, settings, layoutSettings, fps, visibleItems, lodProfile, currentLodIndex, tickDistance,
 		pastItems, futureItems, filteredItems, dimmableItems, projects, isLoading, title, author, currentProject, calendar, currentLodTitle, hiddenRanges,
 		notes, lastDeleted, distanceFrom, distanceTo, notesDistanceTab, showMeasureInTimeline, activeFormatRegistry, calendarConfig,
 		allTimelineTags, allTimelineCharacters, allTimelineStories, allTimelineColors,

@@ -257,6 +257,11 @@ export interface LodLevel {
 	index: number;
 	formatKey: string;
 	stepFraction: number;
+	/**
+	 * BL-80: pixels between two ticks at this rung, overriding `TimelineTickDistance`. Opt-in —
+	 * absent or 0 means inherit, which is what every profile said before this existed.
+	 */
+	tickDistance?: number;
 }
 
 /** One item a character appears in — the character window's reverse list. */
@@ -479,6 +484,7 @@ export interface LayoutSettings {
 	TimelineShowNowLineText: boolean;
 	TimelineNowLineColor: string;
 	TimelineNowLineStyle: string;	// Dahsed, solid etc
+	TimelineNowLineWidth: number;
 
 	TimelineTickDistance: number;	// Distance between two ticks
 	TimelineTickWidth: number;		// Width of a tick, eg 1px
@@ -489,6 +495,7 @@ export interface LayoutSettings {
 	TimelineTickMarkerTextColor: string;
 	TimelineTickMarkerFontSize: number;
 	TimelineTickMarkerTextAlwaysOnTop: boolean;
+	TimelineTickMarkerTextAngled: boolean;
 
 	TimelineShowHoverLine: boolean;	// The line that always snaps to the nearest year and shows the year number
 	TimelineHoverLineColor: string;

@@ -43,16 +43,19 @@ test.describe('EditItem — new item (typeId=1)', () => {
     await expect(titleInput).toHaveValue('My New Event')
   })
 
-  test('type selector shows all six item types', async ({ page }) => {
+  test('type selector offers the types you can create, in order', async ({ page }) => {
     // The <select v-model="item.TypeId"> in the Date & Range section
     const typeSelect = page.locator('.range-section select').first()
     await expect(typeSelect).toBeVisible()
 
-    const options = typeSelect.locator('option')
-    await expect(options).toHaveCount(6)
-
-    const texts = await options.allTextContents()
-    expect(texts).toEqual(expect.arrayContaining(['Event', 'Period', 'Age', 'Picture', 'Note', 'Bookmark']))
+    const texts = await typeSelect.locator('option').allTextContents()
+    // The first six are the ones this form creates, and their order is the order of their TypeIds,
+    // which the canvas and the filter both rely on. Anything after them is a type generated
+    // elsewhere and only listed so an open item can show its own — 'Character' is the first of
+    // those. Asserting a prefix rather than a total is deliberate: a new type appends, and a test
+    // that counts options would fail on the day one is added without anything being wrong.
+    expect(texts.slice(0, 6)).toEqual(['Event', 'Period', 'Age', 'Picture', 'Note', 'Bookmark'])
+    expect(new Set(texts).size, `a type is listed twice: ${texts.join(', ')}`).toBe(texts.length)
   })
 
   test('color picker input is present', async ({ page }) => {

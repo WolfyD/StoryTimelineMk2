@@ -93,6 +93,7 @@ namespace StoryTimelineMk2.Database
                     timeline_tick_marker_text_color,
                     timeline_tick_marker_font_size,
                     timeline_tick_marker_text_always_on_top,
+                    timeline_tick_marker_text_angled,
 
                     timeline_show_hover_line,
                     timeline_hover_line_color,
@@ -201,6 +202,7 @@ namespace StoryTimelineMk2.Database
                     @TimelineTickMarkerTextColor,
                     @TimelineTickMarkerFontSize,
                     @TimelineTickMarkerTextAlwaysOnTop,
+                    @TimelineTickMarkerTextAngled,
 
                     @TimelineShowHoverLine,
                     @TimelineHoverLineColor,
@@ -308,6 +310,7 @@ namespace StoryTimelineMk2.Database
                     timeline_tick_marker_text_color = excluded.timeline_tick_marker_text_color,
                     timeline_tick_marker_font_size = excluded.timeline_tick_marker_font_size,
                     timeline_tick_marker_text_always_on_top = excluded.timeline_tick_marker_text_always_on_top,
+                    timeline_tick_marker_text_angled = excluded.timeline_tick_marker_text_angled,
 
                     timeline_show_hover_line = excluded.timeline_show_hover_line,
                     timeline_hover_line_color = excluded.timeline_hover_line_color,

@@ -5,6 +5,7 @@ import { BackendAPI } from '@/bridge/api';
 import BaseModal from '@/components/BaseModal.vue';
 import type { TimelineNote, LayoutSettings } from '@/types/models';
 import { MOD } from '@/utils/shortcuts';
+import { dayOfYearAt } from '@/utils/timelineLayout';
 
 const props = defineProps<{
     layoutSettings: LayoutSettings | null;
@@ -49,7 +50,7 @@ const npVars = computed(() => ({
 
 const inRangeNotes = computed(() => {
     if (!props.layoutSettings) return store.notes;
-    const tickDist = props.layoutSettings.TimelineTickDistance || 100;
+    const tickDist = store.tickDistance;   // BL-80: this rung's override, or the global setting
     const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
     const halfAbsolute = (props.layoutSettings.TimelineDataRangeWidth / 2 / tickDist) * lodStep;
     if (!halfAbsolute) return store.notes;
@@ -133,11 +134,12 @@ const currentFormatKey = computed(() => {
 
 function formatPoint(abs: number | null): string {
     if (abs === null) return '—';
-    const year = Math.floor(abs);
-    const frac = abs - year;
+    // BL-44: the day this point falls inside, so the sub-label is a lookup rather than a rounded
+    // fraction. A point sitting on the year tick has nothing to add to the year.
+    const { year, day } = dayOfYearAt(abs, store.calendarConfig);
     const fmt = store.activeFormatRegistry[currentFormatKey.value];
-    if (!fmt) return String(year);
-    const sub = fmt(year, frac);
+    if (!fmt || day === 0) return String(year);
+    const sub = fmt(year, day);
     if (!sub || sub === String(year)) return String(year);
     return `${year} ${sub}`;
 }

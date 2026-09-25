@@ -26,7 +26,7 @@ const { lightboxSrc, lightboxCollection, lightboxIndex, openLightbox, closeLight
 
 function inRange(absoluteStart: number, absoluteEnd: number): boolean {
     if (!props.layoutSettings) return false;
-    const tickDist = props.layoutSettings.TimelineTickDistance || 100;
+    const tickDist = store.tickDistance;   // BL-80: this rung's override, or the global setting
     const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
     const halfAbsolute = (props.layoutSettings.TimelineDataRangeWidth / 2 / tickDist) * lodStep;
     const center = store.centerAbsoluteTime;

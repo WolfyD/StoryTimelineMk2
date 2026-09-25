@@ -65,6 +65,267 @@ zoom apply to them too). Rules:
 
 ---
 
+## [BL-84] Panning got slower the more you wrote
+
+**Status:** Done 2026-09-25 for 1.1.1. Two hoists; pan cost per frame went from super-quadratic in
+item count to linear, 20x faster at 1000 items.
+
+Found while checking BL-83 for a regression. There was none -- angled labels and calendar bands cost
+nothing measurable -- but the check turned up a much older problem underneath.
+
+Measured with `Frontend/src/test/e2e/pan-perf.spec.ts`, which drives the real drag handler
+(`applyPan` runs synchronously off a window `mousemove`, so a burst of synthetic moves in one
+`evaluate` times the whole pan path uncapped by refresh rate). It is skipped unless `PERF=1`, because
+a timing number on a shared machine is not something to fail a build over.
+
+| items | before | after |
+|-------|--------|-------|
+| 1 | 0.20ms | 0.20ms |
+| 100 | 11.20ms | 3.40ms |
+| 400 | 133.50ms | 13.90ms |
+| 1000 | 722.60ms | 36.80ms |
+
+400 items was 7 fps. Two hoists, no algorithm changes:
+
+1. `renderItems` called `getBoundaries()` once per item, and each call ran two `Array.find` scans
+   over the reactive `store.items` -- a thousand items meant two million proxy reads a frame for two
+   numbers that cannot change inside one render. Hoisted above the loop. The `if (typeId !== 8 &&
+   typeId !== 9)` wrapper went with it: the line above already `continue`s on both.
+2. `getAssignedLane` rebuilt the locks array inside the lane search, so a crowded canvas copied
+   every lock on it once per lane attempt per item. Computed once per call. Safe because the only
+   write is step 4 and the one read after it filters on `lock.isCenterOut`, which an item's own lock
+   can never satisfy for itself.
+
+Scaling is linear afterwards (4x the items costs 4.1x, 10x costs 10.8x), so what is left is per-item
+render work rather than another quadratic.
+
+ponytail: stopped at linear. 1000 items is 27 fps, and the remaining cost is spread across node
+building and Konva draws rather than sitting in one hot loop -- cutting it further means culling
+off-screen items before they are built, which is a real project and not a hoist. Deliberately not
+done: caching `getXFromTime` per frame inside the collision loop. It was the third candidate, and
+after these two it no longer shows.
+
+---
+
+## [BL-82] Angled axis labels
+
+**Status:** Done 2026-09-25 for 1.1.1. Off by default; one switch under *Tick Labels* in the
+timeline settings, schema step 20.
+
+BL-80 let every rung of the ladder carry its own tick distance, and a tight one puts the labels
+closer together than the dates are wide: at `DAYS` with 50px ticks the Gregorian ruler reads
+`19 Dec 20 Dec 21 Dec 22 Dec` as one run-on string. Angled, each label leans out of its neighbour's
+way and the same ruler is readable at the same spacing.
+
+**The geometry.** 45°, fixed. The label's right end stays pinned to its own tick and the text runs
+down and to the left, so it reads up-to-the-right — the direction matplotlib, Excel and every chart
+tool lean a crowded axis, and the direction that keeps a date from pointing at the tick next door.
+In Konva: `rotation: -45`, `align: 'right'`, origin pulled back by `100 × √½` in x and pushed down
+by the same in y, which puts the rotated right edge exactly where the centred horizontal label's
+tick was. The horizontal path is untouched — the same expression with the lean at zero.
+
+**Always on when the setting is on**, never on collision. Measuring every label against its
+neighbours each frame costs more than the ruler is worth, and an axis that changes angle as you pan
+is worse than one that does not.
+
+**Not a number.** A checkbox, not an angle field: 45 is the answer at every spacing this ruler
+reaches, and a tunable angle is one more thing to store, migrate, and get wrong.
+
+Tests: a mocked e2e opens the same timeline twice, once with the switch on, and checks every label
+leans −45° with its rotated right end on the same pixel as the plain ruler's tick. Flipping the sign
+in the canvas fails it. A migration test asserts step 20 arrives off on both an upgraded v19
+database and a fresh one.
+
+---
+
+## [BL-81] Boxes in a crowded column stop drawing through each other
+
+**Status:** Done 2026-09-25 for 1.1.1. One function in `utils/timelineLayout.ts`; no schema change,
+no setting, nothing stored.
+
+Reported from the China data at the `MONTHS` rung: *Dorgon rides into Beijing* sat partly behind
+*Li Zicheng abandons Beijing* and the rear title could not be read. Measured on the real canvas it
+was worse than "partly" — three boxes on identical pixels, a 115×31px overlap on a 130×30 box, so
+two of the three were completely hidden.
+
+**What was actually wrong.** `convertLaneIndexToY` ends with `Math.max(band, distanceFromCenter)`.
+Event lanes pack *inward* from the container edge, so a deeper lane sits closer to the axis, and
+`band` is the gap that has to stay clear of the age stripe and the period bars. Past the lane where
+those two meet, the `max` is a floor — and a floor is not a lane. Every deeper item came back with
+the same Y as the last one that fitted. The packer was still handing out distinct lane indices and
+still believed it had separated them.
+
+It is height-dependent, which is why it reads as intermittent. The Konva stage is the window minus
+about 510px of chrome, and the 1644 cluster needs six lanes: no overlap at a 726px stage, one at
+526px, six at 392px, and at 259px even the spill below cannot take them all.
+
+**Why six lanes for eight events.** At `MONTHS` the axis runs at 1200px per year, so six of the
+eight events inside 1644 fall within 141px of each other — inside the 145px two 130px boxes need to
+clear. And all eight are stored with `Placement 1`, so every one of them asked for the side above
+the axis while the side below sat completely empty. The backend balances placement across
+neighbours, but a run of items written in one go can still land entirely on one side.
+
+**The fix: spill to the other side.** `getAssignedLane` now knows how many lanes a side has room
+for — `laneCapacity(side)`, the same arithmetic `convertLaneIndexToY` clamps with — and when the
+first free lane is past it, tries the opposite side and takes it if the item fits there. The drawn
+side is decided by nothing but the sign of the offset this function returns (`updateAbsolutePositions`
+reads `targetY < stageCenterY`), so crossing the axis needed no other plumbing: no new parameter, no
+change at either of the two call sites in `TimelineCanvas`, nothing new on `LaneLock` beyond the
+`isAbove` it already carried.
+
+Two supporting changes fell out of it. `keepClear` became `keepClearOn(side)`, because the two sides
+rarely carry the same period bars and an item can now end up on either. The locked-lane early return
+uses `keepClearOn(lock.isAbove)` rather than the side the caller asked for, which matters from the
+moment an item can be locked on a side it did not request — the lock cache is rebuilt every frame
+and consulted twice per item.
+
+**Placement is still honoured whenever it can be.** Nothing crosses the axis while the asked-for
+side has a lane free, so on a roomy canvas the layout is unchanged — there is a test for exactly
+that. Only an item with nowhere to go moves.
+
+**Both sides full is left alone.** The item lands on its own side, clamped, as it did before. The
+way out of that is more vertical room, and *Custom Scaling* (F10, per-timeline window zoom) already
+gives it — at 80% a window that crushed at 700px lays out cleanly. Deliberately no third tier:
+no pitch compression, no culling, no "+3 more" affordance.
+
+Not done: the backend's placement balancing was not touched, so a fresh run of items can still be
+written all to one side; this now costs layout quality rather than legibility.
+
+Tests: three cases on the real 1644 rows — no two boxes of the cluster intersect, the empty side is
+used rather than the full one crushed, and a tall canvas leaves every item on the side it asked for.
+Mutating the spill condition off fails the first two. 835 vitest (3 new), `vue-tsc --build` clean.
+
+---
+
+## [BL-80] A tick distance per zoom level
+
+**Status:** Done 2026-09-25 for 1.1.1. Frontend plus one migration; no schema change — the value
+rides in the LOD profile JSON that already exists.
+
+One `timeline_tick_distance` served all eight rungs, so a millennium of history got the same 100
+pixels a day does. The rungs that carry the most are the ones that most want the room: at
+`MILLENNIA` a whole civilisation is a smear between two ticks, while at `DAYS` the stock spacing
+pushes a single season off the side of the screen.
+
+**Opt-in, one rung at a time.** `LodLevel` gained `tickDistance?: number`. Absent or ≤ 0 means
+inherit the timeline's own setting, which is what every profile said before this existed —
+`tickDistanceOf(profile, index, base)` in `utils/timelineLayout.ts` is the only place that decides.
+Nothing has to be filled in, and a profile that ignores the field behaves exactly as it did.
+
+**Stored where the calendar editor already writes.** The override lives in `lod_profiles.profile`,
+the JSON blob the LOD editor round-trips, so the repo layer, the DTOs and the bridge are all
+untouched. The save path spreads each level (`{ ...l, index: i }`), so it persisted with no
+serialiser change.
+
+**Edited in the LOD section of the calendar editor** — a *Tick Distance* sub-section under
+"+ Add Level", one numeric field per level, placeholder "inherit". **Auto** fills in the standard
+spread and clears the rest; **Auto LOD**, which is the reset-to-defaults button, now stamps it too.
+Blank drops the override rather than storing a zero divisor.
+
+**The defaults, in pixels against a stock distance of 100:** millennia 300, centuries 200, decades
+130, weeks 50, days 50. Years, seasons and months are deliberately absent — the stock distance is
+what they were chosen for.
+
+**Absolute pixels, not a multiplier.** Same unit and same widget as the global field, so nothing has
+to be computed to mean "+30px", and the placeholder says what a blank does. The cost: changing the
+global tick distance no longer scales a rung that carries an override. Worth it for a field nobody
+has to do arithmetic in.
+
+**The animation is why this was not a one-line read.** Zoom is rung-switching, not scaling: pixels
+per year is `tickDistance / stepFraction`, and the canvas already tweens `stepFraction` over
+`TimelineLodChangeAnimationLength`. Set the distance straight to the target and the whole view jumps
+out by up to 3× on frame 0 and eases back — a visible snap. So `viewport` carries its own
+`tickDistance`, tweened on the same eased `p` as the step, and a separate watcher takes the settled
+value when the global setting or the profile changes instead. Everything that renders on demand —
+the four panels, the minimap — reads `store.tickDistance`, which is the settled value for the rung
+on screen.
+
+`getXFromTime` and `getTimeFromX` now take the number rather than a whole `LayoutSettings` they read
+one field out of. That is what kept the diff to the 23 call sites in `TimelineCanvas` instead of
+threading a new argument past sixty other `props.layoutSettings` reads. `getAssignedLane` measures
+collisions in pixels, so it takes the same distance — as an optional trailing parameter defaulting
+to the global setting, which leaves its positional call sites alone.
+
+**Migration 19** stamps the defaults onto `lod_default` so an existing project gets them without
+being reopened in the editor. It matches the baseline profile string character-for-character, so a
+profile anyone has edited is left alone; a test asserts that constant still equals what step 1
+seeds, so the step cannot silently become a no-op if the seed ever drifts. Step 1 stays exactly as
+it shipped.
+
+Not done: `CalendarViewModal`'s read-only LOD table still lists only index / key / step.
+
+Tests: `tickDistanceOf` (override wins, three inherit cases, zero reads as no override), a
+`getXFromTime` case proving a doubled distance doubles the gap, and two migration facts — the stock
+profile carries the five distances with years/seasons/months bare, and a hand-edited profile
+survives step 19 untouched.
+
+---
+
+## [BL-79] Sub-year dates that land where their label says
+
+**Status:** Done 2026-09-25 for 1.1.1. Frontend only — no schema change, no migration.
+
+Two halves of the same conversion disagreed. The write path placed a sub-year date by equal
+fractions — `year + subtick × stepFraction` — while the tick labels in `timelineLayout.ts`
+(`monthLabel`, `seasonLabel`) find a date's month or season by searching the calendar's real start
+days. Wherever a calendar's steps are not all the same size, the two answers differ:
+
+- **Months.** A twelfth of 365 days is day 30 and February begins on day 31, so picking February
+  stored a date the labels called January. Only February is wrong in the Gregorian — the later
+  months drift and come back — but a calendar with unequal months is wrong throughout.
+- **Seasons.** Far worse. The seeded Gregorian's Spring starts on day 60, not day 0, so every
+  season was one out; and Winter, which runs day 335 → 59 across the new year, needed a fraction of
+  0.918 — step 3.67 in a range of 0–3 — so it could not be stored at all.
+- **Weeks, days and quarters were never affected**: those steps are uniform by definition, so equal
+  fractions and real boundaries agree.
+
+**The fix.** `utils/lodDates.ts` takes an optional `CalendarFormatConfig` and, for `MONTHS` and
+`SEASONS`, converts through the calendar's own start days — the same array the labels search, read
+in its stored order, so a season's start day always lands back inside that season's own range.
+Everything else keeps `stepFraction`, and no config means the old behaviour, which is what keeps the
+function usable without a calendar.
+
+`EditItem.vue` had its own copy of the arithmetic inline — the duplication `lodDates.ts` was created
+to end — and now calls the helper. That is what put the fix in one place: the item editor, the
+character window and the relation modal all route through it.
+
+**Untouched dates stay put.** A season dropdown has four options and no way to say "on the year
+tick", so a correct conversion cannot express an item that sits on a whole-year tick at season
+precision — of which the live database holds 82. `toAbsolute` would answer with the start day of
+whichever season the year begins in, sliding such an item most of a year for a change of title. So
+`placeDate` keeps the position an editor loaded whenever the step on screen is still the one that
+position falls inside, and only writes a new one when the form says to. A save no longer touches a
+date nobody touched, which is also why there is no migration: the 82 items are simply correct where
+they are, now reading as Winter rather than Spring because day 0 of that calendar is in Winter.
+
+`toSubtick` lost its round/floor distinction in the process. "The step this date is inside" is right
+for a stored date and for one dropped between ticks, so it is the only reading left; an epsilon of
+1e-6 steps absorbs the float drift the rounding used to.
+
+**Two parsers became one.** `year_definition` was parsed twice — `utils/calendarDef.ts` for the
+month and season names a date input shows, and again inside `timelineStore` for the
+`CalendarFormatConfig` the canvas formats from. The store's version moved into `calendarDef.ts` as
+`parseCalendarConfig`, and `parseCalendarDef` derives its four fields from it. 18 lines out of the
+store, and the editor windows get the boundaries they needed for free.
+
+**Also fixed on the way.** `CharacterRelateModal` reads a relation's dates back when it opens.
+Opening one to edit hands it through `props.editing`, not through the modal's own `edit()`, and that
+path never set the sub-year steps at all — so a relation dated to a month or a season opened showing
+the first one whatever it actually said. Both paths go through `loadDates` now.
+
+**Two calendars have bad season data, left alone.** `Astral` and `Obsidian` define their seasons as
+`0–3, 4–7, 8–11, 12–15` in year lengths of 618 and 291 days — month indices in a field the calendar
+editor documents as "start and end day-of-year (0-indexed)". They already mislabel ticks today
+(everything past day 15 falls through to season 0), and the fix neither helps nor hurts them: writer
+and labels read the same array, so the round trip is consistent even where the data is nonsense.
+**Auto DOY** in the calendar editor's seasons section recalculates them.
+
+Tests: `test/utils/lodDates.test.ts` — 17 cases. Every month on its own first day and labelled as
+the editor picked it; all four seasons of the wrapping definition reachable and round-tripping; the
+even rungs proven unchanged; and the five `placeDate` cases, including the 82-item shape.
+
+---
+
 ## [BL-77] Relation views that tell you something
 
 **Status:** Done 2026-09-24 for 1.1.1. All five steps — schema, Genogram, Arc, Sociogram and
@@ -303,11 +564,19 @@ the next two hundred frames undoing it.
   stage centre the whole way and settles where the two cancel, so the constant decides how close
   to `want` the knots actually get. At the first value (0.12) they stopped ~180px short and still
   overlapped; at 0.3 the worst pair on the test cast is 39px short of a 365px target.
-- **The view fits itself once, on the way in.** Knots shoved apart run wider than the stage, and
-  the force views never fitted because they had always relied on centre gravity to contain them.
-  Refitting on *every* settle would yank the view out from under anyone who had just dragged
-  somebody, since a drag reheats the sim — so the flag is set in `buildGraph` and cleared the
-  first time the sim stops.
+- **The view fits itself on the way in, every frame of it** *(every frame since 2026-09-24;
+  once, on the settle, before that)*. Knots shoved apart run wider than the stage, and the force
+  views never fitted because they had always relied on centre gravity to contain them. Fitting
+  only when the sim stopped meant the first seconds of the window were the layout flying out past
+  the edges and then snapping back — the fit was right, it just arrived three seconds late — which
+  is unwatchable and was caught filming it for BL-78. `fitStage` now takes an `ease`, and `tick`
+  passes 0.1 while the sim runs and 1 on the last call. The easing is **one-way**: pulling back is
+  immediate, closing in is gradual. Easing both ways looks smoother in the abstract and is wrong
+  here, because the layout expands faster than an eased fit can follow and content spends the
+  expansion clipped off the edges; one-way means whatever is being framed is always inside the
+  frame. Refitting on *every* settle would still yank the view out from under anyone who had just
+  dragged somebody, since a drag reheats the sim — so the flag is set in `buildGraph`, a
+  `dragstart` clears it, and the last fit of the run clears it too.
 - **The distance is a slider, not a constant.** `clusterRoom` is what the *Knot distance* control
   writes, 14px per √member at the bottom of the range to **200px** at the top — 78px until
   2026-09-24, then 160, then 200 when "maybe up to 200" was asked for the same day. The dial is
@@ -1080,7 +1349,73 @@ A visual network graph showing characters and their relationships (family, rival
 
 ## [BL-44] Integer time model for ticks, labels and item positions
 
-**Status:** Pending. Agreed design; separate effort from the per-LOD label fixes.
+**Status:** Done (1.1.1). The grid, the labels and the cursor all work in integer day-of-year;
+`boundaryDays` in `timelineLayout.ts` is the single table of a rung's boundary days and both the
+axis and the date editor read it. BL-79 had already landed the storage half — `lodDates.ts` now
+asks `boundaryDays` instead of keeping its own copy — and argued the re-snap migration out of
+existence: the affected items are correct where they are.
+
+What was built, against the plan below:
+
+- `boundaryDays(formatKey, cfg)` — MONTHS/SEASONS from the calendar, QUARTERS/WEEKS/DAYS computed,
+  `null` for a rung no calendar can place. `dayOfYearAt(absolute, cfg)` is the inverse.
+- `gridTicks()` — the tick loop, lifted out of `renderGrid` (`TimelineCanvas.vue`) into the pure
+  math module so it could be tested at all. Sub-year rungs walk whole years then that rung's
+  boundary days inside each; the year boundary (day 0) always joins them, because a calendar whose
+  Spring starts on day 60 would otherwise show no year number anywhere.
+- Whole-year rungs and any custom level deliberately keep the existing visual-time walk. It already
+  produces multiples of `stepFraction` in absolute time, which is what an integer model wants at
+  decades and up, and it is the path with the hidden-range behaviour (break-strip skipping, tick
+  dedup, post-range snapping) that was already proven.
+- Formatters take `(year, day)` with no rounding path. The old "day 0 prints the bare year" rule
+  came out of the formatters — it is the *grid's* convention, not a fact about a label, and baked
+  in there it made day 0 unaskable, so the cursor read "1995 1995" over 1 January. The three
+  callers that want it now say so.
+- DAYS labels read as dates ("25 Apr") rather than "Day 348", which also stopped them colliding at
+  the 50px tick distance BL-80 set for that rung.
+- `EditItem.vue` / `LodDateInput.vue` and the re-snap migration: done or dismissed by BL-79.
+- Sub-day rungs remain out of scope, and nothing here prevents a `dayFraction` later.
+
+Tests: `gridTicks.test.ts` covers `boundaryDays`, `dayOfYearAt` and both tick paths — the twelve
+months including February, a wrapping four-season calendar, a three-season 300-day one, days across
+a year boundary, no tick inside a hidden range on either path, post-range ticks still on step
+multiples, and a range hiding ten thousand years costing the same as one hiding one. Plus every day
+of the year at year -9999 and year 9999999, which is what turned up the `dayOfYearAt` bug below.
+
+End-to-end coverage, both suites, walking the whole ladder and reading the labels off the Konva
+stage (`renderGrid` names each one `grid-label`; the stage is on `window.__timelineStage`, because
+Konva's own list of live stages is a module export rather than a property of the global it installs):
+
+- `e2e/timeline-ruler.spec.ts` — 30 tests. Three calendars (the seeded Gregorian, a 300-day
+  3-season one, a 618-day 16-month one) x eight rungs x years 2000, -9999 and 9999999. The main
+  assertion is that the labels on screen are a *contiguous slice* of the sequence the calendar
+  implies, which catches a skipped February, a repeated January, a name from the wrong unit and a
+  missing year marker in one check. Expectations are hand-written in `src/test/ruler-probe.ts`, not
+  derived from `gridTicks` or `buildFormatRegistry`. A separate check reads the tick *x* positions
+  and requires pixels-per-day to come out the same across every gap — the one error a label read
+  cannot see, since a ruler can name February correctly and still place it a twelfth of a year in.
+- `e2e-real/timeline-ruler.spec.ts` — 8 tests in the shipped WinForms app over CDP, against the
+  seeded database. Everything it asserts is a fact a fixture cannot fake: "Sept" rather than "Sep",
+  a 28-day February, a Spring that opens on day 60, a Winter running over the new year. If the
+  calendar or LOD profile were mangled anywhere between `cal_default_gregorian` and `renderGrid`,
+  the labels would come from `DEFAULT_CALENDAR_CONFIG` instead and these names would be absent.
+
+Two things came out of writing it:
+
+- **`dayOfYearAt` lost days far from year 0.** It allowed a fixed `1e-9` of slack so a boundary
+  written as a rounded float would not floor to the day before. At year ten million the year's own
+  rounding error is larger than that, so 182 days out of 365 read as the previous day and the first
+  of February labelled as January. The slack now scales with the magnitude of the year. The ruler
+  was unaffected — `gridTicks` carries integer days and never calls it — but the cursor readout and
+  the date editor do.
+- **The mocked bridge had never served a working calendar.** `bridge-mock.ts` carried three
+  near-copies of a thin Gregorian with no seasons, no week and a ladder keyed `Month`/`Day`, which
+  no formatter answers to, and it passed `LodProfile.Profile` as an array where the store does
+  `JSON.parse(Profile.toString())`. That threw, and the store's timeline load wraps everything in
+  one `catch` that only writes to the console, so every mocked test ran against a timeline with no
+  LOD ladder at all. It now shares one transcription of the seeded row.
+
+Original plan:
 
 Tick labels are derived by rounding a floating-point year fraction back to a calendar unit
 (`toDayRaw = Math.round(f * yearLength)` in `buildFormatRegistry`, `timelineLayout.ts`), and each
@@ -1173,6 +1508,398 @@ Stats DB (`usage.sqlite` next to exe), session tracking, fire-and-forget item/ac
 Remaining: fill in real achievement definitions (flavor text, trigger criteria), real DnD character definitions with tier ladders, and character portrait images in `Resources/`.
 
 > **Aside:** The statistics data collection is best done in two layers: (1) session-level events stored in memory (start time, focus/blur timestamps via `window` events, item-add count) flushed to the DB on close; (2) aggregate DB queries for historical stats (items per timeline, density distributions, active days). The statistics screen can use a charting library — Chart.js is the obvious lightweight choice given we're already using Vue; Recharts if we want more control. The achievements system is genuinely fun and worth doing right — a small set of carefully chosen milestones ("first item", "100 items", "first import", "timeline spanning 1000 years", etc.) with cosmetic unlocks. Store earned achievements in a DB table with timestamp. The "character progression" angle is interesting — could tie achievement points to an in-universe character who grows alongside the writer's project. Keep this entirely optional and silent (no pop-ups, just discoverable in the stats screen) to avoid being annoying.
+
+---
+
+## [BL-78] Marketing and how-to videos — deterministic capture rig
+
+**Status:** In progress (2026-09-25). Frame-lock spike passed, the Wars of the Roses seed is
+built, portrait-filled and rendering, the Relations pilot is written shot by shot in
+`video/script-relations.md`, and the capture rig renders it: camera, captions, cards, cursor and a
+beat runner that pipes frames into ffmpeg. **The Relations pilot is shot end to end** — all seven
+acts, 34 beats, 2:49.9, 10,194 frames, with a synthesised music bed keyed to the same beat numbers
+and muxed on without re-encoding the picture. Every act was probed beat by beat before the full
+render and came back with no page errors.
+
+**The trailer is written and shot beat by beat**, and then recut twice — now 22 beats, 1:18.8, four
+windows, `video/script-trailer.md`. **The Characters film is written, probed and shot** — 23 beats,
+1:58.4, 7,104 frames, `video/script-characters.md`. **Build-a-timeline is written, probed and
+shot** — 32 beats, 2:11.0, 7,860 frames, `video/script-build.md`. **Calendars is written, probed
+and shot** — 23 beats, 1:57.5, 7,050 frames, `video/script-calendars.md`. **All five films exist**,
+each with its own score keyed to its own beat numbers.
+
+**All five are being recut** after a viewing: the captions are to be rewritten from scratch rather
+than tuned, the cutting quantised to the bar, the scores replaced with real music (Kevin MacLeod,
+CC-BY, for the trailer; classical for the calmer films), and the coverage grown to reach the tag
+filter, the distance calculator, notes, export/import, the reference overlay and minimized mode.
+The trailer goes first as a pilot. Reviewing the seed for it found four timeline layout defects,
+all fixed with tests: events running through the stacked period bars as well as the age stripe, a
+portrait straddling the line because the clamp was sized for an event box, bars drawn over boxes
+rather than behind them, and a collision test that measured one box against the other's stem. The
+seed's own level-of-detail ladder was widened at the same time — one tier per rung instead of
+three tiers over seven importances — so pulling the camera back actually thins the picture.
+
+**The trailer recut is shot and scored** (2026-09-25) — 4,730 frames, 78.8s, no page errors, both
+streams in `video/final/trailer.mp4`. 22 beats, 43 bars, 78.791s against *Prelude and Action* at
+130.98 BPM — the shot list computes every duration in bars and refuses at import anything off the
+half-bar grid, so a cut cannot drift off the beat by construction. Every caption is new.
+
+It reaches four features the first cut never showed: the minimap drag, a character portrait standing
+on the line among event boxes, the tag filter firing, and the year scrubber emptying a family tree.
+Two beats carry a pointer (the minimap drag and the tag press) because a caption claiming a gesture
+with no hand on screen does not read as one; everything else changes state between frames, on a cut.
+Scoring is one command off the silent render and does not re-encode the picture.
+
+**Re-scored and recut a second time after a viewing** (2026-09-25). The first cut's *Minstrel Guild*
+"works as a first draft" but wanted something more energetic, with wipes. So the film was re-gridded
+to a faster track — *Prelude and Action*, 130.98 BPM against 108, a 1.8323s bar, forty-three of them
+— and this time the grid was placed against the recording rather than against a tempo: the drive
+arriving at 11.0s is beat 3, the track's quiet middle (35–52s) sits under the four shots that are
+read rather than watched, the return at 53s is beat 14, and the loudest ten seconds carry beat 21 and
+the end card. It runs 78.791s and not 80 because the recording collapses to −21dB at 80.0s, and a
+film that runs past that ends on the sound of a track being over. **Five cuts are now wiped** by a
+skewed band that sweeps the frame over one beat of music — into the gallery, the characters window,
+the web, the montage, and home. That costs nothing: the app's state already changes between two
+frames inside a beat's `enter`, so the band goes over that seam rather than over a composite, and
+`wipe` is one number per frame like `dim`. The tempo was measured with a comb filter over a fine
+(BPM, phase) grid rather than an autocorrelation peak, which reported the 2/3 harmonic at 87.31 BPM
+and would have put most of the film between two beats. A full 22-beat `--probe 3` pass came back with
+no page errors before the render, which came back with none either at 4,730 frames.
+
+**A third candidate track, and it needed the grid rebuilt** (2026-09-25). *The Pyre* was picked
+off a review for the punch the second cut was after, and it runs at 107.995 BPM — which is the
+*first* cut's tempo, not the second's, so the 131 BPM grid the recut is built on does not fit it at
+all. The recut was re-gridded to a 2.22233s bar and re-rendered as `beats/trailer-pyre.mjs`, a take
+of `beats/trailer.mjs` rather than a replacement for it: 37 bars, 82.226s, ten of the eighteen beat
+lengths unchanged, and one of the two gets deleted after a viewing. Measuring the track first is
+what decided the shape of it: *The Pyre* is flat from 4s to 95s inside 4 dB with one 1.5s dip, so
+unlike *Prelude and Action* it offers nothing structural to cut to and this grid is bars and only
+bars. The one thing it does give is worth the render — the drive lands on bar 2 at 4.462s, so a
+two-bar cold open puts the app straightening up on the frame the drums arrive, which is a better cut
+than the three the faster track gave us.
+
+**The seeded world was two centuries long, and that made four rungs of the LOD ladder empty by
+construction** (2026-09-25). Two fixes, neither of them in app code. The Wars of the Roses events
+were all pinned to `absolute_start = float(year)`, so everything below YEARS was the same column of
+boxes getting further apart; forty of the fifty now carry the day they happened on and seven more
+the month, read out of the timeline's own calendar rather than from a second copy of the month
+lengths, with a check that asserts all fifty recover the date they were given. And a **second world**
+at `video/seeds/china.py` covers c. 2070 BCE to 1912 — 3,982 years, 142 events, 30 periods and 15
+dynasty ages tiling the line end to end — because DECADES and CENTURIES cannot be made busy in a
+200-year timeline no matter what is seeded into it. It needed its own visibility tiers: the roses
+policy has four, and bit 1 is set only by the first of them, so MILLENNIA and CENTURIES there always
+hold exactly the same items. Five tiers give a ladder that actually thins — 26 items at MILLENNIA,
+52, 100, 173 — and 1644 is dated day by day so SEASONS through DAYS have something to separate,
+including a pair one day apart. Two things the second world exposed and neither is fixed: a BCE tick
+reads `-221` rather than `221 BCE`, because the calendar's `NameBefore0` never reaches the tick
+formatter, and the roses trailer's picture shifts slightly once its events have real days, so the
+next reshoot of `trailer.mjs` will not be frame-identical to the cut being viewed now.
+
+**The China world was then spread across the whole precision range, and given pictures**
+(2026-09-25). Everything in it landed on a year, which is the same flaw the roses seed had one rung
+up: the calendar and the lower LOD switches had nothing to do. It now runs from three spans that
+cross the whole line — Imperial China, the Silk Road, the Bronze Age — down through fifteen dynasty
+ages and thirty overlapping periods to a hundred and forty-two events, of which **thirty carry the
+day they happened on and forty-one the month**. The remaining seventy-one are years and nothing
+finer, and that number is what it is because forty-three of them are BCE, where a year is all anybody
+honestly has — `check_dates` asserts that, so it cannot drift. The ladder reads 26 / 52 / 100 / 173
+across MILLENNIA, CENTURIES, DECADES, YEARS.
+
+**SEASONS was deliberately skipped, because the app disagrees with itself about it.** `EditItem.vue`
+stores a season as `AbsoluteStart = Year + subtick * stepFraction` and `LodDateInput.vue` reads that
+subtick as an index into Spring/Summer/Fall/Winter, but the `SEASONS` formatter in
+[timelineLayout.ts:93](Frontend/src/utils/timelineLayout.ts#L93) converts the fraction to a
+day-of-year and looks it up in the calendar's `season_definition` ranges. The two are one season
+apart at every index — the form's “Summer” labels as “Spring” — and Winter cannot be represented at
+all, since day 335 is fraction 0.918, which rounds to subtick 4 in a range of 0–3. Not touched; it
+wants its own item.
+
+**Fifty-one public-domain pictures** hang on the world via `video/seeds/china_pictures.py`, each a
+`Picture` item below the line and also linked to the event it illustrates. The licence gate is
+load-bearing rather than decorative: of fifty-three subjects tried, five were refused, including the
+Great Wall's lead image (CC BY-SA 3.0) and the Terracotta Army's (CC BY 2.0) — the two most obvious
+pictures in Chinese history. The Wall got in as Herbert Ponting's 1907 plate, named as a Commons
+`File:` instead of an article; the Terracotta Army is left in the list as a permanent, reported skip.
+Three things fixed at the root while building it: `square()` in `portraits.py` now flattens
+transparency onto white before `convert('RGB')` (a transparent SVG was caching as a pure black tile,
+and the roses portraits shared the bug) and accepts a horizontal focus so a 1:20 handscroll can be
+cropped somewhere meaningful; a flat-crop guard refuses any square with no variation in it, so that
+class of failure cannot cache silently again; and the credit line is now derived from Commons
+metadata with the machine noise taken out — URLs, upload timestamps, museum donation preamble and the
+multilingual “Unknown author Unknown author” template — and can be re-derived for a cached image
+without re-downloading it. Credits travel three ways: into the `pictures` row, into the `Picture`
+item's description where a viewer sees it, and into a regenerated `video/seeds/CREDITS.md`.
+
+**Scoring gained a decibel of headroom and a readable lock error.** Commercial cues are mastered to
+0.0 dBFS — *Prelude and Action* puts ten thousand samples exactly on the ceiling — and AAC decoding
+reconstructs inter-sample peaks above whatever the PCM said, so the first scored cut of this film
+measured a 0.0 dB peak and would have clipped on some players and not others. `music.mjs` now applies
+a flat `volume=-1dB` on the `--track` path, which lands the delivered film at −0.2 dB peak / −15.2 dB
+mean. And because Windows refuses to replace a file somebody has open, `renameSync` onto a
+`final/<film>.mp4` that a player is holding now says which file to close and where the finished mux is
+waiting, instead of throwing an EPERM naming two paths nobody chose.
+
+It waits on a viewing now, and the other four films get the same treatment once it passes.
+
+Two things were measured for the trailer and left out of it, both belonging to the how-tos: **mini
+mode**, which at 1920×1080 collapses to a mostly-empty pin rail and wants a smaller window than a
+trailer is shot at, and the **reference overlay**, which has no second seeded timeline sharing a
+century with the Wars of the Roses to draw underneath it — it needs a seed before it needs a shot.
+
+**Build-a-timeline is the only film that writes**, and that cost it a database and a server of its
+own. Run against `video/.data` it would leave a sixth project in the list of every other film, so
+`video/seeds/build_root.py` rebuilds `video/.build` from the seed before every take — which also
+fixes the new project's id at 8, so the film can navigate straight to it and fail loudly on a stale
+root rather than quietly filming the wrong story. Two of the app's own clicks would end the shot
+(a project row sets `location.href`, a successful Save calls `window.close`), so the row click is
+mimed and the next beat's navigation does the work, and `window.close` is stubbed — the proof the
+save really happened is the eight-character id that appears beside the button. `shoot.mjs` now
+honours a `VPORT`, which is what let the build film be probed against a second server on 5124 while
+the characters film was still rendering on 5123.
+
+**What the characters window cost the rig.** It is the first film of a *form*, and a form is wider
+than it is interesting: the detail pane is 1623px in a 1920px window with its content pinned to
+both ends of every row. `fit()` on anything that wide computes a scale below 1 and clamps back to
+the whole window — five beats were silently the same shot — and a magnification that cannot hold a
+whole row frames the empty middle of it. So `shotK` caps itself at the target's own width (1.18
+here) and frames wide targets from the left. The pane also scrolls 171px that the camera cannot
+reach, because a camera is a transform and not a scroll. And `cursorTo` now moves its point by the
+current camera before drawing: the pointer is drawn outside the transform so it never scales, which
+meant every ring in a zoomed beat bloomed where the control used to be.
+
+Not release content and never shipped: everything lives in `video/`, which the app does not read
+and the build does not touch. The heavy outputs (`video/out/`, `video/final/`, `video/.data/`,
+`video/music/`, `node_modules`, the seed archives and their media) are gitignored; the pipeline
+itself is committed.
+
+**`video/out/` is working state and `video/final/` is the deliverable** (2026-09-25). A capture run
+leaves half a gigabyte of probe stills, test cuts and wav beds behind, and the silent render stays in
+`out/` under the film's own name; scoring reads it and writes the watchable film to `final/`. So
+`out/` can be emptied whenever it gets big and nothing anybody wants goes with it. It also removes
+the rename that the previous spelling needed to keep a second scoring pass from stacking on an
+already-scored file: the source and the destination are different paths now, so that cannot happen.
+`video/music/` holds somebody else's recordings and is gitignored for the same reason a licence
+requiring attribution still does not make an mp3 ours to vendor.
+
+**Every output is dated now** (2026-09-25), because the two things anybody actually wants to compare
+are two takes of the same film and the old spelling silently replaced the first with the second. A
+render lands at `out/trailer-20260925-1447.mp4` and scoring it gives
+`final/trailer-20260925-1447-the_pyre.mp4`, so a film's name says which picture it is and what is on
+it, a second track over one picture is a second file, and `--mux` with no path takes the newest full
+render rather than a fixed name — full renders only, since a partial is a check and not a take. The
+`final/_old/` folder was a person working around this by hand.
+
+**Why a rig rather than a screen recorder.** Screen capture films whatever the machine managed that
+second — a dropped frame, a stutter under load, a mouse that jumps. Driving the browser build from
+outside with the clock stopped gives exact 60 fps regardless of how slow the capture actually was,
+the same frames every run, and a cursor we draw ourselves so it can glide and ease. It also needs
+no changes to the app: the chrome-hiding CSS, the clock and the cursor layer all go in as injected
+script, so the real version cannot break and, unlike a fork, cannot drift.
+
+**Done so far**
+
+- `video/capture/lib/clock.js` — takes over `requestAnimationFrame`, `performance.now`, `Date.now`
+  and `Math.random` via `addInitScript`, so it lands before Konva caches its rAF reference. Unlocked
+  it passes through and the app boots at normal speed; locked, `__vclock.step()` advances one frame
+  and runs what was waiting. Every animation here routes through rAF (the LOD glide, jump-to-year,
+  the relations force sim, every `Konva.Tween`), so owning rAF owns the clock. CSS transitions do
+  not obey it — 126 of them — and are a capture problem to solve separately.
+- `video/capture/spike-framelock.mjs` — captures the relations sim settling from scratch, twice,
+  and compares. **150/150 byte-identical PNGs across two separate browser launches**, exactly 2 rAF
+  callbacks every frame, motion decaying 161,912 → 2,568 with 149 of 150 frames actually moving,
+  zero console and page errors in both runs.
+- An isolated database in `video/.data/` (100 characters, 192 relations) served by
+  `StoryTimeline.Server` under `STORYTIMELINE_DATA_ROOT`, so nothing the rig does can reach the
+  real one.
+- `video/capture/shot.mjs` — one still of a window once it has stopped moving. The settle runs
+  entirely in-page: a round trip per frame costs ~100ms and settling takes ~190 of them, which is
+  minutes of waiting for frames that get thrown away. Video capture still comes back out each
+  frame, because each one is a screenshot.
+- `video/capture/lib/rig.js` — the page side: camera, drawn cursor, click ring, captions, title
+  card, dim, and `deselect()`. Every entry point is a *setter*; nothing here eases, transitions or
+  animates, because the clock is stopped during capture and a CSS transition would run on wall time
+  and smear across however long the screenshot took. `apply()` sets the lot in one round trip,
+  which at ten thousand frames a video is the difference between minutes and half an hour of IPC.
+- `video/capture/lib/curves.js` — the Node side: the easings, the geometric zoom blend, the bowed
+  overshooting cursor glide, and the script's caption-duration rule. Self-checking:
+  `node video/capture/lib/curves.js`.
+- `video/capture/shoot.mjs` — the beat runner. Renders a shot list frame by frame straight down a
+  pipe into ffmpeg (a minute of 3840×2160 png is about nine gigabytes and never needs to exist),
+  supersampling to 1920×1080 on the way out. `--dry` prints the timing table, `--stills N` drops
+  every Nth frame for eyeballing, a beat range shoots one act, and `--probe N` runs every frame's
+  state and every clock step but photographs only N a beat — which is how a framing gets checked in
+  half a minute instead of a quarter of an hour.
+- `video/capture/beats/relations.mjs` — the Relations shot list, all 34 beats. Two idioms run
+  through it. **A click is two beats**, a reach and a press: the per-frame function is synchronous
+  and the click has to happen in `enter`, so a cursor cannot both travel and land in one beat.
+  **Measure, never type**: every framing is computed in `enter` from what the app has actually
+  drawn, so a layout change moves the camera instead of breaking it. Every caption that makes a
+  factual claim has an assertion behind it that throws — the row count behind "five generations",
+  the count of curved lines behind "lies over the top", the scrubber sitting at its own top behind
+  "after everyone", and the path sentence itself behind Act 6.
+- `video/capture/beats/trailer.mjs` — the trailer, 22 beats across four windows in 78.8 seconds
+  (16 beats in a minute before the recut). What
+  it needed that the pilot did not is all about *starting anywhere*: the pilot is one window and
+  one continuous session, so a beat could inherit what the one before it left, while four windows
+  and `--probe`/range rendering mean any beat can be the first thing that runs. So every `enter`
+  asks for the level, the year, the mode and the selection it needs. Three decisions came out of
+  looking at the frames rather than out of the plan. The cold open opens at **YEARS**, because 2×
+  of a decade view is still eighty years and twenty boxes — a tight camera on wide data is not a
+  close-up of anything — and beat 2's pull-back is carried by *the app's own LOD change* running at
+  14% rate under a moving camera, which replaced a whole separate beat that existed to prove the
+  ladder works. The timeline beats frame `#timeline-main` rather than the window, because the top
+  two fifths of that window are the gallery, notes and contents panels and at this seed two of the
+  three are empty. And a beat that wants the characters list has to pick somebody first: the list
+  is a 540px column, the camera clamp keeps the frame inside the page, so any shot of the column
+  drags the detail pane in with it and an unpicked pane is 1400px of *Pick a character*.
+- **The camera rotates about the middle of the window.** `transform-origin` is `0 0` because the
+  affine maths needs it there, and six degrees about a corner a metre off-frame drags whatever is
+  at the top of the window down into the shot — the first cut of the trailer's cold open filmed the
+  nav bar leaning in. A translate pair around the rotate in `applyCam` fixes it and cancels exactly,
+  so the flat transform is untouched.
+- `video/capture/music.mjs` — the music bed, synthesised, and the mux. Sine tones, an envelope and
+  a three-tap delay line; no sample, no licence, no download. Its twelve sections are keyed to
+  *beat numbers* read out of the shot list, so a section change and a cut are the same instant by
+  construction and stay that way when a beat's length changes. Which voices play is doing work the
+  cutting cannot: the rewind and the path sentence are the two long still frames in the film and
+  the pulse drops out under both of them, which in a captions-only video is the only way to say
+  *read this*. Separate from `shoot.mjs` on purpose — a full render is an hour and a half and
+  changing the soundtrack must not cost that, so `--mux` copies the video stream untouched.
+- **The rig drives the drawer, not just the canvas.** `clickEl`, `setRange` and `pick` go through
+  the real elements and dispatch the events `v-model` listens for, so a beat can tick a legend,
+  drag the year scrubber and answer the path question the way a person would. `one(sel, text)`
+  matches on text and never on position, which is what stops `.rel-modes button` picking the chord
+  view's own Factions/Kinds buttons by accident.
+- **A stage camera as well as a page camera** (`stageAt`, `stageBox`). The page camera is clamped
+  to 1× and up, and the arc deliberately never zooms out — `fitOrHold(..., 1)` holds it at 1:1 and
+  pans to whoever is lit, because forty-seven people on one line shrunk to fit is a row of
+  unreadable dots. So the shot that shows the whole arc tracks *along* it, which is a stage move,
+  and lands exactly where the app's own pan already sits so the next beat has nothing to jump.
+- **`personAt(name)`** — the piece the cursor needed. It turns a name into a point through the
+  app's own "how are they related?" dropdown rather than by matching label text on the canvas,
+  because five of this cast are called Richard; each person's Konva group carries the character id,
+  so the option's value finds the group directly. It then refuses the aim if the disc is covered by
+  a neighbour or outside the frame at the current camera, and hands back both viewport and page
+  coordinates — the first for the cursor, which lives outside the camera, the second for a beat
+  that wants to point the camera at somebody. It caught beat 6 immediately: at Act 1's closing
+  framing Richard III sat about thirty pixels below the bottom of the window, so the beat that was
+  written as a static hold now opens with a move.
+- **The Wars of the Roses seed** (`video/seeds/roses.py`): 47 real figures, 108 relations, five
+  generations from Edward III to Elizabeth of York, every one connected to the root. Chosen because
+  the period genuinely did the things this window is built to draw — two houses off one ancestor,
+  marriages as treaties, and a modifier vocabulary with a true story behind every entry: Owen Tudor
+  and Catherine of Valois married in secret, Edward IV and Elizabeth Woodville likewise, Eleanor
+  Butler's alleged precontract that bastardised the princes, the Blaybourne rumour against Edward
+  IV's paternity, Edward of Westminster's disputed one, and Clarence estranged from the brother who
+  executed him. Written straight into the SQLite: the bridge has no "import this exact cast" call
+  and adding one would mean touching app source.
+- `video/seeds/portraits.py` — 46 of the 47 faces off Wikipedia, cropped square on the face, with
+  the source URL kept in each picture's description. Pixels come from the API's rendered thumbnail
+  rather than the original file, since several originals are SVG or TIFF that Pillow will not open.
+  The quality is genuinely mixed and that is the period, not the script: the kings and queens have
+  painted portraits, the minor Mortimers have a coat of arms and Anne Mortimer has nothing at all.
+  At the size the views draw them it reads well enough for a demo; better images can be dropped
+  into `video/seeds/media/` by hand later, and the cache will keep them.
+
+**The teleported overlays need the camera, and not the same matrix as `#app`.** The context menu
+and the mass-add panel are `<Teleport to="body">`, so they are `#app`'s siblings and a transform on
+`#app` never touched them — a 760px panel shot at rest is 13px type in a 1080p frame. Applying the
+*same* matrix to every body child is the obvious fix and is wrong: `#app`'s corner is the page
+origin so a transform about it is the camera, while a `position: fixed` overlay sits at its own
+(ex, ey) and the same matrix about its corner lands it `(k−1)·(ex, ey)` out — at beat 12's 2×, most
+of a frame, which is where the first cut put the menu. Each overlay now gets the camera plus that
+offset, measured with its own transform momentarily off.
+
+**Nothing on the timeline canvas has text except the kinds that hang off a stem.** An Age and a
+Period are a Rect and a hover tooltip — `buildNode`'s label branch is for events, pictures and
+characters — so `itemAt`, which finds an item by the words on it, can never find a bar at any zoom.
+Cost half an hour of diagnosing a save that had in fact worked. `barAt` (widest `box-*` Rect) aims
+at bars; `drawn` steps the locked clock until an item really is on the canvas, because a save is a
+round trip and the redraw that follows it rides the rAF the rig owns. Related: a refetched timeline
+reopens at year 0 and draws *nothing* that is off-view, so a beat must `jumpTo` before it can
+measure anything.
+
+**What the calendars film cost the rig.** Three things, and every one of them was a framing that
+*looked* deliberate in the code and came out wrong on a still.
+
+- **A bare selector in a `span` spans every match.** `shotK(st, ['.month-card'], 2)` is not "push in
+  on a month", it is "frame all sixteen of them" — and the union of sixteen month cards is most of
+  the page, so a 2x push-in rendered at 1x and the act's two close-ups barely moved. Same for
+  `'.mem-dot'`, which is every memorable day in the year. Where the target is *the one that contains
+  Harvest Pyre* there is no selector at all, so `mark(st, expr, why)` runs an expression in the page,
+  tags what it finds with `data-vshot` and hands back a selector for it.
+- **A camera is a transform and not a scroll**, which the characters film already knew and this one
+  got caught by again from the other direction: `frame` clamps a camera back inside the page's own
+  edges, so a section low in a long form cannot be centred *at all* — the clamp drops it into the
+  bottom third and fills the shot with whatever is above it. `centre(st, sel)` scrolls the target to
+  the middle of the window first, at a cut, and the film scrolls exactly once per act because a page
+  sliding under a camera that is already 2x in reads as a fault.
+- **A 5px dot cannot carry a caption that names a day.** The only place the app says the words is the
+  cell's own hover tooltip, so the beat splits: the pointer glides on in one, the tooltip is revealed
+  and held in the next. Same reason a click has always been two beats. The month the act pushes into
+  is then whichever one the app actually drew the feast in, read off the page rather than named in
+  the shot list.
+
+**Two findings that shape the rig**
+
+- Drive the real UI, never Vue internals. The published build strips `__vueParentComponent`, so
+  `setupState` is a dev-server-only trick — and setting state directly would film the UI changing
+  with nothing having touched it, which is the opposite of a how-to video. Playwright's own
+  actionability checks use rAF and hang while the clock is locked, so clicks are plain DOM clicks.
+- Settle detection cannot use "no rAF pending". Konva's `batchDraw` always keeps one in flight
+  beside the sim tick — hence exactly 2 every frame. Capture runs until a downsampled frame diff
+  drops under a threshold instead.
+
+**Still to build**
+
+- More seeds. Barsoom (Burroughs, 1912–14) as the fiction counterpart — public domain, dynastic,
+  faction-riven and with a secret parentage of its own — and a WWII seed for days-level detail,
+  time breaks and reference timelines. Neither blocks the pilot now that the Roses cast exists.
+- A richer calendars seed, if the bare grids turn out to bother anyone. `YearCalendarApp` only
+  draws item dots for a `timelineId` whose calendar matches and nothing in the seed uses Astral, so
+  the year views hold memorable days and nothing else. It reads fine and the hover close-up carries
+  the act, but a `video/.cal` root with a real timeline sitting on a custom calendar would put items
+  in the grids. A fourth data root for one act, so it waits for someone to ask.
+- A pass over the pilot with fresh eyes. Two shots are the app's own emptiness rather than a rig
+  problem and would need product changes to improve: the path sentence sits in a 235px sidebar, so
+  a frame wide enough to take in the chart beside it sets twenty-nine words at a fifth of the
+  frame, and the arc's "unborn faded out" state is too subtle to read at 1080p.
+
+**A second thing came out of filming it, and this one is not fixed.** A new item is born
+`#000000`, and the timeline canvas is navy. `SettingsRepo.GetOrCreateSettings` builds a brand-new
+timeline's settings row from the C# defaults in `SettingsItem.cs:29` rather than inheriting the
+global row — and the global row is `#000000` too, as is every other `settings` row in the seed. So
+a first-run user's first items are black-on-navy, which beat 30 of the build film shows as a solid
+black slab with a black pill inside it. The other films look coloured only because their items were
+painted by hand in the seed data. Not staged around: seeding a colour into `video/.build` would
+make the film show something no real user gets. One line to fix (`SettingsItem.DefaultItemColor` to
+something on the app's own swatch row — `#4b5563` is the neutral the mass-add panel already falls
+back to) plus a re-render, which needs no changes to the shot list.
+
+**One app change came out of filming it.** Beat 2 is the layout settling, and the rig was faking
+the framing from outside because the window itself only fitted once the sim stopped — seven seconds
+of an empty field and then a snap. Filming a thing is a good way to find out it looks bad. Fixed in
+the app rather than in the rig (see *Knots, kept rather than cut* above), and the two rig-side
+`stageFit` calls that were papering over it are gone, so Acts 1 and 2 now film what the window
+actually does.
+- ~~Scene breakdown and caption script~~ — done: `video/script-relations.md`, 26 beats over
+  2:38, every caption final and every sentence attributed to the app quoted from a real run.
+  Acts 1, 3 and 7 could be shot today; the rest wait on the cursor. Music is not chosen, and
+  choosing it moves every timecode onto its beat grid.
+- ~~The Remotion project~~ — **dropped**. The camera is a live CSS transform on `#app` and the
+  captions are DOM, so both are captured with the frame. Chromium re-rasterizes text at the new
+  scale, which a crop of a finished bitmap cannot do; frames come out a constant size; and the
+  angled shots the trailer wants are reachable with CSS 3D on the same transform. ffmpeg does the
+  encode. The cost is that the edit is code rather than a timeline UI — acceptable here, where the
+  whole point is that the cutting decisions are made in advance and reproducibly.
+- A faster frame. Capture runs at ~700ms a frame at 3840×2160, almost all of it png encoding —
+  about half an hour for the 48s that exists now, and a couple of hours for the finished pilot.
+  `--probe` takes the pain out of iterating, so this only bites on a final render. Worth measuring
+  before the other four videos.
+- Music, and with it the pass that moves every timecode onto its beat grid.
+
+Slate: trailer (~60 s), Relations (~2.5 min), Characters (~2 min), building a timeline (~3 min),
+calendars (~2 min). Relations is the pilot.
 
 ---
 

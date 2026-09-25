@@ -64,7 +64,7 @@ function renderDynamic() {
     // Viewport window
     if (store.viewportWidthPx > 0 && ls) {
         const lodStep  = store.lodProfile.find(l => l.index === store.currentLodIndex)?.stepFraction ?? 1;
-        const tickDist = ls.TimelineTickDistance || 100;
+        const tickDist = store.tickDistance;   // BL-80: this rung's override, or the global setting
         const halfAbs  = (store.viewportWidthPx / 2 / tickDist) * lodStep;
 
         const vpL = Math.max(MARGIN, _toX(store.centerAbsoluteTime - halfAbs));

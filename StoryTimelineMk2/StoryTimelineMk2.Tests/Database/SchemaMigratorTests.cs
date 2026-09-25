@@ -150,6 +150,78 @@ public class SchemaMigratorTests
     }
 
     /// <summary>
+    /// V19 put the BL-80 tick distances on the stock Gregorian profile: wider at the top of the
+    /// ladder, tighter at the bottom, and the middle left to inherit the timeline’s own setting.
+    /// </summary>
+    [Fact]
+    public void LodDefault_CarriesTheTickDistances()
+    {
+        using var ctx = new DbTestContext();
+
+        using var verify = Open(ctx.DbPath);
+        var profile = verify.QuerySingle<string>("SELECT profile FROM lod_profiles WHERE id = 'lod_default'");
+
+        Assert.Contains("\"formatKey\":\"MILLENNIA\",\"stepFraction\":1000,\"tickDistance\":300", profile);
+        Assert.Contains("\"formatKey\":\"CENTURIES\",\"stepFraction\":100,\"tickDistance\":200", profile);
+        Assert.Contains("\"formatKey\":\"DECADES\",\"stepFraction\":10,\"tickDistance\":130", profile);
+        // YEARS, SEASONS and MONTHS inherit — the override is opt-in, one rung at a time.
+        Assert.Contains("\"formatKey\":\"YEARS\",\"stepFraction\":1}", profile);
+        Assert.DoesNotContain("\"formatKey\":\"SEASONS\",\"stepFraction\":0.25,\"tickDistance\"", profile);
+        Assert.Contains("\"formatKey\":\"DAYS\",\"stepFraction\":0.00273972602,\"tickDistance\":50", profile);
+    }
+
+    /// <summary>
+    /// The same step must not touch a profile anyone has edited — it matches the baseline string
+    /// exactly, so an edited <c>lod_default</c> keeps whatever its owner made it.
+    /// </summary>
+    [Fact]
+    public void LodDefault_EditedByHand_IsLeftAlone()
+    {
+        using var ctx = new DbTestContext();
+        string oldDb = Path.Combine(ctx.TempDir, "v18.sqlite");
+        const string mine = "[{\"index\":0,\"formatKey\":\"YEARS\",\"stepFraction\":1}]";
+        using (var db = Open(oldDb))
+        {
+            SchemaMigrator.Migrate(db, oldDb, MainDbMigrations.Steps.Take(18).ToList(), "test", backupFirst: false);
+            db.Execute("UPDATE lod_profiles SET profile = @P WHERE id = 'lod_default'", new { P = mine });
+        }
+
+        DbInitializer.Initialize(oldDb, backupFirst: false);
+
+        Assert.Equal(MainDbMigrations.LatestVersion, Version(oldDb));
+        using var verify = Open(oldDb);
+        Assert.Equal(mine, verify.QuerySingle<string>("SELECT profile FROM lod_profiles WHERE id = 'lod_default'"));
+    }
+
+    /// <summary>
+    /// V20 added the BL-82 angled-label switch. Off everywhere it lands — a database upgraded from
+    /// v19 has to draw its axis exactly as it did before, and both seeded presets agree with it.
+    /// </summary>
+    [Fact]
+    public void AngledTickLabels_ArriveOff_OnUpgradeAndOnAFreshDb()
+    {
+        using var ctx = new DbTestContext();
+        string oldDb = Path.Combine(ctx.TempDir, "v19.sqlite");
+        using (var db = Open(oldDb))
+        {
+            SchemaMigrator.Migrate(db, oldDb, MainDbMigrations.Steps.Take(19).ToList(), "test", backupFirst: false);
+            Assert.Empty(db.Query<string>(
+                "SELECT name FROM pragma_table_info('layout_settings') WHERE name = 'timeline_tick_marker_text_angled'"));
+        }
+
+        DbInitializer.Initialize(oldDb, backupFirst: false);
+        Assert.Equal(MainDbMigrations.LatestVersion, Version(oldDb));
+
+        foreach (var path in new[] { oldDb, ctx.DbPath })
+        {
+            using var verify = Open(path);
+            var flags = verify.Query<long>("SELECT timeline_tick_marker_text_angled FROM layout_settings").ToList();
+            Assert.NotEmpty(flags);
+            Assert.All(flags, f => Assert.Equal(0, f));
+        }
+    }
+
+    /// <summary>
     /// V12 gave pictures and portraits a caption font size each. An upgraded timeline has to look
     /// exactly as it did, so both are backfilled from the event font size instead of keeping the
     /// column default — the seeded presets use 16, the column default is 12.

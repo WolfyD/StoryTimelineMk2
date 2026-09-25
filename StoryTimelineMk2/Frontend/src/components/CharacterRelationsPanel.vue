@@ -10,6 +10,7 @@ import CharacterRelateModal from '@/components/CharacterRelateModal.vue'
 import CharacterFamilyModal from '@/components/CharacterFamilyModal.vue'
 import { relationLabel, relationOtherId, relationWhen, sameFamily } from '@/utils/characterRelations'
 import { PhPlus, PhPencilSimple, PhUsersThree } from '@phosphor-icons/vue'
+import type { CalendarFormatConfig } from '@/utils/timelineLayout'
 import type {
     CharacterItem, CharacterRelationship, LodLevel, RelationshipType,
 } from '@/types/models'
@@ -23,6 +24,7 @@ const props = defineProps<{
     monthLengths: number[]
     seasonNames: string[]
     weekCount: number
+    calendarConfig: CalendarFormatConfig
 }>()
 
 const relations = ref<CharacterRelationship[]>([])
@@ -130,6 +132,7 @@ function open(r: CharacterRelationship | null) {
             :monthLengths="monthLengths"
             :seasonNames="seasonNames"
             :weekCount="weekCount"
+            :calendarConfig="calendarConfig"
             @changed="load"
             @close="modalOpen = false"
         />
