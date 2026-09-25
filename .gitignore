@@ -380,3 +380,9 @@ StoryTimelineMk2/Frontend/.vitest/
 AUDIT_FINDINGS.md
 REVIEW.md
 CHANGES.md
+
+# Video / marketing rig (BL-78) — the whole folder, rig and output alike. A frame run is several
+# GB, each finished film is ~25MB, video/.data/ is a throwaway SQLite root, and video/music/ is
+# somebody else's recordings (CC-BY, attributed in video/README.md, not ours to vendor). The films
+# ship as GitHub release assets, so nothing in here needs to be in the app's history.
+StoryTimelineMk2/video/
