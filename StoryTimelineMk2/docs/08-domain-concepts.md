@@ -206,8 +206,8 @@ What a preset controls, by group:
 
 Two built-in presets are seeded and self-heal on startup:
 
-- **`ls_default`** ("Default layout settings") — light parchment theme (`#f1e7d5` canvas). It is the schema-level default for both `timelines.layout_settings_id` and `settings.default_layout_settings_id`.
-- **`ls_dark`** ("Dark Mode") — slate theme (`#0f172a` canvas).
+- **`ls_default`** ("Default (Light)") — light parchment theme (`#f1e7d5` canvas). It is the schema-level default for both `timelines.layout_settings_id` and `settings.default_layout_settings_id`.
+- **`ls_dark`** ("Dark") — slate theme (`#0f172a` canvas).
 
 `DbInitializer.ResetBuiltinPreset(id)` restores either built-in to factory values via UPDATE (never DELETE, since timelines hold FK references to them).
 

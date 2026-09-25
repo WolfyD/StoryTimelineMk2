@@ -83,6 +83,7 @@ namespace StoryTimelineMk2.Database
                     timeline_show_now_line_text,
                     timeline_now_line_color,
                     timeline_now_line_style,
+                    timeline_now_line_width,
 
                     timeline_tick_distance,
                     timeline_tick_width,
@@ -192,6 +193,7 @@ namespace StoryTimelineMk2.Database
                     @TimelineShowNowLineText,
                     @TimelineNowLineColor,
                     @TimelineNowLineStyle,
+                    @TimelineNowLineWidth,
 
                     @TimelineTickDistance,
                     @TimelineTickWidth,
@@ -300,6 +302,7 @@ namespace StoryTimelineMk2.Database
                     timeline_show_now_line_text = excluded.timeline_show_now_line_text,
                     timeline_now_line_color = excluded.timeline_now_line_color,
                     timeline_now_line_style = excluded.timeline_now_line_style,
+                    timeline_now_line_width = excluded.timeline_now_line_width,
 
                     timeline_tick_distance = excluded.timeline_tick_distance,
                     timeline_tick_width = excluded.timeline_tick_width,

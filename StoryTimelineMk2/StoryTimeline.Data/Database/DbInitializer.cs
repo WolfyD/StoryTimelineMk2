@@ -47,7 +47,7 @@ namespace StoryTimelineMk2.Database
         private static void UpdateDefaultValues(SqliteConnection db)
         {
             db.Execute(@"UPDATE layout_settings SET
-                    name = 'Default layout settings',
+                    name = 'Default (Light)',
                     timeline_event_box_width = 130, timeline_event_box_height = 30, timeline_event_box_stem_offset = 10,
                     timeline_event_border_color = '#44A8', timeline_event_border_width = 1, timeline_event_border_radius = 3,
                     timeline_event_padding = '10', timeline_event_y_margin = 5,
@@ -62,7 +62,7 @@ namespace StoryTimelineMk2.Database
                     timeline_box_types_show_as_box = 1, timeline_box_types_box_width = 100, timeline_box_types_show_image = 1,
                     timeline_canvas_background_color = '#f1e7d5',
                     timeline_show_now_line = 1, timeline_show_now_line_text = 1,
-                    timeline_now_line_color = '#f00', timeline_now_line_style = 'dashed',
+                    timeline_now_line_color = '#f00', timeline_now_line_style = 'dashed', timeline_now_line_width = 2,
                     timeline_tick_distance = 100, timeline_tick_width = 1, timeline_non_year_ticks_smaller = 1,
                     timeline_tick_marker_font_family = 'Arial', timeline_tick_marker_font_style = 'normal',
                     timeline_tick_marker_text_color = '#2a1a0e', timeline_tick_marker_font_size = 14,
@@ -88,8 +88,8 @@ namespace StoryTimelineMk2.Database
                     calendar_panel_text_color = '#5c4a38',
                     calendar_panel_week_highlight_color = '#6366f118', calendar_panel_day_highlight_color = '#6366f135',
                     timeline_calendar_overlay_enabled = 0,
-                    timeline_calendar_overlay_season_color = '#ffffff0a', timeline_calendar_overlay_month_color = '#ffffff08',
-                    timeline_calendar_overlay_week_color = '#ffffff06', timeline_calendar_overlay_day_color = '#ffffff05',
+                    timeline_calendar_overlay_season_color = '#2a1a0e0a', timeline_calendar_overlay_month_color = '#2a1a0e08',
+                    timeline_calendar_overlay_week_color = '#2a1a0e06', timeline_calendar_overlay_day_color = '#2a1a0e05',
                     timeline_break_fill_color = '#1a2a3c12', timeline_break_border_color = '#1a2a3c7d',
                     timeline_measure_line_color = '#0077aa'
                 WHERE id = 'ls_default';");
@@ -98,7 +98,7 @@ namespace StoryTimelineMk2.Database
         private static void UpdateDarkValues(SqliteConnection db)
         {
             db.Execute(@"UPDATE layout_settings SET
-                    name = 'Dark Mode',
+                    name = 'Dark',
                     timeline_event_box_width = 130, timeline_event_box_height = 30, timeline_event_box_stem_offset = 10,
                     timeline_event_border_color = '#2d3a56', timeline_event_border_width = 1, timeline_event_border_radius = 3,
                     timeline_event_padding = '10', timeline_event_y_margin = 5,
@@ -113,7 +113,7 @@ namespace StoryTimelineMk2.Database
                     timeline_box_types_show_as_box = 1, timeline_box_types_box_width = 100, timeline_box_types_show_image = 1,
                     timeline_canvas_background_color = '#0f172a',
                     timeline_show_now_line = 1, timeline_show_now_line_text = 1,
-                    timeline_now_line_color = '#ef4444', timeline_now_line_style = 'dashed',
+                    timeline_now_line_color = '#ef4444', timeline_now_line_style = 'dashed', timeline_now_line_width = 2,
                     timeline_tick_distance = 100, timeline_tick_width = 1, timeline_non_year_ticks_smaller = 1,
                     timeline_tick_marker_font_family = 'Arial', timeline_tick_marker_font_style = 'normal',
                     timeline_tick_marker_text_color = '#94a3b8', timeline_tick_marker_font_size = 14,

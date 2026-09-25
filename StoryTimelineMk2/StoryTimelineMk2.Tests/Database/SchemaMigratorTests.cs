@@ -222,6 +222,57 @@ public class SchemaMigratorTests
     }
 
     /// <summary>
+    /// V21 renamed the two built-in presets and repainted the light one's calendar bands, both only
+    /// where the shipped value was still there. A preset somebody made their own keeps what they made
+    /// it — which is the half of this that is easy to get wrong, so it is checked on a v20 database
+    /// with one preset renamed and one band re-tinted by hand before the upgrade runs.
+    /// </summary>
+    [Fact]
+    public void SettingsPass_RenamesAndRepaints_ButOnlyWhatWasStillShipped()
+    {
+        using var ctx = new DbTestContext();
+        string oldDb = Path.Combine(ctx.TempDir, "v20.sqlite");
+        using (var db = Open(oldDb))
+        {
+            SchemaMigrator.Migrate(db, oldDb, MainDbMigrations.Steps.Take(20).ToList(), "test", backupFirst: false);
+            Assert.Empty(db.Query<string>(
+                "SELECT name FROM pragma_table_info('layout_settings') WHERE name = 'timeline_now_line_width'"));
+
+            // One owner-made change on each preset, so the guard has something to refuse.
+            db.Execute("UPDATE layout_settings SET name = 'My Dark' WHERE id = 'ls_dark'");
+            db.Execute("UPDATE layout_settings SET timeline_calendar_overlay_month_color = '#abcdef11' WHERE id = 'ls_default'");
+        }
+
+        DbInitializer.Initialize(oldDb, backupFirst: false);
+        Assert.Equal(MainDbMigrations.LatestVersion, Version(oldDb));
+
+        using (var verify = Open(oldDb))
+        {
+            // The shipped name went; the owner's did not.
+            Assert.Equal("Default (Light)", verify.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_default'"));
+            Assert.Equal("My Dark",         verify.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_dark'"));
+
+            // Same for the bands: the three still white are repainted, the re-tinted one is left.
+            Assert.Equal("#2a1a0e0a", verify.QuerySingle<string>("SELECT timeline_calendar_overlay_season_color FROM layout_settings WHERE id = 'ls_default'"));
+            Assert.Equal("#abcdef11", verify.QuerySingle<string>("SELECT timeline_calendar_overlay_month_color  FROM layout_settings WHERE id = 'ls_default'"));
+            Assert.Equal("#2a1a0e06", verify.QuerySingle<string>("SELECT timeline_calendar_overlay_week_color   FROM layout_settings WHERE id = 'ls_default'"));
+            Assert.Equal("#2a1a0e05", verify.QuerySingle<string>("SELECT timeline_calendar_overlay_day_color    FROM layout_settings WHERE id = 'ls_default'"));
+
+            // The dark preset's bands are its own, and nothing above should have touched them.
+            Assert.Equal("#ffffff10", verify.QuerySingle<string>("SELECT timeline_calendar_overlay_season_color FROM layout_settings WHERE id = 'ls_dark'"));
+        }
+
+        // The now line's width matches the 2 the canvas used to hardcode, upgraded or fresh.
+        foreach (var path in new[] { oldDb, ctx.DbPath })
+        {
+            using var verify = Open(path);
+            var widths = verify.Query<long>("SELECT timeline_now_line_width FROM layout_settings").ToList();
+            Assert.NotEmpty(widths);
+            Assert.All(widths, w => Assert.Equal(2, w));
+        }
+    }
+
+    /// <summary>
     /// V12 gave pictures and portraits a caption font size each. An upgraded timeline has to look
     /// exactly as it did, so both are backfilled from the event font size instead of keeping the
     /// column default — the seeded presets use 16, the column default is 12.

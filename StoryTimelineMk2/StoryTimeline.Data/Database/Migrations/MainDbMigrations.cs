@@ -38,6 +38,7 @@ namespace StoryTimelineMk2.Database.Migrations
             new(18, "the fade on an open-ended span", "1.1.1", V18_OpenEndFade),
             new(19, "per-level tick distance", "1.1.1", V19_LodTickDistance),
             new(20, "angled axis labels", "1.1.1", V20_AngledTickLabels),
+            new(21, "settings that read as one set", "1.1.1", V21_SettingsPass),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1177,6 +1178,46 @@ namespace StoryTimelineMk2.Database.Migrations
         private static void V11_CharacterHighlightColor(MigrationDb db)
         {
             db.Execute("ALTER TABLE characters ADD COLUMN use_highlight_color INTEGER NOT NULL DEFAULT 0;");
+        }
+
+        // ── 21: settings that read as one set ──────────────────────────────────────
+
+        /// <summary>
+        /// BL-83, the settings pass. Its three data-side halves:
+        ///
+        /// The now line’s stroke width was hardcoded at 2 in the canvas while the hover line beside
+        /// it had a setting, so the pair read as though one of them were missing a control. 2 is the
+        /// default, so no timeline changes appearance.
+        ///
+        /// The two built-in presets were called “Default layout settings” and “Dark Mode” — one a
+        /// description of a record, the other a mode. They become “Default (Light)” and “Dark”.
+        ///
+        /// The light preset’s calendar bands were white at 2–4% alpha, which is all but invisible on
+        /// its own #f1e7d5 canvas. They become the same alphas of the ink that preset already uses.
+        ///
+        /// Both value changes are conditional on the shipped value still being there, so a preset
+        /// somebody renamed or re-tinted keeps what they made it.
+        /// </summary>
+        private static void V21_SettingsPass(MigrationDb db)
+        {
+            AddCol(db, "layout_settings", "timeline_now_line_width", "INTEGER NOT NULL DEFAULT 2");
+
+            db.Execute("UPDATE layout_settings SET name = 'Default (Light)'"
+                     + " WHERE id = 'ls_default' AND name = 'Default layout settings'");
+            db.Execute("UPDATE layout_settings SET name = 'Dark'"
+                     + " WHERE id = 'ls_dark' AND name = 'Dark Mode'");
+
+            foreach (var (column, white, ink) in new[]
+            {
+                ("timeline_calendar_overlay_season_color", "#ffffff0a", "#2a1a0e0a"),
+                ("timeline_calendar_overlay_month_color",  "#ffffff08", "#2a1a0e08"),
+                ("timeline_calendar_overlay_week_color",   "#ffffff06", "#2a1a0e06"),
+                ("timeline_calendar_overlay_day_color",    "#ffffff05", "#2a1a0e05"),
+            })
+            {
+                db.Execute($"UPDATE layout_settings SET {column} = @ink"
+                         + $" WHERE id = 'ls_default' AND {column} = @white", new { ink, white });
+            }
         }
 
         // ── 20: angled axis labels ─────────────────────────────────────────────

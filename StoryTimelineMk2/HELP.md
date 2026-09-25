@@ -251,7 +251,7 @@ At certain zoom levels the canvas shows a subtle color band overlay:
 - **Months LOD** → season bands (if seasons are defined in the calendar)
 - **Days LOD** → week bands (if weeks are defined)
 
-Toggle the overlay and set its colors in **Timeline Settings → Calendar Overlay**.
+Toggle the overlay and set its colors in **Timeline Settings → Overlays → Calendar Bands**.
 
 ---
 
@@ -260,22 +260,28 @@ Toggle the overlay and set its colors in **Timeline Settings → Calendar Overla
 If your story has a large gap (e.g. centuries of nothing), you can **hide** part of the timeline so the canvas doesn't feel empty. Hidden ranges appear as a striped break strip.
 
 - Expand a break strip by clicking it to peek at the hidden range temporarily.
-- Break strip colors (fill and border) are set in **Timeline Settings → Time Breaks**.
+- Break strip colors (fill and border) are set in **Timeline Settings → Overlays → Time Breaks**.
 
 ---
 
 ## Themes & Layout Settings
 
-Open **Timeline Settings** (gear icon on the timeline toolbar) to customise:
-- Box sizes, fonts, colors for every item type
-- Hover line, Now line, axis and tick colors
-- Calendar overlay colors
-- Time break strip colors
-- Measurement overlay line color
-- Panel colors (Notes, Gallery, Calendar, Data)
-- **Pictures & Portraits** — picture captions and portrait captions have separate text sizes, so you can shrink the one without touching the other
+Open **Timeline Settings** (gear icon on the timeline toolbar). It has four tabs:
 
-Two built-in presets are available: **Default** (light) and **Dark Mode**. Applying a preset resets all layout settings for that timeline.
+| Tab | What is in it |
+|-----|---------------|
+| **General** | Navigation and scroll speed, defaults for new items, filtering, animation, window behaviour |
+| **Canvas** | The layout preset, canvas background, the axis, ticks and their labels, event boxes, periods and ages, pictures and portraits |
+| **Overlays** | Now line, hover line, the data range band, calendar bands, time breaks, the measurement line |
+| **Panels** | Colors for the Notes, Gallery, Calendar and Data panels |
+
+The search box at the top filters every tab at once. A few things worth knowing:
+
+- **Pictures & Portraits** — picture captions and portrait captions have separate text sizes, so you can shrink the one without touching the other.
+- Colors that can be see-through — the calendar bands, the data range, time break fill, the panel highlights — have a swatch and an **opacity** percentage beside it.
+- **Data Range** sets more than a band width: the notes, gallery and data panels all list the items inside it.
+
+Two built-in presets are available: **Default (Light)** and **Dark** — they are the light and dark looks for the canvas and the panels together. Applying a preset resets all layout settings for that timeline.
 
 ---
 

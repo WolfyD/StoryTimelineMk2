@@ -47,7 +47,7 @@ Step 1 (`MainDbMigrations.V1_Baseline`, `StoryTimeline.Data/Database/Migrations/
    - The 9 base `item_types` rows.
    - `lod_default` LOD profile ("Standard Gregorian Scale", 8 levels Millennia→Days as JSON).
    - `cal_default_gregorian` calendar with full Gregorian `year_definition` JSON.
-   - `ls_default` layout settings preset, plus the `ls_dark` "Dark Mode" preset via `InsertDarkPreset()`.
+   - `ls_default` layout settings preset, plus the `ls_dark` "Dark" preset via `InsertDarkPreset()`.
    - Data-fix migrations and late-added columns (see §7).
 5. `NormaliseLegacyRows(db)` — NULL `timelines.calendar_id` → `cal_default_gregorian`, NULL calendar era names → `''`, NULL `items.min_lod_level` → 3 (this used to live in `DatabaseImporter.ApplyLegacyMigrations`).
 
@@ -339,6 +339,7 @@ All columns NOT NULL unless noted. Grouped for readability:
 | `timeline_canvas_background_color` | TEXT | |
 | `timeline_show_now_line` / `_text` | INTEGER | DEFAULT 1 |
 | `timeline_now_line_color` / `_style` | TEXT | |
+| `timeline_now_line_width` | INTEGER | DEFAULT 2 |
 | `timeline_tick_distance` / `_width` | INTEGER | |
 | `timeline_non_year_ticks_smaller` | INTEGER | DEFAULT 1 |
 | `timeline_tick_marker_font_family` / `_font_style` / `_text_color` | TEXT | |

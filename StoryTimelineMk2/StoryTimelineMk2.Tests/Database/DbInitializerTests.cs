@@ -116,7 +116,7 @@ public class DbInitializerTests
         Assert.Equal(1, count);
 
         var name = db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_default'");
-        Assert.Equal("Default layout settings", name);
+        Assert.Equal("Default (Light)", name);
     }
 
     [Fact]
@@ -199,8 +199,8 @@ public class DbInitializerTests
     // ── ResetBuiltinPreset ────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("ls_default", "Default layout settings")]
-    [InlineData("ls_dark", "Dark Mode")]
+    [InlineData("ls_default", "Default (Light)")]
+    [InlineData("ls_dark", "Dark")]
     public void ResetBuiltinPreset_RestoresBuiltinValues(string id, string expectedName)
     {
         using var ctx = new DbTestContext();
@@ -222,7 +222,7 @@ public class DbInitializerTests
 
         DbInitializer.ResetBuiltinPreset("ls_default");
 
-        Assert.Equal("Default layout settings", db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_default'"));
+        Assert.Equal("Default (Light)", db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_default'"));
         Assert.Equal("tampered", db.QuerySingle<string>("SELECT name FROM layout_settings WHERE id = 'ls_dark'"));
     }
 

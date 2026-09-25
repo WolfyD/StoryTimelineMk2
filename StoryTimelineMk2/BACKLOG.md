@@ -107,6 +107,84 @@ after these two it no longer shows.
 
 ---
 
+## [BL-83] Settings that read as one set
+
+**Status:** Done 2026-09-25 for 1.1.1. Four tabs, eleven colors split into swatch + opacity, three
+dead rows gone, two built-in presets renamed, schema step 21.
+
+The timeline settings modal had grown a row at a time for as long as the canvas has, and it showed:
+the same kind of thing was named three ways, controls of different types did the same job, and two
+of the rows did nothing at all. This was a pass over the whole panel, not a feature.
+
+### What the audit found
+
+- **The now line and the hover line disagreed about everything.** The hover line's style was a free
+  text box; the now line's was a dropdown. The hover line had a width; the now line's was hardcoded
+  at `2` in `TimelineCanvas`. Now both are the same three-option select (Solid / Dashed / Dotted)
+  and both have a width. A preset holding a style the select does not offer keeps it as an extra
+  option rather than being silently rewritten to a line it never drew.
+- **Tick label font style was free text too**, in front of Konva's `fontStyle`, which accepts
+  `normal` / `bold` / `italic` / `italic bold` and silently ignores anything else — so a typo there
+  looked like the setting was broken. Now a select of exactly those four.
+- **The two built-in presets were named in two different registers** — "Default layout settings"
+  described a database record, "Dark Mode" named a mode. Now **Default (Light)** and **Dark**.
+- **The light preset's calendar bands were invisible.** White at 2–4% alpha over its own `#f1e7d5`
+  canvas: the setting existed, the band did not. Repainted to the same alphas of the ink that preset
+  already uses (`#2a1a0e`).
+- **The Calendar Panel had its own ☀ / ☽ buttons** inside a preset that is already the light-or-dark
+  choice — a third color system after the chrome theme and the layout preset, and the only panel
+  with one. Removed; the panel's colors are preset fields like every other panel's.
+- **Animations sat under Canvas** because that is where they happen, which is not what a reader
+  looks under. Moved to General with the other cross-cutting behaviour.
+- **Three rows did nothing:** Pixels per Subtick (the canvas derives spacing from the LOD ladder
+  since BL-80), Display Radius, Show Guides. The rows are gone; the fields stay in the payload, so
+  nothing stored is lost or rewritten — there is a test that the value round-trips.
+- **Eight colors that store an alpha channel had no way to set one.** `<input type="color">` is a
+  six-digit control, so the alpha was whatever the preset happened to ship. Eleven fields now have
+  a swatch and an opacity percentage, built through one `alphaColor()` helper instead of the eight
+  hand-rolled ref pairs that were there.
+- **Numbers without units and colors named three ways.** Every numeric label now carries its unit;
+  every color label is "<Part> Color".
+- **The Data Range tip was wrong** — it described the band's width and not the thing that actually
+  matters about it, which is that the notes, gallery and data panels all list the items inside it.
+
+### Two bugs fell out of it
+
+- **The alpha controls went stale after a preset switch.** Switching the dropdown, creating a preset
+  and resetting a built-in all replace every field at once; the split color controls stayed pointed
+  at the old preset, showed its swatch, and wrote its color back on the next nudge of a slider. All
+  three sites now go through `adoptLayout()`, which re-seeds the pairs with the preset.
+- **Short hex lost its alpha the moment it was touched.** The shipped light preset stores `#f00` and
+  `#44A8`; hand either to a color input and it reads back six digits (`#44A8` → `#4444aa`, alpha
+  gone into the blue channel). `expandShortHex()` expands every color on the way in.
+
+### The grouping
+
+**General** — Navigation, New Items, Filtering, Animation, Window.
+**Canvas** — Layout Preset, Canvas, Axis & Ticks, Tick Labels, Event Boxes, Periods & Ages,
+Pictures & Portraits.
+**Overlays** — Now Line, Hover Line, Data Range, Calendar Bands, Time Breaks, Measurement.
+**Panels** — Notes, Gallery, Calendar, Data.
+
+Search still works across all four: it matches `.section-title` and `.s-label` text, which is why
+"Color" stayed in the color labels rather than being pruned as noise.
+
+### Left out, deliberately
+
+Two things on the canvas are still hardcoded and were not worth a schema column each: the **"Now"
+caption's font** (Times New Roman / 32) and the **axis line's width** (`strokeWidth: 2`). Both are
+decorations on elements that already have settings; add them if somebody asks for them.
+
+ponytail: `expandShortHex` widens 3- and 4-digit hex only — the named CSS colors (`red`, `tomato`)
+would come out of a color input as themselves and are not in any preset; upgrade is a canvas
+one-pixel draw to resolve any CSS color. Named at the function.
+
+Step 21 changes values only where the shipped value is still there, so a preset somebody renamed or
+re-tinted keeps what they made it. The migration test builds a v20 database, renames one preset and
+re-tints one band by hand, and checks the guard refuses both.
+
+---
+
 ## [BL-82] Angled axis labels
 
 **Status:** Done 2026-09-25 for 1.1.1. Off by default; one switch under *Tick Labels* in the

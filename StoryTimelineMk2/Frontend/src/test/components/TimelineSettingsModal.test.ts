@@ -198,14 +198,20 @@ describe('TimelineSettingsModal', () => {
     wrapper.unmount()
   })
 
-  it('pre-fills PixelsPerSubtick input from settings prop', async () => {
+  // PixelsPerSubtick lost its row in BL-83: the canvas derives the spacing from the LOD ladder, so
+  // the control did nothing. The stored value still has to survive a trip through the modal, or
+  // opening settings would quietly rewrite it.
+  it('round-trips PixelsPerSubtick even though it has no control', async () => {
+    ;(BackendAPI.SaveSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
+    ;(BackendAPI.SaveLayoutSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok' })
+
     const wrapper = mountModal({ settings: makeSettings({ PixelsPerSubtick: 42 }) })
     await flushPromises()
 
-    const inputs = wrapper.findAll('input[type="number"]')
-    // Find the Pixels per Subtick input by its presence in the form
-    const ppsInput = inputs.find(i => (i.element as HTMLInputElement).value === '42')
-    expect(ppsInput).toBeDefined()
+    await wrapper.find('.btn-save').trigger('click')
+    await flushPromises()
+
+    expect((BackendAPI.SaveSettings as ReturnType<typeof vi.fn>).mock.calls[0][0].pixelsPerSubtick).toBe(42)
     wrapper.unmount()
   })
 

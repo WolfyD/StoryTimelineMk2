@@ -47,6 +47,7 @@
         public bool TimelineShowNowLineText { get; set; }
         public string TimelineNowLineColor { get; set; } = string.Empty;
         public string TimelineNowLineStyle { get; set; } = string.Empty;
+        public int TimelineNowLineWidth { get; set; }
 
         public int TimelineTickDistance { get; set; }
         public int TimelineTickWidth { get; set; }

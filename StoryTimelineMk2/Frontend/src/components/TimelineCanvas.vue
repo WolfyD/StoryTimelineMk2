@@ -1352,7 +1352,7 @@ function renderReference(ls: LayoutSettings) {
 function RenderUiLayer(ui_layer: Konva.Layer, ls: LayoutSettings) {
     ui_layer.destroyChildren();
 
-    const nowLine = new Konva.Line({ points: [viewport.width / 2, 0, viewport.width / 2, viewport.height], stroke: '#ff0000', strokeWidth: 2});
+    const nowLine = new Konva.Line({ points: [viewport.width / 2, 0, viewport.width / 2, viewport.height], stroke: '#ff0000', strokeWidth: ls.TimelineNowLineWidth || 2});
     const nowText = new Konva.Text({ text: "Now", stroke: '#0000', fill: '#ff0000', x: viewport.width / 2 + 10, y: 0, fontFamily: "Times", fontSize: 32 });
     const nowTextBottom = new Konva.Text({ align: 'right', text: "Now", stroke: '#0000', fill: '#ff0000', x: -10, y: viewport.height - 32, fontFamily: "Times", fontSize: 32, width: viewport.width / 2 });
     const centerLine = new Konva.Line({ points: [0, viewport.height / 2, viewport.width, viewport.height / 2], stroke: ls.TimelineAxisColor || '#ffffff88', strokeWidth: 2 });

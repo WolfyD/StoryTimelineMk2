@@ -89,7 +89,7 @@ public class LayoutSettingsRepoTests
 
         Assert.NotNull(ls);
         Assert.Equal("ls_default", ls.Id);
-        Assert.Equal("Default layout settings", ls.Name);
+        Assert.Equal("Default (Light)", ls.Name);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public class LayoutSettingsRepoTests
         using var ctx = new DbTestContext();
 
         var repo = new LayoutSettingsRepo();
-        Assert.True(repo.CheckIfLayoutNameExists("Default layout settings"));
+        Assert.True(repo.CheckIfLayoutNameExists("Default (Light)"));
     }
 
     [Fact]
