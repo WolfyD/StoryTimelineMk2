@@ -54,7 +54,13 @@ namespace StoryTimelineMk2.Database
             };
         }
 
-        public static void Import(string sourceFilePath)
+        /// <summary>
+        /// Merges a backup into the live database. Returns the number of rows a legacy (v1) file
+        /// could not bring across — always 0 for a v2 backup, which is all-or-nothing. A v1 file
+        /// can be half a decade old and predate columns that are required now, so a few rows
+        /// failing is expected; losing them without a word is not.
+        /// </summary>
+        public static int Import(string sourceFilePath)
         {
             using var source = ImportSource.Open(sourceFilePath, withMedia: true);
 
@@ -63,19 +69,22 @@ namespace StoryTimelineMk2.Database
             // Detect Database Version
             bool isContemporaryV2 = CheckIfV2(source.DbPath);
 
+            int skipped = 0;
             if (isContemporaryV2)
             {
                 ImportV2Backup(source.DbPath, targetFilePath);
             }
             else
             {
-                ImportV1Legacy(source.DbPath, targetFilePath);
+                skipped = ImportV1Legacy(source.DbPath, targetFilePath);
             }
 
             // Media last: the rows that point at it are in by now, and a file left behind by a
             // failed row import would be an orphan nothing ever cleans up.
             if (source.MediaDir != null)
                 CopyMedia(source.MediaDir, AppConfig.Instance.GetMediaFolder());
+
+            return skipped;
         }
 
         /// <summary>
@@ -246,7 +255,10 @@ namespace StoryTimelineMk2.Database
                 using (var src = new SqliteConnection($"Data Source={sourceFilePath};Mode=ReadOnly;Pooling=False"))
                 {
                     src.Open();
-                    src.Execute($"VACUUM INTO '{scratchPath}'");
+                    // Parameterised, like every other VACUUM INTO in BackupService. The
+                    // interpolated form that used to be here breaks on a data folder with an
+                    // apostrophe in it, and it is the kind of line that gets copied.
+                    src.Execute("VACUUM INTO @path", new { path = scratchPath });
                 }
 
                 try
@@ -325,7 +337,8 @@ namespace StoryTimelineMk2.Database
             dbTarget.Execute("DETACH DATABASE BackupDb");
         }
 
-        private static void ImportV1Legacy(string sourceFilePath, string targetFilePath)
+        /// <summary>Returns the number of rows that could not be brought across; see <see cref="Import"/>.</summary>
+        private static int ImportV1Legacy(string sourceFilePath, string targetFilePath)
         {
             using var dbV1 = new SqliteConnection($"Data Source={sourceFilePath};Mode=ReadOnly");
             using var dbV2 = new SqliteConnection($"Data Source={targetFilePath}");
@@ -334,6 +347,7 @@ namespace StoryTimelineMk2.Database
             dbV2.Open();
 
             using var transaction = dbV2.BeginTransaction();
+            int skipped = 0;
 
             try
             {
@@ -390,7 +404,14 @@ namespace StoryTimelineMk2.Database
                             lod_visibility_mask = 248  // bits 3-7: visible at Years and finer (V1 had no LOD data)
                         }, transaction);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        // One unusable row must not cost the user the other nine hundred, so the
+                        // loop carries on — but every skip is named in the log and counted into
+                        // the number the import reports back.
+                        skipped++;
+                        Logger.Error($"ImportV1/item {item.id}", ex);
+                    }
                 }
 
                 //// Notes (Merge into items as Type 5)
@@ -451,7 +472,14 @@ namespace StoryTimelineMk2.Database
                     }
 
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // The `chars > 0` guard covers the honest case — a v1 file from before
+                    // characters existed. Anything that reaches here is a real failure, and it
+                    // used to take the appearances and the relationships down with it in silence.
+                    skipped++;
+                    Logger.Error("ImportV1/characters", ex);
+                }
 
                 var itemTags = dbV1.Query("SELECT * FROM item_tags");
                 foreach (var it in itemTags)
@@ -472,7 +500,11 @@ namespace StoryTimelineMk2.Database
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    skipped++;
+                    Logger.Error("ImportV1/item_story_refs", ex);
+                }
 
                 // Settings
                 var settings = dbV1.Query("SELECT * FROM settings");
@@ -539,12 +571,19 @@ namespace StoryTimelineMk2.Database
 
                 transaction.Commit();
             }
-            catch (Exception ex) 
+            catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(ex.Message);
+                // Debug.WriteLine used to be the only record of this, and it writes nowhere in a
+                // Release build — the one failure that loses the whole import was the one that
+                // left no trace. The throw is what the caller turns into an error reply.
+                Logger.Error("ImportV1", ex);
                 transaction.Rollback();
                 throw;
             }
+
+            if (skipped > 0)
+                Logger.Warn("ImportV1", $"{skipped} part(s) of the backup could not be imported; see the errors above.");
+            return skipped;
         }
 
     }

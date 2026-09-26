@@ -594,12 +594,15 @@ export const useTimelineStore = defineStore('timeline', () => {
 		}
 		const oldRules = filterRules.value;
 		const andMode = preset.AndMode === 1;
-		// Persist to DB before updating in-memory state so a failure leaves the store consistent
-		await Promise.all(oldRules.map(r => BackendAPI.DeleteFilterRule(r.Id)));
+		// Persist to DB before updating in-memory state so a failure leaves the store consistent.
+		// Write the new rules first, then drop the old ones: deleting first meant a failure in the
+		// middle left the timeline with no filters at all — the old set gone, the new set never
+		// written. The new rules carry fresh ids, so both sets coexist for the moment in between.
 		await Promise.all([
 			...rules.map(r => BackendAPI.SaveFilterRule(r)),
 			BackendAPI.SetMiscSetting('filter_and_mode', andMode ? '1' : '0', tlId),
 		]);
+		await Promise.all(oldRules.map(r => BackendAPI.DeleteFilterRule(r.Id)));
 		filterRules.value = rules;
 		filterAndMode.value = andMode;
 	}
@@ -609,9 +612,12 @@ export const useTimelineStore = defineStore('timeline', () => {
 		await BackendAPI.DeleteFilterPreset(id);
 	}
 
-	function clearAllFilters() {
+	async function clearAllFilters() {
 		filterRules.value = filterRules.value.map(r => ({ ...r, State: 'neutral' as FilterState }));
-		filterRules.value.forEach(r => BackendAPI.SaveFilterRule(r));
+		// Awaited like every other writer in here. It used to fire off one unawaited save per
+		// rule, so a backend that refused them said nothing and the panel looked cleared until
+		// the next reload put the filters back.
+		await Promise.all(filterRules.value.map(r => BackendAPI.SaveFilterRule(r)));
 	}
 
 

@@ -5,9 +5,12 @@ import { createPinia } from 'pinia'
 import EditItem from './pages/EditItem.vue'
 import { loadShortcutOverrides } from './utils/shortcutOverrides'
 import { installDevHelpers } from './utils/devHelpers'
+import { installErrorReporting } from './bridge/api'
 
 const app = createApp(EditItem)
 app.use(createPinia())
+// Before mount, or the first render is the one thing not covered.
+installErrorReporting(app)
 app.mount('#app')
 installNumberInputStepping()
 void loadShortcutOverrides()   // the registry is reactive, so a late answer still redraws the hints

@@ -8,6 +8,7 @@ vi.mock('@/bridge/api', () => ({
     GetCharacterAppearances: vi.fn().mockResolvedValue([]),
     GetCharacterRelations: vi.fn().mockResolvedValue({ Relations: [], Types: [] }),
     DeleteCharacter: vi.fn().mockResolvedValue({ status: 'ok' }),
+    SaveCharacterFull: vi.fn(),
     OpenCharacterTimeline: vi.fn(),
     GetAppConfig: vi.fn().mockResolvedValue({ themeInitialized: true }),
     onHostMessage: vi.fn(() => () => {}),
@@ -146,5 +147,60 @@ describe('CharactersApp bottom bar', () => {
     await wrapper.findAll('.ch-bar button')[3]!.trigger('click')
 
     expect(BackendAPI.OpenCharacterTimeline).toHaveBeenCalledWith(1, 'arin')
+  })
+})
+
+describe('CharactersApp save', () => {
+  const ok = (over: Record<string, unknown> = {}) => ({
+    status: 'ok',
+    character: { ...blankCharacter(1), Id: 'arin', Name: 'Arin', FirstName: 'Arin', ...over },
+  })
+  const save = (w: ReturnType<typeof mount>) => w.findAll('.ch-bar button')[0]!.trigger('click')
+  const callsTo = () => (BackendAPI.SaveCharacterFull as ReturnType<typeof vi.fn>).mock.calls
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ;(BackendAPI.GetCharacterRelations as ReturnType<typeof vi.fn>).mockResolvedValue({ Relations: [], Types: [] })
+    ;(BackendAPI.GetCharacterAppearances as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    ;(BackendAPI.SaveCharacterFull as ReturnType<typeof vi.fn>).mockResolvedValue(ok())
+  })
+
+  it('sends the character and the items it generates as one call', async () => {
+    ;(BackendAPI.GetTimelineCharacters as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ...blankCharacter(1), Id: 'arin', Name: 'Arin', FirstName: 'Arin',
+        ShowOnTimeline: true, BirthYear: 10 },
+    ])
+    const wrapper = await openFirst()
+    await save(wrapper)
+    await flushPromises()
+
+    const [character, dropped, birthItem, deathItem] = callsTo()[0]!
+    expect(character.Id).toBe('arin')
+    expect(dropped).toEqual([])
+    // Planned before the call, so one write stores the id rather than a save and a re-save.
+    expect(birthItem).toMatchObject({ Id: character.BirthItemId, TypeId: 7, Year: 10 })
+    expect(deathItem).toBeNull()                       // no death year — nothing to generate
+    expect(wrapper.text()).not.toContain('Save failed')
+  })
+
+  it('leaves the draft alone when the save fails, so the retry still drops the same item', async () => {
+    // Show on timeline off, but an item still owned from when it was on: this save deletes it.
+    ;(BackendAPI.GetTimelineCharacters as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ...blankCharacter(1), Id: 'arin', Name: 'Arin', FirstName: 'Arin',
+        ShowOnTimeline: false, BirthYear: 10, BirthItemId: 'old-birth' },
+    ])
+    const wrapper = await openFirst()
+    ;(BackendAPI.SaveCharacterFull as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('the bridge is down'))
+
+    await save(wrapper)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Save failed')
+    expect(callsTo()[0]![1]).toEqual(['old-birth'])
+
+    await save(wrapper)
+    await flushPromises()
+    // The planning ran on a copy, so the failed attempt did not clear the id off the draft.
+    expect(callsTo()[1]![1]).toEqual(['old-birth'])
   })
 })

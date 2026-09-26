@@ -55,6 +55,12 @@ class FakeSocket {
 	}
 }
 
+/**
+ * A failure is logged before the user is told, so the alert lands a few microtasks after the
+ * call that caused it. Two turns covers the reject-and-catch inside `reportError`.
+ */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+
 /** Loads a fresh copy of the bridge with no WebView2 in sight. */
 async function loadBrowserBridge() {
 	FakeSocket.instances = []
@@ -63,9 +69,9 @@ async function loadBrowserBridge() {
 	// setup.ts installs a WebView2 mock for every test file; the browser build has none.
 	window.chrome = undefined
 
-	const { BackendAPI } = await import('@/bridge/api')
+	const { BackendAPI, installErrorReporting } = await import('@/bridge/api')
 	const socket = FakeSocket.instances[0]!
-	return { BackendAPI, socket }
+	return { BackendAPI, installErrorReporting, socket }
 }
 
 describe('bridge transport without WebView2', () => {
@@ -204,9 +210,48 @@ describe('bridge transport without WebView2', () => {
 		// `send` has no messageId, so there is no promise for the net to catch: the report has to
 		// come from `send` itself or not at all.
 		BackendAPI.send('DeleteNote', { noteId: 'n1' })
+		await flush()
 
 		expect(alertMock).toHaveBeenCalledOnce()
 		expect(alertMock.mock.calls[0]![0]).toMatch(/no connection to Story Timeline/)
+	})
+
+	// The second half of the project rule, added in 1.2.0: every message that tells the user
+	// something broke also tells them a log exists. With the bridge down there is nowhere to
+	// write, and saying so is better than naming a file that has nothing in it.
+	it('says the detail could not be logged when the bridge is the thing that is down', async () => {
+		const { BackendAPI, socket } = await loadBrowserBridge()
+		socket.open()
+		socket.drop()
+
+		BackendAPI.send('DeleteNote', { noteId: 'n1' })
+		await flush()
+
+		expect(alertMock.mock.calls[0]![0]).toMatch(/could not be written to the error log/i)
+	})
+
+	// H1/H2 of the 1.2.0 audit. Vue swallows what a render or a watcher throws; this is the net
+	// that sends it to app.log with its stack and then tells the user where that went.
+	it('sends what a Vue component throws to the backend log, stack and all', async () => {
+		const { installErrorReporting, socket } = await loadBrowserBridge()
+		socket.open()
+
+		const app = { config: {} } as never as import('vue').App
+		installErrorReporting(app)
+		app.config.errorHandler!(new Error('boom'), null, 'render function')
+		await flush()
+
+		const logged = socket.sent.map((s) => JSON.parse(s)).find((m) => m.action === 'LogFrontendError')
+		expect(logged).toBeDefined()
+		expect(logged.payload).toMatchObject({ context: 'vue: render function', message: 'boom' })
+		expect(logged.payload.stack).toMatch(/Error: boom/)
+
+		socket.deliver({ messageId: logged.messageId, payload: { status: 'ok', logPath: 'C:\\logs\\app.log' } })
+		await flush()
+
+		expect(alertMock).toHaveBeenCalledOnce()
+		expect(alertMock.mock.calls[0]![0]).toMatch(/boom/)
+		expect(alertMock.mock.calls[0]![0]).toMatch(/C:\\logs\\app\.log/)
 	})
 
 	it('alerts once, not once per dropped call', async () => {
@@ -218,6 +263,7 @@ describe('bridge transport without WebView2', () => {
 		BackendAPI.send('DeleteNote', { noteId: 'n1' })
 		BackendAPI.send('DeleteNote', { noteId: 'n2' })
 		BackendAPI.send('DeleteNote', { noteId: 'n3' })
+		await flush()
 
 		expect(alertMock).toHaveBeenCalledOnce()
 	})

@@ -193,97 +193,112 @@ namespace StoryTimelineMk2.Database
 
             try
             {
-                // 0 = Auto: pick the emptier side now — new items, and items the user set back to Auto.
-                if (item.Placement == 0 && item.TypeId is not (3 or 6 or 8 or 9))
-                    item.Placement = PickSide(db, tx, item);
-
-                string sql = @"
-                    INSERT INTO items (
-                        id, title, description, content, story_id, type_id,
-                        year, end_year,
-                        absolute_start, absolute_end,
-                        book_title, chapter, page, color, creation_granularity,
-                        timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement, centered, show_title, item_notes,
-                        open_start, open_end, open_fade, location_id
-                    )
-                    VALUES (
-                        @Id, @Title, @Description, @Content, @StoryId, @TypeId,
-                        @Year, @EndYear,
-                        @AbsoluteStart, @AbsoluteEnd,
-                        @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
-                        @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask, @Placement, @Centered, @ShowTitle, @ItemNotes,
-                        @OpenStart, @OpenEnd, @OpenFade, @LocationId
-                    )
-                    ON CONFLICT(id) DO UPDATE SET
-                        title = excluded.title, description = excluded.description, content = excluded.content,
-                        story_id = excluded.story_id, type_id = excluded.type_id,
-                        year = excluded.year, end_year = excluded.end_year,
-                        absolute_start = excluded.absolute_start, absolute_end = excluded.absolute_end,
-                        book_title = excluded.book_title, chapter = excluded.chapter, page = excluded.page,
-                        color = excluded.color, creation_granularity = excluded.creation_granularity,
-                        item_index = excluded.item_index, show_in_notes = excluded.show_in_notes,
-                        importance = excluded.importance, min_lod_level = excluded.min_lod_level,
-                        lod_visibility_mask = excluded.lod_visibility_mask, placement = excluded.placement,
-                        centered = excluded.centered, show_title = excluded.show_title, item_notes = excluded.item_notes,
-                        open_start = excluded.open_start, open_end = excluded.open_end,
-                        open_fade = excluded.open_fade,
-                        location_id = excluded.location_id,
-                        updated_at = CURRENT_TIMESTAMP;";
-
-                db.Execute(sql, item, tx);
-
-                // Tags: ensure exist in same transaction, then link
-                db.Execute("DELETE FROM item_tags WHERE item_id = @Id", new { item.Id }, tx);
-                foreach (var tagName in tagNames ?? new List<string>())
-                {
-                    var normalized = tagName.ToLowerInvariant().Trim();
-                    if (string.IsNullOrEmpty(normalized)) continue;
-                    db.Execute("INSERT OR IGNORE INTO tags (name) VALUES (@Name)", new { Name = normalized }, tx);
-                    var tagId = db.QuerySingle<int>("SELECT id FROM tags WHERE name = @Name", new { Name = normalized }, tx);
-                    db.Execute("INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (@ItemId, @TagId)",
-                        new { ItemId = item.Id, TagId = tagId }, tx);
-                }
-
-                // Character appearances
-                db.Execute("DELETE FROM item_character_appearances WHERE item_id = @Id", new { item.Id }, tx);
-                foreach (var appearance in characterAppearances ?? new List<CharacterAppearanceInput>())
-                {
-                    db.Execute(@"INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role, auto_detected)
-                        VALUES (@ItemId, @CharacterId, @Role, @AutoDetected)",
-                        new { ItemId = item.Id, appearance.CharacterId, appearance.Role, appearance.AutoDetected }, tx);
-
-                    // Attaching someone by hand takes back an earlier dismissal, so the matcher is
-                    // free to find them again later.
-                    if (!appearance.AutoDetected)
-                        db.Execute(@"DELETE FROM character_link_dismissals
-                                     WHERE item_id = @ItemId AND character_id = @CharacterId",
-                            new { ItemId = item.Id, appearance.CharacterId }, tx);
-                }
-
-                // Story refs
-                db.Execute("DELETE FROM item_story_refs WHERE item_id = @Id", new { item.Id }, tx);
-                foreach (var storyId in storyIds ?? new List<string>())
-                {
-                    db.Execute("INSERT OR IGNORE INTO item_story_refs (item_id, story_id) VALUES (@ItemId, @StoryId)",
-                        new { ItemId = item.Id, StoryId = storyId }, tx);
-                }
-
-                // Chapter refs
-                db.Execute("DELETE FROM item_chapters WHERE item_id = @Id", new { item.Id }, tx);
-                foreach (var chapterId in chapterIds ?? new List<string>())
-                {
-                    db.Execute("INSERT OR IGNORE INTO item_chapters (item_id, chapter_id) VALUES (@ItemId, @ChapterId)",
-                        new { ItemId = item.Id, ChapterId = chapterId }, tx);
-                }
-
+                var id = SaveItemFull(db, tx, item, tagNames, characterAppearances, storyIds, chapterIds);
                 tx.Commit();
-                return item.Id;
+                return id;
             }
             catch
             {
                 tx.Rollback();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// The same save, on a connection and transaction the caller owns and commits.
+        /// A SQLite transaction only covers the connection it was opened on, so a batch that has
+        /// to be all-or-nothing — <see cref="SessionChanges.Apply"/> — must hand its own
+        /// connection down instead of letting every save open one of its own.
+        /// </summary>
+        internal string SaveItemFull(SqliteConnection db, SqliteTransaction tx,
+            TimelineItem item, List<string> tagNames,
+            List<CharacterAppearanceInput> characterAppearances,
+            List<string> storyIds, List<string> chapterIds)
+        {
+            // 0 = Auto: pick the emptier side now — new items, and items the user set back to Auto.
+            if (item.Placement == 0 && item.TypeId is not (3 or 6 or 8 or 9))
+                item.Placement = PickSide(db, tx, item);
+
+            string sql = @"
+                INSERT INTO items (
+                    id, title, description, content, story_id, type_id,
+                    year, end_year,
+                    absolute_start, absolute_end,
+                    book_title, chapter, page, color, creation_granularity,
+                    timeline_id, item_index, show_in_notes, importance, min_lod_level, lod_visibility_mask, placement, centered, show_title, item_notes,
+                    open_start, open_end, open_fade, location_id
+                )
+                VALUES (
+                    @Id, @Title, @Description, @Content, @StoryId, @TypeId,
+                    @Year, @EndYear,
+                    @AbsoluteStart, @AbsoluteEnd,
+                    @BookTitle, @Chapter, @Page, @Color, @CreationGranularity,
+                    @TimelineId, @ItemIndex, @ShowInNotes, @Importance, @MinLodLevel, @LodVisibilityMask, @Placement, @Centered, @ShowTitle, @ItemNotes,
+                    @OpenStart, @OpenEnd, @OpenFade, @LocationId
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    title = excluded.title, description = excluded.description, content = excluded.content,
+                    story_id = excluded.story_id, type_id = excluded.type_id,
+                    year = excluded.year, end_year = excluded.end_year,
+                    absolute_start = excluded.absolute_start, absolute_end = excluded.absolute_end,
+                    book_title = excluded.book_title, chapter = excluded.chapter, page = excluded.page,
+                    color = excluded.color, creation_granularity = excluded.creation_granularity,
+                    item_index = excluded.item_index, show_in_notes = excluded.show_in_notes,
+                    importance = excluded.importance, min_lod_level = excluded.min_lod_level,
+                    lod_visibility_mask = excluded.lod_visibility_mask, placement = excluded.placement,
+                    centered = excluded.centered, show_title = excluded.show_title, item_notes = excluded.item_notes,
+                    open_start = excluded.open_start, open_end = excluded.open_end,
+                    open_fade = excluded.open_fade,
+                    location_id = excluded.location_id,
+                    updated_at = CURRENT_TIMESTAMP;";
+
+            db.Execute(sql, item, tx);
+
+            // Tags: ensure exist in same transaction, then link
+            db.Execute("DELETE FROM item_tags WHERE item_id = @Id", new { item.Id }, tx);
+            foreach (var tagName in tagNames ?? new List<string>())
+            {
+                var normalized = tagName.ToLowerInvariant().Trim();
+                if (string.IsNullOrEmpty(normalized)) continue;
+                db.Execute("INSERT OR IGNORE INTO tags (name) VALUES (@Name)", new { Name = normalized }, tx);
+                var tagId = db.QuerySingle<int>("SELECT id FROM tags WHERE name = @Name", new { Name = normalized }, tx);
+                db.Execute("INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (@ItemId, @TagId)",
+                    new { ItemId = item.Id, TagId = tagId }, tx);
+            }
+
+            // Character appearances
+            db.Execute("DELETE FROM item_character_appearances WHERE item_id = @Id", new { item.Id }, tx);
+            foreach (var appearance in characterAppearances ?? new List<CharacterAppearanceInput>())
+            {
+                db.Execute(@"INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role, auto_detected)
+                    VALUES (@ItemId, @CharacterId, @Role, @AutoDetected)",
+                    new { ItemId = item.Id, appearance.CharacterId, appearance.Role, appearance.AutoDetected }, tx);
+
+                // Attaching someone by hand takes back an earlier dismissal, so the matcher is
+                // free to find them again later.
+                if (!appearance.AutoDetected)
+                    db.Execute(@"DELETE FROM character_link_dismissals
+                                 WHERE item_id = @ItemId AND character_id = @CharacterId",
+                        new { ItemId = item.Id, appearance.CharacterId }, tx);
+            }
+
+            // Story refs
+            db.Execute("DELETE FROM item_story_refs WHERE item_id = @Id", new { item.Id }, tx);
+            foreach (var storyId in storyIds ?? new List<string>())
+            {
+                db.Execute("INSERT OR IGNORE INTO item_story_refs (item_id, story_id) VALUES (@ItemId, @StoryId)",
+                    new { ItemId = item.Id, StoryId = storyId }, tx);
+            }
+
+            // Chapter refs
+            db.Execute("DELETE FROM item_chapters WHERE item_id = @Id", new { item.Id }, tx);
+            foreach (var chapterId in chapterIds ?? new List<string>())
+            {
+                db.Execute("INSERT OR IGNORE INTO item_chapters (item_id, chapter_id) VALUES (@ItemId, @ChapterId)",
+                    new { ItemId = item.Id, ChapterId = chapterId }, tx);
+            }
+
+            return item.Id;
         }
 
         public IEnumerable<ItemStoryRefLink> GetAllItemStoryRefsForTimeline(int timelineId)
@@ -313,9 +328,10 @@ namespace StoryTimelineMk2.Database
                 File.Delete(destPath);
             using var db = new SqliteConnection(_connString);
             db.Open();
-            // VACUUM INTO does not reliably support parameter binding; escape manually
-            var safeDest = destPath.Replace("'", "''");
-            db.Execute($"VACUUM INTO '{safeDest}'");
+            // Parameterised, as in BackupService — which has been doing it this way on the
+            // backup path all along, so the note that used to be here about binding not working
+            // was not true.
+            db.Execute("VACUUM INTO @path", new { path = destPath });
         }
 
         public class ItemSaveLinks
@@ -368,6 +384,13 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection(_connString);
             db.Execute("DELETE FROM items WHERE id = @Id", new { Id = id });
+        }
+
+        /// <summary>Same delete, on a transaction the caller owns. See the overload of
+        /// <see cref="SaveItemFull(SqliteConnection, SqliteTransaction, TimelineItem, List{string}, List{CharacterAppearanceInput}, List{string}, List{string})"/>.</summary>
+        internal void DeleteItem(SqliteConnection db, SqliteTransaction tx, string id)
+        {
+            db.Execute("DELETE FROM items WHERE id = @Id", new { Id = id }, tx);
         }
 
         /// <summary>Overwrites the LOD visibility mask of every item of a timeline; returns the row count.</summary>

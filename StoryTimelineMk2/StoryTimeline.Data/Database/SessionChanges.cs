@@ -582,6 +582,13 @@ namespace StoryTimelineMk2.Database
             var knownStories    = Ids(db, "SELECT id FROM stories");
             var knownChapters   = Ids(db, "SELECT id FROM chapters");
 
+            // BL-33 / audit H3: applying a session file deletes and overwrites rows on the
+            // authority of a file from another machine. One transaction over the whole batch is
+            // what makes that safe — a failure on the eleventh of twenty changes must not leave
+            // ten applied and the project half-merged. Not committing rolls back on dispose, so
+            // an exception on the way out undoes everything above it.
+            using var tx = db.BeginTransaction();
+
             foreach (var change in file.Changes)
             {
                 if (decisions != null && decisions.TryGetValue(change.Id, out var pick) && pick == "local")
@@ -592,7 +599,7 @@ namespace StoryTimelineMk2.Database
 
                 if (change.Op == "delete")
                 {
-                    repo.DeleteItem(change.Id);
+                    repo.DeleteItem(db, tx, change.Id);
                     result.Applied++;
                     continue;
                 }
@@ -614,10 +621,7 @@ namespace StoryTimelineMk2.Database
                                 + (change.StoryRefs.Count - stories.Count)
                                 + (change.ChapterRefs.Count - chapters.Count);
 
-                // ponytail: SaveItemFull opens its own connection and transaction per item, so a
-                // failure halfway leaves the earlier items applied. A session diff is tens of
-                // rows; wrap the loop in one transaction when that stops being true.
-                repo.SaveItemFull(item, change.Tags,
+                repo.SaveItemFull(db, tx, item, change.Tags,
                     characters.Select(c => new ItemRepo.CharacterAppearanceInput
                     {
                         CharacterId = c.CharacterId,
@@ -627,6 +631,7 @@ namespace StoryTimelineMk2.Database
                 result.Applied++;
             }
 
+            tx.Commit();
             return result;
         }
 

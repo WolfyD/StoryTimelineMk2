@@ -336,6 +336,40 @@ test.describe('Calendar Editor (existing calendar) — real backend', () => {
     }
   })
 
+  // ── Per-level tick distance (BL-80) ───────────────────────────────────────
+
+  test('Tick Distance offers one box per LOD level, blank meaning inherit', async ({ appContext }) => {
+    const cal = findPageByRole(appContext, 'calendar')!
+    const lodSec = sec(cal, 'LOD Profile')
+    const rows = await lodSec.locator('table.data-table tbody tr').count()
+
+    await expect(cal.locator('.sub-section-title', { hasText: 'Tick Distance' })).toBeVisible()
+    const boxes = cal.locator('.tickdist-input')
+    expect(await boxes.count()).toBe(rows)
+    // Nothing is filled in on the seed calendar, so every level still takes the timeline's own.
+    await expect(boxes.first()).toHaveAttribute('placeholder', 'inherit')
+  })
+
+  test('a tick distance can be typed in and cleared again, and Auto fills the spread', async ({ appContext }) => {
+    const cal = findPageByRole(appContext, 'calendar')!
+    const first = cal.locator('.tickdist-input').first()
+
+    await first.fill('160')
+    await expect(first).toHaveValue('160')
+    await first.fill('')
+    await expect(first).toHaveValue('')   // back to inheriting, not to zero
+
+    // Auto writes the standard spread: the coarse rungs and the fine ones, nothing in the middle.
+    const SPREAD = ['MILLENNIA', 'CENTURIES', 'DECADES', 'WEEKS', 'DAYS']
+    const keys = await cal.locator('.tickdist-key').allTextContents()
+    const expected = keys.filter(k => SPREAD.includes(k.trim().toUpperCase())).length
+
+    await cal.locator('.sub-section-header button', { hasText: 'Auto' }).click()
+    await expect.poll(() => cal.locator('.tickdist-input').evaluateAll(
+      els => els.filter(el => (el as HTMLInputElement).value !== '').length,
+    ), { timeout: 3000 }).toBe(expected)
+  })
+
   // ── Months section ────────────────────────────────────────────────────────
 
   test('Months section is visible with pre-populated rows', async ({ appContext }) => {

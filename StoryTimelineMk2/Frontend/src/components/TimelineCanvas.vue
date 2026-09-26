@@ -519,7 +519,10 @@ watch(() => [props.layoutSettings?.TimelineTickDistance, store.lodProfile], () =
 });
 
 // --- LOD ANIMATION WATCHER ---
+// Both handles are cancelled in onBeforeUnmount: each callback renders into the stage, and a
+// frame that lands after `stage.destroy()` draws into nodes that are gone.
 let lodAnim: number | null = null;
+let lodSettleTimer: ReturnType<typeof setTimeout> | null = null;
 watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
     clearLanes(); // Clear collision cache so shapes can re-evaluate on zoom
 
@@ -560,7 +563,9 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
         viewport.lodStepFraction = targetStep;
         viewport.tickDistance = targetDist;
         renderGrid(gridLayer, props.layoutSettings);
-        setTimeout(()=>{
+        if (lodSettleTimer) clearTimeout(lodSettleTimer);
+        lodSettleTimer = setTimeout(()=>{
+			lodSettleTimer = null;
 			renderWithDimming(props.layoutSettings!);
 		}, 100)
     }
@@ -2177,6 +2182,10 @@ onBeforeUnmount(() => {
     if (_fpsRafId !== null) cancelAnimationFrame(_fpsRafId);
     if (_jumpRafId !== null) { cancelAnimationFrame(_jumpRafId); _jumpRafId = null; }
     if (_midMouseRafId !== null) { cancelAnimationFrame(_midMouseRafId); _midMouseRafId = null; }
+    // A LOD change in flight when the window closes: both of these render into the stage, and
+    // the stage is destroyed four lines down.
+    if (lodAnim !== null) { cancelAnimationFrame(lodAnim); lodAnim = null; }
+    if (lodSettleTimer !== null) { clearTimeout(lodSettleTimer); lodSettleTimer = null; }
     if (_keydownHandler) window.removeEventListener('keydown', _keydownHandler);
     if (_keyupHandler)   window.removeEventListener('keyup',   _keyupHandler);
     if (_mouseupHandler) window.removeEventListener('mouseup', _mouseupHandler);

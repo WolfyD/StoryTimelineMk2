@@ -2456,9 +2456,84 @@ Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two
 
 ## [BL-16] The Map feature
 
-**Status:** Pending. Major long-term feature.
+**Status:** Next up, targeted at **1.3.0** (2026-09-26). Design sprint done — data model, renderer
+and scope are all settled below, and the full feature ships: static maps, the time scrubber and
+animated character movement. Only the build order inside 1.3.0 is still open. No code written yet.
 
 A multi-layer interactive map screen: a world map containing regions, each region drillable into a sub-map, locations pinned on each map, locations linked to items/events, time-scrubbing to animate events and character movement across the map over time.
+
+### Decisions (2026-09-26)
+
+**Layers nest to any depth.** `maps.parent_id` self-reference — world → region → city → floor plan,
+as deep as the writer goes. A fixed three-level world/region/sub-region tree buys nothing and boxes
+in anyone who wants a building.
+
+**A location hangs off the event, and nothing else.** `items.location_id` becomes a real FK and that
+is the whole of it. A character's whereabouts are *derived*: they appear in an event, the event has a
+place, so they were there at that event's time. Movement paths are a join — a character's
+appearances ordered by time, each one's location a point on the path.
+
+A `character_locations` table with its own dates was proposed and rejected. It would have been a
+second, independently-editable record of where people were, free to drift out of step with the events
+it was meant to summarise. Deriving keeps one source of truth and stays correct when an event is
+edited, for free.
+
+**Mentioned is not the same as present.** A character named in an event but not there gets a flag on
+the existing `item_character_appearances` row — one column, no new table. The derivation above skips
+those rows.
+
+**Birth and death are ordinary events, and exist whether or not they are drawn.** Today
+`planGeneratedItems` only creates them when *Show on timeline* is ticked, and unticking deletes them;
+that flag becomes visibility-only. An event is created whenever the character has the matching date,
+and is absent only when the character was never born (a timeless god) or has not died. That gives
+every birth and death somewhere to hang a location, reachable from the character editor and later
+from any event manager, without forcing it onto the canvas.
+
+Consequences, both to be handled in the step that builds locations:
+
+- `buildGeneratedItem` currently rebuilds the whole item on every character save, blanking
+  `Description` and `ItemNotes`. Once these items hold a location, it has to **merge** instead:
+  enforce the generated fields (title, dates, type, colour), preserve whatever the user set.
+  The character owns name, date and colour; the item owns place, description and notes.
+- **No backfill** (decided 2026-09-26). Generated items arrived in migration 9, which is marked
+  1.1.1 — and the last tag is `v1.1.0`, so that machinery has never been in a released build and
+  nobody has characters owning items. Migration 22 changes the rule going forward and stops there.
+  On the dev database, re-saving a character with dates generates its items through the normal path.
+
+**The two character location columns are dead.** With birth and death always being real events,
+`characters.birth_location_id` and `characters.death_location_id` have nothing left to hold.
+Migration 22 drops them. `items.location_id` stays and becomes real.
+
+**The whole feature is in for 1.3.0.** Static maps, the time scrubber and animated character
+movement, not a static-only first cut. The backlog's old advice to ship static display first is
+superseded — it stands as *build order*, not as a smaller release.
+
+**Konva renders the map.** It follows from the scope: with animated movement in, the renderer has to
+be an animation library with a scene graph, and movement paths become `Konva.Tween`. It is also
+already a dependency, and `TimelineCanvas` has solved pan, zoom, layer caching and the BL-84 perf
+work in this codebase's idiom, so there is one canvas stack to know rather than two.
+
+Ruled out: **OpenLayers** — its edge is projections, WMS/WFS and coordinate transforms, none of which
+a hand-drawn world map uses, at ~150 KB gzipped. **Leaflet** — `L.CRS.Simple` + `L.ImageOverlay` is
+the documented path for non-geographic maps and gives tuned pan/zoom and a zoom-stable pin space for
+~42 KB, which would have won on a static-only scope; against animation it loses to Konva, and it
+would have been a second rendering model in the app.
+
+> **Known ceiling: no deep zoom.** Konva draws an uploaded map whole, so an 8000×8000 image costs
+> 8000×8000 in memory. Leaflet would not have fixed this either — neither tiles a static image on
+> its own. Mitigate on import by downscaling to a sane cap. The upgrade path, if a writer ever needs
+> to read street names on a continent map, is pre-tiling the upload (`libvips dzsave` or similar)
+> and drawing tiles — backend work, deliberately unscoped.
+
+Licensing is not a constraint — Konva is MIT, compatible with the project's AGPL-3.0, and already
+listed in the Licenses tab in `AboutModal`, so nothing new has to be attributed. (Leaflet and
+OpenLayers are both BSD-2-Clause and would also have been fine. Avoid Mapbox GL JS — v2+ is under
+Mapbox's proprietary terms; MapLibre GL JS is its BSD-3-Clause fork.)
+
+### Open
+
+**Build order within 1.3.0.** Everything ships, but something has to be first. Static display →
+scrubber → movement is the obvious sequence and matches the aside below.
 
 > **Columns are already waiting for this (migration 17).** `characters.birth_location_id`,
 > `characters.death_location_id` and `items.location_id` were added ahead of time so the relations

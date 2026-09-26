@@ -46,6 +46,7 @@ namespace StoryTimelineMk2.Bridge
                 case "GetTimelineCharacters":    HandleGetTimelineCharacters(message); break;
                 case "GetTimelineCalendar":      HandleGetTimelineCalendar(message); break;
                 case "SaveCharacter":            HandleSaveCharacter(message); break;
+                case "SaveCharacterFull":        HandleSaveCharacterFull(message); break;
                 case "DeleteCharacter":          HandleDeleteCharacter(message); break;
                 case "GetCharacterAppearances":  HandleGetCharacterAppearances(message); break;
                 case "FocusTimelineItem":        HandleFocusTimelineItem(message); break;
@@ -110,6 +111,9 @@ namespace StoryTimelineMk2.Bridge
                 case "GetSessionHistory":        HandleGetSessionHistory(message); break;
                 case "PreviewSessionChanges":    HandlePreviewSessionChanges(message); break;
                 case "ApplySessionChanges":      HandleApplySessionChanges(message); break;
+                // The page's half of the project rule: the frontend has no file access, so its
+                // errors come here to be written with the same stack detail the backend logs.
+                case "LogFrontendError":         HandleLogFrontendError(message); break;
                 // App-level actions that came out of the WinForms router in BL-68 phase 3.
                 default: return TryHandleAppAction(message);
             }
@@ -119,6 +123,25 @@ namespace StoryTimelineMk2.Bridge
         /// <summary>Same shape the page has always received: <c>{ messageId, payload }</c>.</summary>
         private void ReplyToVue(int? messageId, object? payload)
             => _channel.Post(new { messageId, payload });
+
+        /// <summary>
+        /// Writes a frontend error to app.log with its stack, and replies with the log path so the
+        /// page can tell the user where the detail went. Deliberately never throws: this is the
+        /// handler failures are reported *through*, so it must not become a failure itself.
+        /// </summary>
+        private void HandleLogFrontendError(BridgeMessage message)
+        {
+            string Text(string name) =>
+                message.Payload.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
+                    ? el.GetString() ?? "" : "";
+
+            string context = Text("context");
+            string detail  = Text("stack");
+            if (detail.Length == 0) detail = Text("message");
+
+            Logger.Error($"Frontend/{(context.Length == 0 ? "window" : context)}", detail);
+            ReplyToVue(message.MessageId, new { status = "ok", logPath = Logger.LogPath });
+        }
 
         private void HandleGetTimelineData(BridgeMessage message)
         {
@@ -342,6 +365,37 @@ namespace StoryTimelineMk2.Bridge
                 ?? throw new InvalidOperationException("SaveCharacter received an empty payload.");
             new CharacterRepo().SaveCharacter(character);
             ReplyToVue(message.MessageId, new { status = "ok", character });
+        }
+
+        /// <summary>
+        /// BL-15. The character and the items <i>Show on timeline</i> owns for them, in one call so
+        /// the whole thing is one transaction — see <see cref="CharacterRepo.SaveCharacterFull"/>.
+        /// </summary>
+        private void HandleSaveCharacterFull(BridgeMessage message)
+        {
+            var payload = JsonSerializer.Deserialize<SaveCharacterFullPayload>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveCharacterFull received an empty payload.");
+            var character = payload.Character
+                ?? throw new InvalidOperationException("SaveCharacterFull received no character.");
+
+            new CharacterRepo().SaveCharacterFull(character, payload.DroppedItemIds, payload.BirthItem, payload.DeathItem);
+            ReplyToVue(message.MessageId, new { status = "ok", character });
+
+            // Only once it has committed: the same two broadcasts SaveItem and DeleteItem send, so an
+            // open canvas picks up a generated item — or loses one — without a reload.
+            foreach (string droppedId in payload.DroppedItemIds)
+                BridgeHub.Broadcast("ItemDeleted", new { ItemId = droppedId });
+            foreach (string? itemId in new[] { character.BirthItemId, character.DeathItemId })
+                if (!string.IsNullOrEmpty(itemId)) BroadcastItemSaved(itemId);
+        }
+
+        private sealed class SaveCharacterFullPayload
+        {
+            [JsonPropertyName("character")]      public CharacterItem? Character      { get; set; }
+            /// <summary>Items the character owned and no longer does — unticking the box, or clearing a date.</summary>
+            [JsonPropertyName("droppedItemIds")] public List<string>   DroppedItemIds { get; set; } = new();
+            [JsonPropertyName("birthItem")]      public TimelineItem?  BirthItem      { get; set; }
+            [JsonPropertyName("deathItem")]      public TimelineItem?  DeathItem      { get; set; }
         }
 
         private void HandleDeleteCharacter(BridgeMessage message)

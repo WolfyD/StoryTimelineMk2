@@ -63,7 +63,7 @@ export { expect }
 
 // ─────────────────────────── helpers ────────────────────────────────────────
 
-type PageRole = 'main' | 'timeline' | 'editItem' | 'calendar'
+type PageRole = 'main' | 'timeline' | 'editItem' | 'calendar' | 'characters' | 'relations'
 
 function matchesRole(p: Page, role: PageRole): boolean {
   const u = p.url()
@@ -76,6 +76,8 @@ function matchesRole(p: Page, role: PageRole): boolean {
     case 'timeline': return u.includes('timeline.html')
     case 'editItem': return u.includes('editItem.html')
     case 'calendar': return u.includes('calendar.html')
+    case 'characters': return u.includes('characters.html')
+    case 'relations': return u.includes('relations.html')
   }
 }
 
@@ -136,6 +138,120 @@ export async function openTimelinePage(
   const tl = await waitForNewPage(ctx, 'timeline', 10_000, pageErrors)
   await tl.waitForSelector('#timeline-workspace', { timeout: 10_000 })
   return tl
+}
+
+/** Close a window the WinForms way — window.close() is a no-op in WebView2. */
+export async function closeWindow(page: Page): Promise<void> {
+  try {
+    await page.evaluate(() => {
+      window.chrome!.webview!.postMessage({ action: 'WindowClose', payload: null })
+    })
+    await page.waitForEvent('close', { timeout: 3000 }).catch(() => {})
+  } catch {
+    // already closing or detached
+  }
+}
+
+/**
+ * Open the Characters window from the timeline's activity strip and wait for its cast to load.
+ *
+ * It waits on the list rather than on a new page: the window is pre-warmed, so in a build with a
+ * `dist` folder beside the exe the page is already navigated and sitting on `SetCharactersContext`
+ * before anyone clicks. Either way it is only usable once `.ch-list` is up.
+ */
+export async function openCharactersPage(tl: Page, ctx: BrowserContext): Promise<Page> {
+  await tl.locator('.strip-btn--nav-chars').click()
+  const page = await waitForNewPage(ctx, 'characters', 15_000)
+  await page.bringToFront()
+  await expect(page.locator('.ch-list')).toBeVisible({ timeout: 15_000 })
+  return page
+}
+
+/** The same for the Relations window — ready when its sidebar has its view buttons. */
+export async function openRelationsPage(tl: Page, ctx: BrowserContext): Promise<Page> {
+  await tl.locator('.strip-btn--nav-relations').click()
+  const page = await waitForNewPage(ctx, 'relations', 15_000)
+  await page.bringToFront()
+  await expect(page.locator('.rel-modes button').first()).toBeVisible({ timeout: 15_000 })
+  return page
+}
+
+/**
+ * Open the item editor from the timeline window — a new item of `typeId`, or `itemId` reopened.
+ *
+ * The host keeps one editor window and hides it rather than destroying it, so the page is often
+ * already there from an earlier test. Waiting on the title field is what proves *this* open landed:
+ * a new item comes up blank, a reopened one comes up with its own title.
+ */
+export async function openEditItemPage(
+  tl: Page,
+  ctx: BrowserContext,
+  opts: { typeId?: number; itemId?: string | null; expectTitle?: string } = {},
+  pageErrors?: string[],
+): Promise<Page> {
+  const { typeId = 1, itemId = null, expectTitle = '' } = opts
+  await tl.evaluate(({ typeId, itemId }) => {
+    type Root = { __vue_app__: { config: { globalProperties: { $pinia: { _s: Map<string, { currentProject: { Id: number } }> } } } } }
+    const store = (document.getElementById('app') as unknown as Root).__vue_app__.config.globalProperties.$pinia._s.get('timeline')!
+    window.chrome!.webview!.postMessage({
+      action: 'OpenAddEditItemWindow',
+      payload: { timelineId: store.currentProject.Id, typeId, itemId },
+    })
+  }, { typeId, itemId })
+
+  const page = await waitForNewPage(ctx, 'editItem', 10_000, pageErrors)
+  await page.bringToFront()
+  await expect(page.locator('.edit-item-root')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('input[placeholder="Item title"]')).toHaveValue(expectTitle, { timeout: 10_000 })
+  return page
+}
+
+/** The id of a loaded item, by the title the store knows it under — null if it is not there. */
+export async function itemIdByTitle(tl: Page, title: string): Promise<string | null> {
+  return tl.evaluate((wanted) => {
+    type Root = { __vue_app__: { config: { globalProperties: { $pinia: { _s: Map<string, { items: { Id: string; Title: string }[] }> } } } } }
+    const store = (document.getElementById('app') as unknown as Root).__vue_app__.config.globalProperties.$pinia._s.get('timeline')!
+    return store.items.find(i => i.Title === wanted)?.Id ?? null
+  }, title)
+}
+
+/**
+ * Make one character through the Characters window and leave them open in the form.
+ * Returns their name, which is what the list and every relation label them by.
+ */
+export async function createCharacter(
+  ch: Page,
+  first: string,
+  last: string,
+  birthYear?: number,
+): Promise<string> {
+  await ch.locator('.ch-list-head .ch-btn--primary').click()
+  const grid = ch.locator('.ch-grid')
+  await expect(grid).toBeVisible({ timeout: 5000 })
+  await grid.locator('input').nth(0).fill(first)
+  await grid.locator('input').nth(1).fill(last)
+
+  if (birthYear !== undefined) {
+    const birth = ch.locator('.ch-date-block').first()
+    await birth.locator('input[type="checkbox"]').check()
+    await birth.locator('.lod-date-input input').first().fill(String(birthYear))
+    await birth.locator('.lod-date-input input').first().blur()
+  }
+
+  await ch.locator('.ch-bar .ch-btn--primary').click()
+  const name = `${first} ${last}`.trim()
+  await expect(ch.locator('.ch-row', { hasText: name })).toBeVisible({ timeout: 8000 })
+  return name
+}
+
+/** Remove a character through the list + the app's own confirm dialog. */
+export async function deleteCharacter(ch: Page, name: string): Promise<void> {
+  const row = ch.locator('.ch-row', { hasText: name })
+  if (!(await row.count())) return
+  await row.first().click()
+  await ch.locator('.ch-bar .ch-btn--danger').click()
+  await ch.locator('[data-primary]').click()
+  await expect(ch.locator('.ch-row', { hasText: name })).toHaveCount(0, { timeout: 8000 })
 }
 
 /**

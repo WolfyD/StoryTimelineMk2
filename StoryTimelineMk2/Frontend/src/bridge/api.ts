@@ -25,6 +25,9 @@ import type {
 	SessionChangePreview,
 	SessionApplyResult,
 } from '@/types/models';
+// Type-only: `installErrorReporting` needs the App shape, and importing Vue for real here would
+// pull the runtime into the transport.
+import type { App } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
 import * as browserHost from './browserHost';
 
@@ -66,13 +69,57 @@ function bridgeError(message: string, payload?: BridgeErrorPayload): BridgeError
 // for 5s; per-action suppression if a real case ever needs two different alerts that fast.
 let lastAlert = { message: '', at: 0 };
 
-/** Tells the user once. The console line is already there, from `sendRequest`. */
-function alertBridgeFailure(message: string) {
+/** Where the backend said it wrote the detail. Filled by the first report that got through. */
+let logPath: string | null = null;
+
+/**
+ * Tells the user once, and tells them the log exists — most people never find out there is one
+ * until someone asks them for it.
+ *
+ * ponytail: window.alert, not ConfirmModal. This is the net that has to work when the page's own
+ * UI is the thing that broke, and a modal needs a mounted component and a store to render. Every
+ * *other* alert in the app should be a modal; these ones stay crude on purpose.
+ */
+function alertFailure(message: string) {
 	if (message === lastAlert.message && Date.now() - lastAlert.at < 5000) return;
 	lastAlert.message = message;
-	window.alert(`Something went wrong:\n\n${message}`);
+	window.alert(
+		`Something went wrong:\n\n${message}\n\n` +
+			(logPath
+				? `The full details were written to the error log:\n${logPath}`
+				: 'The full details could not be written to the error log — Story Timeline is not responding.'),
+	);
 	// Stamped after the alert returns: one that sat open for a minute must not re-fire on close.
 	lastAlert.at = Date.now();
+}
+
+/**
+ * The page's half of the project rule, and a deliberate mirror of what `MessageRouter.Dispatch`
+ * does on the backend: write the full stack to app.log, then tell the user. Every global net
+ * below funnels through here, so there is one place to change how a frontend failure is handled.
+ *
+ * The log round trip is awaited rather than fired off, so the alert can name the file the detail
+ * actually went to — and so the detail is on disk before the user is invited to go looking.
+ */
+async function reportError(context: string, error: unknown): Promise<void> {
+	const err = error instanceof Error ? error : undefined;
+	const message = err?.message ?? String(error ?? 'Unknown error');
+	console.error(`[${context}]`, error);
+
+	try {
+		const res = await sendRequest<{ logPath?: string }>('LogFrontendError', {
+			context,
+			message,
+			stack: err?.stack ?? message,
+		});
+		if (res?.logPath) logPath = res.logPath;
+	} catch {
+		// Swallowed on purpose, and this is the one catch in the file that must stay silent:
+		// letting it reject would land straight back in the net below and report the failure
+		// to report, forever. `alertFailure` says so in its message instead.
+	}
+
+	alertFailure(message);
 }
 
 const pendingRequests = new Map<number, (data: any) => void>();
@@ -116,7 +163,10 @@ function openSocket() {
 		try {
 			handleIncoming(JSON.parse(event.data));
 		} catch (err) {
-			console.error('[Bridge] Unreadable message from the server:', event.data, err);
+			void reportError(
+				'bridge',
+				new Error(`Story Timeline sent a message this page could not read: ${(err as Error).message}`),
+			);
 		}
 	});
 	// ponytail: no reconnect. The server is this page's own process — if it goes, the page
@@ -206,16 +256,32 @@ function sendRequest<T>(action: string, payload: unknown = null, direct = false)
 
 // BL-18 (FC-C1): a caller that catches its own bridge error handles it however it likes. One
 // that does not used to leave the failure in the console, which is not "shown to the user" —
-// so the last uncaught one lands here. Every bridge failure qualifies, not just the ones the
-// backend was healthy enough to describe: this used to test `err.payload`, which meant a
-// timeout or a dropped connection said nothing at all. The browser host still shows its own
-// alert for the ones it raises, and those never reach here.
+// so the last uncaught one lands here. This used to report only failures stamped `bridge`,
+// which meant a rejected promise from anywhere else in the page was silent; now every uncaught
+// rejection is logged and shown, bridge or not. The browser host raises its own alert for the
+// ones it makes, and the 5s dedupe below collapses the pair when one reaches both.
 window.addEventListener('unhandledrejection', (event) => {
 	const err = event.reason as BridgeError | undefined;
-	if (!err?.bridge) return;
 	event.preventDefault();
-	alertBridgeFailure(err.message);
+	void reportError(err?.bridge ? 'bridge' : 'unhandledrejection', event.reason);
 });
+
+/**
+ * Registers the page's global error nets, the frontend counterpart to the try/catch wrapped
+ * around every backend action in `MessageRouter.Dispatch`. Each HTML entry point is its own Vue
+ * app with its own handler, so every entry calls this — alongside `installDevHelpers()`.
+ */
+export function installErrorReporting(app: App): void {
+	// Anything a render, a watcher or a lifecycle hook throws. Vue swallows these by default.
+	app.config.errorHandler = (err, _instance, info) => {
+		void reportError(`vue: ${info}`, err);
+	};
+	window.addEventListener('error', (event) => {
+		// Failed <img>/<script> loads fire here too and carry no Error; they are not crashes.
+		if (!event.error) return;
+		void reportError('window', event.error);
+	});
+}
 
 /** Pushes that are not replies: InitReload, ItemSaved, and the host's own notifications. */
 const hostListeners = new Set<(message: BridgeMessage) => void>();
@@ -226,8 +292,10 @@ export const BackendAPI = {
 		if (!post({ action, payload })) {
 			// No messageId means no promise, so there is nothing to reject and the net above
 			// never sees this one. Report it here instead of leaving it in the console.
-			console.error(`[Bridge Offline] Dropped '${action}': no connection to the backend`);
-			alertBridgeFailure(`Cannot do '${action}': no connection to Story Timeline. Reload the page.`);
+			void reportError(
+				'bridge',
+				new Error(`Cannot do '${action}': no connection to Story Timeline. Reload the page.`),
+			);
 		}
 	},
 
@@ -259,7 +327,15 @@ export const BackendAPI = {
 	},
 
 	async ExecuteImportDB(path: string) {
-		return await this.request<{ status: string; message?: string; reported?: boolean }>('ExecuteImportDB', { path });
+		// `skipped` counts what a legacy backup could not bring across; `logPath` is where the
+		// detail went. Both are absent on a v2 backup, which is all-or-nothing.
+		return await this.request<{
+			status: string;
+			message?: string;
+			reported?: boolean;
+			skipped?: number;
+			logPath?: string;
+		}>('ExecuteImportDB', { path });
 	},
 
 	async ExportFullDB(includeMedia: boolean) {
@@ -377,6 +453,25 @@ export const BackendAPI = {
 	async SaveCharacter(character: Partial<CharacterItem>) {
 		// The saved row comes back: a new character's Id is made backend-side, and Name is derived there.
 		return await this.request<{ status: string; character: CharacterItem }>('SaveCharacter', character);
+	},
+
+	/**
+	 * The character and the birth/death items *Show on timeline* generates for them, written as one
+	 * transaction. `droppedItemIds` are the generated items they no longer own. The two items are
+	 * re-titled backend-side, where `Name` is derived.
+	 */
+	async SaveCharacterFull(
+		character: CharacterItem,
+		droppedItemIds: string[],
+		birthItem: TimelineItem | null,
+		deathItem: TimelineItem | null,
+	) {
+		return await this.request<{ status: string; character: CharacterItem }>('SaveCharacterFull', {
+			character,
+			droppedItemIds,
+			birthItem,
+			deathItem,
+		});
 	},
 
 	async DeleteCharacter(id: string) {
@@ -828,7 +923,12 @@ if (webview) {
 		try {
 			handleIncoming(typeof event.data === 'string' ? JSON.parse(event.data) : event.data);
 		} catch (err) {
-			console.error('[Bridge] Unreadable message from the host:', event.data, err);
+			// Whatever this reply belonged to is now waiting out its 30s timeout, so say so
+			// now rather than let the page look merely slow.
+			void reportError(
+				'bridge',
+				new Error(`Story Timeline sent a message this window could not read: ${(err as Error).message}`),
+			);
 		}
 	});
 }

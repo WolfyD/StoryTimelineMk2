@@ -40,6 +40,8 @@
 
 	const showExportDb = ref(false)
 	const exportDbMedia = ref(false)
+	/** Set when an import finished but left something behind; see `executeImport`. */
+	const importNotice = ref<string | null>(null)
 
 	async function HandleImportDatabase() {
 		try {
@@ -55,9 +57,18 @@
 
 	async function executeImport(path: string) {
 		try {
-			await BackendAPI.ExecuteImportDB(path)
+			const res = await BackendAPI.ExecuteImportDB(path)
 			dbMenuOpen.value = false
 			await HandleGetTimelines()
+			// A legacy backup can carry rows this schema will not take. The import worked, so this
+			// is a notice and not an error — but missing items have to be explained, or they read
+			// as a bug in the app instead of the age of the file.
+			if (res?.skipped) {
+				importNotice.value =
+					`${res.skipped} part(s) of that backup could not be imported — it is an older file ` +
+					`than this version of Story Timeline expects. Everything else came across.` +
+					(res.logPath ? `\n\nWhat was skipped is listed in the error log:\n${res.logPath}` : '')
+			}
 		} catch (e) {
 			console.error('[ImportDB]', e)
 			// reported: the backend already showed its own error-report dialog for this failure
@@ -325,6 +336,14 @@ ${msg}`)
 			</span>
 		</label>
 	</ConfirmModal>
+	<ConfirmModal
+		v-if="importNotice"
+		title="Import finished, with gaps"
+		:message="importNotice"
+		hide-cancel
+		@confirm="importNotice = null"
+		@cancel="importNotice = null"
+	/>
 	<div id="db-menu-backdrop" v-if="dbMenuOpen" @click="dbMenuOpen = false"></div>
 	</div>
 </template>

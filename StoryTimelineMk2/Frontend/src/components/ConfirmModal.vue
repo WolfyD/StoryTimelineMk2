@@ -10,10 +10,15 @@ withDefaults(defineProps<{
     cancelLabel?: string
     /** Red confirm button for destructive actions */
     danger?: boolean
+    /** Drops the cancel button, which turns this into the app's notice dialog — there is
+     *  nothing to decline when the thing has already happened. Both events still fire on
+     *  dismiss, so a caller can wire either one. */
+    hideCancel?: boolean
 }>(), {
     confirmLabel: 'OK',
     cancelLabel: 'Cancel',
     danger: false,
+    hideCancel: false,
 })
 
 const emit = defineEmits<{ confirm: []; cancel: [] }>()
@@ -25,7 +30,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
         <!-- For the odd yes/no that needs one extra choice — see the media option on Export Database. -->
         <slot />
         <template #footer>
-            <button class="btn btn-secondary" data-cancel @click="emit('cancel')">{{ cancelLabel }}</button>
+            <button v-if="!hideCancel" class="btn btn-secondary" data-cancel @click="emit('cancel')">{{ cancelLabel }}</button>
             <button class="btn" :class="danger ? 'btn-danger' : 'btn-primary'" data-primary @click="emit('confirm')">{{ confirmLabel }}</button>
         </template>
     </BaseModal>
@@ -34,6 +39,9 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>()
 <style scoped lang="scss">
 .confirm-msg {
     margin: 0;
+    /* Notices wrap a file path onto its own line; every other message is one line anyway. */
+    white-space: pre-line;
+    word-break: break-word;
     padding: 16px 20px;
     font-size: 0.88rem;
     line-height: 1.45;

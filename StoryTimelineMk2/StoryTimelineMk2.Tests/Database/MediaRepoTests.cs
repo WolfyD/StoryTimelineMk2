@@ -164,6 +164,13 @@ public class MediaRepoTests
         return img.Size;
     }
 
+    /// <summary>The size of a file that may not be there — or not finished — yet, null until it is.</summary>
+    private static Size? TryReadSize(string path)
+    {
+        try { return File.Exists(path) ? ReadSize(path) : null; }
+        catch (Exception) { return null; }   // still held open by the writer, or half-flushed
+    }
+
     private static string ThumbFile(string picId) =>
         Path.Combine(AppConfig.Instance.GetMediaFolder(), "thumbs", $"{picId}.png");
 
@@ -234,8 +241,13 @@ public class MediaRepoTests
 
         var pic = Assert.Single(repo.GetItemPictures(itemId));
 
-        Assert.Equal($"thumbs/{picId}.png", pic.ThumbPath);
-        Assert.Equal(new Size(256, 128), ReadSize(ThumbFile(picId)));
+        // The read does not wait for it. The thumb is queued on a background thread and the original
+        // stands in meanwhile, so opening a library from before thumbs existed no longer holds the
+        // bridge's data pump for one decode per row. The next read has the thumb.
+        Assert.Equal($"{picId}.png", pic.ThumbPath);
+        Assert.True(SpinWait.SpinUntil(() => TryReadSize(ThumbFile(picId)) == new Size(256, 128),
+            TimeSpan.FromSeconds(10)), "the thumbnail should be written in the background");
+        Assert.Equal($"thumbs/{picId}.png", Assert.Single(repo.GetItemPictures(itemId)).ThumbPath);
     }
 
     [Fact]

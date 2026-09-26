@@ -41,7 +41,9 @@ test.describe('Reference timeline underlay — real backend', () => {
     await openReferenceModal(tl)
     await expect(tl.locator('.rt-active-title')).toContainText('Underneath: E2E Second Timeline')
     await expect(tl.locator('.rt-warn')).toHaveCount(0)            // same (default) calendar → no warning
-    await tl.locator('.rt-shift input').fill('-100')
+    // Scoped to the active reference block: BL-41 put a second .rt-shift row below it for the
+    // second year numbering, so the bare selector now matches three inputs.
+    await tl.locator('.rt-active .rt-shift input').fill('-100')
     await tl.keyboard.press('Escape')                                       // BL-39: first Esc only leaves the field
     await tl.keyboard.press('Escape')
     await expect(tl.locator('.bm-panel')).toHaveCount(0)

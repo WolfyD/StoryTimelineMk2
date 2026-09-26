@@ -288,6 +288,89 @@ public class CharacterRepoTests
         Assert.True(saved.UseHighlightColor);
     }
 
+    // ── SaveCharacterFull (the character window's save) ───────────────────────
+
+    /// <summary>A generated birth/death item as the character window builds one.</summary>
+    private static TimelineItem MakeGeneratedItem(string id, int timelineId) => new()
+    {
+        Id = id, Title = "written by the repo", Description = "", Content = "",
+        TypeId = 7, Year = 1000, EndYear = 1000, AbsoluteStart = 1000, AbsoluteEnd = 1000,
+        BookTitle = "", Chapter = "", Page = "", Color = "#6366f1", CreationGranularity = 3,
+        TimelineId = timelineId, Importance = 5, MinLodLevel = 3, LodVisibilityMask = 255,
+        ShowTitle = true, ShowInNotes = true, ItemNotes = "",
+    };
+
+    private static int CountItems(DbTestContext ctx, string itemId)
+    {
+        using var db = ctx.OpenConnection();
+        return db.QuerySingle<int>("SELECT COUNT(*) FROM items WHERE id = @Id", new { Id = itemId });
+    }
+
+    [Fact]
+    public void SaveCharacterFull_WritesTheGeneratedItems_AndDropsTheOnesTheCharacterNoLongerOwns()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new CharacterRepo();
+
+        // A character who already owns a birth item from an earlier save.
+        var character = MakeCharacter(tlId);
+        character.FirstName = "Risha";
+        character.LastName  = "Vale";
+        character.ShowOnTimeline = true;
+        string oldBirth = Guid.NewGuid().ToString();
+        character.BirthItemId = oldBirth;
+        repo.SaveCharacterFull(character, new List<string>(), MakeGeneratedItem(oldBirth, tlId), null);
+        Assert.Equal(1, CountItems(ctx, oldBirth));
+
+        // Now the birth date is cleared and a death date given: one item is dropped, one is new.
+        string newDeath = Guid.NewGuid().ToString();
+        character.BirthItemId = null;
+        character.DeathItemId = newDeath;
+        repo.SaveCharacterFull(character, new List<string> { oldBirth }, null, MakeGeneratedItem(newDeath, tlId));
+
+        var saved = repo.GetCharacter(character.Id)!;
+        Assert.Null(saved.BirthItemId);
+        Assert.Equal(newDeath, saved.DeathItemId);
+        Assert.Equal(0, CountItems(ctx, oldBirth));
+        Assert.Equal(1, CountItems(ctx, newDeath));
+
+        using var db = ctx.OpenConnection();
+        // Titled from the derived name, which the page cannot know for a character it just renamed.
+        Assert.Equal("Death of Risha Vale",
+            db.QuerySingle<string>("SELECT title FROM items WHERE id = @Id", new { Id = newDeath }));
+        // And linked the way the item editor would have linked it.
+        Assert.Equal("death", db.QuerySingle<string>(
+            "SELECT role FROM item_character_appearances WHERE item_id = @I AND character_id = @C",
+            new { I = newDeath, C = character.Id }));
+    }
+
+    /// <summary>
+    /// The whole point of the single call: the character row and its items land together or not at
+    /// all. Five separate saves used to leave a character pointing at items nothing had written.
+    /// </summary>
+    [Fact]
+    public void SaveCharacterFull_RollsBackTheCharacter_WhenAGeneratedItemCannotBeWritten()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new CharacterRepo();
+
+        var character = MakeCharacter(tlId, "Doomed");
+        character.ShowOnTimeline = true;
+        character.BirthItemId = Guid.NewGuid().ToString();
+        character.DeathItemId = Guid.NewGuid().ToString();
+
+        var death = MakeGeneratedItem(character.DeathItemId, tlId);
+        death.TimelineId = 999_999;   // no such timeline: the FK fails after the birth item is in
+
+        Assert.ThrowsAny<Exception>(() => repo.SaveCharacterFull(
+            character, new List<string>(), MakeGeneratedItem(character.BirthItemId, tlId), death));
+
+        Assert.Null(repo.GetCharacter(character.Id));
+        Assert.Equal(0, CountItems(ctx, character.BirthItemId));
+    }
+
     // ── portrait ──────────────────────────────────────────────────────────────
 
     [Fact]

@@ -210,22 +210,6 @@ function toggleDate(kind: 'Birth' | 'Death', on: boolean) {
     if (c.BirthYear === null && c.DeathYear === null) c.ShowOnTimeline = false
 }
 
-// ── Generated items ───────────────────────────────────────────────────────────
-async function writeItems(c: CharacterItem, dropped: string[]) {
-    for (const id of dropped) await BackendAPI.DeleteItem(id)
-    for (const kind of ['Birth', 'Death'] as const) {
-        const itemId = kind === 'Birth' ? c.BirthItemId : c.DeathItemId
-        if (!itemId) continue
-        await BackendAPI.SaveItem(
-            buildGeneratedItem(kind, c, itemId),
-            [kind.toLowerCase()],
-            [{ CharacterId: c.Id, Role: kind.toLowerCase() }],
-            [], [],
-        )
-    }
-    await linkPortraitToItems(c)
-}
-
 /**
  * The character's face belongs on the items they own. Linking is idempotent, and a portrait that
  * is replaced is deleted outright, so the old link cascades away with the picture row.
@@ -245,16 +229,25 @@ async function save() {
     error.value = ''
     saving.value = true
     try {
+        // Planned on a copy, and sent in one call. planGeneratedItems rewrites the two item ids, so
+        // doing it to the draft meant a save that failed left the draft holding ids nothing had
+        // written — and the retry then no longer knew which old items it still had to delete. The
+        // draft only changes once the whole write has committed, which the backend does as one
+        // transaction rather than the five calls this used to make.
+        const payload = clone(c)!
         // The date inputs work in steps; the row stores where that put them.
-        c.AbsoluteStart = placeDate(c.BirthYear, subticks.value.Birth, c.BirthGranularity, held.value.Birth, lodProfile.value, calendarConfig.value)
-        c.AbsoluteEnd   = placeDate(c.DeathYear, subticks.value.Death, c.DeathGranularity, held.value.Death, lodProfile.value, calendarConfig.value)
-        const dropped = planGeneratedItems(c)
-        const result = await BackendAPI.SaveCharacter(c)
+        payload.AbsoluteStart = placeDate(c.BirthYear, subticks.value.Birth, c.BirthGranularity, held.value.Birth, lodProfile.value, calendarConfig.value)
+        payload.AbsoluteEnd   = placeDate(c.DeathYear, subticks.value.Death, c.DeathGranularity, held.value.Death, lodProfile.value, calendarConfig.value)
+        const dropped = planGeneratedItems(payload)
+        const result = await BackendAPI.SaveCharacterFull(
+            payload, dropped,
+            payload.BirthItemId ? buildGeneratedItem('Birth', payload, payload.BirthItemId) : null,
+            payload.DeathItemId ? buildGeneratedItem('Death', payload, payload.DeathItemId) : null,
+        )
         if (result?.status !== 'ok') throw new Error('The character was not saved.')
-        // The backend derives Name from the two halves, so take its copy back before the items
-        // are titled from it.
+        // The backend derives Name from the two halves and titles the items from it, so its copy
+        // is the one that matches what was written.
         Object.assign(c, result.character)
-        await writeItems(c, dropped)
         await loadCharacters(c.Id)
         await loadAppearances()
     } catch (ex) {

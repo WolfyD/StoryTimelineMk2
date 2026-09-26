@@ -905,13 +905,22 @@ public class DbStressTests
         foreach (var d in dummies)
             File.Copy(backup2, d, overwrite: true); // valid SQLite content
 
-        // Set timestamps: backup1 oldest, dummies fill days 1-18, backup2/3 newest
+        // Set stamps: backup1 oldest, dummies fill days 1-18, backup2/3 newest. Through the name,
+        // because that is where PruneOldBackups reads them from — copying or restoring the backups
+        // folder resets every creation time to "now", and the name is the only record that survives.
         var epoch = DateTime.Now.AddDays(-25);
-        File.SetCreationTime(backup1, epoch);
+        backup1 = StampName(backup1, epoch);
         for (int i = 0; i < dummies.Count; i++)
-            File.SetCreationTime(dummies[i], epoch.AddDays(i + 1));
-        File.SetCreationTime(backup2, epoch.AddDays(19));
-        File.SetCreationTime(backup3, epoch.AddDays(20));
+            dummies[i] = StampName(dummies[i], epoch.AddDays(i + 1));
+        backup2 = StampName(backup2, epoch.AddDays(19));
+        backup3 = StampName(backup3, epoch.AddDays(20));
+
+        static string StampName(string path, DateTime when)
+        {
+            string renamed = Path.Combine(Path.GetDirectoryName(path)!, $"timeline_{when:yyyyMMdd_HHmmss}.sqlite");
+            File.Move(path, renamed, overwrite: true);
+            return renamed;
+        }
 
         // ── Verify pre-prune state ───────────────────────────────────────────
         var allFiles = Directory.GetFiles(folder, "*.sqlite");

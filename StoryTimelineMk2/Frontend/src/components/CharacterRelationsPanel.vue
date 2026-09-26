@@ -57,12 +57,16 @@ function label(r: CharacterRelationship): string {
 
 // ── Loading ───────────────────────────────────────────────────────────────────
 
-watch(() => props.character.Id, load, { immediate: true })
-
-async function load() {
+// Switching character is what shuts the dialogs — a save inside one only refreshes the list,
+// otherwise adding a relation slammed the modal shut and a second one meant reopening it.
+watch(() => props.character.Id, () => {
     modalOpen.value = false
     familyOpen.value = false
     relations.value = []
+    load()
+}, { immediate: true })
+
+async function load() {
     try {
         const res = await BackendAPI.GetCharacterRelations(props.character.Id)
         relations.value = res?.Relations ?? []

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -170,6 +171,34 @@ namespace StoryTimelineMk2.Database
             }
         }
 
+        /// <summary>
+        /// When a backup was made, taken from its own name rather than from the filesystem.
+        /// Copying or restoring the backups folder sets every creation time to "now", and the
+        /// prune below would then keep the twenty most recently *copied* files — which can be the
+        /// twenty oldest backups. The name is the only record that survives being moved around.
+        ///
+        /// Two shapes are written: "timeline_20260926_143005" and the migration backups'
+        /// "... - 2026-09-26 14-30-05". Anything else falls back to the file's own time.
+        /// </summary>
+        internal static DateTime StampOf(string path)
+        {
+            string name = Path.GetFileNameWithoutExtension(path);
+
+            const string autoPrefix = "timeline_";
+            if (name.StartsWith(autoPrefix, StringComparison.OrdinalIgnoreCase)
+                && DateTime.TryParseExact(name[autoPrefix.Length..], "yyyyMMdd_HHmmss",
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out var auto))
+                return auto;
+
+            const int stampLength = 19;   // yyyy-MM-dd HH-mm-ss
+            if (name.Length >= stampLength
+                && DateTime.TryParseExact(name[^stampLength..], "yyyy-MM-dd HH-mm-ss",
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out var migration))
+                return migration;
+
+            return File.GetCreationTime(path);
+        }
+
         public static void PruneOldBackups()
         {
             string folder = AppConfig.Instance.GetBackupsFolder();
@@ -179,7 +208,7 @@ namespace StoryTimelineMk2.Database
                 .Where(f => f.EndsWith(".sqlite", StringComparison.OrdinalIgnoreCase)
                          || f.EndsWith(".stlm",   StringComparison.OrdinalIgnoreCase))
                 .Where(f => !Path.GetFileName(f).StartsWith(PreMigrationPrefix, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(File.GetCreationTime)
+                .OrderByDescending(StampOf)
                 .Skip(KeepCount);
 
             foreach (var f in toDelete)
@@ -198,7 +227,7 @@ namespace StoryTimelineMk2.Database
                 {
                     FileName  = Path.GetFileName(f),
                     FullPath  = f,
-                    CreatedAt = File.GetCreationTime(f),
+                    CreatedAt = StampOf(f),
                     SizeBytes = new FileInfo(f).Length,
                     HasMedia  = f.EndsWith(".stlm", StringComparison.OrdinalIgnoreCase),
                 })

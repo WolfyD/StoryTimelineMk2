@@ -155,8 +155,10 @@ namespace StoryTimelineMk2.Bridge
                 if (_parentForm is { IsDisposed: false, IsHandleCreated: true })
                 {
                     _parentForm.BeginInvoke((MethodInvoker)(() =>
-                        MessageBox.Show($"Action '{message.Action}' failed:\n\n{ex}", "Backend error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                        MessageBox.Show(
+                            $"Action '{message.Action}' failed:\n\n{ex.Message}\n\n" +
+                            $"The full details were written to the error log:\n{Logger.LogPath}",
+                            "Backend error", MessageBoxButtons.OK, MessageBoxIcon.Error)));
                 }
             }
         }

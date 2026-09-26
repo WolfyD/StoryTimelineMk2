@@ -68,12 +68,19 @@ namespace StoryTimelineMk2.Bridge
                 payload.StoryRefs, payload.ChapterRefs);
 
             ReplyToVue(message.MessageId, new { status = "ok", itemId = savedId });
+            BroadcastItemSaved(savedId);
+        }
 
-            // Push the saved item to every open page so canvases update without a full reload.
-            // The edit screen is a separate window (WinForms) or tab (browser), so a broadcast
-            // is the only route that reaches the timeline in both hosts.
-            var savedItem = itemRepo.GetItemById(savedId);
-            var links = itemRepo.GetItemLinksById(savedId);
+        /// <summary>
+        /// Pushes a saved item to every open page so canvases update without a full reload. The edit
+        /// screen is a separate window (WinForms) or tab (browser), so a broadcast is the only route
+        /// that reaches the timeline in both hosts. Called after the write has committed.
+        /// </summary>
+        internal static void BroadcastItemSaved(string itemId)
+        {
+            var itemRepo = new ItemRepo();
+            var savedItem = itemRepo.GetItemById(itemId);
+            var links = itemRepo.GetItemLinksById(itemId);
             BridgeHub.Broadcast("ItemSaved", new
             {
                 Item = savedItem,
@@ -241,8 +248,11 @@ namespace StoryTimelineMk2.Bridge
         {
             try
             {
-                DatabaseImporter.Import(RequiredPath(message));
-                ReplyToVue(message.MessageId, new { status = "ok" });
+                // A legacy backup can lose rows the current schema will not accept. The import
+                // still succeeded, so this is not an error — but the user has to be told, or the
+                // missing items look like a bug in the app rather than the age of the file.
+                int skipped = DatabaseImporter.Import(RequiredPath(message));
+                ReplyToVue(message.MessageId, new { status = "ok", skipped, logPath = Logger.LogPath });
             }
             catch (MigrationException ex)
             {

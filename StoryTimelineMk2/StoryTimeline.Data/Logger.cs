@@ -14,6 +14,10 @@ namespace StoryTimelineMk2
         private static readonly object _lock = new object();
         private static string _logPath = null!;
 
+        /// <summary>Roll the log once it passes this. A run that repeats a failure every frame can
+        /// write a lot in a short time, and an unbounded log is a support problem of its own.</summary>
+        private const long MaxBytes = 5 * 1024 * 1024;
+
         /// <summary>Full path of app.log — shown in error reports so users can find and send it.</summary>
         public static string LogPath
         {
@@ -49,6 +53,7 @@ namespace StoryTimelineMk2
             {
                 lock (_lock)
                 {
+                    Roll();
                     File.AppendAllText(LogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {line}{Environment.NewLine}");
                 }
             }
@@ -57,6 +62,20 @@ namespace StoryTimelineMk2
                 // Logging must never crash the app; nothing sane to do if the
                 // log file itself is unwritable.
             }
+        }
+
+        /// <summary>
+        /// Moves app.log aside to app.1.log once it passes <see cref="MaxBytes"/>.
+        /// ponytail: one previous generation, not a numbered series — enough to still hold the
+        /// session before the one being reported. Widen to app.N.log if a report ever needs more.
+        /// Caller holds <see cref="_lock"/>; any failure here is swallowed by WriteLine's catch,
+        /// which is the right outcome — a log that cannot roll should still try to append.
+        /// </summary>
+        private static void Roll()
+        {
+            var info = new FileInfo(LogPath);
+            if (!info.Exists || info.Length < MaxBytes) return;
+            File.Move(LogPath, Path.ChangeExtension(LogPath, ".1.log"), overwrite: true);
         }
     }
 }

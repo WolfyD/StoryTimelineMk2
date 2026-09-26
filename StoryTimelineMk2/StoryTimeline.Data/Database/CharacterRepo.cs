@@ -42,6 +42,16 @@ namespace StoryTimelineMk2.Database
 
         public void SaveCharacter(CharacterItem character)
         {
+            using var db = new SqliteConnection(_connString);
+            SaveCharacter(db, null, character);
+        }
+
+        /// <summary>
+        /// The same save, on a connection and transaction the caller owns and commits — see
+        /// <see cref="SaveCharacterFull"/>. A null transaction is the standalone save above.
+        /// </summary>
+        internal void SaveCharacter(SqliteConnection db, SqliteTransaction? tx, CharacterItem character)
+        {
             // BL-15: `name` is derived, and kept in step here rather than at every call site. The
             // character window sends the two halves; the v1 importer and the older callers still send
             // only a full name, so those get it split instead.
@@ -51,7 +61,6 @@ namespace StoryTimelineMk2.Database
             else
                 (character.FirstName, character.LastName) = CharacterItem.SplitName(character.Name);
 
-            using var db = new SqliteConnection(_connString);
             string sql = @"
                 INSERT INTO characters (
                     id, name, first_name, last_name, nicknames, aliases, race, faction, description, notes,
@@ -90,7 +99,70 @@ namespace StoryTimelineMk2.Database
                 -- portrait_picture_id is left alone: it is written by SetPortrait, which also has to
                 -- clean up the file the old one pointed at.";
 
-            db.Execute(sql, character);
+            db.Execute(sql, character, tx);
+        }
+
+        /// <summary>
+        /// BL-15: the character and everything <i>Show on timeline</i> generates for them — the birth
+        /// and death items, their tag and appearance links, the portrait links, and the items a
+        /// character has stopped owning — written as one transaction.
+        ///
+        /// The character window used to do this as five or more separate calls, each opening its own
+        /// connection: save the character with the two new item ids, then delete the dropped items,
+        /// then write the generated ones, then link the portrait. Anything failing part way left a
+        /// character row pointing at items that were never written, or items nobody claimed any more.
+        /// A SQLite transaction only covers the connection it was opened on, so the one connection
+        /// has to be handed down — the same reason <see cref="SessionChanges.Apply"/> does it.
+        ///
+        /// The two items are titled here rather than by the caller: <c>Name</c> is derived above, and
+        /// the page cannot know a new or renamed character's full name until it comes back.
+        /// </summary>
+        public void SaveCharacterFull(CharacterItem character, List<string> droppedItemIds,
+            TimelineItem? birthItem, TimelineItem? deathItem)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            using var tx = db.BeginTransaction();
+            try
+            {
+                SaveCharacter(db, tx, character);
+
+                var items = new ItemRepo();
+                foreach (string id in droppedItemIds)
+                    items.DeleteItem(db, tx, id);
+
+                foreach (var (item, kind, itemId) in new[]
+                {
+                    (birthItem, "birth", character.BirthItemId),
+                    (deathItem, "death", character.DeathItemId),
+                })
+                {
+                    if (item == null || string.IsNullOrEmpty(itemId)) continue;
+
+                    item.Id    = itemId;   // the character's column is what owns the id, not the payload
+                    item.Title = $"{char.ToUpperInvariant(kind[0])}{kind[1..]} of {character.Name}";
+
+                    items.SaveItemFull(db, tx, item,
+                        new List<string> { kind },
+                        new List<ItemRepo.CharacterAppearanceInput>
+                        {
+                            new() { CharacterId = character.Id, Role = kind },
+                        },
+                        new List<string>(), new List<string>());
+
+                    // The character's face belongs on the items they own. Idempotent, and a replaced
+                    // portrait is deleted outright, so the old link cascades away with the picture row.
+                    if (!string.IsNullOrEmpty(character.PortraitPictureId))
+                        MediaRepo.LinkPictureToItem(db, tx, character.PortraitPictureId, itemId);
+                }
+
+                tx.Commit();
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
         }
 
         // --- C# BFS Graph Traversal ---

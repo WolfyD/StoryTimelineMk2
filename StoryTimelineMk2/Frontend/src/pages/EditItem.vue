@@ -402,8 +402,11 @@ function discard() {
   showDiscard.value = false
   const p = pendingLoad.value
   pendingLoad.value = null
-  if (p) applyLoad(p)
-  else BackendAPI.WindowClose()
+  if (p) { applyLoad(p); return }
+  // The window only hides, so the abandoned edits are still sitting in the form: mark them gone,
+  // or the next item opened here asks to discard changes that were already discarded.
+  cleanSnapshot = snapshot()
+  BackendAPI.WindowClose()
 }
 
 function keepEditing() {

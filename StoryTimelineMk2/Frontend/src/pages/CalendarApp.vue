@@ -9,9 +9,13 @@ import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import type { LodLevel } from '@/types/models'
 import MemorableDaysModal, { type MemorableDay } from '@/components/MemorableDaysModal.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import { defaultRelativeRule, type RelativeRule } from '@/utils/relativeRule'
 
 useAppTheme()
+
+/** Set when the stored year definition would not parse; see `parseYearDefinition`. */
+const loadError = ref<string | null>(null)
 
 // F1 / F2 (BL-39)
 const showHelp      = ref(false)
@@ -440,7 +444,14 @@ function parseYearDefinition(json: string) {
             })) as MemorableDay[]
         }
     } catch (e) {
+        // This one has to speak. A year definition that will not parse leaves the form showing
+        // defaults that look like a real calendar — and saving from there writes those defaults
+        // over the calendar the user actually had.
         console.error('Failed to parse YearDefinition', e)
+        loadError.value =
+            'This calendar\'s year definition could not be read, so the fields below are showing ' +
+            'defaults rather than your settings.\n\nSaving now would overwrite the calendar with ' +
+            'those defaults. Close this window without saving unless you mean to rebuild it.'
     } finally {
         nextTick(() => { isScalingMonths = false })
     }
@@ -1032,6 +1043,15 @@ function toggleWeekend(d: number) {
   <div v-else class="loading-screen">Loading…</div>
   <HelpModal v-if="showHelp" @close="showHelp = false" />
   <ShortcutsModal v-if="showShortcuts" context="calendar" @close="showShortcuts = false" />
+  <ConfirmModal
+    v-if="loadError"
+    title="This calendar could not be read"
+    :message="loadError"
+    confirm-label="I understand"
+    hide-cancel
+    @confirm="loadError = null"
+    @cancel="loadError = null"
+  />
 </template>
 
 <style scoped lang="scss">
