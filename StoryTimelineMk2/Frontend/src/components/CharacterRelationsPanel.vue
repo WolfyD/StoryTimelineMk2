@@ -9,7 +9,7 @@ import { BackendAPI } from '@/bridge/api'
 import CharacterRelateModal from '@/components/CharacterRelateModal.vue'
 import CharacterFamilyModal from '@/components/CharacterFamilyModal.vue'
 import { relationLabel, relationOtherId, relationWhen, sameFamily } from '@/utils/characterRelations'
-import { PhPlus, PhPencilSimple, PhUsersThree } from '@phosphor-icons/vue'
+import { PhPencilSimple, PhUsersThree } from '@phosphor-icons/vue'
 import type { CalendarFormatConfig } from '@/utils/timelineLayout'
 import type {
     CharacterItem, CharacterRelationship, LodLevel, RelationshipType,
@@ -78,15 +78,16 @@ function open(r: CharacterRelationship | null) {
     editing.value = r
     modalOpen.value = true
 }
+
+// Relate now lives in the window's bottom bar, which is outside this panel — but the modal it opens
+// belongs here, next to the list it changes.
+defineExpose({ open })
 </script>
 
 <template>
     <div class="rl">
         <h3>
             Relations <span>{{ relations.length }}</span>
-            <button class="ch-btn" :disabled="!others.length" @click="open(null)">
-                <PhPlus :size="14" /> Relate
-            </button>
         </h3>
 
         <p v-if="!others.length" class="rl-empty">
@@ -194,23 +195,6 @@ function open(r: CharacterRelationship | null) {
 
         &:hover { background: var(--app-surface, #0c1524); }
     }
-}
-
-.ch-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 8px;
-    border-radius: var(--app-radius-sm, 4px);
-    border: 1px solid var(--app-border, #2d3a56);
-    background: transparent;
-    color: var(--app-text-muted, #94a3b8);
-    font-size: 0.72rem;
-    cursor: pointer;
-    transition: color 0.14s, border-color 0.14s;
-
-    &:hover:not(:disabled) { color: var(--app-text, #e2e8f0); border-color: var(--app-accent, #6366f1); }
-    &:disabled { opacity: 0.5; cursor: default; }
 }
 
 .rl-dot {

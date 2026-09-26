@@ -7,6 +7,7 @@
 import { ref, computed } from 'vue'
 import { BackendAPI } from '@/bridge/api'
 import BaseModal from '@/components/BaseModal.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import LodDateInput from '@/components/LodDateInput.vue'
 import { mediaUrl } from '@/utils/mediaUrl'
 import { effectiveState, initials, lifespan } from '@/utils/characterItems'
@@ -221,10 +222,22 @@ async function saveType() {
     }
 }
 
-async function removeType(t: RelationshipType) {
+/** The kind waiting on the confirm dialog — the app's own, since we have one. */
+const typeToRemove = ref<RelationshipType | null>(null)
+
+const removeTypeWarning = computed(() => {
+    const t = typeToRemove.value
+    if (!t) return ''
     const used = props.relations.filter(r => r.RelationshipType === t.Id).length
-    const warn = used ? ` ${used} of this character's relations use it and will show “${t.Id}”.` : ''
-    if (!window.confirm(`Delete the “${t.Name}” kind?${warn}`)) return
+    return used
+        ? `${used} of this character's relations use it and will show “${t.Id}”.`
+        : 'Nothing in this character’s relations uses it.'
+})
+
+async function removeType() {
+    const t = typeToRemove.value
+    typeToRemove.value = null
+    if (!t) return
     busy.value = true
     try {
         await BackendAPI.DeleteRelationshipType(t.Id)
@@ -285,7 +298,7 @@ async function removeType(t: RelationshipType) {
                         <button class="rm-icon" title="Edit" @click="typeDraft = { ...t }">
                             <PhPencilSimple :size="13" />
                         </button>
-                        <button class="rm-icon rm-icon--danger" title="Delete" :disabled="busy" @click="removeType(t)">
+                        <button class="rm-icon rm-icon--danger" title="Delete" :disabled="busy" @click="typeToRemove = t">
                             <PhTrash :size="13" />
                         </button>
                     </li>
@@ -435,6 +448,14 @@ async function removeType(t: RelationshipType) {
             </button>
         </template>
     </BaseModal>
+
+    <ConfirmModal
+        v-if="typeToRemove"
+        :title="`Delete the “${typeToRemove.Name}” kind?`"
+        :message="removeTypeWarning"
+        confirm-label="Delete" cancel-label="Keep" danger
+        @confirm="removeType" @cancel="typeToRemove = null"
+    />
 </template>
 
 <style scoped lang="scss">

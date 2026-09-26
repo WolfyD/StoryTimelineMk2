@@ -414,4 +414,58 @@ describe('TimelineSettingsModal', () => {
     expect(wrapper.emitted('close')).toBeTruthy()
     wrapper.unmount()
   })
+
+  // ── BL-86: the draft is only written on Save, so no close path may drop it silently ──
+
+  const closers: [string, (w: any) => unknown][] = [
+    ['Cancel', w => w.find('.btn-cancel').trigger('click')],
+    ['the X',  w => w.find('.bm-close').trigger('click')],
+    ['Escape', () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))],
+  ]
+
+  it.each(closers)('%s on an edited panel asks before throwing the changes away', async (_label, close) => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.findAll('input[type="number"]')[0]!.setValue(99)
+    await close(wrapper)
+    await flushPromises()
+
+    expect(wrapper.emitted('close')).toBeFalsy()
+    expect(wrapper.text()).toContain('Discard changes?')
+
+    await wrapper.findAll('button').find(b => b.text() === 'Discard')!.trigger('click')
+    expect(wrapper.emitted('close')).toBeTruthy()
+    wrapper.unmount()
+  })
+
+  it('Keep editing leaves the draft alone', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    const field = wrapper.findAll('input[type="number"]')[0]!
+    await field.setValue(99)
+    await wrapper.find('.btn-cancel').trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Keep editing')!.trigger('click')
+
+    expect(wrapper.emitted('close')).toBeFalsy()
+    expect(wrapper.text()).not.toContain('Discard changes?')
+    expect((field.element as HTMLInputElement).value).toBe('99')
+    wrapper.unmount()
+  })
+
+  // A swatch edit is as much a draft as a number field, and the swatches load after mount — had the
+  // snapshot been taken any earlier, the three tests above would ask on a panel nobody touched.
+  it('counts a swatch edit as unsaved', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.find('.swatch-preview').trigger('click')
+    await wrapper.findAll('.swatch-grid input[type="color"]')[0]!.setValue('#abcdef')
+    await wrapper.findAll('.bm-footer .btn-primary').find(b => b.text() === 'Apply')!.trigger('click')
+
+    await wrapper.find('.btn-cancel').trigger('click')
+    expect(wrapper.text()).toContain('Discard changes?')
+    wrapper.unmount()
+  })
 })

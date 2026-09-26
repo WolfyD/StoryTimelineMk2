@@ -378,6 +378,10 @@ function snapshot() {
 
 const isDirty = () => snapshot() !== cleanSnapshot
 
+// BL-87: the host reuses this one window for whatever item is opened next, so a second open takes
+// the editor over. Set, it means the confirmation below is about that takeover and not about closing.
+const pendingLoad = ref<Record<string, unknown> | null>(null)
+
 // Cancel, the window's X and Escape all land here; C# only closes once we send WindowClose.
 function requestClose() {
   if (isDirty()) showDiscard.value = true
@@ -387,8 +391,22 @@ function requestClose() {
 // The form is hidden, not destroyed, so leave no stale modal behind for the next LoadItem.
 function discard() {
   showDiscard.value = false
-  BackendAPI.WindowClose()
+  const p = pendingLoad.value
+  pendingLoad.value = null
+  if (p) applyLoad(p)
+  else BackendAPI.WindowClose()
 }
+
+function keepEditing() {
+  showDiscard.value = false
+  pendingLoad.value = null
+}
+
+const discardTitle   = computed(() => pendingLoad.value ? 'Open the other item?' : 'Discard changes?')
+const discardMessage = computed(() => pendingLoad.value
+  ? 'The editor shows one item at a time, and this one has unsaved changes.'
+  : 'This item has unsaved changes.')
+const discardConfirm = computed(() => pendingLoad.value ? 'Discard and open' : 'Discard')
 
 // In a browser the tab's own close, Cmd/Ctrl+W and Back never reach requestClose(), so an
 // unsaved item went with them silently. The desktop host routes its X through requestClose
@@ -446,8 +464,14 @@ function handlePushMessage(event: MessageEvent) {
   try { data = JSON.parse(event.data) } catch { return }
   if (data.action === 'CloseRequested') { requestClose(); return }
   if (data.action !== 'LoadItem') return
-  showDiscard.value = false
   const p = data.payload ?? {}
+  // Taking the window over drops whatever is half-typed here — the same question the X asks.
+  if (isDirty()) { pendingLoad.value = p; showDiscard.value = true; return }
+  showDiscard.value = false
+  applyLoad(p)
+}
+
+function applyLoad(p: Record<string, any>) {
   loadData(
     p.timelineId ?? timelineId,
     p.itemId ?? null,
@@ -1245,9 +1269,9 @@ async function removeImage(pictureId: string) {
   <div v-else class="loading-screen">Loading…</div>
   <ConfirmModal
     v-if="showDiscard"
-    title="Discard changes?" message="This item has unsaved changes."
-    confirm-label="Discard" cancel-label="Keep editing" danger
-    @confirm="discard" @cancel="showDiscard = false"
+    :title="discardTitle" :message="discardMessage"
+    :confirm-label="discardConfirm" cancel-label="Keep editing" danger
+    @confirm="discard" @cancel="keepEditing"
   />
   <HelpModal v-if="showHelp" @close="showHelp = false" />
   <ShortcutsModal v-if="showShortcuts" context="edit" @close="showShortcuts = false" />

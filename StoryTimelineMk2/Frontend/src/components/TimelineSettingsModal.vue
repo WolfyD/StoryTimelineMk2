@@ -10,6 +10,7 @@ import SwatchEditorModal from './SwatchEditorModal.vue'
 import LodMaskModal from './LodMaskModal.vue'
 import FontPicker from './FontPicker.vue'
 import BaseModal from './BaseModal.vue'
+import ConfirmModal from './ConfirmModal.vue'
 import SettingHint from './SettingHint.vue'
 
 const props = defineProps<{
@@ -299,6 +300,17 @@ const showSwatchEditor = ref(false)
 const showLodPicker = ref(false)
 const lodSummary = computed(() => lodMaskSummary(defaultLodMask.value, store.lodProfile))
 
+// BL-86: every control here edits a draft that only Save writes, so Cancel, the X, Esc and the
+// backdrop all have a panel's worth of deliberate changes to lose. Same snapshot guard as EditItem.
+let cleanSnapshot = ''
+const showDiscard = ref(false)
+const snapshot = () => JSON.stringify([local, localLayout, swatches.value, defaultLodMask.value])
+
+function requestClose() {
+    if (snapshot() === cleanSnapshot) emit('close')
+    else showDiscard.value = true
+}
+
 onMounted(async () => {
     const [presets, fonts, sw, mask] = await Promise.all([
         BackendAPI.GetLayoutSettingsList(),
@@ -310,6 +322,8 @@ onMounted(async () => {
     if (fonts) systemFonts.value = fonts
     swatches.value = sw
     defaultLodMask.value = mask
+    // After the loaded values land, or the modal is dirty the moment it opens.
+    cleanSnapshot = snapshot()
 })
 
 watch(() => local.selectedLayoutId, async (newId) => {
@@ -382,7 +396,7 @@ async function save() {
 </script>
 
 <template>
-    <BaseModal title="Settings" width="min(560px, 92vw)" max-height="82vh" @close="emit('close')">
+    <BaseModal title="Settings" width="min(560px, 92vw)" max-height="82vh" @close="requestClose">
             <div class="search-bar">
                 <input
                     class="search-input"
@@ -1012,12 +1026,18 @@ async function save() {
             </div>
 
         <template #footer>
-            <button class="btn btn-cancel" data-cancel @click="emit('close')">Cancel</button>
+            <button class="btn btn-cancel" data-cancel @click="requestClose">Cancel</button>
             <button class="btn btn-save" data-primary :disabled="isSaving" @click="save">
                 {{ isSaving ? 'Saving…' : 'Save Changes' }}
             </button>
         </template>
     </BaseModal>
+    <ConfirmModal
+        v-if="showDiscard"
+        title="Discard changes?" message="These settings have unsaved changes."
+        confirm-label="Discard" cancel-label="Keep editing" danger
+        @confirm="emit('close')" @cancel="showDiscard = false"
+    />
     <SwatchEditorModal v-if="showSwatchEditor" v-model="swatches" @close="showSwatchEditor = false" />
     <LodMaskModal
         v-if="showLodPicker" v-model="defaultLodMask" :lodProfile="store.lodProfile"

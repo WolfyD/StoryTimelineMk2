@@ -67,7 +67,13 @@ zoom apply to them too). Rules:
 
 ## [BL-86] Cancelling settings throws the changes away without asking
 
-**Status:** Open. Reported 2026-09-26.
+**Status:** Done 2026-09-26 for 1.1.1. One snapshot, one guard, four close paths — Cancel, the X,
+Escape and the backdrop all route through `requestClose()`, which compares `local`, `localLayout`,
+`swatches` and `defaultLodMask` against a snapshot taken at the end of `onMounted` (after the async
+swatch / LOD-mask load lands, or the modal reads dirty the moment it opens) and shows the same
+`ConfirmModal` the item editor uses. Save still emits `close` directly — saved is clean. Four tests
+in `TimelineSettingsModal.test.ts`: one per close path, one for *Keep editing*, one proving a swatch
+edit counts. App Settings left alone, as noted below.
 
 `TimelineSettingsModal` edits a `local` draft and writes it only on Save; Cancel, the X and the
 backdrop all go straight to `emit('close')` (`TimelineSettingsModal.vue:374`, `:385`, `:1015`), so a
@@ -85,7 +91,19 @@ to lose. Say if that was the dialog meant.
 
 ## [BL-87] A second editor cannot open while one is already up
 
-**Status:** Open. Reported 2026-09-26 with the stack.
+**Status:** Done 2026-09-26 for 1.1.1. **Take over the window, but ask first** — the user's call, and
+it needed no new bridge action: `ReopenWithParams` already pushes `LoadItem`, and `EditItem.vue`
+already had `isDirty()` and a `ConfirmModal` for the X. So `handlePushMessage` now gates `LoadItem`
+on `isDirty()`, parking the payload in `pendingLoad` and reusing that same modal with takeover
+wording ("Open the other item?" / *Discard and open* / *Keep editing*); `discard()` applies the
+parked payload instead of closing when one is set. Clean, it loads with no prompt as before. The C#
+side stops throwing: `Show(owner)` only runs when the form is not `Visible`, and a visible one is
+re-pointed at the requesting timeline (`Owner`) and activated. The prompt lands in the editor,
+which C# has just brought forward, so it is on the window holding the work.
+
+The browser build needed nothing: `openPopup` reuses the named `storytimeline-edit-item` window
+with `location.replace`, which fires the `beforeunload` guard `warnIfDirty` already registers there.
+Two tests in `EditItem.test.ts` — a `LoadItem` push over a dirty form and over a clean one.
 
 `HandleOpenAddEditItemWindow` ends on `addEditItemWindow.Show(_parentForm)`
 (`Bridge/MessageRouter.cs:313`). `Form.Show(owner)` throws `InvalidOperationException` — *"Form that

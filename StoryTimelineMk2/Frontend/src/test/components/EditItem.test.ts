@@ -504,4 +504,58 @@ describe('EditItem page', () => {
     expect(wrapper.text()).not.toContain('Discard changes?')
     wrapper.unmount()
   })
+
+  // BL-87: the host reuses this one window, so a second open takes it over. Clean, it just loads;
+  // dirty, it asks — otherwise opening another item is a silent way to lose a half-typed one.
+  it('a LoadItem push over a dirty form asks before taking the window over', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    const addListener = window.chrome!.webview!.addEventListener as unknown as ReturnType<typeof vi.fn>
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    const pushLoadItem = (itemId: string) => {
+      const e = new MessageEvent('message', { data: JSON.stringify({ action: 'LoadItem', payload: { timelineId: 1, itemId } }) })
+      addListener.mock.calls.filter(c => c[0] === 'message').forEach(c => (c[1] as (e: MessageEvent) => void)(e))
+    }
+
+    await wrapper.find('input[placeholder="Item title"]').setValue('Half-typed')
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockClear()
+    pushLoadItem('other-item')
+    await flushPromises()
+
+    expect(BackendAPI.GetItemForEdit).not.toHaveBeenCalled()
+    expect(BackendAPI.WindowClose).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Open the other item?')
+
+    // Keep editing stays on this item and drops the request
+    await wrapper.findAll('button').find(b => b.text() === 'Keep editing')!.trigger('click')
+    await flushPromises()
+    expect(BackendAPI.GetItemForEdit).not.toHaveBeenCalled()
+    expect((wrapper.find('input[placeholder="Item title"]').element as HTMLInputElement).value).toBe('Half-typed')
+
+    // Asked again, discarding loads the other item — and never closes the window
+    pushLoadItem('other-item')
+    await flushPromises()
+    await wrapper.findAll('button').find(b => b.text() === 'Discard and open')!.trigger('click')
+    await flushPromises()
+    expect((BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toBe('other-item')
+    expect(BackendAPI.WindowClose).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('a LoadItem push over a clean form loads straight away', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    const addListener = window.chrome!.webview!.addEventListener as unknown as ReturnType<typeof vi.fn>
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockClear()
+    const e = new MessageEvent('message', { data: JSON.stringify({ action: 'LoadItem', payload: { timelineId: 1, itemId: 'other-item' } }) })
+    addListener.mock.calls.filter(c => c[0] === 'message').forEach(c => (c[1] as (e: MessageEvent) => void)(e))
+    await flushPromises()
+
+    expect((BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toBe('other-item')
+    expect(wrapper.text()).not.toContain('Open the other item?')
+    wrapper.unmount()
+  })
 })

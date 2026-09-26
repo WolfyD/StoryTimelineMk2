@@ -307,10 +307,23 @@ namespace StoryTimelineMk2.Bridge
             // otherwise AddEditItem_Load picks up the params on first Show().
             addEditItemWindow.ReopenWithParams(timelineId, itemId, typeId, year, granularity);
 
-            // Use Show() instead of ShowDialog(): calling ShowDialog from inside a
-            // WebView2 WebMessageReceived handler creates a nested COM message loop
-            // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
-            addEditItemWindow.Show(_parentForm);
+            // BL-87: the singleton is hidden, never closed, so a second request can land while the
+            // editor is still up — and Form.Show(owner) throws on a visible form. Bring that one
+            // forward instead; the LoadItem push above is what asks before dropping half-typed work.
+            if (addEditItemWindow.Visible)
+            {
+                // A second timeline window can own the editor next; re-point it so hiding the
+                // editor still activates the timeline the item came from.
+                if (_parentForm != null && addEditItemWindow.Owner != _parentForm)
+                    addEditItemWindow.Owner = _parentForm;
+            }
+            else
+            {
+                // Use Show() instead of ShowDialog(): calling ShowDialog from inside a
+                // WebView2 WebMessageReceived handler creates a nested COM message loop
+                // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
+                addEditItemWindow.Show(_parentForm);
+            }
             addEditItemWindow.TopMost = _parentForm?.TopMost ?? false;
             addEditItemWindow.Activate();
         }

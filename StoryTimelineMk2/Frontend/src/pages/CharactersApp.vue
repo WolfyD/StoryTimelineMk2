@@ -13,8 +13,10 @@ import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import { useSideWidth } from '@/composables/useSideWidth'
 import LodDateInput from '@/components/LodDateInput.vue'
 import CharacterRelationsPanel from '@/components/CharacterRelationsPanel.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import {
     PhPlus, PhTrash, PhFloppyDisk, PhImage, PhMagnifyingGlass, PhUser, PhPencilSimple, PhUserFocus,
+    PhUsersThree,
 } from '@phosphor-icons/vue'
 import type { CharacterAppearance, CharacterItem, LodLevel } from '@/types/models'
 
@@ -37,6 +39,7 @@ const search     = ref('')
 const loading    = ref(true)
 const saving     = ref(false)
 const error      = ref('')
+const showDelete = ref(false)
 
 const appearances  = ref<CharacterAppearance[]>([])
 
@@ -176,6 +179,11 @@ function clone(c: CharacterItem | null): CharacterItem | null {
 
 const isNew = computed(() => !!draft.value && !characters.value.some(c => c.Id === draft.value!.Id))
 
+/** The bottom bar's Relate button drives the relations panel's own modal. */
+const relationsPanel = ref<InstanceType<typeof CharacterRelationsPanel> | null>(null)
+/** Nobody to tie them to yet — a saved cast of one, or a character that has no row of its own. */
+const canRelate = computed(() => !isNew.value && characters.value.length > 1)
+
 function select(c: CharacterItem) {
     error.value = ''
     draft.value = clone(c)
@@ -257,10 +265,16 @@ async function save() {
     }
 }
 
-async function remove() {
+/** Nothing is saved for a new character, so there is nothing to warn about — that one just drops. */
+function remove() {
+    if (!draft.value || isNew.value) { draft.value = null; return }
+    showDelete.value = true
+}
+
+async function deleteCharacter() {
+    showDelete.value = false
     const c = draft.value
-    if (!c || isNew.value) { draft.value = null; return }
-    if (!window.confirm(`Delete ${c.Name}? Their portrait and any generated timeline items go too.`)) return
+    if (!c) return
 
     saving.value = true
     try {
@@ -340,6 +354,7 @@ async function pickPortrait() {
             <div class="side-grip" title="Drag to resize" @pointerdown="startResize" />
 
             <!-- ── Detail ───────────────────────────────────────────── -->
+            <div class="ch-pane">
             <section v-if="!draft" class="ch-detail ch-detail--blank">
                 <PhUser :size="48" weight="thin" />
                 <p>Pick a character, or add a new one.</p>
@@ -486,11 +501,6 @@ async function pickPortrait() {
                 <div v-if="!isNew" class="ch-appearances">
                     <h3>
                         Appears in <span>{{ appearances.length }}</span>
-                        <button
-                            class="ch-btn"
-                            title="Open a read-only timeline of this character alone"
-                            @click="BackendAPI.OpenCharacterTimeline(timelineId, draft.Id)"
-                        ><PhUserFocus :size="14" /> Their timeline</button>
                     </h3>
                     <p v-if="!appearances.length" class="ch-appearances-empty">
                         Nothing yet — attach them to an item in the item editor.
@@ -512,6 +522,7 @@ async function pickPortrait() {
 
                 <CharacterRelationsPanel
                     v-if="!isNew"
+                    ref="relationsPanel"
                     :key="draft.Id"
                     :character="draft"
                     :characters="characters"
@@ -525,19 +536,45 @@ async function pickPortrait() {
                 />
 
                 <p v-if="error" class="ch-error">{{ error }}</p>
-
-                <div class="ch-actions">
-                    <button class="ch-btn ch-btn--primary" :disabled="saving" @click="save">
-                        <PhFloppyDisk :size="15" />
-                        {{ saving ? 'Saving…' : 'Save' }}
-                    </button>
-                    <button class="ch-btn ch-btn--danger" :disabled="saving" @click="remove">
-                        <PhTrash :size="15" />
-                        {{ isNew ? 'Discard' : 'Delete' }}
-                    </button>
-                </div>
             </section>
+
+            <!-- Pinned to the bottom of the form's own pane, not the window: every one of these
+                 acts on the character above it, and the list beside it is a different subject. -->
+            <footer v-if="draft" class="ch-bar">
+                <button class="ch-btn ch-btn--primary" :disabled="saving" @click="save">
+                    <PhFloppyDisk :size="15" />
+                    {{ saving ? 'Saving…' : 'Save' }}
+                </button>
+                <button class="ch-btn ch-btn--danger" :disabled="saving" @click="remove">
+                    <PhTrash :size="15" />
+                    {{ isNew ? 'Discard' : 'Delete' }}
+                </button>
+
+                <div class="ch-bar-right">
+                    <button
+                        class="ch-btn"
+                        :disabled="!canRelate"
+                        :title="canRelate ? 'Tie them to someone else' : 'Save them first, and add someone to tie them to'"
+                        @click="relationsPanel?.open(null)"
+                    ><PhUsersThree :size="15" /> Relate</button>
+                    <button
+                        class="ch-btn"
+                        :disabled="isNew"
+                        title="Open a read-only timeline of this character alone"
+                        @click="BackendAPI.OpenCharacterTimeline(timelineId, draft.Id)"
+                    ><PhUserFocus :size="15" /> Their timeline</button>
+                </div>
+            </footer>
+            </div>
         </div>
+
+        <ConfirmModal
+            v-if="showDelete"
+            :title="`Delete ${draft?.Name || 'this character'}?`"
+            message="Their portrait and any generated timeline items go too."
+            confirm-label="Delete" cancel-label="Keep" danger
+            @confirm="deleteCharacter" @cancel="showDelete = false"
+        />
     </div>
 </template>
 
@@ -572,6 +609,10 @@ async function pickPortrait() {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    // A grid item is min-content wide unless told otherwise, and the search box's own minimum is a
+    // good 170px — so a narrow column used to push the New button out over the grip and the form.
+    min-width: 0;
+    overflow: hidden;
     border-right: 1px solid var(--app-border, #2d3a56);
     background: var(--app-surface, #0c1524);
 }
@@ -581,10 +622,14 @@ async function pickPortrait() {
     gap: 6px;
     padding: 8px;
     border-bottom: 1px solid var(--app-border, #2d3a56);
+
+    // The button keeps its size; the search box gives way, down to its icon if it has to.
+    > .ch-btn { flex: 0 0 auto; }
 }
 
 .ch-search {
     flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -673,7 +718,17 @@ async function pickPortrait() {
 
 // ── Detail ────────────────────────────────────────────────────────────────────
 
+// The form and its bar: the form scrolls, the bar stays.
+.ch-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
 .ch-detail {
+    flex: 1;
+    min-height: 0;
     padding: 14px 16px;
     overflow-y: auto;
     display: flex;
@@ -797,10 +852,20 @@ async function pickPortrait() {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-.ch-actions {
+.ch-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--app-border, #2d3a56);
+    background: var(--app-surface, #0c1524);
+}
+
+.ch-bar-right {
     display: flex;
     gap: 8px;
-    padding-top: 2px;
+    margin-left: auto;
 }
 
 .ch-btn {
@@ -824,7 +889,17 @@ async function pickPortrait() {
         border-color: var(--app-accent, #6366f1);
     }
 
-    &--danger:hover:not(:disabled) { color: #f87171; border-color: #f87171; }
+    // Red standing, not only on hover — the one button here you want to notice before clicking.
+    &--danger {
+        color: #f87171;
+        border-color: color-mix(in srgb, #f87171 55%, transparent);
+
+        &:hover:not(:disabled) {
+            color: #fecaca;
+            border-color: #f87171;
+            background: color-mix(in srgb, #f87171 14%, transparent);
+        }
+    }
 }
 
 // ── Appearances ───────────────────────────────────────────────────────────────
@@ -848,13 +923,6 @@ async function pickPortrait() {
             margin-left: 5px;
             font-weight: 400;
             opacity: 0.7;
-        }
-
-        .ch-btn {
-            margin-left: auto;
-            padding: 3px 8px;
-            font-size: 0.68rem;
-            letter-spacing: 0;
         }
     }
 
