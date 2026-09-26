@@ -65,10 +65,138 @@ zoom apply to them too). Rules:
 
 ---
 
+## [BL-86] Cancelling settings throws the changes away without asking
+
+**Status:** Open. Reported 2026-09-26.
+
+`TimelineSettingsModal` edits a `local` draft and writes it only on Save; Cancel, the X and the
+backdrop all go straight to `emit('close')` (`TimelineSettingsModal.vue:374`, `:385`, `:1015`), so a
+panel's worth of deliberate changes vanishes without a word.
+
+Every other modal holding unsaved work already asks. `EditItem.vue` compares a snapshot (`isDirty()`
+at `:379`) and shows a `ConfirmModal` — "Discard changes? / Keep editing" — and `MassAddItemsModal`
+does the same for its queue. Same treatment here: snapshot `local`, `localLayout`, `swatches` and
+`defaultLodMask` when the modal opens, compare on every close path, and only then let it go.
+
+App Settings needs nothing: every control there saves the moment it is touched, so there is no draft
+to lose. Say if that was the dialog meant.
+
+---
+
+## [BL-87] A second editor cannot open while one is already up
+
+**Status:** Open. Reported 2026-09-26 with the stack.
+
+`HandleOpenAddEditItemWindow` ends on `addEditItemWindow.Show(_parentForm)`
+(`Bridge/MessageRouter.cs:313`). `Form.Show(owner)` throws `InvalidOperationException` — *"Form that
+is already visible cannot be displayed as a modal dialog box"* — when the form is already visible,
+and `f_AddEditItem` is a singleton that is never truly closed (`OnFormClosing` hides it). So opening
+an item while an editor is up gets the backend error dialog instead of an editor. The
+`ReopenWithParams` on the line above has already run by then, so the window behind that dialog is
+showing the *new* item's parameters.
+
+The line itself is a small fix: when the form is already visible, skip `Show(owner)` and go straight
+to `Activate()` / `BringToFront()`. What needs deciding first is what a second editor should *mean*,
+because the singleton can only ever show one item:
+
+- **Take over the window** — what `ReopenWithParams` already does. But it re-navigates in place, which
+  walks straight past `EditItem.vue`'s own "Discard changes?" guard and drops whatever was half-typed.
+- **Refuse with a message** and bring the open editor forward instead.
+- **Allow a real second window**, which means `f_AddEditItem` stops being a singleton — the largest of
+  the three, and it gives up the pre-warm that makes the editor open quickly.
+
+---
+
+## [BL-85] The snap and the ruler disagreed with the grid
+
+**Status:** Done 2026-09-25 for 1.1.1. One shared `snapToTick`, a per-year label-gap walk in
+`gridTicks`, and a second row for the year number. 847 unit tests, 34 ruler E2E.
+
+Fallout from BL-44, off two screenshots: the seasons rung had a bare `-1` wedged between "Winter"
+and "Spring", the weeks rung had `W53` and the year printed on the same pixels, and the hover line
+sat between ticks rather than on one.
+
+**Two separate bugs, one cause.** BL-44 moved the grid's sub-year ticks onto the calendar's own
+boundary days. They are not evenly spaced -- a 365-day year's last week is one day long, and a
+calendar's seasons need not be the same length -- but three places still treated a rung as an even
+lattice of `stepFraction`.
+
+**1. The snap rounded to the lattice.** `Math.round(raw / step) * step` lands between ticks, and the
+miss grows across the year: at WEEKS on 365 days the lattice step is 7.019 days against an actual 7,
+so by the last week it is a full day out. `snapToTick(absolute, formatKey, cfg, stepFraction)` in
+`timelineLayout.ts` walks the boundary days of the year the position falls in, plus day 0 and the
+year's far edge, and returns the nearest. A rung the calendar cannot place -- decades up, or a custom
+level it has no days for -- still rounds to the lattice, because up there the lattice *is* what the
+grid draws. Both canvas call sites go through it (`updateCursor`, `resolveTimeAtPos`); Shift still
+frees the cursor.
+
+**2. Nothing measured whether a name fitted.** `GridTick` gained `showLabel` and `GridTickOptions`
+gained `labelGapPx`: the renderer owns the number because only it can measure text in the timeline's
+own font, and the walk in `gridTicks` decides from it which ticks keep their name. A dropped name
+keeps its mark, so nothing moves.
+
+The walk restarts at every year boundary and runs **before** the viewport prune, which is the whole
+design: decide it from what is on screen and the names blink in and out as you pan, because the tick
+the walk starts from keeps changing. A tick's answer now depends on the calendar and the zoom and
+nothing else. There is a test that sweeps `centerTime` across three years and asserts no tick ever
+changes its mind.
+
+The gap itself: angled, two 45-degree labels clear each other once their baselines are a line height
+apart *measured across the slant*, which is a horizontal gap of `lineHeight * sqrt(2)` -- about a
+fifth of what the same names need side by side, and most of why BL-82 is worth having. Plain, it is
+the widest name the rung can print, measured once per calendar. A sub-year formatter prints the unit
+without the year ("Summer", "W50", "14 Dec"), so one year of boundary days is every label the rung
+has; taking the widest of those rather than what is on screen is the other half of the pan stability.
+Cached in a `WeakMap` keyed on `store.calendarConfig`, which is a Pinia computed -- edit the calendar
+and the store hands out a new object, and the stale measurements go with the old one.
+
+**The year number gets its own row.** User's call, from the two options they offered. It is the label
+most likely to be crowded -- day 0 falls wherever the calendar puts it, which on the standard
+calendar is thirty days after Winter opens -- and the one nobody wants to lose. On a second row
+neither label has to give. Plain only: angled, the names already lean clear, and a second row would
+drop the year out of the band the ruler reads as. Year ticks never take a turn in the gap walk.
+
+`timeline-ruler.spec.ts` measures the lean against the base row rather than against whichever row the
+plain ruler used for that label, and a new test asserts across all three calendars that no year
+number shares a row with a unit name.
+
+**Follow-ups, same session.** Angled, the overlap came back: every label leans the same way, so
+dropping the year a row slides it along the slant instead of clearing it, and the year was also
+exempt from the gap walk. `yearGapPx` is the fix -- the year claims its slot before the walk starts
+rather than taking a turn in it, so a unit name has to clear the year boundary on either side as well
+as its own left-hand neighbour, and the unit name is the one that gives way. 0 in plain mode, where
+the year has its own row and crowds nothing; the year's own font size in angled mode. Year first, as
+asked.
+
+`TimelineNonYearTicksSmaller` now carries all three of the differences rather than tick height alone:
+sub-year names print at 85% of the base size (floor 7px) and a year's mark on a sub-year rung gets an
+extra pixel. The extra pixel is deliberately not applied on a rung of nothing but years, where it
+would just thicken the whole ruler. The label gap is measured at the unit size, which is right because
+every label the gap governs is a unit name -- the year is never dropped.
+
+The lean flipped to north-west/south-east: `rotation: 45` with the text starting on its own tick and
+running away down-and-right, which is the direction a slanted axis is usually drawn and what was
+actually wanted when "45 degrees" was agreed. It also drops the `LABEL_LEAN` offsets, since the origin
+is now the tick itself.
+
+ponytail: linear scan of one year's boundary days per tick and per snap -- only a calendar with a
+five-figure year length would feel it, and `sorted` would bisect. The whole-year rung still names
+every tick unconditionally; BL-80 gives it 130-300px between ticks and its labels are short, so
+nothing has ever collided up there. Both named in the source.
+
+**Not fixed, same root cause:** `EditItem.vue`'s `findBestSubYearLod` still asks which rung can
+express a stored date by rounding to `stepFraction` within 25% of a step, so a date on a real
+boundary day can be shown a rung finer than it needs -- day 335 of the standard calendar is exactly
+Winter, but tests as a December date. Cosmetic, and a different question from "where is the nearest
+tick", so it is not the same function.
+
+---
+
 ## [BL-84] Panning got slower the more you wrote
 
 **Status:** Done 2026-09-25 for 1.1.1. Two hoists; pan cost per frame went from super-quadratic in
-item count to linear, 20x faster at 1000 items.
+item count to linear, 20x faster at 1000 items. Layers mount on demand as of 2026-09-26, halving the
+canvas memory a timeline window holds.
 
 Found while checking BL-83 for a regression. There was none -- angled labels and calendar bands cost
 nothing measurable -- but the check turned up a much older problem underneath.
@@ -105,6 +233,52 @@ off-screen items before they are built, which is a real project and not a hoist.
 done: caching `getXFromTime` per frame inside the collision loop. It was the third candidate, and
 after these two it no longer shows.
 
+### Follow-up: eight layers, four of them idle
+
+Konva was warning that the stage had eight layers against a recommended three to five. Nothing had
+regressed -- an earlier pass took it to five, and the reference underlay (BL-66), its age slits, and
+the character lifeline (BL-15) each added one since -- but the warning was pointing at something real
+underneath it, and it was not draw time. A layer holds two canvases sized to the whole stage, a scene
+canvas at display pixel density and a hit canvas at 1:1, and neither `visible(false)` nor `remove()`
+hands either back: only sizing them to nothing does. A window that never opens a reference timeline
+was carrying four layers it had no use for, forever.
+
+Four of the eight are conditional, so `syncLayers` in `TimelineCanvas.vue` now mounts exactly the ones
+a window wants and sizes the rest to 0x0. Two things made it more than a pair of `add`/`remove` calls:
+
+- **Stacking is DOM order, not `zIndex`.** `Container._setChildrenIndices` assigns `child.index` and
+  requests a draw; it never reorders the canvas elements, and `Stage` does not override it. So
+  `layer.zIndex(n)` renumbers without restacking, and mounting one layer means re-adding the whole
+  stack in order. `Stage.add` sizes the layer and redraws its children on the way, which is also what
+  brings a parked canvas back -- `remove()` leaves children alone.
+- **A layer that does not listen still gets a hit canvas.** `Layer.getIntersection` bails on
+  `isListening()` before it reads one, so `uiLayer`, the lifeline and the age slits were each holding
+  a full-stage buffer nothing would ever look at. `Stage._resizeDOM` re-inflates it on every stage
+  resize, so `dropDeadHitCanvases` is idempotent and runs again after one.
+
+Measured on a live 1232x272 stage: 8.9 MB of canvas where all eight mounted would be 20.5 MB, and the
+3.8 MB hit total confirms `uiLayer`'s is gone. A 1920x1080 window at 1:1 goes from roughly 130 MB to
+under 60, and the scene half of that doubles in each direction on a scaled display.
+
+`Frontend/src/test/e2e/canvas-layers.spec.ts` pins both halves of the Konva contract this rests on:
+four layers on a plain window, and DOM order matching layer order -- the assertion that fails the day
+someone swaps the re-add for a `zIndex()` call. It has to be an end-to-end test, because happy-dom has
+no 2d context and so no stage to count.
+
+Fixed on the way: **the labels-on-top setting needed the window reopened.** The grid/item swap was
+read once, during stage assembly. The stack is rebuilt from the setting now, so it takes immediately.
+
+**The warning is not gone in every window, and that is accepted.** Konva's `MAX_LAYERS_NUMBER` is 5
+(`Stage.js:9`) and it warns above it. A plain window rests at four and a character window at five, but
+a window with a reference timeline drawn underneath reaches six -- ui, reference, grid, item, the age
+slits, boundary -- and warns. The memory this section is about is handled either way; the warning is
+cosmetic. Getting back to five means folding the age slits into the boundary layer as a Group that
+compensates for the pan offset, which is a fair amount of fiddly work for a console line. Left.
+
+ponytail: parked on the condition that is stable, not the one that is true. The lifeline stays mounted
+for as long as a character is in focus, on screen or not -- unmounting it as the wave scrolled past the
+edge would rebuild the stack mid-pan, which is the one thing this must never cost.
+
 ---
 
 ## [BL-83] Settings that read as one set
@@ -115,6 +289,26 @@ dead rows gone, two built-in presets renamed, schema step 21.
 The timeline settings modal had grown a row at a time for as long as the canvas has, and it showed:
 the same kind of thing was named three ways, controls of different types did the same job, and two
 of the rows did nothing at all. This was a pass over the whole panel, not a feature.
+
+### Follow-ups, same session
+
+- **The opacity sliders were percentages of a byte.** Alpha is stored as the hex channel, and a
+  percentage cannot address it: `#ffffff10` is 6.27%, which stored 6 and came back `0f`, so every
+  save drifted a step. Worse, the calendar bands live at 2-6% and all four therefore pinned to the
+  far left of the track with one nudge left before zero. The sliders now run 0-255 on the channel
+  itself: nothing is rounded, and those bands have sixteen usable notches instead of four.
+- **Every slider in the app takes a right-click.** A slider is a lossy way to reach an exact number,
+  and a 0-255 track a couple of hundred pixels wide makes single steps a fight with the mouse. Right
+  -clicking any `input[type=range]` opens a number field over it; Enter commits, Escape cancels, and
+  the range input clamps whatever is typed to its own ends. Delegated from the one listener
+  `installNumberInputStepping` already puts on all six entry points, so there is nothing at the call
+  site and future sliders get it for free. Six tests.
+- **The ruler's names got a halo.** They are the only canvas text with nothing behind them -- every
+  other label sits on a box fill or a Tag -- so a calendar band the same brightness as the label
+  swallowed it. `textHalo` in `canvasTheme.ts` picks the direction from the label colour's luminance,
+  which is why it needs no setting: a light label wants a dark halo and there is no third answer.
+
+---
 
 ### What the audit found
 
@@ -961,7 +1155,9 @@ left was internal. All 10 planned items addressed; since then also done: 30 s br
 (TC-H2), icon convention settled — CLAUDE.md now says Phosphor for everything new, Remix only
 survives in the older components, no sweep. The last four — the FC-C1 deeper fix, heavy handlers
 on the UI thread (H1), the panels' double `GetItemForEdit` (TC-H5) and the z-index token scale —
-were done for 1.1.1 (2026-09-23); see the sections below. Nothing known is left open.
+were done for 1.1.1 (2026-09-23); see the sections below. Reopened and closed again 2026-09-26:
+rejecting was only half of FC-C1 — a handler that never catches still leaves its own UI stuck. One
+known gap remains, `BackendAPI.send()`, recorded below.
 
 ### Data integrity — RESOLVED
 
@@ -977,6 +1173,32 @@ were done for 1.1.1 (2026-09-23); see the sections below. Nothing known is left 
   per-action flags such as `reported`) on `err.payload`. The hand-written `?.status === 'error'`
   checks were swept in the same pass, and an `unhandledrejection` listener in `api.ts` shows the
   last uncaught one rather than leaving it in the console.
+- ~~**A handler that never catches leaves its own UI stuck** (FC-C1, second half)~~ — **Fixed
+  2026-09-26.** The global net can say what went wrong; it cannot put the modal that asked back
+  together. Every one of the twelve bridge calls in `AppSettingsModal.vue` went uncaught, so a failed
+  backup or data-folder move alerted once from nowhere in particular and then sat on "Working…" with
+  the button disabled until the modal was closed — and a bridge *timeout* carries no payload, so the
+  net skipped it and said nothing at all. They now go through one `guard(what, call)`: logs with
+  `payload.detail` (the C# stack), shows the message in the modal's own feedback row unless
+  `payload.reported` says the backend already put a dialog up, and clears `isBusy` in `finally`.
+  Catching there also keeps the global net quiet, so the failure is reported once rather than twice.
+  `backup.spec.ts:177` is the test that caught it; `backup` went 22/1 → 23/23.
+- ~~**Two swallowed catches in `timelineStore.ts`**~~ — **Fixed 2026-09-26**, found by grepping the
+  file after the modal. `loadTimelineData`'s catch was a lone `console.error`, so a timeline that
+  failed to load opened as an empty canvas — indistinguishable from an empty timeline. And
+  `loadFilterPreset` had a bare `catch { return; }`, so a preset whose `RulesJson` will not parse did
+  nothing whatever when clicked and left no trace. Both now log and alert, the same remedy
+  `loadKinItemIds` twenty lines up was already using. The file's other two catches were already right:
+  `loadKinItemIds` alerts and carries on without the family, and `restoreReference` drops the
+  reference and puts the reason on `referenceError`, which `ReferenceTimelineModal.vue:69` shows.
+- **Still open: `BackendAPI.send()` is fire-and-forget by design** — no promise, so a backend failure
+  on one of those actions reaches nobody. `OpenDataFolder` is the one in this modal. Auditing the
+  rest is its own pass: some of them genuinely do not care, and the ones that do want a reply, not a
+  wrapper.
+
+ponytail: one wrapper rather than a `try` per handler — the remedy is identical every time, and a
+per-handler `try` is exactly what got forgotten twelve times. Upgrade path if a handler ever needs a
+different remedy: it catches for itself, and `guard` stays for the rest.
 - ~~**Desktop handlers run synchronously on the UI thread** (H1)~~ — **Fixed.** `MessageRouter`
   queues every message onto one static `Task` chain (`_dataPump`) instead of running it in the
   WebView2 event: data-layer actions run there, and only what needs a window, a file dialog or a

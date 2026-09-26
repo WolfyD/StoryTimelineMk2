@@ -114,3 +114,16 @@ html, body, #app {
 		transition-duration: .3s;
 	}
 }
+
+// The numeric field a slider opens on right-click (see `numberInputStepping.ts`). Lives on <body>,
+// outside every scoped stylesheet, so its look belongs here.
+.slider-entry {
+	font: inherit;
+	font-size: 12px;
+	padding: 2px 4px;
+	color: var(--app-text, #e2e8f0);
+	background: var(--app-surface-high, #1e2b44);
+	border: 1px solid var(--app-accent, #6366f1);
+	border-radius: 4px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}

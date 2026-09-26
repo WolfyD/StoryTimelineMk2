@@ -141,6 +141,25 @@ for (const { cal, override } of CALENDARS) {
 			}
 		})
 
+		test('the year number sits on a row of its own, clear of the unit names', async ({ page }) => {
+			// BL-85, off a screenshot: this calendar's last season opens a handful of days before the year
+			// turns, so the year number was printed on top of the season's name. A row of its own is the
+			// one arrangement where neither of the two labels nobody wants to lose has to give.
+			await jumpToYear(page, 2000)
+			for (const rung of SUB_YEAR_RUNGS) {
+				await setRung(page, rung)
+				await settledRuler(page)
+				const ticks = await rulerTicks(page)
+				const years = ticks.filter(t => isYearMarker(t.text))
+				const units = ticks.filter(t => !isYearMarker(t.text))
+				expect(years.length, `${rung} drew no year marker`).toBeGreaterThan(0)
+				for (const y of years) {
+					const clash = units.find(u => Math.abs(u.y - y.y) < 1)
+					expect(clash?.text, `${rung}: "${y.text}" is on the same row as "${clash?.text}"`).toBeUndefined()
+				}
+			}
+		})
+
 		test('the ruler names every month of the year, and each one once', async ({ page }) => {
 			await jumpToYear(page, 2000)
 			await setRung(page, 'MONTHS')
@@ -220,7 +239,6 @@ for (const { cal, override } of CALENDARS) {
  */
 test.describe('angled axis labels', () => {
 	/** The reach of a 100px label box rotated 45°, which is both the x pull-back and the y drop. */
-	const LEAN = 100 * Math.SQRT1_2
 
 	const monthTicks = async (page: Page, angled: boolean) => {
 		await injectBridgeMock(page, { __layout: { TimelineTickMarkerTextAngled: angled } })
@@ -233,7 +251,7 @@ test.describe('angled axis labels', () => {
 		return rulerTicks(page)
 	}
 
-	test('lean 45° with their right end still on their own tick', async ({ page, context }) => {
+	test('lean 45° north-west to south-east, starting on their own tick', async ({ page, context }) => {
 		const plain = await monthTicks(page, false)
 		const angled = await monthTicks(await context.newPage(), true)
 
@@ -241,13 +259,19 @@ test.describe('angled axis labels', () => {
 		expect(angled.map(t => t.text), 'the two rulers are not showing the same months')
 			.toEqual(plain.map(t => t.text))
 
+		// BL-85: plain mode drops a sub-year rung's year number a row, so a unit name starting near the
+		// year boundary cannot land on it. Angled, the names already lean clear of each other and the
+		// year stays on the one row, so the lean is measured against that row and not against whichever
+		// row the plain ruler put this particular label on.
+		const baseY = Math.min(...plain.map(t => t.y))
+
 		for (const [i, a] of angled.entries()) {
 			const p = plain[i]!
-			expect(a.rotation, `"${a.text}" is not leaning`).toBe(-45)
-			// Horizontal the box is centred on its tick, so the tick is at x + half the box. Angled,
-			// the rotated right end has to land on that same pixel.
-			expect(a.x + LEAN, `"${a.text}" left its tick`).toBeCloseTo(p.x + 50, 1)
-			expect(a.y - LEAN, `"${a.text}" did not drop to make room for the lean`).toBeCloseTo(p.y, 1)
+			expect(a.rotation, `"${a.text}" is not leaning`).toBe(45)
+			// Horizontal the box is centred on its tick, so the tick is at x + half the box. Angled the
+			// text begins at the tick and runs away from it, so the origin is that same pixel.
+			expect(a.x, `"${a.text}" left its tick`).toBeCloseTo(p.x + 50, 1)
+			expect(a.y, `"${a.text}" is not on the ruler's own row`).toBeCloseTo(baseY, 1)
 		}
 	})
 })

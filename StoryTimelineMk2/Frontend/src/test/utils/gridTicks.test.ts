@@ -14,6 +14,7 @@ import {
   buildFormatRegistry,
   dayOfYearAt,
   gridTicks,
+  snapToTick,
   DEFAULT_CALENDAR_CONFIG,
   type CalendarFormatConfig,
   type GridTickOptions,
@@ -309,5 +310,130 @@ describe('gridTicks across a hidden range', () => {
     expect(many.length).toBe(one.length)
     expect(many.length).toBeLessThan(40)
     expect(many.some(x => x.year === 12000)).toBe(true)
+  })
+})
+// ── snapToTick ───────────────────────────────────────────────────────────
+
+/**
+ * BL-85: the hover line and anything placed by right-clicking used to round to the rung's
+ * `stepFraction`, an even lattice. Since BL-44 the ticks are the calendar's boundary days, which are
+ * not evenly spaced, so the two disagreed by more the further into the year you were.
+ */
+describe('snapToTick', () => {
+  const SEASON_STEP = 0.25   // what the default profile calls a season, and what the old snap used
+
+  it("lands on the calendar's own season starts, not on quarters of a year", () => {
+    // Spring opens on day 60 of the seeded calendar. Three days into it, the old snap rounded to
+    // 0.25 of a year -- day 91 -- which is a position the grid draws nothing at.
+    expect(snapToTick(2000 + 63 / 365, 'SEASONS', SEEDED, SEASON_STEP)).toBeCloseTo(2000 + 60 / 365, 10)
+  })
+
+  it('snaps forward over the year boundary rather than back across most of a season', () => {
+    // Day 360 is twenty-five days into Winter and five short of the new year.
+    expect(snapToTick(2000 + 360 / 365, 'SEASONS', SEEDED, SEASON_STEP)).toBe(2001)
+  })
+
+  it('only ever returns a day the grid draws a tick on', () => {
+    const days = boundaryDays('WEEKS', DEFAULT_CALENDAR_CONFIG)!
+    for (let d = 0; d < 365; d++) {
+      const snapped = snapToTick(2000 + (d + 0.37) / 365, 'WEEKS', DEFAULT_CALENDAR_CONFIG, 1 / 52)
+      const day = Math.round((snapped - Math.floor(snapped)) * 365)
+      expect(day === 0 || days.includes(day), `day ${d} snapped to day ${day}`).toBe(true)
+    }
+  })
+
+  it("reads the timeline's own calendar and not the Gregorian one", () => {
+    // Three hundred days and three seasons: the boundaries are thirds and a quarter is nowhere.
+    for (const [from, want] of [[10, 0], [140, 100], [240, 200], [295, 300]]) {
+      expect(snapToTick(50 + from! / 300, 'SEASONS', ALIEN, SEASON_STEP)).toBeCloseTo(50 + want! / 300, 10)
+    }
+  })
+
+  it('keeps the even lattice for a rung the calendar cannot place', () => {
+    expect(snapToTick(1997, 'DECADES', DEFAULT_CALENDAR_CONFIG, 10)).toBe(2000)
+    expect(snapToTick(1994, 'WOBBLE', DEFAULT_CALENDAR_CONFIG, 0.5)).toBe(1994)
+    expect(snapToTick(1994.3, 'WOBBLE', DEFAULT_CALENDAR_CONFIG, 0.5)).toBe(1994.5)
+  })
+
+  it('works below year zero', () => {
+    expect(snapToTick(-44 + 58 / 365, 'SEASONS', SEEDED, SEASON_STEP)).toBeCloseTo(-44 + 60 / 365, 10)
+    expect(snapToTick(-44 + 2 / 365, 'SEASONS', SEEDED, SEASON_STEP)).toBe(-44)
+  })
+})
+
+// ── gridTicks: which names fit ────────────────────────────────────────────
+
+describe('gridTicks label spacing', () => {
+  /** A year of the seeded calendar's seasons, wide enough to hold two of them. */
+  const seasons = (over: Partial<GridTickOptions> = {}) => ticks({
+    centerTime: 2000.5, width: 800, step: 0.25, stepFraction: 0.25,
+    formatKey: 'SEASONS', cfg: SEEDED, ...over,
+  })
+
+  it('names every tick when no gap is asked for', () => {
+    expect(seasons().every(t => t.showLabel)).toBe(true)
+  })
+
+  it('drops a name that would land on its neighbour and keeps the tick', () => {
+    // A season is ninety-odd days, which at this zoom is about a hundred pixels. Ask for a hundred
+    // and ten and every other one has to give way.
+    const t = seasons({ labelGapPx: 110 }).filter(x => x.year === 2000)
+    expect(t.map(x => x.day)).toEqual([0, 60, 152, 244, 335])
+    expect(t.filter(x => x.showLabel).map(x => x.day)).toEqual([0, 60, 244])
+  })
+
+  it('never drops the year, which is the label a unit name is most likely to crowd', () => {
+    // Winter opens on day 335 and the year turns thirty days later -- a third of a season, and the
+    // collision that put a bare year number in among the season names on screen.
+    const t = seasons({ labelGapPx: 400, centerTime: 2001, width: 1200 })
+    expect(t.filter(x => x.isYearTick).every(x => x.showLabel)).toBe(true)
+  })
+
+  it('gives a tick the same answer wherever the viewport happens to be', () => {
+    // The property the whole thing rests on: decide from what is on screen and the names blink in
+    // and out as you pan, because the tick the walk starts from keeps changing.
+    const seen = new Map<number, boolean>()
+    for (let c = 1999; c <= 2002; c += 0.05) {
+      for (const t of seasons({ centerTime: c, labelGapPx: 110 })) {
+        const key = Math.round(t.absolute * 365)
+        const before = seen.get(key)
+        if (before !== undefined) expect(t.showLabel, `tick at ${key} changed its mind`).toBe(before)
+        seen.set(key, t.showLabel)
+      }
+    }
+    expect(seen.size).toBeGreaterThan(10)
+  })
+
+  it('gives way to the year number when the year has no row of its own', () => {
+    // Angled, every label leans the same way, so there is no second row to move the year to. The
+    // unit name beside it loses its name instead -- Winter opens on day 335 and the year turns
+    // thirty days later, which at this zoom is under thirty pixels.
+    const t = seasons({ labelGapPx: 10, yearGapPx: 40, centerTime: 2000.9, width: 600 })
+    const winter = t.find(x => x.year === 2000 && x.day === 335)
+    expect(winter, 'the Winter tick was not drawn at all').toBeDefined()
+    expect(winter!.showLabel, 'Winter kept its name next to the year number').toBe(false)
+    expect(t.filter(x => x.isYearTick).every(x => x.showLabel), 'a year number was dropped').toBe(true)
+    // Spring, in the middle of its year, is nowhere near a year boundary and keeps its name.
+    expect(t.find(x => x.year === 2001 && x.day === 152)?.showLabel).toBe(true)
+  })
+
+  it('leaves the units alone when the year is on its own row', () => {
+    // Plain: the same crowding, but `yearGapPx` omitted, so the year crowds nothing and Winter
+    // keeps its name. Dropping it here would lose a name for no reason.
+    const t = seasons({ labelGapPx: 10, centerTime: 2000.9, width: 600 })
+    expect(t.find(x => x.year === 2000 && x.day === 335)?.showLabel).toBe(true)
+  })
+
+  it('thins a rung whose ticks sit closer together than its names are wide', () => {
+    const t = ticks({
+      centerTime: 2000.5, width: 1000, step: 1 / 365, stepFraction: 1 / 365,
+      formatKey: 'DAYS', tickDistance: 4, labelGapPx: 40,
+    })
+    expect(t.length).toBeGreaterThan(200)                  // every day still gets its mark
+    expect(t.filter(x => x.showLabel).length).toBeLessThan(t.length / 8)   // one name in ten or so
+  })
+
+  it('names every tick on a whole-year rung, which has never collided', () => {
+    expect(ticks({ labelGapPx: 500 }).every(t => t.showLabel)).toBe(true)
   })
 })

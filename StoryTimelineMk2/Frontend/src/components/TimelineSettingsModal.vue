@@ -214,25 +214,26 @@ function expandShortHex<T extends object>(ls: T): T {
     return ls
 }
 
+/**
+ * Alpha is the byte the hex actually holds, 0-255, not a percentage of it. As a percentage the
+ * round trip lost a step every save -- `#ffffff10` is 6.27%, which stored 6 and came back `0f` --
+ * and the calendar bands, which want 2-6%, all pinned to the far left of the slider where one nudge
+ * reached zero. On the channel itself nothing is rounded and those bands have 16 usable notches.
+ */
 function parseHexAlpha(hex: string): { rgb: string; alpha: number } {
-    if (!hex) return { rgb: '#3b6ec4', alpha: 30 }
+    const FALLBACK = { rgb: '#3b6ec4', alpha: 77 }
+    if (!hex) return { ...FALLBACK }
     const h = hex.replace('#', '')
-    if (h.length === 4) {
-        // #RGBA short form
-        const r = h[0]! + h[0], g = h[1]! + h[1], b = h[2]! + h[2], a = h[3]! + h[3]
-        return { rgb: `#${r}${g}${b}`, alpha: Math.round(parseInt(a, 16) / 255 * 100) }
-    }
-    if (h.length === 8) return { rgb: `#${h.slice(0, 6)}`, alpha: Math.round(parseInt(h.slice(6, 8), 16) / 255 * 100) }
-    if (h.length === 6) return { rgb: `#${h}`, alpha: 100 }
-    if (h.length === 3) {
-        const r = h[0]! + h[0], g = h[1]! + h[1], b = h[2]! + h[2]
-        return { rgb: `#${r}${g}${b}`, alpha: 100 }
-    }
-    return { rgb: '#3b6ec4', alpha: 30 }
+    const dbl = (n: number) => h[n]! + h[n]
+    if (h.length === 4) return { rgb: `#${dbl(0)}${dbl(1)}${dbl(2)}`, alpha: parseInt(dbl(3), 16) }
+    if (h.length === 8) return { rgb: `#${h.slice(0, 6)}`, alpha: parseInt(h.slice(6, 8), 16) }
+    if (h.length === 6) return { rgb: `#${h}`, alpha: 255 }
+    if (h.length === 3) return { rgb: `#${dbl(0)}${dbl(1)}${dbl(2)}`, alpha: 255 }
+    return { ...FALLBACK }
 }
 
-function buildHexAlpha(rgb: string, alphaPct: number): string {
-    return rgb + Math.round((alphaPct / 100) * 255).toString(16).padStart(2, '0')
+function buildHexAlpha(rgb: string, alpha: number): string {
+    return rgb + Math.max(0, Math.min(255, Math.round(alpha))).toString(16).padStart(2, '0')
 }
 
 /**
@@ -636,7 +637,7 @@ async function save() {
                     <span class="s-label">Border Color <SettingHint tip="Color of the event box outline; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="eventBorder.rgb" />
-                        <input class="s-slider" type="range" v-model.number="eventBorder.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="eventBorder.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineEventBorderColor }}</span>
                     </div>
 
@@ -788,7 +789,7 @@ async function save() {
                     <span class="s-label">Band Color <SettingHint tip="Fill color of the data range band; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="dataRange.rgb" />
-                        <input class="s-slider" type="range" v-model.number="dataRange.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="dataRange.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineDataRangeColor }}</span>
                     </div>
                 </div>
@@ -804,28 +805,28 @@ async function save() {
                     <span class="s-label">Season / Year Color <SettingHint tip="Color of alternating season or year bands; the slider is its opacity, and a low one keeps the effect subtle" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="bandSeason.rgb" />
-                        <input class="s-slider" type="range" v-model.number="bandSeason.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="bandSeason.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlaySeasonColor }}</span>
                     </div>
 
                     <span class="s-label">Month Color <SettingHint tip="Color of alternating month bands; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="bandMonth.rgb" />
-                        <input class="s-slider" type="range" v-model.number="bandMonth.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="bandMonth.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlayMonthColor }}</span>
                     </div>
 
                     <span class="s-label">Week Color <SettingHint tip="Color of alternating week bands; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="bandWeek.rgb" />
-                        <input class="s-slider" type="range" v-model.number="bandWeek.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="bandWeek.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlayWeekColor }}</span>
                     </div>
 
                     <span class="s-label">Day Color <SettingHint tip="Color of alternating day bands, only visible at high zoom; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="bandDay.rgb" />
-                        <input class="s-slider" type="range" v-model.number="bandDay.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="bandDay.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineCalendarOverlayDayColor }}</span>
                     </div>
                 </div>
@@ -836,14 +837,14 @@ async function save() {
                     <span class="s-label">Fill Color <SettingHint tip="Background fill of collapsed time-break strips; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="breakFill.rgb" />
-                        <input class="s-slider" type="range" v-model.number="breakFill.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="breakFill.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineBreakFillColor }}</span>
                     </div>
 
                     <span class="s-label">Border Color <SettingHint tip="Color of the left and right border lines of a collapsed time-break strip; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="breakBorder.rgb" />
-                        <input class="s-slider" type="range" v-model.number="breakBorder.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="breakBorder.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.TimelineBreakBorderColor }}</span>
                     </div>
                 </div>
@@ -946,14 +947,14 @@ async function save() {
                     <span class="s-label">Week Highlight Color <SettingHint tip="Background highlight for the row containing the current week; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="calWeekHl.rgb" />
-                        <input class="s-slider" type="range" v-model.number="calWeekHl.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="calWeekHl.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.CalendarPanelWeekHighlightColor }}</span>
                     </div>
 
                     <span class="s-label">Day Highlight Color <SettingHint tip="Background highlight for the current day cell; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="calDayHl.rgb" />
-                        <input class="s-slider" type="range" v-model.number="calDayHl.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="calDayHl.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.CalendarPanelDayHighlightColor }}</span>
                     </div>
                 </div>
@@ -970,7 +971,7 @@ async function save() {
                     <span class="s-label">Card Background Color <SettingHint tip="Background color of individual item cards in the data panel; the slider is its opacity" /></span>
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="dataCard.rgb" />
-                        <input class="s-slider" type="range" v-model.number="dataCard.alpha" min="0" max="100" />
+                        <input class="s-slider" type="range" v-model.number="dataCard.alpha" min="0" max="255" />
                         <span class="color-hex">{{ localLayout.DataPanelCardBackgroundColor }}</span>
                     </div>
 

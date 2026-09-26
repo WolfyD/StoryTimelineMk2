@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote, type CharacterItem, type ItemTagLink, type ItemCharacterLink, type ItemStoryRefLink, type FilterRule, type FilterPreset, type FilterState } from '@/types/models';
-import { BackendAPI } from '@/bridge/api';
+import { BackendAPI, type BridgeError } from '@/bridge/api';
 import { buildFormatRegistry, tickDistanceOf, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
 import { parseCalendarConfig } from '@/utils/calendarDef';
 import { applyFilters, buildItemDataMap } from '@/utils/filterMatcher';
@@ -305,7 +305,11 @@ export const useTimelineStore = defineStore('timeline', () => {
 				}
 			}
 		} catch (error) {
-			console.error("Bridge Error loading timeline:", error);
+			// The window has nothing to show without this, so it cannot be a console line: it used to end
+			// as an empty canvas that looked like an empty timeline. Same remedy as loadKinItemIds above.
+			console.error("Bridge Error loading timeline:", error, (error as BridgeError).payload?.detail);
+			const why = error instanceof Error ? error.message : String(error);
+			window.alert(`This timeline could not be loaded, so the window is empty.\n\n${why}`);
 		} finally {
 			isLoading.value = false;
 		}
@@ -554,7 +558,12 @@ export const useTimelineStore = defineStore('timeline', () => {
 				TimelineId: tlId,
 				SortOrder: i,
 			}));
-		} catch { return; }
+		} catch (ex) {
+			// A preset whose rules will not parse cannot be applied, and clicking it used to do nothing at all.
+			console.error('[timelineStore] filter preset rules could not be read', preset.Id, ex);
+			window.alert(`The filter preset "${preset.Name}" could not be read, so it was not applied.`);
+			return;
+		}
 		const oldRules = filterRules.value;
 		const andMode = preset.AndMode === 1;
 		// Persist to DB before updating in-memory state so a failure leaves the store consistent

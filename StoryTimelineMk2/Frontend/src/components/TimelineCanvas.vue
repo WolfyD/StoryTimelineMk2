@@ -7,13 +7,13 @@ import 'splitpanes/dist/splitpanes.css';
 import type { LayoutSettings, HiddenRange, TimelineItem, TimelineProject, TimelineSettings } from '@/types/models';
 import type { Stage } from 'konva/lib/Stage';
 import { BackendAPI } from '@/bridge/api';
-import { canvasColor } from '@/utils/canvasTheme';
+import { canvasColor, textHalo } from '@/utils/canvasTheme';
 import { characterAbsolute } from '@/utils/characterItems';
 import { PhUserCircle, PhUserFocus } from '@phosphor-icons/vue';
 
 import {
 	BREAK_TICKS, absoluteToVisual, visualToAbsolute,
-	getXFromTime, getTimeFromX, tickDistanceOf, gridTicks, dayOfYearAt, boundaryDays,
+	getXFromTime, getTimeFromX, tickDistanceOf, gridTicks, dayOfYearAt, boundaryDays, snapToTick,
     isLeftOfNow, getAssignedLane, laneSpanFor, type LaneLock
 } from '@/utils/timelineLayout';
 import {
@@ -365,6 +365,67 @@ const deleteItem = async (itemId: string) => {
     }
 };
 
+// --- LAYER STACK ---
+// Konva gives every layer a scene canvas and a hit canvas sized to the whole stage, and
+// `visible(false)` frees neither -- eight layers cost eight stages' worth of pixels whether or not a
+// window uses them. Four are conditional (the reference underlay and its age slits, the character
+// lifeline, the mini rail), so a plain timeline window now carries four instead of eight, and Konva
+// stops warning about the count into the bargain.
+//
+// Stacking is DOM order: `Stage.add` appends the canvas and `layer.zIndex()` only renumbers children
+// without touching the DOM, so mounting one layer means re-adding the whole stack in order. That is
+// also what brings a parked canvas back -- `Stage.add` sizes the layer and redraws its children,
+// which `remove()` left alone.
+const LAYER_STACK = () => [
+    uiLayer,
+    referenceLayer,      // BL-66 underlay — below the grid and the active items
+    lifelineLayer,       // BL-15 lifeline — under the items it runs beneath
+    ...(store.layoutSettings?.TimelineTickMarkerTextAlwaysOnTop ? [itemLayer, gridLayer] : [gridLayer, itemLayer]),
+    refStripeLayer,      // BL-66 age slits — above the items in either grid order
+    boundaryOverlayLayer,
+    miniLayer,           // mini mode overlay, above everything
+];
+
+/** The one place that knows when a conditional layer is needed, so callers only have to say "recheck". */
+function layerWanted(layer: Konva.Layer): boolean {
+    if (layer === referenceLayer || layer === refStripeLayer) return !!store.reference && !props.miniMode;
+    if (layer === lifelineLayer) return !!store.characterFocus && !props.miniMode;
+    if (layer === miniLayer) return !!props.miniMode;
+    if (layer === itemLayer) return !props.miniMode;
+    return true;
+}
+
+/**
+ * A layer that never answers a hit test carries a second full-size buffer nothing ever reads
+ * (`Layer.getIntersection` bails on `isListening()` before it looks). Konva re-inflates it on every
+ * stage resize, so this is idempotent and runs again after one.
+ */
+function dropDeadHitCanvases() {
+    for (const layer of LAYER_STACK()) {
+        if (layer.getStage() && !layer.listening() && layer.getHitCanvas().getWidth()) layer.getHitCanvas().setSize(0, 0);
+    }
+}
+
+/**
+ * Mount exactly the layers this window wants, in order, and hand the rest of their pixels back.
+ * Called from the render path, so it returns on the spot unless the set has actually changed.
+ */
+function syncLayers(force = false) {
+    const st = stage;
+    if (!st) return;
+    const stack = LAYER_STACK();
+    if (!force && stack.every(l => !!l.getStage() === layerWanted(l))) return;
+    for (const layer of stack) {
+        if (layer.getStage()) layer.remove();   // detach first: the re-add is what puts the canvas in the right DOM slot
+        if (!layerWanted(layer)) { layer.setSize({ width: 0, height: 0 }); continue; }   // sizes both canvases to nothing
+        // Retina doubles every canvas in both directions. `Konva.pixelRatio` covers canvases made from
+        // here on; the layers were built before it, and one mounted later never saw it either.
+        if (store.lowResourceMode) layer.getCanvas().setPixelRatio(1);
+        st.add(layer);   // sizes both canvases, redraws the children, appends the canvas on top
+    }
+    dropDeadHitCanvases();
+}
+
 // --- LAYOUT SETTINGS WATCHER ---
 // Re-render the full canvas whenever layout settings change (e.g. after saving settings)
 watch(() => props.layoutSettings, (newLs) => {
@@ -383,6 +444,7 @@ watch(() => props.layoutSettings, (newLs) => {
     stemsMaster.destroyChildren();
     boxesMaster.destroyChildren();
     clearReferenceNodes();
+    syncLayers(true);   // TimelineTickMarkerTextAlwaysOnTop swaps two of the slots
     renderGrid(gridLayer, newLs);
     RenderUiLayer(uiLayer, newLs);
     renderWithDimming(newLs);
@@ -403,8 +465,7 @@ watch(() => props.miniMode, (isMini) => {
     miniNodeCache.clear();
     miniPinLanes.clear();
     miniBarLanes.clear();
-    miniLayer.visible(!!isMini);
-    itemLayer.visible(!isMini);
+    syncLayers();   // the rail and the item layer trade places rather than hiding
     clearLanes();
     renderWithDimming(props.layoutSettings);
 });
@@ -503,7 +564,10 @@ watch(() => store.currentLodIndex, (newIdx, oldIdx) => {
 
 function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSettings) {
     if (!layoutSettings.TimelineCalendarOverlayEnabled) return;
-    if (store.settings?.TimelineMinimised) return;
+    // The thin mini rail has no room for bands. Every other mini branch in here reads the prop;
+    // this one read the saved flag, which the page never restores into mini mode -- so a timeline
+    // last closed minimised opened full-size with its bands silently switched off.
+    if (props.miniMode) return;
 
     const cfg = store.calendarConfig;
     const step = viewport.lodStepFraction;
@@ -635,6 +699,39 @@ function renderCalendarOverlay(layer: Konva.Layer, layoutSettings: LayoutSetting
 
 // Callers hand this props.layoutSettings straight through, which is null until the settings
 // load. Guarding here rather than at six call sites: without it the body throws on the first read.
+/**
+ * BL-85: the widest name this rung can print, measured once per calendar and kept.
+ *
+ * A sub-year formatter returns the unit's own name without the year ("Summer", "W50", "Jan 15"), so
+ * one year of the calendar's boundary days is every label the rung has. Taking the widest of those,
+ * rather than whatever happens to be on screen, is what stops the ruler changing its mind mid-pan.
+ * Keyed on the calendar object itself: edit the calendar and the store hands out a new one, and the
+ * measurements taken against the old one go with it.
+ */
+const rungWidths = new WeakMap<object, Map<string, number>>();
+let measureCtx: CanvasRenderingContext2D | null = null;
+const rungLabelWidth = (formatKey: string, font: string): number => {
+    const cfg = store.calendarConfig;
+    let measured = rungWidths.get(cfg);
+    if (!measured) rungWidths.set(cfg, measured = new Map());
+    const hit = measured.get(font + formatKey);
+    if (hit !== undefined) return hit;
+
+    measureCtx ??= document.createElement('canvas').getContext('2d');
+    const days = boundaryDays(formatKey, cfg);
+    const formatter = store.activeFormatRegistry[formatKey];
+    let widest = 0;
+    if (measureCtx && days && formatter) {
+        measureCtx.font = font;
+        for (const d of days) widest = Math.max(widest, measureCtx.measureText(formatter(0, d)).width);
+    }
+    // ponytail: no canvas to measure with, or a rung the calendar cannot name -- fall back to the
+    // fixed box the ruler used before it measured anything, which is what those rungs still get.
+    const w = widest || 100;
+    measured.set(font + formatKey, w);
+    return w;
+};
+
 const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) => {
     if (!layoutSettings) return;
     gridPanOffset = 0;
@@ -650,6 +747,41 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
     const step = viewport.lodStepFraction;
     const ranges = getActiveRanges();
 
+    // BL-82: a rung with a short tick distance can put its labels closer together than the dates
+    // are wide, and a horizontal ruler then reads as one run-on string. Angled, each label leans out
+    // of its neighbour's way. 45 degrees fixed -- the angle every chart tool reaches for, and one
+    // nobody has to tune. The label starts on its own tick and runs down and to the right, north-west
+    // to south-east, which is the lean a rotated axis is usually drawn with.
+    // ponytail: always on when the setting is on, never on collision. A ruler that changes angle as
+    // you pan is worse than one that does not.
+    const angledLabels = layoutSettings.TimelineTickMarkerTextAngled;
+    const LABEL_W = 100;
+
+    // BL-85: "smaller non-year ticks" is what tells a year apart from the units around it, so it
+    // carries all three of the differences rather than tick height alone — a shorter mark, a name a
+    // size down, and a pixel more on the year's own mark.
+    const smallerUnits = layoutSettings.TimelineNonYearTicksSmaller;
+    const fontSize = layoutSettings.TimelineTickMarkerFontSize;
+    const unitFontSize = smallerUnits ? Math.max(7, Math.round(fontSize * 0.85)) : fontSize;
+
+    // How much room a name needs before the next one may start. Angled, two labels clear each other
+    // once their baselines are a line height apart measured across the slant, which at 45 degrees is
+    // a gap of lineHeight * sqrt(2) — about a fifth of what the same names need side by side, and
+    // most of why the angle is worth having. Measured at the unit size, because every label the gap
+    // governs is a unit name: the year is never dropped.
+    const font = `${layoutSettings.TimelineTickMarkerFontStyle} ${unitFontSize}px ${layoutSettings.TimelineTickMarkerFontFamily}`;
+    const labelGapPx = angledLabels
+        ? unitFontSize * 1.2 * Math.SQRT2
+        : rungLabelWidth(currentLod.formatKey, font) + 6;
+
+    // Angled there is no second row to move the year to: every label leans the same way, so dropping
+    // one a row slides it along the slant instead of clearing it. The year keeps its place and the
+    // unit name beside it gives way — year first, as asked. At the year's own size, which is the
+    // bigger of the two. Plain, the year has its own row and asks for nothing.
+    const yearGapPx = angledLabels ? fontSize * 1.2 * Math.SQRT2 : 0;
+
+    const labelHalo = textHalo(layoutSettings.TimelineTickMarkerTextColor);
+
     // BL-44: which ticks exist, and the day-of-year each one falls on, is pure maths — it lives in
     // timelineLayout where it can be tested without a canvas. This loop only draws them.
     const ticks = gridTicks({
@@ -662,19 +794,9 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
         stepFraction: currentLod.stepFraction || 1,
         cfg: store.calendarConfig,
         extraPx: GRID_EXTRA_PX,
+        labelGapPx,
+        yearGapPx,
     });
-
-    // BL-82: a rung with a short tick distance can put its labels closer together than the dates
-    // are wide, and a horizontal ruler then reads as one run-on string. Angled, each label leans out
-    // of its neighbour's way. 45 degrees fixed -- the angle every chart tool reaches for, and one
-    // nobody has to tune. The label's right end stays pinned to its own tick and the text runs down
-    // and to the left, so it reads up-to-the-right and never crosses the tick it belongs to.
-    // ponytail: always on when the setting is on, never on collision. Measuring every label against
-    // its neighbours each frame costs more than the ruler is worth, and a ruler that changes angle
-    // as you pan is worse than one that does not.
-    const angledLabels = layoutSettings.TimelineTickMarkerTextAngled;
-    const LABEL_W = 100;
-    const LABEL_LEAN = LABEL_W * Math.SQRT1_2;   // cos 45 deg, the reach of a rotated label box
 
     // A calendar with no YEARS entry would otherwise crash the whole grid draw.
     const formatter = store.activeFormatRegistry[currentLod.formatKey]
@@ -683,21 +805,39 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
 
     for (const t of ticks) {
         const x = getXFromTime(t.absolute, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
-        const tickHalfH = (!t.isYearTick && layoutSettings.TimelineNonYearTicksSmaller) ? 6 : 10;
+        const unitTick = !t.isYearTick && smallerUnits;
+        const tickHalfH = unitTick ? 6 : 10;
+        // The extra pixel goes on a year's mark only where there are unit marks around for it to
+        // stand out from. On a rung of nothing but years it would just thicken the whole ruler.
+        const heavyMark = smallerUnits && t.subYear && t.isYearTick ? 1 : 0;
+
+        layer.add(new Konva.Line({ points: [x, viewport.height / 2 - tickHalfH, x, viewport.height / 2 + tickHalfH], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth + heavyMark, listening: false }));
+
+        // The mark stays, the crowded name goes.
+        if (!t.showLabel) continue;
+
+        // BL-85: a year number on a sub-year rung gets a row of its own. It is the label most likely
+        // to be crowded — the year boundary falls wherever the calendar puts day 0, which on a
+        // calendar whose seasons start mid-year is a handful of days from one of them — and it is
+        // also the one nobody wants to lose. On its own row neither has to give. Angled it has no
+        // second row to go to (see `yearGapPx`), so there it keeps the one row and wins outright.
+        const yearLabel = t.subYear && t.isYearTick;
+        const secondRow = yearLabel && !angledLabels;
 
         layer.add(
-            new Konva.Line({ points: [x, viewport.height / 2 - tickHalfH, x, viewport.height / 2 + tickHalfH], stroke: layoutSettings.TimelineTickColor || '#ffffff88', strokeWidth: layoutSettings.TimelineTickWidth, listening: false }),
             // `grid-label` is how the ruler tests find these among every other Text on the stage.
             new Konva.Text({ name: 'grid-label',
-                x: x - (angledLabels ? LABEL_LEAN : LABEL_W / 2),
-                y: viewport.height / 2 + 15 + (angledLabels ? LABEL_LEAN : 0),
-                rotation: angledLabels ? -45 : 0, align: angledLabels ? 'right' : 'center',
+                // Plain the box is centred on its tick. Angled the text starts there and leans away
+                // down-and-right, so the origin is the tick itself.
+                x: angledLabels ? x : x - LABEL_W / 2,
+                y: viewport.height / 2 + 15 + (secondRow ? fontSize + 4 : 0),
+                rotation: angledLabels ? 45 : 0, align: angledLabels ? 'left' : 'center',
                 // The grid's own convention: a sub-year rung prints the bare year where one begins,
                 // rather than repeating January. A whole-year rung always asks its formatter, since
                 // "2000s" is what a millennium tick is for.
-                text: t.subYear && t.isYearTick ? String(t.year) : formatter(t.year, t.day),
-                fill: layoutSettings.TimelineTickMarkerTextColor,
-                width: LABEL_W, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, fontSize: layoutSettings.TimelineTickMarkerFontSize, listening: false }),
+                text: yearLabel ? String(t.year) : formatter(t.year, t.day),
+                fill: layoutSettings.TimelineTickMarkerTextColor, ...labelHalo,
+                width: LABEL_W, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, fontSize: unitTick ? unitFontSize : fontSize, listening: false }),
         );
     }
 
@@ -1162,6 +1302,10 @@ const renderWithDimming = (ls: LayoutSettings) => {
  */
 function renderLifeline(ls: LayoutSettings) {
     const c = store.characterFocus;
+    // Only an appearances window ever has a character in focus, so nowhere else pays for this layer.
+    // Mounted for as long as there is one, on screen or not: a layer that came and went as the wave
+    // scrolled off the edge would rebuild the whole stack mid-pan.
+    syncLayers();
     // Every other window pans past this on every frame: no layer work at all unless there is,
     // or was, a lifeline to draw.
     if (!c && !lifelineLayer.hasChildren()) return;
@@ -1275,10 +1419,9 @@ function renderReference(ls: LayoutSettings) {
         if (refNodeCache.size) clearReferenceNodes();
         refRenderedFor = null;
     }
-    if (!ref || props.miniMode) { referenceLayer.visible(false); refStripeLayer.visible(false); return; }
+    if (!ref || props.miniMode) { syncLayers(); return; }
     if (refRenderedFor !== ref) { clearReferenceNodes(); refRenderedFor = ref; }
-    referenceLayer.visible(true);
-    refStripeLayer.visible(true);
+    syncLayers();   // both of these exist only while a reference timeline is loaded
     const ghostAges: { start: number; end: number; color: string }[] = [];
 
     const screenBuffer = 400;
@@ -1468,14 +1611,15 @@ function updateCursor(mouseX: number, mouseY: number) {
 
     const step = viewport.lodStepFraction;
     const ranges = getActiveRanges();
+    const currentLod = store.lodProfile[store.currentLodIndex];
+    const formatKey = currentLod?.formatKey ?? 'YEARS';
     const rawTime = getTimeFromX(mouseX, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
-    const snappedTime = shiftHeld ? rawTime : Math.round(rawTime / step) * step;
+    // BL-85: the ticks this rung actually draws, not an even slice of the year. Shift still frees it.
+    const snappedTime = shiftHeld ? rawTime : snapToTick(rawTime, formatKey, store.calendarConfig, step);
     const snappedX = shiftHeld ? mouseX : getXFromTime(snappedTime, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
 
     const year = Math.floor(snappedTime);
     const fraction = parseFloat((snappedTime - year).toFixed(8));
-    const currentLod = store.lodProfile[store.currentLodIndex];
-    const formatKey = currentLod?.formatKey ?? 'YEARS';
     const formatter = store.activeFormatRegistry[formatKey] || store.activeFormatRegistry['YEARS'];
 
     const mid = viewport.height / 2;
@@ -1574,6 +1718,7 @@ function updateStageSize() {
     viewport.width = containerRef.value.clientWidth;
     viewport.height = containerRef.value.clientHeight;
     store.setViewportWidth(viewport.width);
+    dropDeadHitCanvases();   // Stage._resizeDOM just gave every layer a full-size hit canvas back
 
     renderGrid(gridLayer, props.layoutSettings);
     RenderUiLayer(uiLayer, props.layoutSettings!);
@@ -1738,32 +1883,12 @@ onMounted(() => {
     itemLayer.add(stemsMaster);
     itemLayer.add(boxesMaster);
 
-	stage.add(uiLayer);
-	stage.add(referenceLayer); // BL-66 underlay — below the grid and the active items
-	stage.add(lifelineLayer);  // BL-15 lifeline — under the items it runs beneath
-
-	if(store.layoutSettings?.TimelineTickMarkerTextAlwaysOnTop) {
-		stage.add(itemLayer);
-		stage.add(gridLayer);
-	}else {
-		stage.add(gridLayer);
-		stage.add(itemLayer);
-	}
-    stage.add(refStripeLayer); // BL-66 age slits — above the items in either grid order
-    stage.add(boundaryOverlayLayer); // above items
-    // Set initial layer visibility based on current prop value
-    miniLayer.visible(!!props.miniMode);
-    itemLayer.visible(!props.miniMode);
-    stage.add(miniLayer); // mini mode overlay, above boundaries
-
     // Low resource mode, biggest win first: a Retina display doubles every canvas in both
     // directions, so each frame pushes four times the pixels. Drawing at 1:1 costs some crispness
-    // and buys all of that back. The global covers every canvas Konva makes from here on — cache()
-    // bitmaps, the minimap, mini mode; the loop catches the layers, which were built before this.
-    if (store.lowResourceMode) {
-        Konva.pixelRatio = 1;
-        for (const layer of stage.getLayers()) layer.getCanvas().setPixelRatio(1);
-    }
+    // and buys all of that back. This global covers every canvas Konva makes from here on — cache()
+    // bitmaps, the minimap, mini mode; syncLayers sets the ratio on each layer as it mounts it.
+    if (store.lowResourceMode) Konva.pixelRatio = 1;
+    syncLayers();   // mounts the wanted layers bottom-to-top and sizes them to the stage
 
     renderWithDimming(props.layoutSettings!);
     updateCurrentYearInStore(true);
@@ -1777,8 +1902,10 @@ onMounted(() => {
         if (!store.layoutSettings) return { absoluteTime: 0, year: 0, fraction: 0 };
         const step = viewport.lodStepFraction;
         const ranges = getActiveRanges();
+        const formatKey = store.lodProfile?.[store.currentLodIndex]?.formatKey ?? 'YEARS';
         const rawTime = getTimeFromX(posX, viewport.centerTime, step, viewport.width, viewport.tickDistance, ranges);
-        const absoluteTime = shiftKey ? rawTime : Math.round(rawTime / step) * step;
+        // BL-85: a new item lands on the tick the cursor was sitting on, not near it.
+        const absoluteTime = shiftKey ? rawTime : snapToTick(rawTime, formatKey, store.calendarConfig, step);
         const cleanTime = parseFloat(absoluteTime.toFixed(8));
         return { absoluteTime, year: Math.floor(cleanTime), fraction: parseFloat((cleanTime - Math.floor(cleanTime)).toFixed(4)) };
     };

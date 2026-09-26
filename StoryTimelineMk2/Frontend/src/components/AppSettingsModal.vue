@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { PhFolderOpen, PhArrowSquareOut, PhCopy, PhFloppyDisk, PhPaintBrush } from '@phosphor-icons/vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, type BridgeError } from '@/bridge/api'
 import type { BackupInfo } from '@/types/models'
 import BaseModal from './BaseModal.vue'
 import AppThemeModal from './AppThemeModal.vue'
@@ -28,6 +28,36 @@ const recentBackups   = ref<BackupInfo[]>([])
 const showAchievementPopups = ref(true)
 const achievementSound = ref(true)
 
+function showFeedback(type: 'success' | 'error', msg: string) {
+    feedback.value = { type, msg }
+    if (type === 'success') setTimeout(() => { feedback.value = null }, 4000)
+}
+
+/**
+ * Every call in here crosses the bridge, and `api.ts` rejects whatever the backend reports as an
+ * error. Not one of these handlers caught it, so a failed backup fell through to the global
+ * `unhandledrejection` net in `api.ts`: the message arrived as a bare browser alert from nowhere in
+ * particular, and the modal behind it read "Working..." for good -- button disabled, no way back
+ * except closing it. A bridge *timeout* carries no payload, so that net skips it and nothing at all
+ * was shown. One wrapper rather than a `try` per handler, because the remedy is identical every time
+ * and per-handler is exactly what got forgotten. Catching here also means the global net stays quiet,
+ * so the message is said once, in the modal that asked for it.
+ */
+async function guard<T>(what: string, call: () => Promise<T>): Promise<T | null> {
+    try {
+        return await call()
+    } catch (e) {
+        // `detail` carries the C# stack; `reported` means the backend already put its own dialog up.
+        console.error(`[AppSettings] ${what} failed:`, e, (e as BridgeError).payload?.detail)
+        if (!(e as BridgeError).payload?.reported) {
+            showFeedback('error', `${what} failed: ${e instanceof Error ? e.message : String(e)}`)
+        }
+        return null
+    } finally {
+        isBusy.value = false   // whichever handler raised it; a no-op for the ones that never do
+    }
+}
+
 function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -43,7 +73,7 @@ function formatDate(dateStr: string): string {
 }
 
 async function loadBackupSettings() {
-    const s = await BackendAPI.GetBackupSettings()
+    const s = await guard('Loading the backup settings', () => BackendAPI.GetBackupSettings())
     if (s) {
         backupInterval.value = s.interval ?? 'never'
         backupsFolderPath.value = s.backupsFolder ?? ''
@@ -52,51 +82,52 @@ async function loadBackupSettings() {
 }
 
 async function saveInterval() {
-    await BackendAPI.SaveBackupSettings(backupInterval.value)
+    await guard('Saving the backup schedule', () => BackendAPI.SaveBackupSettings(backupInterval.value))
 }
 
-onMounted(async () => {
-    const cfg = await BackendAPI.GetAppConfig()
-    if (cfg) {
-        currentRoot.value = cfg.DataRoot
-        performantPanning.value = cfg.performantPanning ?? true
-        showAchievementPopups.value = cfg.showAchievementPopups ?? true
-        achievementSound.value = cfg.achievementSound ?? true
-    }
-    onScreenControls.value = (await BackendAPI.GetMiscSetting('on_screen_controls', 0))?.value === '1'
-    lowResourceMode.value = (await BackendAPI.GetMiscSetting('low_resource_mode', 0))?.value === '1'
-    await loadBackupSettings()
+onMounted(() => {
+    // One guard for the whole load: whichever of the four reads fails, the modal opens on its message
+    // rather than on blank fields.
+    void guard('Loading the app settings', async () => {
+        const cfg = await BackendAPI.GetAppConfig()
+        if (cfg) {
+            currentRoot.value = cfg.DataRoot
+            performantPanning.value = cfg.performantPanning ?? true
+            showAchievementPopups.value = cfg.showAchievementPopups ?? true
+            achievementSound.value = cfg.achievementSound ?? true
+        }
+        onScreenControls.value = (await BackendAPI.GetMiscSetting('on_screen_controls', 0))?.value === '1'
+        lowResourceMode.value = (await BackendAPI.GetMiscSetting('low_resource_mode', 0))?.value === '1'
+        await loadBackupSettings()
+    })
 })
 
 async function saveNotificationSettings() {
-    await BackendAPI.SaveNotificationSettings(showAchievementPopups.value, achievementSound.value)
-    const { useNotificationsStore } = await import('@/stores/notificationsStore')
-    useNotificationsStore().setSettings(showAchievementPopups.value, achievementSound.value)
+    await guard('Saving the notification settings', async () => {
+        await BackendAPI.SaveNotificationSettings(showAchievementPopups.value, achievementSound.value)
+        const { useNotificationsStore } = await import('@/stores/notificationsStore')
+        useNotificationsStore().setSettings(showAchievementPopups.value, achievementSound.value)
+    })
 }
 
 async function toggleLowResourceMode(value: boolean) {
     lowResourceMode.value = value
-    await store.setLowResourceMode(value)
+    await guard('Saving low resource mode', () => store.setLowResourceMode(value))
 }
 
 async function toggleOnScreenControls(value: boolean) {
     onScreenControls.value = value
-    await store.setOnScreenControls(value)
+    await guard('Saving the on-screen controls setting', () => store.setOnScreenControls(value))
 }
 
 async function togglePerformantPanning(value: boolean) {
     performantPanning.value = value
     store.setPerformantPanning(value)
-    await BackendAPI.SavePerformantPanning(value)
-}
-
-function showFeedback(type: 'success' | 'error', msg: string) {
-    feedback.value = { type, msg }
-    if (type === 'success') setTimeout(() => { feedback.value = null }, 4000)
+    await guard('Saving performant panning', () => BackendAPI.SavePerformantPanning(value))
 }
 
 async function browse() {
-    const result = await BackendAPI.BrowseDataFolder()
+    const result = await guard('Browsing for a folder', () => BackendAPI.BrowseDataFolder())
     if (result?.path) pendingPath.value = result.path
 }
 
@@ -104,9 +135,9 @@ async function copyAndSwitch() {
     if (!pendingPath.value) return
     isBusy.value = true
     feedback.value = null
-    const result = await BackendAPI.MoveDataFolder(pendingPath.value)
-    isBusy.value = false
-    if (result?.status === 'ok') {
+    const result = await guard('Copying the data folder', () => BackendAPI.MoveDataFolder(pendingPath.value))
+    if (!result) return   // guard has already said what went wrong
+    if (result.status === 'ok') {
         currentRoot.value = pendingPath.value
         pendingPath.value = ''
         showFeedback('success', 'Data copied and folder switched successfully.')
@@ -120,9 +151,9 @@ async function justSwitch() {
     if (!pendingPath.value) return
     isBusy.value = true
     feedback.value = null
-    const result = await BackendAPI.SetDataRoot(pendingPath.value)
-    isBusy.value = false
-    if (result?.status === 'ok') {
+    const result = await guard('Switching the data folder', () => BackendAPI.SetDataRoot(pendingPath.value))
+    if (!result) return   // guard has already said what went wrong
+    if (result.status === 'ok') {
         currentRoot.value = pendingPath.value
         pendingPath.value = ''
         if ((result as any).isNewDb)
@@ -136,19 +167,19 @@ async function justSwitch() {
 }
 
 async function openDataFolder() {
-    BackendAPI.OpenDataFolder()
+    BackendAPI.OpenDataFolder()   // fire-and-forget: no reply to fail, so nothing for guard to catch
 }
 
 async function createBackup() {
     isBusy.value = true
     feedback.value = null
-    const result = await BackendAPI.CreateBackup(includeMedia.value)
-    isBusy.value = false
-    if (result?.status === 'ok') {
+    const result = await guard('Backup', () => BackendAPI.CreateBackup(includeMedia.value))
+    if (!result) return   // guard has already said what went wrong
+    if (result.status === 'ok') {
         showFeedback('success', `Backup saved to backups folder.`)
         await loadBackupSettings()
-    } else if (result?.status !== 'cancelled') {
-        showFeedback('error', result?.message ?? 'Backup failed.')
+    } else if (result.status !== 'cancelled') {
+        showFeedback('error', result.message ?? 'Backup failed.')
     }
 }
 </script>

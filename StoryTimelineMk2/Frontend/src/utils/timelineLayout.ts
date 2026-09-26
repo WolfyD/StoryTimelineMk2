@@ -216,6 +216,10 @@ export interface GridTick {
      *  year on year boundaries wants both this and `isYearTick` — "2000s" is a millennium's label,
      *  not a year's. */
     subYear: boolean
+    /** Whether this tick's own name is drawn. A tick whose label would land on its neighbour's -- or
+     *  on the year number, which never gives way -- keeps its mark and loses its name. See
+     *  `labelGapPx` and `yearGapPx`. */
+    showLabel: boolean
 }
 
 export interface GridTickOptions {
@@ -231,6 +235,13 @@ export interface GridTickOptions {
     cfg: CalendarFormatConfig
     /** Overdraw either side, in pixels, so a pan doesn't reveal an empty edge. */
     extraPx?: number
+    /** Minimum horizontal pixels between one label and the next. Omit it and every tick is named.
+     *  The renderer owns the number because only it can measure text in the timeline's own font. */
+    labelGapPx?: number
+    /** Room the year number needs on either side of it. The year is never dropped, so this is space
+     *  a unit name has to give up. 0 or omitted when the renderer has put the year on a row of its
+     *  own, where it crowds nothing. */
+    yearGapPx?: number
 }
 
 /**
@@ -280,14 +291,41 @@ export function gridTicks(o: GridTickOptions): GridTick[] {
             const swallowed = ranges.find(r => r.StartYear <= y && r.EndYear >= y + 1)
             if (swallowed) { y = Math.max(y, Math.floor(swallowed.EndYear) - 1); continue }
 
+            // BL-85. Boundary days are not evenly spaced -- a calendar's last week can be one day
+            // long, and its seasons need not be the same length -- so which names fit is a walk, not
+            // a divisor. The walk restarts at every year boundary and runs before the viewport prune
+            // below, so a tick's answer depends on the calendar and the zoom and nothing else.
+            // Decide it from what is on screen instead and the names flicker as you pan, because the
+            // tick the walk starts from keeps changing.
+            // The year number is never dropped, so it claims its slot up front rather than taking a
+            // turn: a unit name has to clear the year boundary on either side of it as well as its
+            // own left-hand neighbour. `yearGapPx` is 0 when the renderer has put the year on a row
+            // of its own, and then the year competes with nothing and these two seeds do nothing.
+            let lastNamedVisual = -Infinity
+            const yearGap = o.yearGapPx ?? 0
+            const openVisual = yearGap ? absoluteToVisual(y, ranges, step) : -Infinity
+            const nextVisual = yearGap ? absoluteToVisual(y + 1, ranges, step) : Infinity
+
             for (const d of sorted) {
                 const absolute = y + d / yearLength
                 // ponytail: linear scan of one year's boundaries. Only a calendar with a five-figure
                 // year length would feel it; bisect `sorted` if one ever turns up.
                 if (absolute > absRight) break
-                if (absolute < absLeft) continue
                 if (ranges.some(r => absolute > r.StartYear && absolute < r.EndYear)) continue
-                out.push({ absolute, year: y, day: d, isYearTick: d === 0, subYear: true })
+
+                const isYearTick = d === 0
+                let showLabel = true
+                if (!isYearTick) {
+                    const visual = absoluteToVisual(absolute, ranges, step)
+                    const gapTo = (other: number) => (Math.abs(visual - other) / step) * tickDistance
+                    showLabel = (!o.labelGapPx || gapTo(lastNamedVisual) >= o.labelGapPx)
+                        && gapTo(openVisual) >= yearGap
+                        && gapTo(nextVisual) >= yearGap
+                    if (showLabel) lastNamedVisual = visual
+                }
+
+                if (absolute < absLeft) continue
+                out.push({ absolute, year: y, day: d, isYearTick, subYear: true, showLabel })
             }
         }
         return out
@@ -314,9 +352,49 @@ export function gridTicks(o: GridTickOptions): GridTick[] {
 
         const absolute = parseFloat(snapped.toFixed(8))
         const { year, day } = dayOfYearAt(absolute, cfg)
-        out.push({ absolute, year, day, isYearTick: absolute - year < 0.000001, subYear: false })
+        // ponytail: a whole-year rung names every tick. Its labels are short and BL-80 gives the
+        // coarse rungs 130-300px between them, so nothing has ever collided up here; give it the gap
+        // rule too if a calendar with very long year names ever turns one into a run-on string.
+        out.push({ absolute, year, day, isYearTick: absolute - year < 0.000001, subYear: false, showLabel: true })
     }
     return out
+}
+
+/**
+ * BL-85: the nearest position the grid actually draws a tick at.
+ *
+ * A rung's `stepFraction` is an even lattice -- a quarter of a year for seasons, a fifty-second for
+ * weeks -- but since BL-44 its ticks sit on the calendar's own boundary days, and those are neither
+ * evenly spaced nor an even division of the year. Rounding to the lattice therefore lands between
+ * ticks, and the miss grows across the year: on a 365-day calendar the weeks rung is a full day out
+ * by the last one. Which days those are comes from this timeline's calendar, so a three-season year
+ * or a 300-day one snaps to its own boundaries and not to anybody's idea of a quarter.
+ *
+ * A rung the calendar cannot place -- everything from decades up, and any custom level it has no
+ * days for -- still rounds to the lattice, because up there the lattice is what the grid draws.
+ */
+export function snapToTick(
+    absolute: number,
+    formatKey: string | undefined,
+    cfg: CalendarFormatConfig,
+    stepFraction: number,
+): number {
+    const stepF = stepFraction || 1
+    const days = boundaryDays(formatKey, cfg)
+    if (!days) return Math.round(absolute / stepF) * stepF
+
+    // Day 0 for the reason the grid draws it: the year boundary is a tick in its own right. Walking
+    // the year the position falls in and then its far edge covers every candidate, because the
+    // nearest boundary to a point inside a year is in that year or is the year after it.
+    const year = Math.floor(absolute)
+    let best = year
+    let bestGap = Infinity
+    for (const d of [...new Set([0, ...days])]) {
+        const t = year + d / cfg.yearLength
+        const gap = Math.abs(absolute - t)
+        if (gap < bestGap) { best = t; bestGap = gap }
+    }
+    return Math.abs(absolute - (year + 1)) < bestGap ? year + 1 : best
 }
 
 // --- Time & X-Coordinate Math ---
