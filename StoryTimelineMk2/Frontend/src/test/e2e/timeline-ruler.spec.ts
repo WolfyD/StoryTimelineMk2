@@ -232,10 +232,10 @@ for (const { cal, override } of CALENDARS) {
  * label leans out of its neighbour's way.
  *
  * The geometry is the whole of the feature, and it is the part that is easy to get backwards: the
- * label's *right* end stays on its own tick and the text runs down and to the left, so it reads
- * up-to-the-right. Lean it the other way and every date points at the tick next door. Two pages of
- * the same timeline, one with the setting on, is the only way to see that — the plain ruler says
- * where the tick is, the angled one says where the label ended up.
+ * label *begins* on its own tick and runs down and to the right, north-west to south-east. Lean it
+ * the other way and every date points at the tick next door. Two pages of the same timeline, one
+ * with the setting on, is the only way to see that — the plain ruler says where the tick is, the
+ * angled one says where the label ended up.
  */
 test.describe('angled axis labels', () => {
 	/** The reach of a 100px label box rotated 45°, which is both the x pull-back and the y drop. */

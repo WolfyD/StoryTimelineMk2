@@ -65,6 +65,13 @@ const calendarMismatch = computed(() =>
                 </label>
                 <p class="rt-tip">Alt+click a ghosted item to view it. Reference items ignore your filters and stay off the minimap.</p>
             </div>
+            <!-- BL-41: the shift above moves another timeline's items; this moves this timeline's own year
+                 numbers. Same idea, so it lives here — but outside the block above, because it is worth
+                 having with no reference loaded at all. -->
+            <label class="rt-shift">
+                Second year numbering <input v-model.lazy.number="store.yearOffset" type="number" step="1" /> years
+            </label>
+            <p class="rt-tip">Adds a second row of year numbers above the ruler, shifted by that much — so an in-world era can be read against a real-world one. 0 turns it off. Display only: dates are still stored and typed in this timeline's own years.</p>
             <p class="rt-tip">Draw one of your other timelines underneath this one, or open it read-only in its own window. <kbd>R</kbd> opens this list.</p>
             <p v-if="error || store.referenceError" class="rt-error">{{ error || store.referenceError }}</p>
             <div v-if="loading" class="rt-empty">Loading…</div>

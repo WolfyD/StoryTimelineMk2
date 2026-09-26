@@ -44,7 +44,35 @@ export interface BridgeErrorPayload {
 
 /** What `request()` rejects with — the payload is kept for callers that need its extra fields. */
 export interface BridgeError extends Error {
+	/**
+	 * Always true. The net at the bottom of this block keys on this rather than on `payload`,
+	 * which only a backend *reply* carries: a timeout, a dropped connection and an offline send
+	 * have no payload to check, and those are exactly the failures where nothing can be saved.
+	 */
+	bridge: true;
 	payload?: BridgeErrorPayload;
+}
+
+/** The one place a bridge failure becomes an Error, so none of them can go unmarked. */
+function bridgeError(message: string, payload?: BridgeErrorPayload): BridgeError {
+	const err = new Error(message) as BridgeError;
+	err.bridge = true;
+	if (payload) err.payload = payload;
+	return err;
+}
+
+// `failAll` rejects every in-flight request at once, so one dropped socket can mean six
+// identical alerts — worse than the silence it replaces. ponytail: dedupe on the message text
+// for 5s; per-action suppression if a real case ever needs two different alerts that fast.
+let lastAlert = { message: '', at: 0 };
+
+/** Tells the user once. The console line is already there, from `sendRequest`. */
+function alertBridgeFailure(message: string) {
+	if (message === lastAlert.message && Date.now() - lastAlert.at < 5000) return;
+	lastAlert.message = message;
+	window.alert(`Something went wrong:\n\n${message}`);
+	// Stamped after the alert returns: one that sat open for a minute must not re-fire on close.
+	lastAlert.at = Date.now();
 }
 
 const pendingRequests = new Map<number, (data: any) => void>();
@@ -104,7 +132,7 @@ function failAll(message: string) {
 	const waiting = [...rejectRequests.values()];
 	pendingRequests.clear();
 	rejectRequests.clear();
-	for (const reject of waiting) reject(new Error(message));
+	for (const reject of waiting) reject(bridgeError(message));
 }
 
 /** False when the message could not be handed over — the caller must fail loudly. */
@@ -152,7 +180,7 @@ function sendRequest<T>(action: string, payload: unknown = null, direct = false)
 				pendingRequests.delete(id);
 				rejectRequests.delete(id);
 				console.error(`[Bridge Timeout] No reply for '${action}' after 30s`);
-				reject(new Error(`Bridge timeout: no reply for '${action}' after 30s`));
+				reject(bridgeError(`Bridge timeout: no reply for '${action}' after 30s`));
 			}
 		}, 30_000);
 		pendingRequests.set(id, (data) => {
@@ -171,20 +199,22 @@ function sendRequest<T>(action: string, payload: unknown = null, direct = false)
 			pendingRequests.delete(id);
 			rejectRequests.delete(id);
 			clearTimeout(timeout);
-			reject(new Error(`[Bridge Offline] Cannot request '${action}': no connection to the backend`));
+			reject(bridgeError(`[Bridge Offline] Cannot request '${action}': no connection to the backend`));
 		}
 	});
 }
 
 // BL-18 (FC-C1): a caller that catches its own bridge error handles it however it likes. One
 // that does not used to leave the failure in the console, which is not "shown to the user" —
-// so the last uncaught one lands here. Only errors carrying a backend payload: the browser
-// host has already shown its own alert for the ones it raises.
+// so the last uncaught one lands here. Every bridge failure qualifies, not just the ones the
+// backend was healthy enough to describe: this used to test `err.payload`, which meant a
+// timeout or a dropped connection said nothing at all. The browser host still shows its own
+// alert for the ones it raises, and those never reach here.
 window.addEventListener('unhandledrejection', (event) => {
 	const err = event.reason as BridgeError | undefined;
-	if (!err?.payload) return;
-	event.preventDefault();   // the console line is already there, from sendRequest
-	window.alert(`Something went wrong:\n\n${err.message}`);
+	if (!err?.bridge) return;
+	event.preventDefault();
+	alertBridgeFailure(err.message);
 });
 
 /** Pushes that are not replies: InitReload, ItemSaved, and the host's own notifications. */
@@ -194,7 +224,10 @@ export const BackendAPI = {
 	// Fire and forget
 	send(action: string, payload: unknown = null) {
 		if (!post({ action, payload })) {
+			// No messageId means no promise, so there is nothing to reject and the net above
+			// never sees this one. Report it here instead of leaving it in the console.
 			console.error(`[Bridge Offline] Dropped '${action}': no connection to the backend`);
+			alertBridgeFailure(`Cannot do '${action}': no connection to Story Timeline. Reload the page.`);
 		}
 	},
 
@@ -757,8 +790,8 @@ function handleIncoming(data: BridgeMessage) {
 		// rejects here instead, once, and a caller that wants the message catches it.
 		const failed = data.payload as BridgeErrorPayload | null;
 		if (failed?.status === 'error') {
-			const err = new Error(failed.message ?? `'${data.action}' failed`) as BridgeError;
-			err.payload = failed;   // `detail` (the stack) and per-action flags such as `reported`
+			// `payload` carries `detail` (the stack) and per-action flags such as `reported`.
+			const err = bridgeError(failed.message ?? `'${data.action}' failed`, failed);
 			rejectRequests.get(data.messageId)?.(err);   // also clears both maps and the timeout
 			pendingRequests.delete(data.messageId);
 			return;

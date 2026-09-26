@@ -69,11 +69,16 @@ async function loadBrowserBridge() {
 }
 
 describe('bridge transport without WebView2', () => {
+	let alertMock: ReturnType<typeof vi.fn>
+
 	beforeEach(() => {
 		vi.spyOn(console, 'error').mockImplementation(() => {})
+		alertMock = vi.fn()
+		vi.stubGlobal('alert', alertMock)
 	})
 
 	afterEach(() => {
+		vi.useRealTimers()
 		vi.unstubAllGlobals()
 		vi.restoreAllMocks()
 	})
@@ -128,6 +133,7 @@ describe('bridge transport without WebView2', () => {
 
 		await expect(pending).rejects.toThrow('nope')
 		const err = (await pending.catch((e) => e)) as BridgeError
+		expect(err.bridge).toBe(true)
 		expect(err.payload?.detail).toBe('C# stack')
 		expect(err.payload?.reported).toBe(true)
 	})
@@ -159,6 +165,7 @@ describe('bridge transport without WebView2', () => {
 		socket.drop()
 
 		await expect(pending).rejects.toThrow(/connection to Story Timeline closed/i)
+		expect(((await pending.catch((e) => e)) as BridgeError).bridge).toBe(true)
 	})
 
 	it('fails new requests immediately once the connection is gone', async () => {
@@ -166,6 +173,52 @@ describe('bridge transport without WebView2', () => {
 		socket.open()
 		socket.drop()
 
-		await expect(BackendAPI.request('GetAllTimelines', { args: [] })).rejects.toThrow(/Bridge Offline/)
+		const pending = BackendAPI.request('GetAllTimelines', { args: [] })
+		await expect(pending).rejects.toThrow(/Bridge Offline/)
+		expect(((await pending.catch((e) => e)) as BridgeError).bridge).toBe(true)
+	})
+
+	// BL-18, the second half of FC-C1. The `unhandledrejection` net in api.ts is the only thing
+	// that shows an uncaught bridge failure to the user, and it keys on `err.bridge`. It used to
+	// test `err.payload`, which only an error *reply* carries — so a timeout and a dropped
+	// connection, the two failures where nothing can be saved, went to the console and nowhere
+	// else. Every path is marked now; the tests above and below are what keeps it that way.
+	it('marks a timeout, which has no payload to carry the news', async () => {
+		const { BackendAPI, socket } = await loadBrowserBridge()
+		socket.open()
+		vi.useFakeTimers()
+
+		const pending = BackendAPI.request('GetAllTimelines', { args: [] })
+		vi.advanceTimersByTime(30_000)
+
+		const err = (await pending.catch((e) => e)) as BridgeError
+		expect(err.bridge).toBe(true)
+		expect(err.message).toMatch(/timeout/i)
+	})
+
+	it('tells the user when a fire-and-forget send is dropped', async () => {
+		const { BackendAPI, socket } = await loadBrowserBridge()
+		socket.open()
+		socket.drop()
+
+		// `send` has no messageId, so there is no promise for the net to catch: the report has to
+		// come from `send` itself or not at all.
+		BackendAPI.send('DeleteNote', { noteId: 'n1' })
+
+		expect(alertMock).toHaveBeenCalledOnce()
+		expect(alertMock.mock.calls[0]![0]).toMatch(/no connection to Story Timeline/)
+	})
+
+	it('alerts once, not once per dropped call', async () => {
+		const { BackendAPI, socket } = await loadBrowserBridge()
+		socket.open()
+		socket.drop()
+
+		// A dropped socket fails everything at once; one alert per call is worse than silence.
+		BackendAPI.send('DeleteNote', { noteId: 'n1' })
+		BackendAPI.send('DeleteNote', { noteId: 'n2' })
+		BackendAPI.send('DeleteNote', { noteId: 'n3' })
+
+		expect(alertMock).toHaveBeenCalledOnce()
 	})
 })

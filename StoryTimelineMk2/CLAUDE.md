@@ -52,7 +52,7 @@ Key actions: `GetTimelineData`, `SaveItem`, `GetTimelineCharacters`, `GetTimelin
 
 | Path | Purpose |
 |------|---------|
-| `pages/` | Top-level page components: `TimelineApp.vue`, `EditItem.vue`, `CharactersApp.vue`, `CalendarApp.vue`, `YearCalendarApp.vue` |
+| `pages/` | Top-level page components: `TimelineApp.vue`, `EditItem.vue`, `CharactersApp.vue`, `RelationsApp.vue`, `CalendarApp.vue`, `YearCalendarApp.vue` |
 | `components/` | Reusable components — `TimelineCanvas` (Konva.js canvas), `LodDateInput`, etc. |
 | `stores/timelineStore.ts` | Pinia store — central state for current timeline, items, settings |
 | `bridge/api.ts` | All calls to C# backend go through here |
@@ -62,7 +62,7 @@ Key actions: `GetTimelineData`, `SaveItem`, `GetTimelineCharacters`, `GetTimelin
 
 ### Multiple Entry Points (Vite)
 
-The build produces six HTML files. Each is a separate page with its own Vue app — there is no
+The build produces seven HTML files. Each is a separate page with its own Vue app — there is no
 router. On Windows a WinForms window navigates to one; in the browser build `browserHost.ts`
 navigates to the same file instead, which is why every window-opening action needs a case in both.
 
@@ -74,6 +74,7 @@ navigates to the same file instead, which is why every window-opening action nee
 | `calendar.html` | `CalendarApp` | `f_Calendar` |
 | `yearCalendar.html` | `YearCalendarApp` | `f_YearCalendar` |
 | `characters.html` | `CharactersApp` | `f_Characters` |
+| `relations.html` | `RelationsApp` | `f_Relations` — the relations web, nine views |
 
 ### Backend Structure
 

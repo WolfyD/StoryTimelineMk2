@@ -27,7 +27,7 @@ mapping + display-only `shift`, own lanes/caches, no filters / minimap / mini mo
 `viewReferenceItem` → view-only `TimelineItemViewModal`, plain / right-click inert), a
 "Reference — <title>" section in `TimelineDataPanel`, calendar-mismatch warning (never blocks) and
 Remove in `ReferenceTimelineModal`, tool-active Reference button on the strip.
-Step 3 done for 1.1.1 (2026-09-23): ghosts now pack around the active timeline's lanes instead of
+Step 3 done for 1.2.0 (2026-09-23): ghosts now pack around the active timeline's lanes instead of
 hiding underneath its items (`getAssignedLane` takes a read-only `avoidLanes` map, so the active
 pass packs exactly as before); a real age drawn over a reference age gets diagonal slits in the
 ghost's color across the overlapping stretch only (`refStripeLayer` in `TimelineCanvas`); and the
@@ -35,6 +35,10 @@ chosen reference plus its shift are remembered per timeline in `misc_settings`
 (`reference_timeline`, restored by `loadTimelineData`, dropped with a message in the modal when it
 will not load). Not done, by decision: ghost pictures are still frames without images; no locate /
 pulse for reference items.
+Also in this modal since 1.2.0 (2026-09-26), but not part of BL-66: **Second year numbering**, the
+active timeline's own display-only year offset (BL-41). It sits outside the `v-if="store.reference"`
+block — it is worth having with no reference loaded — and is the reason the modal's "Shift by N
+years" styling (`.rt-shift`) is now used twice.
 
 Writers often need a second timeline for reference while working in one. New activity-strip icon
 **Open reference timeline** (and `R`): a modal lists the other timelines and offers two ways to
@@ -67,7 +71,7 @@ zoom apply to them too). Rules:
 
 ## [BL-86] Cancelling settings throws the changes away without asking
 
-**Status:** Done 2026-09-26 for 1.1.1. One snapshot, one guard, four close paths — Cancel, the X,
+**Status:** Done 2026-09-26 for 1.2.0. One snapshot, one guard, four close paths — Cancel, the X,
 Escape and the backdrop all route through `requestClose()`, which compares `local`, `localLayout`,
 `swatches` and `defaultLodMask` against a snapshot taken at the end of `onMounted` (after the async
 swatch / LOD-mask load lands, or the modal reads dirty the moment it opens) and shows the same
@@ -91,7 +95,7 @@ to lose. Say if that was the dialog meant.
 
 ## [BL-87] A second editor cannot open while one is already up
 
-**Status:** Done 2026-09-26 for 1.1.1. **Take over the window, but ask first** — the user's call, and
+**Status:** Done 2026-09-26 for 1.2.0. **Take over the window, but ask first** — the user's call, and
 it needed no new bridge action: `ReopenWithParams` already pushes `LoadItem`, and `EditItem.vue`
 already had `isDirty()` and a `ConfirmModal` for the X. So `handlePushMessage` now gates `LoadItem`
 on `isDirty()`, parking the payload in `pendingLoad` and reusing that same modal with takeover
@@ -127,7 +131,7 @@ because the singleton can only ever show one item:
 
 ## [BL-85] The snap and the ruler disagreed with the grid
 
-**Status:** Done 2026-09-25 for 1.1.1. One shared `snapToTick`, a per-year label-gap walk in
+**Status:** Done 2026-09-25 for 1.2.0. One shared `snapToTick`, a per-year label-gap walk in
 `gridTicks`, and a second row for the year number. 847 unit tests, 34 ruler E2E.
 
 Fallout from BL-44, off two screenshots: the seasons rung had a bare `-1` wedged between "Winter"
@@ -212,7 +216,7 @@ tick", so it is not the same function.
 
 ## [BL-84] Panning got slower the more you wrote
 
-**Status:** Done 2026-09-25 for 1.1.1. Two hoists; pan cost per frame went from super-quadratic in
+**Status:** Done 2026-09-25 for 1.2.0. Two hoists; pan cost per frame went from super-quadratic in
 item count to linear, 20x faster at 1000 items. Layers mount on demand as of 2026-09-26, halving the
 canvas memory a timeline window holds.
 
@@ -301,7 +305,7 @@ edge would rebuild the stack mid-pan, which is the one thing this must never cos
 
 ## [BL-83] Settings that read as one set
 
-**Status:** Done 2026-09-25 for 1.1.1. Four tabs, eleven colors split into swatch + opacity, three
+**Status:** Done 2026-09-25 for 1.2.0. Four tabs, eleven colors split into swatch + opacity, three
 dead rows gone, two built-in presets renamed, schema step 21.
 
 The timeline settings modal had grown a row at a time for as long as the canvas has, and it showed:
@@ -399,7 +403,7 @@ re-tints one band by hand, and checks the guard refuses both.
 
 ## [BL-82] Angled axis labels
 
-**Status:** Done 2026-09-25 for 1.1.1. Off by default; one switch under *Tick Labels* in the
+**Status:** Done 2026-09-25 for 1.2.0. Off by default; one switch under *Tick Labels* in the
 timeline settings, schema step 20.
 
 BL-80 let every rung of the ladder carry its own tick distance, and a tight one puts the labels
@@ -407,12 +411,13 @@ closer together than the dates are wide: at `DAYS` with 50px ticks the Gregorian
 `19 Dec 20 Dec 21 Dec 22 Dec` as one run-on string. Angled, each label leans out of its neighbour's
 way and the same ruler is readable at the same spacing.
 
-**The geometry.** 45°, fixed. The label's right end stays pinned to its own tick and the text runs
-down and to the left, so it reads up-to-the-right — the direction matplotlib, Excel and every chart
-tool lean a crowded axis, and the direction that keeps a date from pointing at the tick next door.
-In Konva: `rotation: -45`, `align: 'right'`, origin pulled back by `100 × √½` in x and pushed down
-by the same in y, which puts the rotated right edge exactly where the centred horizontal label's
-tick was. The horizontal path is untouched — the same expression with the lean at zero.
+**The geometry.** 45°, fixed. The label starts on its own tick and runs down and to the right —
+north-west to south-east — which keeps a date from pointing at the tick next door. In Konva:
+`rotation: 45`, `align: 'left'`, and the origin *is* the tick (`x: x`) rather than the horizontal
+path's `x - LABEL_W / 2`. The horizontal path is untouched — the same expression with the lean at
+zero. (This entry described the opposite lean — `-45`, `align: 'right'`, origin pulled back by
+`100 × √½` — until 2026-09-26. That was the first cut, since flipped; the e2e spec's own docstring
+had gone stale the same way and was corrected with it.)
 
 **Always on when the setting is on**, never on collision. Measuring every label against its
 neighbours each frame costs more than the ruler is worth, and an axis that changes angle as you pan
@@ -421,16 +426,22 @@ is worse than one that does not.
 **Not a number.** A checkbox, not an angle field: 45 is the answer at every spacing this ruler
 reaches, and a tunable angle is one more thing to store, migrate, and get wrong.
 
+**What else the switch leans.** Since BL-41 (2026-09-26) it also angles the second year numbering
+above the axis — at `-45`, the opposite way, so the two rows mirror across the axis rather than both
+leaning down-and-right. See BL-41 for why that row turns about its bottom corner and not its top.
+
 Tests: a mocked e2e opens the same timeline twice, once with the switch on, and checks every label
-leans −45° with its rotated right end on the same pixel as the plain ruler's tick. Flipping the sign
-in the canvas fails it. A migration test asserts step 20 arrives off on both an upgraded v19
-database and a fresh one.
+leans 45° with its origin on the same pixel as the plain ruler's tick. Flipping the sign in the
+canvas fails it. A migration test asserts step 20 arrives off on both an upgraded v19 database and a
+fresh one. Neither the e2e nor anything else checks where the *glyphs* land, only `rotation` and the
+origin — which is how BL-41's upper row shipped `fontSize / √2` off centre and had to be caught on
+screen.
 
 ---
 
 ## [BL-81] Boxes in a crowded column stop drawing through each other
 
-**Status:** Done 2026-09-25 for 1.1.1. One function in `utils/timelineLayout.ts`; no schema change,
+**Status:** Done 2026-09-25 for 1.2.0. One function in `utils/timelineLayout.ts`; no schema change,
 no setting, nothing stored.
 
 Reported from the China data at the `MONTHS` rung: *Dorgon rides into Beijing* sat partly behind
@@ -489,7 +500,7 @@ Mutating the spill condition off fails the first two. 835 vitest (3 new), `vue-t
 
 ## [BL-80] A tick distance per zoom level
 
-**Status:** Done 2026-09-25 for 1.1.1. Frontend plus one migration; no schema change — the value
+**Status:** Done 2026-09-25 for 1.2.0. Frontend plus one migration; no schema change — the value
 rides in the LOD profile JSON that already exists.
 
 One `timeline_tick_distance` served all eight rungs, so a millennium of history got the same 100
@@ -553,7 +564,7 @@ survives step 19 untouched.
 
 ## [BL-79] Sub-year dates that land where their label says
 
-**Status:** Done 2026-09-25 for 1.1.1. Frontend only — no schema change, no migration.
+**Status:** Done 2026-09-25 for 1.2.0. Frontend only — no schema change, no migration.
 
 Two halves of the same conversion disagreed. The write path placed a sub-year date by equal
 fractions — `year + subtick × stepFraction` — while the tick labels in `timelineLayout.ts`
@@ -618,7 +629,7 @@ even rungs proven unchanged; and the five `placeDate` cases, including the 82-it
 
 ## [BL-77] Relation views that tell you something
 
-**Status:** Done 2026-09-24 for 1.1.1. All five steps — schema, Genogram, Arc, Sociogram and
+**Status:** Done 2026-09-24 for 1.2.0. All five steps — schema, Genogram, Arc, Sociogram and
 Chord; see the sections below. **Knots was reprieved the same day** and fixed rather than cut
 (asked for 2026-09-24). Rings and Rows are gone, Grid is the Matrix and has its interactions, and
 a batch of ten further changes asked for the same day is in the last section — followed by the
@@ -1160,10 +1171,12 @@ and is now level with the modal.
 
 ---
 
-# Major — 1.2.0
+# Major — 1.3.0
 
 New moving parts; each needs its own design pass before code. This group was 1.1.0 until
-2026-09-21, when 1.1.0 was refocused on the browser build and signing.
+2026-09-21, when 1.1.0 was refocused on the browser build and signing, and 1.2.0 until 2026-09-26,
+when the characters-and-relations release took that number for being far too large to ship as 1.1.1.
+The items themselves have not moved; only the number on the door has.
 
 ## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
 
@@ -1173,9 +1186,11 @@ left was internal. All 10 planned items addressed; since then also done: 30 s br
 (TC-H2), icon convention settled — CLAUDE.md now says Phosphor for everything new, Remix only
 survives in the older components, no sweep. The last four — the FC-C1 deeper fix, heavy handlers
 on the UI thread (H1), the panels' double `GetItemForEdit` (TC-H5) and the z-index token scale —
-were done for 1.1.1 (2026-09-23); see the sections below. Reopened and closed again 2026-09-26:
-rejecting was only half of FC-C1 — a handler that never catches still leaves its own UI stuck. One
-known gap remains, `BackendAPI.send()`, recorded below.
+were done for 1.2.0 (2026-09-23); see the sections below. Reopened and closed again 2026-09-26:
+rejecting was only half of FC-C1 — a handler that never catches still leaves its own UI stuck.
+Reopened a third time the same day over the `BackendAPI.send()` gap, which turned out to be
+pointing at the wrong thing: the bug was in the net that reports uncaught failures, not in
+`send()`. Closed again, with one known cosmetic gap recorded below.
 
 ### Data integrity — RESOLVED
 
@@ -1186,7 +1201,7 @@ known gap remains, `BackendAPI.send()`, recorded below.
 ### Bridge / architecture — RESOLVED
 
 - ~~**`request()` resolves on backend error payloads** (FC-C1)~~ — **Fixed.** The offline path and
-  a 30 s timeout already rejected; since 1.1.1 a reply carrying `status: 'error'` rejects too, with
+  a 30 s timeout already rejected; since 1.2.0 a reply carrying `status: 'error'` rejects too, with
   the backend `message` on the `Error` and the whole payload (including `detail`, the C# stack, and
   per-action flags such as `reported`) on `err.payload`. The hand-written `?.status === 'error'`
   checks were swept in the same pass, and an `unhandledrejection` listener in `api.ts` shows the
@@ -1209,10 +1224,40 @@ known gap remains, `BackendAPI.send()`, recorded below.
   `loadKinItemIds` twenty lines up was already using. The file's other two catches were already right:
   `loadKinItemIds` alerts and carries on without the family, and `restoreReference` drops the
   reference and puts the reason on `referenceError`, which `ReferenceTimelineModal.vue:69` shows.
-- **Still open: `BackendAPI.send()` is fire-and-forget by design** — no promise, so a backend failure
-  on one of those actions reaches nobody. `OpenDataFolder` is the one in this modal. Auditing the
-  rest is its own pass: some of them genuinely do not care, and the ones that do want a reply, not a
-  wrapper.
+- ~~**The error net only reported the failures the backend could describe** (FC-C1, third pass)~~ —
+  **Fixed 2026-09-26.** Recorded here as the `BackendAPI.send()` gap, which is where tracing it
+  started and not where it was. A bridge call can fail four ways, and the `unhandledrejection` net
+  tested `err.payload` — which only an error *reply* carries. So a **30 s timeout** and a **dropped
+  connection** rejected with a bare `Error` and the net skipped both, leaving the news in the
+  console. Those are precisely the failures where nothing can be saved: `failAll` even writes
+  "The connection to Story Timeline closed. Reload the page." for a human to read, and no caller
+  that failed to catch ever showed it. All four paths now go through one `bridgeError(message,
+  payload?)` that sets `bridge: true`, the net keys on that instead, and `alertBridgeFailure`
+  dedupes on the message text for 5 s — `failAll` rejects every request at once, and six identical
+  alerts is worse than the silence it replaces. `transport.test.ts` went 8 → 11: the mark asserted
+  on all four paths, plus the dedupe.
+- The three paths that were **already covered by accident**, which is why this hid so long: the
+  WinForms `Dispatch` catch shows its `MessageBox` for any exception regardless of `MessageId`
+  (`MessageRouter.cs:155`), `runInBrowser` alerts regardless of `messageId` (`api.ts:134`), and
+  every action that uses `send()` today is shimmed in `browserHost.handlers`, so none of them ever
+  reach the socket. That last one makes `send()`'s own offline branch **unreachable as things
+  stand** — the report added there is for the next `send()` action that is not a host action, not
+  a live fix. Kept rather than left as a trap, and the test drives it with `DeleteNote`.
+- ~~**`EditItem.loadData` swallowed its catch**~~ — **Fixed 2026-09-26**, the same bug in
+  `loadTimelineData` that this item fixed earlier in the day, in a file that pass did not reach,
+  and the one with teeth. The catch was a lone `console.error`, so a load that failed left
+  `item.value` as the default built at the top of the function — blank title, year 0, and a fresh
+  `crypto.randomUUID()`. The form came up empty with no explanation and `isNew` still `false`, so
+  it read as an ordinary edit: retype the description, hit Save, and the new UUID wrote a **new
+  untitled item at year 0** while the real one sat untouched. Reachable without any crash, because
+  `_dataPump` is one chain across every window and the 30 s timer starts when the request is sent,
+  not when it is dequeued — a backup with media queues an editor's three loads behind it. Now it
+  logs with `payload.detail`, says so in the modal's own error row, and sets `loadFailed`, which
+  blocks `save()` at the top so the button, `Ctrl+S` and the discard prompt are all covered.
+- **Still open, cosmetic:** on Windows an uncaught handler exception now shows two dialogs — the C#
+  `MessageBox` from `Dispatch` and the net's own alert. `reported` already exists for exactly this
+  and only `ImportDB` sets it (`DataActions.App.cs:257`); the fix is for the generic catch to set it
+  too. Over-reporting, so it can wait.
 
 ponytail: one wrapper rather than a `try` per handler — the remedy is identical every time, and a
 per-handler `try` is exactly what got forgotten twelve times. Upgrade path if a handler ever needs a
@@ -1289,7 +1334,7 @@ different remedy: it catches for itself, and `guard` stays for the rest.
   literals are intentional: DB-stored LayoutSettings defaults (TimelineSettingsModal script),
   canvas context-menu semantic colors (dark-canvas overlay), and data-driven item color
   fallbacks. Icon convention settled in CLAUDE.md instead of a sweep.
-- ~~**z-index ladder with real conflicts** (part of ST-H3)~~ — **Fixed for 1.1.1.** The app-wide
+- ~~**z-index ladder with real conflicts** (part of ST-H3)~~ — **Fixed for 1.2.0.** The app-wide
   rungs are named in `main.scss` — `--z-modal`, `--z-notification`, `--z-lightbox`,
   `--z-menu-backdrop`, `--z-menu`, `--z-menu-sub` — and the twelve raw 9000/9001/9500/9998/9999/10000
   literals now use them. Stacking that only matters inside one component stays a plain small
@@ -1307,11 +1352,11 @@ different remedy: it catches for itself, and `guard` stays for the rest.
 
 ## [BL-15] Characters module
 
-**Status:** Done for 1.1.1 (2026-09-24). Design agreed with the user; **all six phases (0–5)
+**Status:** Done for 1.2.0 (2026-09-24). Design agreed with the user; **all six phases (0–5)
 done**, plus the six phase-2 follow-ups the user asked for after using it and the two phase-3 ones
 below. Phase 5 is BL-17, shipped as BL-73 (the window), BL-76 and BL-77 (the views). What is left
 is "Later, not in this plan" at the end of the design — optional ideas the user has for this area,
-never specified because the phases were not finished until now. Worth a conversation before 1.1.1
+never specified because the phases were not finished until now. Worth a conversation before 1.2.0
 closes.
 Six phases below, each shippable on its own. Phases 4 and 5 are BL-17.
 **Priority:** 1
@@ -1647,7 +1692,7 @@ The user has further optional ideas for this area, to be specified when the phas
 
 ## [BL-17] Character relations screen
 
-**Status:** Done for 1.1.1 (2026-09-24). **Phase 4 done (2026-09-23)**, including its second
+**Status:** Done for 1.2.0 (2026-09-24). **Phase 4 done (2026-09-23)**, including its second
 round: twenty seeded kinds, gendered wording, the relate modal, the same-last-name family
 suggestion, and family on a character's own timeline. A third round the same day followed the user
 living with it: kin portraits draw at `KIN_SCALE` (0.6) and 0.8 opacity so the window still reads
@@ -1667,7 +1712,7 @@ A visual network graph showing characters and their relationships (family, rival
 
 ## [BL-44] Integer time model for ticks, labels and item positions
 
-**Status:** Done (1.1.1). The grid, the labels and the cursor all work in integer day-of-year;
+**Status:** Done (1.2.0). The grid, the labels and the cursor all work in integer day-of-year;
 `boundaryDays` in `timelineLayout.ts` is the single table of a rung's boundary days and both the
 axis and the date editor read it. BL-79 had already landed the storage half — `lodDates.ts` now
 asks `boundaryDays` instead of keeping its own copy — and argued the re-snap migration out of
@@ -1762,20 +1807,63 @@ Replace the fraction-first model with an integer one:
 
 ## [BL-41] Dual year labels (year offset)
 
-**Status:** Pending. Do after BL-44 (integer time model) — no point reworking the axis labels
-twice.
+**Status:** Done 2026-09-26 for 1.2.0. Built on BL-44's integer tick model, so the axis labels were
+only reworked once. Built twice, though: first in Timeline Settings with an optional era name, which
+was the wrong place — see the UI bullet below.
 
 Let a timeline show a second year numbering: below the axis the native years (0, 1, 2 …) and
 above it the same ticks with a configurable offset (e.g. 1450, 1451, 1452 …), so writers can
 work in an in-world era while keeping a real-world (or second calendar) reference.
 
-- Per-timeline setting: `year_offset` (integer) + `year_offset_label` (optional short prefix /
-  suffix such as "AD" or "AE"), edited in Timeline Settings.
+- Per-timeline setting: `year_offset` (integer), edited in the Reference timeline modal.
 - `renderGrid` draws the offset label mirrored above the axis for YEARS-and-coarser ticks;
   sub-year LODs keep a single label row (the offset only changes the year part).
 - Cursor label and jump-to-year input keep working in native years; the offset is display-only.
 - Related to the reserved `timeline_calendars` table (multi-calendar) — a full second calendar
   is out of scope here, this is a pure numeric offset.
+
+What shipped:
+
+- **No schema change, and no second copy of the value.** `year_offset` is one `misc_settings` row
+  per timeline, read in the `Promise.all` that already batches `loadTimelineData`'s misc settings and
+  written by a `watch` on the store ref — the same pattern the reference timeline's own shift uses.
+  That is what lets the control live in a modal with no Save button: the modal edits the state, the
+  watcher persists it, and there is nothing to keep in step. The read parses defensively
+  (`Number.isInteger`), because the column is free text.
+- **`eraLabel` (`timelineLayout.ts`) decides what a tick says in the second numbering**, and
+  `renderGrid` only draws it. Pulling it out of the `.vue` is what makes it testable without a
+  canvas — four cases in `gridTicks.test.ts` (suite 876 → 880).
+- **Which ticks get one.** Year ticks only, which is what the spec's "YEARS-and-coarser" means once
+  BL-44 is in: `isYearTick` is every tick on a whole-year rung and the day-0 tick on a sub-year one.
+  A sub-year rung's own names — "Jan", "W3", "25 Apr" — say nothing about the year, so a numeric
+  offset has nothing in them to change and they get no second label. A coarse rung keeps its own
+  shape through its formatter, so a millennium still reads "3450s" rather than a bare number.
+- **An offset of 0 is the default and costs one comparison per tick** — `eraLabel` answers `null`
+  and no second `Konva.Text` is created.
+- **`grid-label-era`, not `grid-label`.** Konva name selectors match whole tokens, so the ruler
+  probes (`ruler-probe.ts`, `canvas-layers.spec.ts`, `pan-perf.spec.ts`) that count `.grid-label`
+  are unaffected.
+- **UI: one row in the Reference timeline modal** (`R`), not in Timeline Settings — the
+  spec said "Timeline Settings" but this is a reference feature, and the modal already held its
+  nearest kin, the reference timeline's "Shift by N years". The row sits outside the
+  `v-if="store.reference"` block, so it works with no reference loaded, and reuses that control's
+  `.rt-shift` styling. A `renderGrid`-only watcher in `TimelineCanvas` redraws the ruler as the
+  number changes — no reload, no lane or node work.
+- **No era name.** The spec left "prefix / suffix" open; the answer was neither. The second row
+  carries just the shifted number, which is one less field, one less stored value and one less
+  crowding case above the axis.
+- **Leans with BL-82, but the other way.** With angled labels on, the row below the axis runs
+  north-west to south-east; this one runs south-west to north-east (`rotation: -45`), so the two
+  mirror across the axis instead of both leaning down-and-right, which above the axis would put a
+  label back over the tick it belongs to. Same fixed 45°, and `offsetY: fontSize` puts the box's
+  bottom edge on its `y` — which both keeps the 15px of air off the axis identical flat or leaning,
+  and makes the rotation turn about the bottom corner. That last part matters: turned about the top
+  corner the text hangs down-and-right of its tick where the row below hangs down-and-left, and the
+  two numbers sit `fontSize / √2` apart instead of over each other (caught on screen, not in a
+  test — the tests read `rotation`, not where the glyphs land).
+  No gap rule of its own — only year ticks get one of these, and those are either BL-80's
+  130-300px apart or a whole year apart, never what `labelGapPx` exists for. Marked `ponytail:` at
+  the draw site.
 
 ---
 
@@ -1831,13 +1919,18 @@ Remaining: fill in real achievement definitions (flavor text, trigger criteria),
 
 ## [BL-78] Marketing and how-to videos — deterministic capture rig
 
-**Status:** In progress (2026-09-25). Frame-lock spike passed, the Wars of the Roses seed is
+**Status:** In progress (2026-09-26). Frame-lock spike passed, the Wars of the Roses seed is
 built, portrait-filled and rendering, the Relations pilot is written shot by shot in
 `video/script-relations.md`, and the capture rig renders it: camera, captions, cards, cursor and a
 beat runner that pipes frames into ffmpeg. **The Relations pilot is shot end to end** — all seven
 acts, 34 beats, 2:49.9, 10,194 frames, with a synthesised music bed keyed to the same beat numbers
 and muxed on without re-encoding the picture. Every act was probed beat by beat before the full
-render and came back with no page errors.
+render and came back with no page errors. **A sixth film, `china`, is written, probed and shot** —
+first as a 26-beat, 2:20.5 how-to about the LOD ladder, which was rejected on viewing, and now recut
+from scratch as a second **trailer**: 31 beats, 36 bars, 1:45.4, three worlds, and the first film
+with a voice-over planned over it. The recut is **shot and scored** (2026-09-26) — 6,324 frames,
+105.4s, one unattributed 404 and no other page error, at
+`video/final/china-20260926-1812-ishikari_lore.mp4`. It waits on a viewing.
 
 **The trailer is written and shot beat by beat**, and then recut twice — now 22 beats, 1:18.8, four
 windows, `video/script-trailer.md`. **The Characters film is written, probed and shot** — 23 beats,
@@ -1959,10 +2052,11 @@ waiting, instead of throwing an EPERM naming two paths nobody chose.
 
 It waits on a viewing now, and the other four films get the same treatment once it passes.
 
-Two things were measured for the trailer and left out of it, both belonging to the how-tos: **mini
-mode**, which at 1920×1080 collapses to a mostly-empty pin rail and wants a smaller window than a
-trailer is shot at, and the **reference overlay**, which has no second seeded timeline sharing a
-century with the Wars of the Roses to draw underneath it — it needs a seed before it needs a shot.
+Two things were measured for the trailer and left out of it, and both now belong to whichever
+module's how-to the user scripts: **mini mode**, which at 1920×1080 collapses to a mostly-empty pin
+rail and wants a smaller window than a trailer is shot at, and the **reference overlay**, which has
+no second seeded timeline sharing a century with the Wars of the Roses to draw underneath it — it
+needs a seed before it needs a shot.
 
 **Build-a-timeline is the only film that writes**, and that cost it a database and a server of its
 own. Run against `video/.data` it would leave a sixth project in the list of every other film, so
@@ -2006,6 +2100,85 @@ render lands at `out/trailer-20260925-1447.mp4` and scoring it gives
 it, a second track over one picture is a second file, and `--mux` with no path takes the newest full
 render rather than a fixed name — full renders only, since a partial is a check and not a take. The
 `final/_old/` folder was a person working around this by hand.
+
+**The China film is the one the second world was seeded for** (2026-09-26). `video/script-china.md`
+and `beats/china.mjs` — 26 beats, 48 bars, 140.488s against *Ishikari Lore* at 82.000 BPM, gridded
+the way the trailer is and asserting its own arithmetic at import. It is the only film that argues
+rather than demonstrates: one continuous descent through all eight LOD rungs and one climb back, on
+the claim that **a timeline is drawn at a rung, not at a scale**. The whole descent is one place —
+the world's midpoint at -79 until Act 3's single jump — and that jump is the film's only navigation.
+It goes to **1644.3123** at DECADES, where a third of a year is four pixels wide and invisible, and
+six presses later the same untouched centre is 25 April 1644 with the wall breach on the 24th sitting
+fifty pixels to its left. Landing there by jumping at DAYS would have been a 5,700px pan.
+
+Two things had to be measured rather than assumed, and both inverted a written beat. The **LOD
+buttons** are minus-then-plus, so the first cut of Act 2 pressed *coarser* twice and filmed
+MILLENNIA while the captions said otherwise; `press(st, dir, want)` now reads the rung back and
+throws if it is not the one the beat named, so that cannot happen silently again. And the side
+panels **empty out going down, not up**: `TimelineGalleryPanel.vue`'s `inRange()` sizes its window
+as `TimelineDataRangeWidth / 2 / tickDistance × lodStep`, so a coarse rung covers more years and the
+gallery is fullest at MILLENNIA — twelve thumbnails at -79, none by DECADES. There is no
+`min_lod_level`. Act 2 had been written on the opposite premise, including a sideways trip to 1070
+to find pictures; it was rebuilt on the measured numbers instead, the trip dropped, and the act now
+counts what the app actually draws: `Visible:` 26 → 19 → 8 across two presses, with the status bar
+asserted before the frame is filmed.
+
+**And that film was then thrown away and rebuilt as a trailer** (2026-09-26). The verdict on the cut
+above was *"dreadful … we don't need to talk about how many items are on screen, or how many FPS the
+app draws"*, and the fault was structural rather than cosmetic: every caption in it described the
+software from the outside, which is a changelog read over a picture. A trailer has the opposite job.
+The recut is **31 beats, 36 bars, 1:45.4** — 1.4 cuts per bar against 0.54 — and it keeps only the
+descent, which was the one thing the how-to got right. Three rules drove it: no numbers about the
+software, every line about the viewer's work rather than the app's behaviour, and three beauty shots
+where the camera leans and nothing has to be read. Sixteen captions instead of twenty-six. Ten beats
+of Act 2 are new coverage the how-to never had — the tag filter, the gallery, the minimap, the
+contents panel, an item's record card, the Obsidian calendar, the context menu, the editor — and Act
+3 cuts through seven relations views on the half-bar before closing on three different worlds, because
+"whatever you are documenting" cannot be claimed from one seed. The offset onto *Ishikari Lore* moved
+to `--at 35.8595` (track bar 13) so that a chorus lands under each of the two acts that move.
+
+**This is the first film that gets a voice-over, and the first that is not allowed to write.** The
+captions are now written to be read aloud, which is a slower rate than `capSeconds = 1.5 + 0.35 ×
+words` assumes, so four lines already ride a `capWindow` wider than their own beat and the fix after
+the voice session is to widen windows rather than re-cut the picture. The mix is a static duck, not
+a per-line swell — there are fifteen gaps between sixteen lines and the median is about a second and
+a half, so a level that climbed and fell in each one would pump end to end. And because the film
+presses real controls on the shared `video/.data` root, the shot list exports an `init` that replaces
+`WebSocket.prototype.send` and drops any message whose action starts with Save, Set, Delete, Import
+or Reorder, dispatching the reply the server would have sent back under the same `messageId` so
+nothing hangs. Mass-add was still cut from it: a trailer should not demonstrate a feature the film is
+secretly preventing from working.
+
+**There are no how-tos yet, and the six films are all promotional** (2026-09-26). The user's call, and
+it reclassifies most of this item: `build`, `calendars`, `characters` and `relations` were written as
+how-tos and are not ones — they are long promotional films, and calling them documentation oversold
+them. **The real how-tos do not exist.** They are to be short films, one per module taken as an
+entity, each directed through a script the user writes, and that work is theirs to start, much more
+thoroughly than a pass through the rig would have done it. So nothing here is recut or extended
+unprompted; the next how-to work begins with a script handed over, and what the rig contributes is
+the shooting, not the coverage. It is already the right shape for that — a shot list is one file under
+`beats/`, a film's data root is a flag, and nothing about a 20-beat single-module film differs from a
+31-beat trailer except the list.
+
+**And none of it goes in the release notes** (2026-09-26). Videos are promotional material on a
+separate track from the product, so the `## Videos` section and its two music credits came out of
+`releases/1.2.0.md` — where they had been the release's own description of five films. The CC-BY
+attribution obligation does not go away with them: it travels with each film wherever it is
+published, and `video/README.md` is where it is recorded. Nothing in `docs/` or `HELP.md` ever
+mentioned the films, so the release notes were the only place to clean.
+
+**Two shots the probe caught rendering empty, and both were data, not framing.** The **Chain** view
+is the only one of the seven that draws nothing until it is asked something — left alone it filmed
+the app's own *"pick two people"* placeholder, which is a trailer shot of a screen explaining that
+nothing happened — so the beat now answers the question first with Edward III → Richard III and
+asserts `nodeAt('Joan Beaufort')` before switching view. And **Ariad** filmed as an empty canvas
+reading `Visible: 5`, because 188 of its 193 items carry `lod_visibility_mask` 8 — Years alone — and
+all but a handful sit between 1300 and 1700, nowhere near the arithmetic midpoint of 923. It is shot
+at Years over 1470 now (`Visible: 25`); the Wars of the Roses moved 1410 → 1440 for the same class of
+reason, which puts Towton, Wakefield, Tewkesbury and Bosworth in frame instead of off the right edge.
+Two more beats were re-aimed rather than re-cut: the record card and the context menu were both a
+fraction of the frame at rest, and `shotK` on the element itself frames them where they actually
+opened instead of magnifying the middle of the window.
 
 **Why a rig rather than a screen recorder.** Screen capture films whatever the machine managed that
 second — a dropped frame, a stutter under load, a mouse that jumps. Driving the browser build from
@@ -3992,7 +4165,7 @@ asked and the three belong in one pass with whatever else those three have drift
 
 ## [BL-73] Character relations window — graph and family tree
 
-**Status:** Done for 1.1.1 (2026-09-23). BL-17 phase 5.
+**Status:** Done for 1.2.0 (2026-09-23). BL-17 phase 5.
 
 Shipped as described. `relations.html` / `pages/RelationsApp.vue`, hosted by `Forms/f_Relations.cs`
 with the same two-stage pre-warm the characters window uses (`SetRelationsContext` pushes the ids
@@ -4080,7 +4253,7 @@ guard at all; they use `useModal` now too.
 
 ## [BL-74] __stl cast generators — a web worth laying out
 
-**Status:** Done for 1.1.1 (2026-09-23). The generator gained factions, a depth floor and then a
+**Status:** Done for 1.2.0 (2026-09-23). The generator gained factions, a depth floor and then a
 depth *setting* 2026-09-24 — see the end.
 
 The relations window was built against a five-person fixture, which says nothing about what two
@@ -4184,7 +4357,7 @@ if that ever stops being fast enough.
 
 ## [BL-75] Shared characters, relations that mean something, and finer dates
 
-**Status:** Done for 1.1.1 (2026-09-23).
+**Status:** Done for 1.2.0 (2026-09-23).
 
 One schema pass (migration 16) over three things that all wanted the same table touched.
 
@@ -4232,7 +4405,7 @@ it only ever runs once per file.
 
 ## [BL-76] Four more ways to look at the same web
 
-**Status:** Done for 1.1.1 (2026-09-23).
+**Status:** Done for 1.2.0 (2026-09-23).
 
 The relations window had a force graph and a family tree. Four views added between them, all over
 the same data, the same Konva stage, the same selection and the same node drawings — only the

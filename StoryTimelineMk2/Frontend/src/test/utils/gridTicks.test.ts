@@ -13,6 +13,7 @@ import {
   boundaryDays,
   buildFormatRegistry,
   dayOfYearAt,
+  eraLabel,
   gridTicks,
   snapToTick,
   DEFAULT_CALENDAR_CONFIG,
@@ -435,5 +436,48 @@ describe('gridTicks label spacing', () => {
 
   it('names every tick on a whole-year rung, which has never collided', () => {
     expect(ticks({ labelGapPx: 500 }).every(t => t.showLabel)).toBe(true)
+  })
+})
+
+// ── eraLabel ──────────────────────────────────────────────────────────────────
+
+/**
+ * BL-41: a second year numbering above the axis, so a writer can work in an in-world era and still
+ * read the real-world year off the same ticks. Display only — it never touches a stored date.
+ */
+describe('eraLabel', () => {
+  const reg = buildFormatRegistry(DEFAULT_CALENDAR_CONFIG)
+  const years = reg['YEARS']!
+  const millennia = reg['MILLENNIA']!
+  const months = reg['MONTHS']!
+
+  it('says nothing at all without an offset', () => {
+    // The default, and the case that has to stay free: no offset, no second Text per tick.
+    expect(ticks().every(t => eraLabel(t, 0, years) === null)).toBe(true)
+  })
+
+  it('shifts every tick of a whole-year rung, either way', () => {
+    const t = ticks()
+    expect(t.every(x => x.isYearTick)).toBe(true)
+    expect(eraLabel(t[0]!, 1450, years)).toBe(String(t[0]!.year + 1450))
+    // An offset runs backwards too: a native year read as a year of an era that started earlier.
+    expect(eraLabel(t[0]!, -1450, years)).toBe(String(t[0]!.year - 1450))
+  })
+
+  it("keeps a coarse rung's own shape, so a millennium still reads as one", () => {
+    const t = ticks({ step: 1000, stepFraction: 1000, formatKey: 'MILLENNIA', tickDistance: 200 })
+    expect(eraLabel(t[0]!, 1450, millennia)).toBe(`${t[0]!.year + 1450}s`)
+  })
+
+  it('numbers only the year boundaries of a sub-year rung', () => {
+    // "Jan", "W3", "25 Apr" say nothing about the year, so a numeric offset has nothing in them to
+    // change and they get no second label at all.
+    const t = ticks({ step: 1 / 12, stepFraction: 1 / 12, formatKey: 'MONTHS', tickDistance: 40 })
+    const numbered = t.filter(x => eraLabel(x, 1450, months) !== null)
+    expect(numbered.length).toBeGreaterThan(0)
+    expect(numbered.length).toBeLessThan(t.length)
+    expect(numbered.every(x => x.day === 0)).toBe(true)
+    // The bare shifted year — not the month name the row below the axis skips there either.
+    expect(eraLabel(numbered[0]!, 1450, months)).toBe(String(numbered[0]!.year + 1450))
   })
 })

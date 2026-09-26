@@ -13,7 +13,7 @@ import { PhUserCircle, PhUserFocus } from '@phosphor-icons/vue';
 
 import {
 	BREAK_TICKS, absoluteToVisual, visualToAbsolute,
-	getXFromTime, getTimeFromX, tickDistanceOf, gridTicks, dayOfYearAt, boundaryDays, snapToTick,
+	getXFromTime, getTimeFromX, tickDistanceOf, gridTicks, eraLabel, dayOfYearAt, boundaryDays, snapToTick,
     isLeftOfNow, getAssignedLane, laneSpanFor, type LaneLock
 } from '@/utils/timelineLayout';
 import {
@@ -497,6 +497,12 @@ watch([() => store.filterDisplayMode, () => store.dimmableItems], () => {
     renderWithDimming(props.layoutSettings);
 }, { deep: false });
 
+// BL-41: the offset numbering is drawn by renderGrid and read by nothing else, so a change to it
+// costs one grid draw and no lane or node work.
+watch(() => store.yearOffset, () => {
+    if (stage && props.layoutSettings) renderGrid(gridLayer, props.layoutSettings);
+});
+
 // Re-render when hidden ranges change (added/deleted from settings)
 watch(() => store.hiddenRanges, () => {
     if (!stage || !props.layoutSettings) return;
@@ -782,6 +788,10 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
 
     const labelHalo = textHalo(layoutSettings.TimelineTickMarkerTextColor);
 
+    // BL-41: the second year numbering, mirrored above the axis. 0 is the normal case — one
+    // numbering — and then `eraLabel` answers null for every tick and this costs a comparison.
+    const eraOffset = store.yearOffset;
+
     // BL-44: which ticks exist, and the day-of-year each one falls on, is pure maths — it lives in
     // timelineLayout where it can be tested without a canvas. This loop only draws them.
     const ticks = gridTicks({
@@ -838,6 +848,34 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
                 text: yearLabel ? String(t.year) : formatter(t.year, t.day),
                 fill: layoutSettings.TimelineTickMarkerTextColor, ...labelHalo,
                 width: LABEL_W, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, fontSize: unitTick ? unitFontSize : fontSize, listening: false }),
+        );
+
+        // BL-41: the same tick numbered in the offset era, above the axis and the same 15px off it,
+        // so the two numberings read as one ruler seen from both sides. Which ticks get one is
+        // `eraLabel`'s to decide, not this loop's.
+        const era = eraLabel(t, eraOffset, formatter);
+        if (!era) continue;
+        layer.add(
+            // `grid-label-era` rather than `grid-label`, which is what the ruler tests count.
+            new Konva.Text({ name: 'grid-label-era',
+                // Angled, this row leans the other way — south-west to north-east — so the two rows
+                // mirror across the axis rather than both running down-and-right, which above the
+                // axis would lean a label back over the tick it belongs to. Same fixed 45°, negated.
+                x: angledLabels ? x : x - LABEL_W / 2,
+                // A Text draws downwards from its y; offsetting a line height puts its bottom edge on
+                // that y instead, so 15px of air off the axis means the same flat or leaning. Leaning
+                // it also moves what the rotation turns about — the box's bottom corner, mirroring the
+                // top corner the row below turns about. Turned about the top corner instead, the text
+                // would hang down-and-right of its tick where the row below hangs down-and-left, and
+                // the two numbers would not line up over each other.
+                y: viewport.height / 2 - 15, offsetY: fontSize,
+                rotation: angledLabels ? -45 : 0, align: angledLabels ? 'left' : 'center',
+                // ponytail: no gap rule of its own, angled or not. Only year ticks get one of these,
+                // and those are either BL-80's 130-300px apart on a coarse rung or a whole year apart
+                // on a sub-year one — never the crowding `labelGapPx` exists for.
+                text: era,
+                fill: layoutSettings.TimelineTickMarkerTextColor, ...labelHalo,
+                width: LABEL_W, fontStyle: layoutSettings.TimelineTickMarkerFontStyle, fontFamily: layoutSettings.TimelineTickMarkerFontFamily, fontSize, listening: false }),
         );
     }
 

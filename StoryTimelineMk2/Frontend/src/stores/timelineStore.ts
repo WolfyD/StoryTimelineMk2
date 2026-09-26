@@ -111,6 +111,11 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// are remembered per timeline in misc settings; the items themselves are re-fetched each time.
 	const reference = ref<{ project: TimelineProject; items: TimelineItem[]; shift: number } | null>(null);
 	const referenceError = ref<string | null>(null);   // surfaced by ReferenceTimelineModal
+	// BL-41: a second year numbering for the ruler — native years below the axis, these above — so an
+	// in-world era can be read against a real-world one. Set in the reference modal beside the
+	// reference timeline's own shift, which is the same idea applied to another timeline's items.
+	// Display only: 0 means one numbering and no second row.
+	const yearOffset = ref<number>(0);
 	let _undoTimer: ReturnType<typeof setTimeout> | null = null;
 	let _pulseTimer: ReturnType<typeof setTimeout> | null = null;
 	//const konvaItems = ref<KonvaGroupObject[]>([]);
@@ -178,6 +183,15 @@ export const useTimelineStore = defineStore('timeline', () => {
 	function clearReference() { reference.value = null; referenceError.value = null; }
 
 	const REFERENCE_KEY = 'reference_timeline';
+	const YEAR_OFFSET_KEY = 'year_offset';
+
+	// BL-41: same deal as the reference watcher below — the modal edits the state and this writes it,
+	// so there is no Save button to coordinate and no second copy of the value to keep in step.
+	watch(yearOffset, () => {
+		const tlId = currentProject.value?.Id;
+		if (!tlId) return;
+		void BackendAPI.SetMiscSetting(YEAR_OFFSET_KEY, String(Math.trunc(yearOffset.value) || 0), tlId);
+	});
 
 	// One watcher instead of a save call at each mutation site: picking a reference, removing it and
 	// nudging the shift all land here. The writes are idempotent, so a restore re-writing what it
@@ -277,7 +291,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 			// Load filter rules and misc settings for this timeline
 			const tlId = response.Project.Id;
-			const [rulesResult, andModeResult, panelOpenResult, displayModeResult, oscResult, lowResResult, refResult] = await Promise.all([
+			const [rulesResult, andModeResult, panelOpenResult, displayModeResult, oscResult, lowResResult, refResult, eraResult] = await Promise.all([
 				BackendAPI.GetFilterRules(tlId),
 				BackendAPI.GetMiscSetting('filter_and_mode', tlId),
 				BackendAPI.GetMiscSetting('filter_panel_open', tlId),
@@ -285,6 +299,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 				BackendAPI.GetMiscSetting('on_screen_controls', 0),
 				BackendAPI.GetMiscSetting('low_resource_mode', 0),
 				BackendAPI.GetMiscSetting(REFERENCE_KEY, tlId),
+				BackendAPI.GetMiscSetting(YEAR_OFFSET_KEY, tlId),
 			]);
 			if (seq !== _loadSeq) return;
 			filterRules.value = rulesResult?.rules ?? [];
@@ -293,6 +308,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 			filterDisplayMode.value = displayModeResult?.value === 'dimmed' ? 'dimmed' : 'hidden';
 			onScreenControls.value = oscResult?.value === '1';
 			lowResourceMode.value = lowResResult?.value === '1';
+			// Free text in a misc_settings row: anything but a whole number means no second numbering.
+			const savedOffset = Number(eraResult?.value);
+			yearOffset.value = Number.isInteger(savedOffset) ? savedOffset : 0;
 			void restoreReference(refResult?.value, seq);   // a second full fetch — never block the timeline on it
 			const lProf = response.Project.Calendar.LodProfile;
 			const _lp = lProf.Profile;
@@ -639,6 +657,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
 		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference, referenceError,
+		yearOffset,
 		characterFocusId, characterFocus, focusKinItemIds,
 
 		// functions

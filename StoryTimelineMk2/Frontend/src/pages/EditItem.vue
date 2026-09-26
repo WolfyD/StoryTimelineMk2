@@ -7,7 +7,7 @@ import { DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig } from '@/utils/time
 import { blankCharacter, characterEntity } from '@/utils/characterItems'
 import HighlightedTextarea from '@/components/HighlightedTextarea.vue'
 import { PhMagicWand } from '@phosphor-icons/vue'
-import { BackendAPI, IS_BROWSER_HOST } from '@/bridge/api'
+import { BackendAPI, IS_BROWSER_HOST, type BridgeError } from '@/bridge/api'
 import { useShortcuts, MOD } from '@/utils/shortcuts'
 import HelpModal from '@/components/HelpModal.vue'
 import ShortcutsModal from '@/components/ShortcutsModal.vue'
@@ -133,6 +133,8 @@ const isCharExpanded    = ref(true)
 const isStoryExpanded   = ref(true)
 const isNotesExpanded   = ref(false)
 const saveError         = ref('')
+/** The load did not land, so `item` is still the blank default — saving it would write garbage. */
+const loadFailed        = ref(false)
 
 // Tag autocomplete
 const tagInputValue     = ref('')
@@ -271,6 +273,7 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   tagSuggestions.value     = []
   topTags.value            = []
   saveError.value          = ''
+  loadFailed.value         = false
   isSaving.value           = false
 
   try {
@@ -354,7 +357,13 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
     BackendAPI.GetTopTags(tId, 8).then(results => { topTags.value = results ?? [] })
     loadSwatches(tId).then(s => { swatches.value = s })
   } catch (err) {
-    console.error('[EditItem] loadData error:', err)
+    // A bare console.error here meant the form came up blank and looked like an empty item:
+    // `item.value` is still the default from the top of this function, carrying a fresh UUID,
+    // so saving it wrote a new untitled item at year 0 instead of editing the real one.
+    // Say so, and refuse to save until the load has actually succeeded.
+    console.error('[EditItem] loadData error:', err, (err as BridgeError).payload?.detail)
+    loadFailed.value = true
+    saveError.value = `Could not load this item: ${err instanceof Error ? err.message : String(err)}`
   } finally {
     cleanSnapshot = snapshot()
     isLoading.value = false
@@ -699,6 +708,8 @@ function removeChapterRef(index: number) {
 // Save
 // ---------------------------------------------------------------------------
 async function save(closeOnSuccess = true) {
+  // One guard for every way in — the button, Ctrl+S, and the discard prompt's "Save".
+  if (loadFailed.value) return
   saveError.value = ''
   isSaving.value = true
 
@@ -789,7 +800,7 @@ async function removeImage(pictureId: string) {
           {{ ITEM_TYPES.find(t => t.id === item.TypeId)?.name ?? 'Item' }}
         </span>
         <div class="header-actions">
-          <button class="btn btn-primary" :disabled="isSaving" @click="save()">
+          <button class="btn btn-primary" :disabled="isSaving || loadFailed" @click="save()">
             {{ isSaving ? 'Saving…' : 'Save' }}
             <small class="btn-hint">{{ MOD }}+S</small>
           </button>

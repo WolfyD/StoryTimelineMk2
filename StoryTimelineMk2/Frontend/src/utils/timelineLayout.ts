@@ -361,6 +361,29 @@ export function gridTicks(o: GridTickOptions): GridTick[] {
 }
 
 /**
+ * BL-41: what a tick says in the second (offset) year numbering, or `null` when it says nothing.
+ *
+ * Only year ticks carry one. A sub-year rung's names — "Jan", "W3", "25 Apr" — say nothing about the
+ * year, so a numeric offset has nothing in them to change; on a whole-year rung every tick is a year
+ * tick, so every one gets it. An offset of 0 means the timeline has a single numbering and this
+ * answers `null` throughout.
+ *
+ * Display only: the offset never touches a stored date, the cursor readout or jump-to-year, all of
+ * which stay in native years.
+ */
+export function eraLabel(
+    t: GridTick,
+    offset: number,
+    formatter: (year: number, day: number) => string,
+): string | null {
+    if (!offset || !t.isYearTick) return null
+    // Same two branches the row below the axis uses: a sub-year rung prints the bare year on a year
+    // boundary rather than repeating January, while a whole-year rung asks its formatter, because
+    // "2000s" is what a millennium tick is for.
+    return t.subYear ? `${t.year + offset}` : formatter(t.year + offset, t.day)
+}
+
+/**
  * BL-85: the nearest position the grid actually draws a tick at.
  *
  * A rung's `stepFraction` is an even lattice -- a quarter of a year for seasons, a fifty-second for
