@@ -2,6 +2,11 @@
 
 Code smells and where refactoring is advised, with KISS and SOLID in sight.
 
+> **Status: deferred to 1.3.1** (user's call, 2026-09-26). Nothing in this document has been
+> actioned and nothing here should be picked up on its own — the robustness audit was done first
+> and in full (see its companion), and this one waits until 1.3.1 so refactoring does not ride
+> along with the map feature. Findings are as written on 2026-09-26; line numbers have moved since.
+
 Companion to [audit-2026-09-26-robustness.md](audit-2026-09-26-robustness.md), which covers
 defects. This document covers *shape*: nothing here is broken, but some of it will make the next
 feature more expensive than it needs to be.

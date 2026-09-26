@@ -13,6 +13,39 @@ handling regression — they are among the better-behaved code in the repo.
 
 ---
 
+## Status — all resolved, 2026-09-27 (`05f4b5b`)
+
+Every item below was fixed, plus the character-save rewrite the user asked for alongside. Two
+were scoped differently from what this document suggested, on the user's instruction — both noted
+in the table. The findings are left as written; the table is what happened to them.
+
+| Item | Landed as |
+| ---- | --------- |
+| **H1 + H2** | One change, as suggested. `api.ts` exports the net — Vue `errorHandler`, a `window` `'error'` listener, and the `unhandledrejection` listener with its bridge-only guard dropped — all through one `reportError(context, err)` that mirrors `MessageRouter.Dispatch`. A `LogFrontendError` action writes message, stack and context to `app.log` and replies with its path. **Added to the brief by the user:** the backend dialog and the page alert now both name the log file, because nobody knew there was one. |
+| **H3** | **Scoped differently.** One transaction around the whole `Apply` loop, not a pre-flight backup — the user's call: a `.stlc` is applied on their approval, so the risk is a half-applied merge, and not committing rolls it all back. `DeleteItem` / `SaveItemFull` gained connection+transaction overloads, which retires the per-item ceiling documented in that file. |
+| **H4** | Each of the three logs and counts the row it lost, and the import now **reports what a legacy backup could not carry** instead of returning success. `Debug.WriteLine` on the rollback path → `Logger.Error`. |
+| **M1** | `lodAnim` and the dimming timeout are both cancelled in `onBeforeUnmount`. |
+| **M2** | Writes first, deletes after. Fresh ids mean both sets coexist in between, rather than the timeline briefly having no filters and no way back. |
+| **M3** | Awaited, like every other writer in the store. |
+| **M4** | `WithThumbs` hands back the originals on a cache miss and generates off the pump. |
+| **M5** | `app.log` rolls to `app.1.log` past 5 MB. |
+| **M6** | Rewritten as one `SaveCharacterFull` in one transaction; the page plans onto a copy. See BL-15. |
+| **M7** | Real dimensions, read from the header only — no full decode. |
+| **M8** | **Scoped differently.** The row still goes first; the `File.Delete` is caught and logged by path, so the orphan is on the record. Reordering would have traded a recorded orphan for an unrecorded dangling row. |
+| **L1** | Prune and list both sort on the `yyyyMMdd_HHmmss` in the file name. |
+| **L2** | Parameterised in both places. |
+| **L3** | `CalendarApp`'s unparseable `YearDefinition` speaks, and warns that saving would overwrite the real calendar with the defaults on screen. The two documented silences stay. |
+
+The gap named at the end of the "Scope and gaps" section is closed: the .NET suite was re-run with
+the app stopped. On a freshly seeded database: **260 real E2E, 884 Vitest, 471 .NET**, type-check
+clean. New real-E2E specs cover what 1.2.0 shipped uncovered, and writing them turned up one
+product bug — `EditItem.discard()` left the clean snapshot stale, so after *Cancel* then *Discard*
+the next item opened in the reused window was asked about edits already thrown away.
+
+The companion code-quality audit is untouched and deferred to 1.3.1.
+
+---
+
 ## High
 
 ### H1 — The frontend has no global error handler

@@ -1190,7 +1190,12 @@ were done for 1.2.0 (2026-09-23); see the sections below. Reopened and closed ag
 rejecting was only half of FC-C1 — a handler that never catches still leaves its own UI stuck.
 Reopened a third time the same day over the `BackendAPI.send()` gap, which turned out to be
 pointing at the wrong thing: the bug was in the net that reports uncaught failures, not in
-`send()`. Closed again, with one known cosmetic gap recorded below.
+`send()`. Closed again, with one known cosmetic gap recorded below. Reopened a fourth and last
+time for the **robustness audit** (2026-09-26): a full read of the codebase against this item's
+own rule, written up as `docs/audit-2026-09-26-robustness.md`. All of it — H1–H4, M1–M8, L1–L3,
+plus the character-save rewrite — landed 2026-09-27 in `05f4b5b`; see the section below. The
+companion `docs/audit-2026-09-26-code-quality.md` is **deferred to 1.3.1** by the user and is
+untouched.
 
 ### Data integrity — RESOLVED
 
@@ -1348,6 +1353,65 @@ different remedy: it catches for itself, and `guard` stays for the rest.
   **Settled (2026-09-20)** — the convention changed to match the code: Phosphor for everything
   new, Remix stays in the older components until touched. No sweep.
 
+### Robustness audit, 2026-09-26 — RESOLVED (2026-09-27, `05f4b5b`)
+
+`docs/audit-2026-09-26-robustness.md`, every item, scoped by the user before any code was written.
+The audit doc carries the same list with the detail; this is the short form.
+
+- ~~**No global error net in the frontend** (H1)~~ / ~~**nothing in the frontend reaches the log
+  file** (H2)~~ — **Fixed together**, because they were one change. `api.ts` exports the net: a Vue
+  `app.config.errorHandler`, a `window` `'error'` listener and the `unhandledrejection` listener
+  with its bridge-only guard dropped, all funnelling through one `reportError(context, err)` that
+  mirrors `MessageRouter.Dispatch` — log, then tell the user. A new `LogFrontendError` action
+  writes message, stack and context to `app.log` and replies with the log's path, since the page
+  has no file access of its own. **Both halves of the app now name the log file when they
+  complain** — the user's own addition to the brief: nobody knew there was one.
+- ~~**`SessionChanges.Apply` deletes rows with no backup and no transaction** (H3)~~ — **Fixed as
+  the user directed**: one `BeginTransaction` around the whole loop, and `DeleteItem` /
+  `SaveItemFull` overloads that take the connection and transaction, rather than a pre-flight
+  backup. Session changes are applied on the user's approval, so the thing to protect against is a
+  half-applied merge, and not committing rolls the lot back on dispose. The per-item ceiling
+  documented in that file is gone with it.
+- ~~**Three bare `catch { }` in the V1 legacy import** (H4)~~ — **Fixed.** Each now logs the row it
+  lost and counts it, and the import **reports what a legacy backup could not carry** instead of
+  claiming success. The `Debug.WriteLine` on the rollback path — invisible in Release, which is
+  precisely what `Logger`'s docstring exists to stop — is a `Logger.Error`.
+- ~~**`lodAnim` and the dimming timeout outlive the component** (M1)~~ — **Fixed.**
+  `onBeforeUnmount` cancels both.
+- ~~**`loadFilterPreset` destroys before it creates** (M2)~~ — **Fixed.** New rules are written
+  first and the old ones dropped after; they carry fresh ids, so both sets coexist for the moment
+  in between rather than the timeline having no filters at all if the write fails.
+- ~~**`clearAllFilters` fires N floating promises** (M3)~~ — **Fixed.** Awaited like every other
+  writer in the store.
+- ~~**Thumbnails decode synchronously on the shared `_dataPump`** (M4)~~ — **Fixed.** `WithThumbs`
+  returns the originals on a cache miss and generates off the pump, so the first open of a large
+  library no longer queues every other window's bridge traffic behind an image decode.
+- ~~**The log file never rotates** (M5)~~ — **Fixed.** `app.log` rolls to `app.1.log` past 5 MB.
+- ~~**Character save is a non-atomic four-step sequence** (M6)~~ — **Rewritten**, the piece the user
+  called out by name. See BL-15.
+- ~~**`ImportAndSaveMedia` never sets Width/Height** (M7)~~ — **Fixed.** `ReadDimensions` reads the
+  header only, no full decode; every `pictures` row used to be written 0×0.
+- ~~**`DeleteMedia` orphans a locked file silently** (M8)~~ — **Fixed.** The `File.Delete` is
+  caught and logged by path, so an orphan is at least on the record.
+- ~~**Backups sorted by filesystem timestamp** (L1)~~ — **Fixed.** Prune and list both read the
+  `yyyyMMdd_HHmmss` off the file name. Copying the backups folder used to make the prune delete the
+  twenty oldest.
+- ~~**Two idioms for `VACUUM INTO`** (L2)~~ — **Fixed.** Parameterised in both; the interpolated
+  form broke on a data root with an apostrophe in it.
+- ~~**The genuinely silent frontend catches** (L3)~~ — **Fixed the one that mattered.**
+  `CalendarApp`'s unparseable `YearDefinition` now says so, and says that saving from there would
+  overwrite the real calendar with the defaults on screen. The two documented ones
+  (`timelinePrefs`, `itemDetails`) stay silent on purpose — both were the right call.
+- **Still open, cosmetic** — the double-dialog gap two sections up is unchanged: `reported` is
+  still set only by `ImportDB`. Over-reporting, so it can still wait.
+
+New real-E2E coverage went in with it, for the 1.2.0 features that shipped without any: the item
+editor's character side and open ends, About/Licenses and Help, the settings tabs, sliders and
+unsaved guard, per-LOD tick distance, and the character-focused timeline window. One product bug
+fell out of writing them — `EditItem.discard()` left the clean snapshot stale, so after *Cancel*
+then *Discard* the next item opened in the reused window was asked about edits already thrown
+away. Green on a fresh seed: **260 real E2E, 884 Vitest, 471 .NET**, type-check clean.
+
 ---
 
 ## [BL-15] Characters module
@@ -1358,6 +1422,16 @@ below. Phase 5 is BL-17, shipped as BL-73 (the window), BL-76 and BL-77 (the vie
 is "Later, not in this plan" at the end of the design — optional ideas the user has for this area,
 never specified because the phases were not finished until now. Worth a conversation before 1.2.0
 closes.
+**Save rewritten 2026-09-27** (`05f4b5b`), the one thing the robustness audit found wrong here
+(M6) and the one the user asked for by name. The save was five bridge calls on five connections —
+plan the generated items, `SaveCharacter`, delete the dropped ones, save each generated item, link
+the portrait — so a failure part way left a `characters` row whose `birth_item_id` / `death_item_id`
+pointed at no `items` row, and a retry started from the half-written state. It is now one
+`SaveCharacterFull(character, droppedItemIds, birthItem, deathItem)` in one transaction: the
+character, the items *Show on timeline* owns, their tags, appearances and portrait links, and the
+items the character stopped owning. The page plans onto a **copy**, so a failed save no longer
+strands the draft holding ids nothing ever wrote. Tests: `CharacterRepoTests` covers both the write
+and the rollback; `CharactersApp.test.ts` covers the one-call shape.
 Six phases below, each shippable on its own. Phases 4 and 5 are BL-17.
 **Priority:** 1
 
