@@ -114,7 +114,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// BL-41: a second year numbering for the ruler — native years below the axis, these above — so an
 	// in-world era can be read against a real-world one. Set in the reference modal beside the
 	// reference timeline's own shift, which is the same idea applied to another timeline's items.
-	// Display only: 0 means one numbering and no second row.
+	// Display only. The switch is its own flag rather than "offset 0 means off", so unticking it
+	// keeps the number you worked out and ticking it back needs no retyping.
+	const yearOffsetOn = ref<boolean>(false);
 	const yearOffset = ref<number>(0);
 	let _undoTimer: ReturnType<typeof setTimeout> | null = null;
 	let _pulseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -184,12 +186,16 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 	const REFERENCE_KEY = 'reference_timeline';
 	const YEAR_OFFSET_KEY = 'year_offset';
+	const YEAR_OFFSET_ON_KEY = 'year_offset_on';
 
 	// BL-41: same deal as the reference watcher below — the modal edits the state and this writes it,
-	// so there is no Save button to coordinate and no second copy of the value to keep in step.
-	watch(yearOffset, () => {
+	// so there is no Save button to coordinate and no second copy of the value to keep in step. Both
+	// rows go on either change: two writes on a change to one of them is cheaper than reasoning about
+	// which, and they are idempotent.
+	watch([yearOffsetOn, yearOffset], () => {
 		const tlId = currentProject.value?.Id;
 		if (!tlId) return;
+		void BackendAPI.SetMiscSetting(YEAR_OFFSET_ON_KEY, yearOffsetOn.value ? '1' : '0', tlId);
 		void BackendAPI.SetMiscSetting(YEAR_OFFSET_KEY, String(Math.trunc(yearOffset.value) || 0), tlId);
 	});
 
@@ -291,7 +297,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 			// Load filter rules and misc settings for this timeline
 			const tlId = response.Project.Id;
-			const [rulesResult, andModeResult, panelOpenResult, displayModeResult, oscResult, lowResResult, refResult, eraResult] = await Promise.all([
+			const [rulesResult, andModeResult, panelOpenResult, displayModeResult, oscResult, lowResResult, refResult, eraResult, eraOnResult] = await Promise.all([
 				BackendAPI.GetFilterRules(tlId),
 				BackendAPI.GetMiscSetting('filter_and_mode', tlId),
 				BackendAPI.GetMiscSetting('filter_panel_open', tlId),
@@ -300,6 +306,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 				BackendAPI.GetMiscSetting('low_resource_mode', 0),
 				BackendAPI.GetMiscSetting(REFERENCE_KEY, tlId),
 				BackendAPI.GetMiscSetting(YEAR_OFFSET_KEY, tlId),
+				BackendAPI.GetMiscSetting(YEAR_OFFSET_ON_KEY, tlId),
 			]);
 			if (seq !== _loadSeq) return;
 			filterRules.value = rulesResult?.rules ?? [];
@@ -311,6 +318,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 			// Free text in a misc_settings row: anything but a whole number means no second numbering.
 			const savedOffset = Number(eraResult?.value);
 			yearOffset.value = Number.isInteger(savedOffset) ? savedOffset : 0;
+			// No switch row means a timeline set up before the switch existed: a non-zero offset was on
+			// by definition back then, so honour it rather than quietly dropping the second row.
+			yearOffsetOn.value = eraOnResult?.value ? eraOnResult.value === '1' : yearOffset.value !== 0;
 			void restoreReference(refResult?.value, seq);   // a second full fetch — never block the timeline on it
 			const lProf = response.Project.Calendar.LodProfile;
 			const _lp = lProf.Profile;
@@ -657,7 +667,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		itemTagMap, itemCharacterMap, itemStoryMap, itemPictureSet,
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
 		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference, referenceError,
-		yearOffset,
+		yearOffsetOn, yearOffset,
 		characterFocusId, characterFocus, focusKinItemIds,
 
 		// functions

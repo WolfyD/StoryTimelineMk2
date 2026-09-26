@@ -69,9 +69,13 @@ const calendarMismatch = computed(() =>
                  numbers. Same idea, so it lives here — but outside the block above, because it is worth
                  having with no reference loaded at all. -->
             <label class="rt-shift">
-                Second year numbering <input v-model.lazy.number="store.yearOffset" type="number" step="1" /> years
+                <input v-model="store.yearOffsetOn" type="checkbox" />
+                Second year numbering
+                <!-- Disabled rather than hidden, and never cleared: unticking keeps the number you
+                     worked out so ticking it back needs no retyping. -->
+                <input v-model.lazy.number="store.yearOffset" type="number" step="1" :disabled="!store.yearOffsetOn" /> years
             </label>
-            <p class="rt-tip">Adds a second row of year numbers above the ruler, shifted by that much — so an in-world era can be read against a real-world one. 0 turns it off. Display only: dates are still stored and typed in this timeline's own years.</p>
+            <p class="rt-tip">Adds a second row of year numbers above the ruler, shifted by that much — so an in-world era can be read against a real-world one. Display only: dates are still stored and typed in this timeline's own years.</p>
             <p class="rt-tip">Draw one of your other timelines underneath this one, or open it read-only in its own window. <kbd>R</kbd> opens this list.</p>
             <p v-if="error || store.referenceError" class="rt-error">{{ error || store.referenceError }}</p>
             <div v-if="loading" class="rt-empty">Loading…</div>
@@ -188,7 +192,8 @@ const calendarMismatch = computed(() =>
     align-items: center;
     gap: 6px;
     font-size: 0.9em;
-    input {
+    // Typed selector so the second-numbering checkbox beside one of these keeps its native look.
+    input[type="number"] {
         width: 72px;
         padding: 3px 6px;
         font: inherit;
@@ -196,7 +201,9 @@ const calendarMismatch = computed(() =>
         border: 1px solid var(--app-border, #2d3a56);
         border-radius: 4px;
         color: inherit;
+        &:disabled { opacity: 0.45; cursor: not-allowed; }
     }
+    input[type="checkbox"] { flex: none; margin: 0; cursor: pointer; }
 }
 .rt-dim   { font-size: 0.85em; color: var(--app-text-dim, #4a6080); }
 .rt-error { margin: 0 0 8px; font-size: 0.85em; color: var(--app-danger, #f87171); }

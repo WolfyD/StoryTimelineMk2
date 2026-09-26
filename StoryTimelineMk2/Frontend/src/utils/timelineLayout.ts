@@ -365,8 +365,11 @@ export function gridTicks(o: GridTickOptions): GridTick[] {
  *
  * Only year ticks carry one. A sub-year rung's names — "Jan", "W3", "25 Apr" — say nothing about the
  * year, so a numeric offset has nothing in them to change; on a whole-year rung every tick is a year
- * tick, so every one gets it. An offset of 0 means the timeline has a single numbering and this
- * answers `null` throughout.
+ * tick, so every one gets it.
+ *
+ * Whether a second numbering is wanted at all is the caller's to decide, not this function's — an
+ * offset of 0 is a legitimate setting, two numberings that happen to agree, so it gets its labels
+ * like any other.
  *
  * Display only: the offset never touches a stored date, the cursor readout or jump-to-year, all of
  * which stay in native years.
@@ -376,7 +379,7 @@ export function eraLabel(
     offset: number,
     formatter: (year: number, day: number) => string,
 ): string | null {
-    if (!offset || !t.isYearTick) return null
+    if (!t.isYearTick) return null
     // Same two branches the row below the axis uses: a sub-year rung prints the bare year on a year
     // boundary rather than repeating January, while a whole-year rung asks its formatter, because
     // "2000s" is what a millennium tick is for.

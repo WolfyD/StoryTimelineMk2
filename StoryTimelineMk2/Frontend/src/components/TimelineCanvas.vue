@@ -499,7 +499,7 @@ watch([() => store.filterDisplayMode, () => store.dimmableItems], () => {
 
 // BL-41: the offset numbering is drawn by renderGrid and read by nothing else, so a change to it
 // costs one grid draw and no lane or node work.
-watch(() => store.yearOffset, () => {
+watch([() => store.yearOffsetOn, () => store.yearOffset], () => {
     if (stage && props.layoutSettings) renderGrid(gridLayer, props.layoutSettings);
 });
 
@@ -788,9 +788,11 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
 
     const labelHalo = textHalo(layoutSettings.TimelineTickMarkerTextColor);
 
-    // BL-41: the second year numbering, mirrored above the axis. 0 is the normal case — one
-    // numbering — and then `eraLabel` answers null for every tick and this costs a comparison.
-    const eraOffset = store.yearOffset;
+    // BL-41: the second year numbering, mirrored above the axis. Off is the normal case, and then
+    // the loop below costs one boolean test per tick. The offset itself can legitimately be 0 —
+    // that draws the same year on both sides — so the switch is what decides, not the number.
+    const eraOn = store.yearOffsetOn;
+    const eraOffset = store.yearOffset || 0;   // an emptied number field leaves '' in the ref
 
     // BL-44: which ticks exist, and the day-of-year each one falls on, is pure maths — it lives in
     // timelineLayout where it can be tested without a canvas. This loop only draws them.
@@ -853,7 +855,7 @@ const renderGrid = (layer: Konva.Layer, layoutSettings: LayoutSettings | null) =
         // BL-41: the same tick numbered in the offset era, above the axis and the same 15px off it,
         // so the two numberings read as one ruler seen from both sides. Which ticks get one is
         // `eraLabel`'s to decide, not this loop's.
-        const era = eraLabel(t, eraOffset, formatter);
+        const era = eraOn ? eraLabel(t, eraOffset, formatter) : null;
         if (!era) continue;
         layer.add(
             // `grid-label-era` rather than `grid-label`, which is what the ruler tests count.

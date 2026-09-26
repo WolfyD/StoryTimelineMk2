@@ -451,9 +451,11 @@ describe('eraLabel', () => {
   const millennia = reg['MILLENNIA']!
   const months = reg['MONTHS']!
 
-  it('says nothing at all without an offset', () => {
-    // The default, and the case that has to stay free: no offset, no second Text per tick.
-    expect(ticks().every(t => eraLabel(t, 0, years) === null)).toBe(true)
+  it('still labels at an offset of 0, because the switch decides and not the number', () => {
+    // A ticked box with 0 in the field is a real setting — two numberings that agree — so it draws
+    // the same year on both sides of the axis rather than silently doing nothing.
+    const t = ticks()
+    expect(eraLabel(t[0]!, 0, years)).toBe(years(t[0]!.year, t[0]!.day))
   })
 
   it('shifts every tick of a whole-year rung, either way', () => {

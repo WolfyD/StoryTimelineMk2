@@ -1838,8 +1838,15 @@ What shipped:
   A sub-year rung's own names — "Jan", "W3", "25 Apr" — say nothing about the year, so a numeric
   offset has nothing in them to change and they get no second label. A coarse rung keeps its own
   shape through its formatter, so a millennium still reads "3450s" rather than a bare number.
-- **An offset of 0 is the default and costs one comparison per tick** — `eraLabel` answers `null`
-  and no second `Konva.Text` is created.
+- **A checkbox switches it, not the number.** First cut used "offset 0 means off", which cost the
+  user their typed number every time they turned it off and made 0 — two numberings that agree —
+  unreachable. So there is a second row, `year_offset_on` (`'1'`/`'0'`, matching the
+  `on_screen_controls` precedent in the same store), written by the same watcher, and the number
+  input greys out rather than resetting when the box is unticked. `eraLabel` no longer knows about
+  on/off at all: it labels any year tick, and `renderGrid` gates on the flag, so off still costs one
+  boolean per tick and creates no `Konva.Text`. A timeline saved before the switch existed has no
+  `year_offset_on` row, so the load treats a non-zero offset as on — nothing already configured
+  disappears.
 - **`grid-label-era`, not `grid-label`.** Konva name selectors match whole tokens, so the ruler
   probes (`ruler-probe.ts`, `canvas-layers.spec.ts`, `pan-perf.spec.ts`) that count `.grid-label`
   are unaffected.
@@ -1847,8 +1854,9 @@ What shipped:
   spec said "Timeline Settings" but this is a reference feature, and the modal already held its
   nearest kin, the reference timeline's "Shift by N years". The row sits outside the
   `v-if="store.reference"` block, so it works with no reference loaded, and reuses that control's
-  `.rt-shift` styling. A `renderGrid`-only watcher in `TimelineCanvas` redraws the ruler as the
-  number changes — no reload, no lane or node work.
+  `.rt-shift` styling (whose `input` rule is now typed `input[type="number"]`, so the checkbox next
+  to it keeps its native look). A `renderGrid`-only watcher in `TimelineCanvas` redraws the ruler as
+  either the box or the number changes — no reload, no lane or node work.
 - **No era name.** The spec left "prefix / suffix" open; the answer was neither. The second row
   carries just the shifted number, which is one less field, one less stored value and one less
   crowding case above the axis.
