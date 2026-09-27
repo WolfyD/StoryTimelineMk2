@@ -9,6 +9,11 @@ import { useModal } from '@/utils/modal'
 const props = defineProps<{
     itemId: string
     alreadyLinked: string[]
+    /**
+     * Pick one picture out of the library and hand it back, attaching it to nothing — for the owners
+     * that are not items, like a map's image (BL-16). `itemId` is ignored in this mode.
+     */
+    pickOnly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -63,8 +68,14 @@ const selectableCount = computed(() =>
 
 async function useSelected() {
     if (!selectableCount.value) return
-    isBusy.value = true
     const ids = selectedIds.value.filter(id => !isLinked(id))
+
+    if (props.pickOnly) {
+        emit('linked', allPictures.value.filter(p => ids.includes(p.Id)))
+        return
+    }
+
+    isBusy.value = true
     const results = await Promise.all(
         ids.map(id => BackendAPI.LinkImageToItem(id, props.itemId))
     )
@@ -104,7 +115,7 @@ function formatSize(bytes: number) {
         <div class="picker-panel">
 
             <div class="picker-header">
-                <span class="picker-title">Add Image</span>
+                <span class="picker-title">{{ pickOnly ? 'Choose Image' : 'Add Image' }}</span>
                 <button class="close-btn" @click="emit('close')"><PhX :size="16" /></button>
             </div>
 
@@ -115,7 +126,7 @@ function formatSize(bytes: number) {
                     v-model="searchQuery"
                     placeholder="Search by name…"
                 />
-                <button class="btn btn-import" :disabled="isBusy" @click="importNew">
+                <button v-if="!pickOnly" class="btn btn-import" :disabled="isBusy" @click="importNew">
                     <PhUploadSimple :size="15" />
                     Import New File…
                 </button>
@@ -175,7 +186,7 @@ function formatSize(bytes: number) {
                         :disabled="!selectableCount || isBusy"
                         @click="useSelected"
                     >
-                        {{ isBusy ? 'Adding…' : selectableCount > 1 ? `Add ${selectableCount} Images` : 'Add Image' }}
+                        {{ pickOnly ? 'Use Image' : isBusy ? 'Adding…' : selectableCount > 1 ? `Add ${selectableCount} Images` : 'Add Image' }}
                     </button>
                 </div>
             </div>

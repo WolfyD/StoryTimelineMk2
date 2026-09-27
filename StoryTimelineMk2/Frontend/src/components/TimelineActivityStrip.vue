@@ -48,21 +48,23 @@ const emit = defineEmits<{
     'open-export': []
     'open-characters': []
     'open-relations': []
+    'open-map': []
 }>()
 
 const helpMenuOpen = ref(false)
 
-/** Only two of the nav icons lead anywhere yet; the rest are placeholders. */
+/** Search and statistics are still placeholders; the rest lead somewhere. */
 function navClick(id: string) {
     if (id === 'chars') emit('open-characters')
     else if (id === 'relations') emit('open-relations')
+    else if (id === 'map') emit('open-map')
 }
 
 const navItems = [
     { id: 'timeline', icon: PhRuler,            label: 'Timeline',            active: true,  available: true  },
     { id: 'chars',    icon: PhUsersThree,        label: 'Characters',          active: false, available: true  },
     { id: 'relations',icon: PhGraph,             label: 'Relations',           active: false, available: true  },
-    { id: 'map',      icon: PhMapPin,            label: 'Map',                 active: false, available: false },
+    { id: 'map',      icon: PhMapPin,            label: 'Map',                 active: false, available: true  },
     { id: 'search',   icon: PhMagnifyingGlass,   label: 'Search',              active: false, available: false },
     { id: 'stats',    icon: PhChartBar,          label: 'Statistics',          active: false, available: false },
 ]

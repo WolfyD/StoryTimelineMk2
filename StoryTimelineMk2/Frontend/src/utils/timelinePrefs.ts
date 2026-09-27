@@ -68,6 +68,39 @@ export function saveDefaultLodMask(timelineId: number, mask: number) {
   return savePref(DEFAULT_LOD_MASK_KEY, timelineId, String(mask))
 }
 
+// ---- Whether a character attached to an item starts as present or only mentioned (BL-16) ----
+
+export const DEFAULT_MENTIONED_ONLY_KEY = 'appearance_default_mentioned_only'
+
+/**
+ * Stored in the column's own terms (`mentioned_only`) so nothing is inverted on the way through, and
+ * anything other than a stored `'1'` means present — which is the default, and what a character
+ * named in an event usually was. Timelines where most mentions are hearsay can flip it.
+ */
+export async function loadDefaultMentionedOnly(timelineId: number): Promise<boolean> {
+  return (await loadPref(DEFAULT_MENTIONED_ONLY_KEY, timelineId)) === '1'
+}
+
+export function saveDefaultMentionedOnly(timelineId: number, mentionedOnly: boolean) {
+  return savePref(DEFAULT_MENTIONED_ONLY_KEY, timelineId, mentionedOnly ? '1' : '0')
+}
+
+// ---- Whether the map descent dissolves into the child map or cuts to it (BL-16) ----
+
+export const MAP_DESCENT_FADE_KEY = 'map_descent_fade'
+
+/**
+ * On unless it was deliberately turned off: the dissolve is the intended effect, but it is a matter of
+ * taste, and off means the same flight into the child's region with a cut where the fade was.
+ */
+export async function loadMapDescentFade(timelineId: number): Promise<boolean> {
+  return (await loadPref(MAP_DESCENT_FADE_KEY, timelineId)) !== '0'
+}
+
+export function saveMapDescentFade(timelineId: number, fade: boolean) {
+  return savePref(MAP_DESCENT_FADE_KEY, timelineId, fade ? '1' : '0')
+}
+
 /** Human-readable LOD level name: formatKey is an upper-case token like "MILLENNIA". */
 export function lodLevelLabel(lod: LodLevel): string {
   const k = lod.formatKey.toLowerCase()

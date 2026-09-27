@@ -39,6 +39,10 @@ namespace StoryTimelineMk2.Database.Migrations
             new(19, "per-level tick distance", "1.1.1", V19_LodTickDistance),
             new(20, "angled axis labels", "1.1.1", V20_AngledTickLabels),
             new(21, "settings that read as one set", "1.1.1", V21_SettingsPass),
+            new(22, "maps, locations, and who was actually there", "1.1.1", V22_MapsAndLocations),
+            new(23, "which way is north, how far is that", "1.1.1", V23_MapScaleAndFootprint),
+            new(24, "what a place looks like on the map", "1.1.1", V24_MarkerStyles),
+            new(25, "where the compass sits on a map", "1.1.1", V25_CompassPlacement),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1521,6 +1525,161 @@ namespace StoryTimelineMk2.Database.Migrations
             AddCol(db, "characters", "birth_location_id", "TEXT");
             AddCol(db, "characters", "death_location_id", "TEXT");
             AddCol(db, "items", "location_id", "TEXT");
+        }
+
+        // ── 22: maps and locations ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-16, the Map feature. Two new tables and one flag; step 17's three placeholder columns
+        /// are settled, two of them by being dropped.
+        ///
+        /// <b>A map is a picture with places on it.</b> The image lives in <c>pictures</c> rather than
+        /// a path column of its own, so a map travels through export, backup and V2 import on the
+        /// machinery every other image in this schema already uses.
+        ///
+        /// <b>Nesting hangs off the pin, not off the map.</b> <c>locations.child_map_id</c> — the pin
+        /// labelled "Gondor" on the world map <i>is</i> the doorway into the Gondor map, and the child
+        /// map's position on its parent is that pin's x/y. So there is no <c>maps.parent_id</c>: the
+        /// parent of a map is whatever location points at it, a root is a map nobody points at, and
+        /// "Gondor" is one row whether you are looking at it or standing in it. Depth is unlimited.
+        ///
+        /// <b>x/y are fractions of the image, not pixels.</b> 0..1 on each axis. A writer who redraws
+        /// their world and uploads it at a different size keeps every pin where they put it, which
+        /// pixels would not survive — and the import downscaling this feature needs (see BL-16's
+        /// known ceiling) is exactly that resize.
+        ///
+        /// <b>Where an event happened is one column.</b> <c>items.location_id</c> stays as step 17
+        /// left it and starts being read. No foreign key: adding one to an existing column means
+        /// rebuilding <c>items</c>, the widest and hottest table here, to buy a single
+        /// <c>ON DELETE SET NULL</c> — the trigger below is that clause without the rebuild, and it
+        /// cannot be forgotten by a future caller the way a repo-side cleanup can.
+        ///
+        /// <b>Mentioned is not present.</b> <c>mentioned_only</c> on an appearance row: a character
+        /// named in an event they were nowhere near. Movement paths, which read a character's
+        /// appearances in time order and take each event's place as a point, skip those rows —
+        /// otherwise being talked about would teleport people across the map.
+        ///
+        /// <b>The two character location columns go.</b> With birth and death always real events
+        /// (BL-16), the place someone was born is their birth event's <c>location_id</c>, and these
+        /// had nothing left to hold. Nothing ever read them, so there is nothing to migrate.
+        /// </summary>
+        private static void V22_MapsAndLocations(MigrationDb db)
+        {
+            db.Execute(@"
+                CREATE TABLE IF NOT EXISTS maps (
+                    id TEXT PRIMARY KEY,
+                    timeline_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    picture_id TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE,
+                    FOREIGN KEY (picture_id) REFERENCES pictures(id) ON DELETE SET NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS locations (
+                    id TEXT PRIMARY KEY,
+                    map_id TEXT NOT NULL,
+                    child_map_id TEXT,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    x REAL NOT NULL DEFAULT 0.5,
+                    y REAL NOT NULL DEFAULT 0.5,
+                    color TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (map_id) REFERENCES maps(id) ON DELETE CASCADE,
+                    FOREIGN KEY (child_map_id) REFERENCES maps(id) ON DELETE SET NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_maps_timeline ON maps(timeline_id);
+                CREATE INDEX IF NOT EXISTS idx_locations_map ON locations(map_id);
+                CREATE INDEX IF NOT EXISTS idx_locations_child_map ON locations(child_map_id);
+                CREATE INDEX IF NOT EXISTS idx_items_location ON items(location_id);
+
+                -- The ON DELETE SET NULL that items.location_id cannot declare without a table rebuild.
+                CREATE TRIGGER IF NOT EXISTS trg_locations_clear_items
+                AFTER DELETE ON locations
+                BEGIN
+                    UPDATE items SET location_id = NULL WHERE location_id = OLD.id;
+                END;
+            ");
+
+            AddCol(db, "item_character_appearances", "mentioned_only", "INTEGER NOT NULL DEFAULT 0");
+
+            DropCol(db, "characters", "birth_location_id");
+            DropCol(db, "characters", "death_location_id");
+        }
+
+        // ── 23: which way is north, how far is that ────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-16. A map drawn on a slant still knows where north is (<c>north_offset</c>, degrees
+        /// clockwise from up), and a map knows its own scale because the writer told it, not because
+        /// anything guessed.
+        ///
+        /// The scale is stored as the bar itself: <c>scale_length</c> units of <c>scale_unit</c> span
+        /// <c>scale_fraction</c> of the image's width. Both ways of setting it write the same three
+        /// numbers — typing "10 miles" leaves the fraction alone, while picking two points on the map
+        /// sets the fraction to their distance apart — so nothing has to convert between a stored unit
+        /// and a drawn one. A new map starts at the standard 10 miles across its middle fifth.
+        ///
+        /// <c>footprint_w</c> is how much of its parent a pin's own map covers, as a fraction of the
+        /// parent's width, and it is the rectangle the child grows out of when the view descends into
+        /// it. It lives on the pin rather than the map because one map can hang off two pins, and each
+        /// is a different patch of a different parent.
+        /// ponytail: width only — the height follows the child map's aspect, so the picture cannot be
+        /// stretched by a bad rectangle. Store a height too if a writer ever needs to match a drawn
+        /// area whose shape differs from the map they drew of it.
+        /// </summary>
+        private static void V23_MapScaleAndFootprint(MigrationDb db)
+        {
+            AddCol(db, "maps", "north_offset", "REAL NOT NULL DEFAULT 0");
+            AddCol(db, "maps", "scale_length", "REAL NOT NULL DEFAULT 10");
+            AddCol(db, "maps", "scale_unit", "TEXT NOT NULL DEFAULT 'miles'");
+            AddCol(db, "maps", "scale_fraction", "REAL NOT NULL DEFAULT 0.2");
+
+            AddCol(db, "locations", "footprint_w", "REAL");
+        }
+
+        // ── 24: what a place looks like on the map ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-16. How markers are drawn: shape, size, colours, the icon in the ones that hold one, and
+        /// where and at what angle the name sits beside it. The map carries the look its places default
+        /// to and a pin carries only what it wants to differ in, so "every place on this map is a small
+        /// grey dot except the capital" is two edits rather than forty.
+        ///
+        /// One JSON column each rather than a dozen columns twice, the way <c>timelines.calendar</c>
+        /// already holds its LOD profile: the fields are read and written as a set, nothing joins or
+        /// sorts on them, and a pin's override has to be able to say "inherit this one" — which is a
+        /// missing key, not a null column that cannot be told apart from a deliberate blank.
+        /// ponytail: give a field its own column the day something needs to query by it.
+        /// </summary>
+        private static void V24_MarkerStyles(MigrationDb db)
+        {
+            AddCol(db, "maps", "marker_style", "TEXT");
+            AddCol(db, "locations", "marker_style", "TEXT");
+        }
+
+        // ── 25: where the compass sits ─────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-16. The compass rose belongs to the map, the way <c>north_offset</c> already does: a world
+        /// map with an ocean in the top-right has room for it there and a city map may not.
+        ///
+        /// <c>compass_x</c>/<c>compass_y</c> are 0..1 of the free space in the map view — 1,0 is the
+        /// top-right corner the rose has always sat in, which is why those are the defaults — rather
+        /// than screen pixels, which would put the rose off the edge on a smaller window than the one it
+        /// was placed on. <c>compass_size</c> is in pixels, because a rose is furniture and does not
+        /// grow with the picture.
+        /// </summary>
+        private static void V25_CompassPlacement(MigrationDb db)
+        {
+            AddCol(db, "maps", "compass_x", "REAL NOT NULL DEFAULT 1");
+            AddCol(db, "maps", "compass_y", "REAL NOT NULL DEFAULT 0");
+            AddCol(db, "maps", "compass_size", "REAL NOT NULL DEFAULT 38");
         }
     }
 }

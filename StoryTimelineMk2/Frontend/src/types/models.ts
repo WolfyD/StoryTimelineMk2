@@ -234,7 +234,7 @@ export interface TimelineItem {
 	UseHighlightColor?: boolean;
 	/** Writer's private notes: stored and exported, never rendered anywhere */
 	ItemNotes?: string | null;
-	/** BL-16 groundwork: will hold a location id once locations exist. Nothing reads it yet. */
+	/** BL-16: where it happened — a `locations.id`, on whichever map that location is pinned to. */
 	LocationId?: string | null;
 	ShowInNotes: boolean;
 	Importance: number;
@@ -316,14 +316,105 @@ export interface CharacterItem {
 	ShowOnTimeline: boolean;
 	/** Fill the portrait disc with Color instead of leaving it neutral; the ring is colored either way. */
 	UseHighlightColor: boolean;
+	/**
+	 * Birth and death are ordinary events (BL-16), so where someone was born is the birth item's
+	 * LocationId — the character owns name, date and colour, the item owns the place.
+	 */
 	BirthItemId: string | null;
 	DeathItemId: string | null;
-	/** BL-16 groundwork: will hold location ids once locations exist. Nothing reads them yet. */
-	BirthLocationId: string | null;
-	DeathLocationId: string | null;
 	/** In every timeline's cast, not only TimelineId's — which stays as where they came from. */
 	Shared: boolean;
 	TimelineId: number;
+}
+
+/**
+ * BL-16: a picture with places on it.
+ *
+ * A map has no parent field. Its parent is whichever `LocationItem` names it in `ChildMapId` — the
+ * pin labelled "Gondor" on the world map *is* the way into the Gondor map — so a root map is one no
+ * location points at, and nesting goes as deep as the writer takes it.
+ */
+export interface MapItem {
+	Id: string;
+	TimelineId: number;
+	Name: string;
+	Description: string | null;
+	/** A `pictures.id`: the image lives in the picture library, like every other image here. */
+	PictureId: string | null;
+	/** Degrees clockwise from up: where north is on a map that was not drawn square. */
+	NorthOffset: number;
+	/**
+	 * Where the compass rose sits and how big it is. X and Y are 0..1 of the free space in the map
+	 * view, so 1,0 is the top-right corner it starts in and a smaller window cannot hide it off the
+	 * edge. The size is in pixels — the rose is furniture, not part of the picture.
+	 */
+	CompassX: number;
+	CompassY: number;
+	CompassSize: number;
+	/**
+	 * The scale bar as the writer set it — `ScaleLength` units of `ScaleUnit` span `ScaleFraction` of
+	 * the image's width. Typing a number changes the length; picking two points changes the fraction.
+	 * A new map starts at the standard 10 miles across its middle fifth.
+	 */
+	ScaleLength: number;
+	ScaleUnit: string;
+	ScaleFraction: number;
+	/**
+	 * What the places on this map look like by default, as JSON — see `markerStyle.ts`. A pin may
+	 * override any part of it. Null means the built-in look.
+	 */
+	MarkerStyle: string | null;
+	/** Joined in, so a map list can draw thumbnails without a lookup each. */
+	PicturePath: string | null;
+	/**
+	 * The image's natural size, joined in. Needed to turn a location's 0..1 fractions into pixels
+	 * before the bitmap itself has finished loading.
+	 */
+	PictureWidth: number | null;
+	PictureHeight: number | null;
+	/**
+	 * What the canvas draws: capped copies of the picture, so an upload of any size costs the same to
+	 * display. Null means they are not written yet — ask with `EnsureMapViews` — and `ViewError` says
+	 * why if they could not be written at all.
+	 */
+	OverviewPath: string | null;
+	DetailPath: string | null;
+	ViewError: string | null;
+	Locations: LocationItem[];
+}
+
+/**
+ * A named place pinned on a map. Events point here through `TimelineItem.LocationId`, and a
+ * character's whereabouts are derived from that — they were at an event, the event has a place.
+ */
+export interface LocationItem {
+	Id: string;
+	MapId: string;
+	/**
+	 * The map this pin opens into, if the writer has drawn one. Set, and this location is both a
+	 * place on its parent and a map in its own right — one row, so the two cannot drift apart.
+	 */
+	ChildMapId: string | null;
+	Name: string;
+	Description: string | null;
+	/**
+	 * Fractions of the map image, 0..1 on each axis — not pixels. Redraw the world and upload it at
+	 * a different size, and every pin stays where it was put.
+	 */
+	X: number;
+	Y: number;
+	Color: string | null;
+	/**
+	 * How much of this map's width the pin's own map covers, 0..1 — the patch of ground the child
+	 * depicts, and the rectangle it grows out of when the view descends into it. Null until set;
+	 * the height is not stored, it follows the child map's aspect.
+	 */
+	FootprintW: number | null;
+	/**
+	 * Only what this pin differs from its map's default look in, as JSON — an absent key inherits.
+	 * Null means it looks like every other place on the map.
+	 */
+	MarkerStyle: string | null;
 }
 
 /**
@@ -401,6 +492,12 @@ export interface ItemCharacterAppearance {
 	Role: string | null;
 	/** The name matcher attached this one rather than the user (BL-15 phase 2). */
 	AutoDetected?: boolean;
+	/**
+	 * BL-16: named in the event, but not there. Movement paths skip these, so being talked about does
+	 * not teleport someone across the map. Must be sent back on save — the backend deletes and
+	 * reinserts every appearance row, so a flag left out of the payload is a flag cleared.
+	 */
+	MentionedOnly?: boolean;
 }
 
 export interface ItemChapterRef {

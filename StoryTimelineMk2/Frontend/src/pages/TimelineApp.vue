@@ -470,6 +470,7 @@ onBeforeUnmount(() => {
                 @toggle-year-calendar="toggleYearCalendar"
                 @open-characters="BackendAPI.OpenCharactersWindow(store.currentProject?.Id ?? 0)"
                 @open-relations="BackendAPI.OpenRelationsWindow(store.currentProject?.Id ?? 0)"
+                @open-map="BackendAPI.OpenMapWindow(store.currentProject?.Id ?? 0)"
             >
                 <template #actions>
                     <TimelineActionsMenu ref="actionsMenuRef" @shift-complete="onShiftComplete" />

@@ -34,8 +34,6 @@ function character(overrides: Partial<CharacterItem> = {}): CharacterItem {
 		UseHighlightColor: false,
 		BirthItemId: null,
 		DeathItemId: null,
-		BirthLocationId: null,
-		DeathLocationId: null,
 		Shared: false,
 		TimelineId: 7,
 		...overrides,
@@ -57,8 +55,23 @@ describe('planGeneratedItems', () => {
 		expect(c.BirthItemId).toBe('existing')
 	})
 
-	it('hands back the ids to delete when the box is unticked', () => {
+	// Off is a visibility switch, not a delete: whatever the writer put on the event stays.
+	it('keeps both ids when the box is unticked, since the dates are still there', () => {
 		const c = character({ ShowOnTimeline: false, BirthYear: 100, DeathYear: 160, BirthItemId: 'b', DeathItemId: 'd' })
+		expect(planGeneratedItems(c)).toEqual([])
+		expect(c.BirthItemId).toBe('b')
+		expect(c.DeathItemId).toBe('d')
+	})
+
+	it('gives an unticked character its items too, so ticking the box has something to show', () => {
+		const c = character({ ShowOnTimeline: false, BirthYear: 100 })
+		expect(planGeneratedItems(c)).toEqual([])
+		expect(c.BirthItemId).toBeTruthy()
+		expect(c.DeathItemId).toBeNull()
+	})
+
+	it('hands back both ids when both dates are cleared', () => {
+		const c = character({ BirthYear: null, DeathYear: null, BirthItemId: 'b', DeathItemId: 'd' })
 		expect(planGeneratedItems(c)).toEqual(['b', 'd'])
 		expect(c.BirthItemId).toBeNull()
 		expect(c.DeathItemId).toBeNull()

@@ -1,7 +1,11 @@
 /**
- * BL-15: the birth and death items a character owns when *Show on timeline* is ticked. They are
- * generated rather than edited, so the character stays the single source of truth — editing a
- * date moves the item, unticking the box deletes both.
+ * BL-15: the birth and death items a character owns. Half generated, half the writer's: the character
+ * owns the title, the date and the colour, so editing a date moves the item, while the place, the
+ * description, the notes and the links belong to whoever opened the event and filled it in
+ * (`MergeGenerated`, backend-side).
+ *
+ * BL-16: a date is what makes them exist, not *Show on timeline* — that switch only decides whether
+ * anything draws them. It used to delete both, which threw away everything written on them.
  */
 import type { CharacterItem, TimelineItem } from '@/types/models'
 import type { NamedEntity } from '@/utils/entityMatcher'
@@ -50,7 +54,6 @@ export function blankCharacter(timelineId: number): CharacterItem {
 		PortraitPictureId: null, PortraitPath: null,
 		State: null, Gender: null, ShowOnTimeline: false, UseHighlightColor: false, BirthItemId: null, DeathItemId: null,
 		Shared: false,
-		BirthLocationId: null, DeathLocationId: null,
 		TimelineId: timelineId,
 	}
 }
@@ -59,13 +62,17 @@ export function blankCharacter(timelineId: number): CharacterItem {
  * Decides which generated items the character should own, *before* it is written — so one save
  * stores the ids rather than a save, a sync and a second save. Mutates the two id fields and
  * returns the ids that are no longer wanted, which the character itself no longer remembers.
+ *
+ * A date is the whole test. Turning *Show on timeline* off leaves the items alone and simply stops
+ * anything drawing them; only clearing the date itself drops one, because an event with no date has
+ * nowhere on a timeline to be.
  */
 export function planGeneratedItems(character: CharacterItem): string[] {
 	const dropped: string[] = []
 	for (const kind of ['Birth', 'Death'] as const) {
 		const idKey = `${kind}ItemId` as const
 		const year = kind === 'Birth' ? character.BirthYear : character.DeathYear
-		if (character.ShowOnTimeline && year !== null) {
+		if (year !== null) {
 			character[idKey] ??= crypto.randomUUID()
 		} else if (character[idKey]) {
 			dropped.push(character[idKey]!)

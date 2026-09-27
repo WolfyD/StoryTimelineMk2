@@ -159,7 +159,7 @@ Seeded rows (`MainDbMigrations.cs`): 1=Event, 2=Period, 3=Age, 4=Picture, 5=Note
 | `open_end` | INTEGER | NOT NULL DEFAULT 0 — the span carries on past its end year, same treatment to the right. Independent of `open_start`: both may be set (migration 15) |
 | `open_fade` | INTEGER | NOT NULL DEFAULT 0 — soften whichever side is open: half alpha at the arrow's point, full colour a year in, across both the head and the bar. Ignored unless one of the two above is set (migration 18) |
 | `item_notes` | TEXT | nullable — writer's private notes; saved, duplicated and exported with the item, never rendered (migration 6) |
-| `location_id` | TEXT | BL-16 groundwork: where it happened. No FK and nothing reads it yet (migration 17) |
+| `location_id` | TEXT | BL-16: where it happened — a `locations(id)`. No FK, deliberately: adding one to an existing column means rebuilding this table, so the `trg_locations_clear_items` trigger supplies the ON DELETE SET NULL instead *(column step 17, made real step 22)* |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
@@ -274,7 +274,7 @@ One row per timeline plus one app-level row with `timeline_id IS NULL`.
 | `gender` | TEXT | free text; picks the gendered relation wording *(step 14)* |
 | `absolute_start` / `absolute_end` | REAL | birth and death as canvas positions, NULL for no date *(step 16)* |
 | `shared` | INTEGER | NOT NULL DEFAULT 0 — in every timeline's cast; `timeline_id` stays as their origin *(step 16)* |
-| `birth_location_id` / `death_location_id` | TEXT | BL-16 groundwork, no FK and nothing reads them yet *(step 17)* |
+| ~~`birth_location_id` / `death_location_id`~~ | | **Dropped in step 22.** Birth and death are ordinary events (BL-16), so where someone was born is their birth item's `location_id`. Added in step 17, never read *(added 17, dropped 22)* |
 
 Step 16 dropped `birth_subtick` / `death_subtick`: the sub-year part now lives in the absolutes,
 and the editor derives a subtick back out of them (`Frontend/src/utils/lodDates.ts`), the same
@@ -456,7 +456,82 @@ given under `characters`.
 | `item_id` | TEXT | NOT NULL, FK → `items(id)` ON DELETE CASCADE |
 | `character_id` | TEXT | NOT NULL, FK → `characters(id)` ON DELETE CASCADE |
 | `role` | TEXT | freetext role for the appearance |
+| `auto_detected` | INTEGER | NOT NULL DEFAULT 0 — the name matcher attached this, not the user (BL-15 phase 2) |
+| `mentioned_only` | INTEGER | NOT NULL DEFAULT 0 — named in the event but not there; movement paths skip these *(step 22)* |
 | | | UNIQUE(item_id, character_id) |
+
+`SaveItemFull` deletes and reinserts every appearance row for an item, so both flags have to be
+carried on `CharacterAppearanceInput` and sent by the page on every save — one left out of the
+payload is one cleared.
+
+### `maps` — owner: `MapRepo` (`MainDbMigrations.cs`, step 22)
+
+BL-16. A picture with places on it. The image is a `pictures` row rather than a path column, so a
+map travels through export, backup and import on the same machinery as every other image here.
+
+There is **no `parent_id`**: a map's parent is whichever `locations` row names it in `child_map_id`,
+so a root map is one no location points at, and nesting goes as deep as the writer takes it.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | TEXT | PRIMARY KEY |
+| `timeline_id` | INTEGER | NOT NULL, FK → `timelines(id)` ON DELETE CASCADE |
+| `name` | TEXT | NOT NULL |
+| `description` | TEXT | |
+| `picture_id` | TEXT | FK → `pictures(id)` ON DELETE SET NULL |
+| `north_offset` | REAL | NOT NULL DEFAULT 0 — degrees clockwise from up: where north is on a map that was not drawn square *(step 23)* |
+| `scale_length` | REAL | NOT NULL DEFAULT 10 — the number the scale bar reads *(step 23)* |
+| `scale_unit` | TEXT | NOT NULL DEFAULT 'miles' — free text; a writer's own unit is as valid as a mile *(step 23)* |
+| `scale_fraction` | REAL | NOT NULL DEFAULT 0.2 — how much of the image's **width** that length spans *(step 23)* |
+| `marker_style` | TEXT | Nullable JSON — what every place on this map looks like unless the pin says otherwise *(step 24)* |
+| `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
+
+The scale is stored as the bar itself — `scale_length` units of `scale_unit` across `scale_fraction`
+of the image — so both ways of setting it write the same three columns and nothing converts between a
+stored unit and a drawn one. Typing a number in the map editor changes the length; picking two points
+on the map changes the fraction. A new map claims the standard 10 miles across its middle fifth,
+because a map with no picture yet has nothing truer to say. `Frontend/src/utils/mapScale.ts` is the
+only place that reads these: it turns them into a bar of a round 1/2/5 length at the current zoom,
+and into a distance for the measuring tool.
+
+`marker_style` is JSON rather than a column each, for the same reason `timelines.calendar` is: nothing
+queries or sorts on a marker's shape, and a pin's override has to be able to say *"inherit this one"* —
+which is a **missing key**, not a null that cannot be told apart from a deliberate blank. Shape, size,
+fill, outline colour and width, icon name, and the label's side, angle, size, colour, font and card;
+`Frontend/src/utils/markerStyle.ts` is the only reader and distrusts every field it parses. `MapRepo`
+normalises `"{}"` and whitespace to NULL on the way in, so "the same as the built-in look" is one value.
+
+### `locations` — owner: `MapRepo` (`MainDbMigrations.cs`, step 22)
+
+BL-16. A named place pinned on a map. Events point here through `items.location_id`; a character's
+whereabouts are **derived** from that — they were at an event, the event has a place — rather than
+stored, so there is no second record free to drift out of step.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `id` | TEXT | PRIMARY KEY |
+| `map_id` | TEXT | NOT NULL, FK → `maps(id)` ON DELETE CASCADE |
+| `child_map_id` | TEXT | FK → `maps(id)` ON DELETE SET NULL — the map this pin opens into. Deleting that map leaves the place and removes only the doorway |
+| `name` | TEXT | NOT NULL |
+| `description` | TEXT | |
+| `x` / `y` | REAL | NOT NULL DEFAULT 0.5 — **fractions of the image, 0..1, not pixels**, so re-uploading the map at a different size keeps every pin where it was put |
+| `color` | TEXT | pin color |
+| `footprint_w` | REAL | Nullable — how much of *this* map's width the pin's `child_map_id` map covers, 0..1: the patch of ground the child depicts, and the rectangle it grows out of when the view descends into it. Height is not stored; it follows the child map's aspect, so a badly drawn rectangle cannot stretch the child's picture *(step 23)* |
+| `marker_style` | TEXT | Nullable JSON — **only the fields this pin differs from its map in**; same shape as `maps.marker_style`. NULL means it looks like every other place *(step 24)* |
+| `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
+
+The footprint lives on the **pin**, not on the child map, because one map can hang off two pins — the
+same city drawn once, reached from two different regions, is a different patch of a different parent
+each time.
+
+A pin's `marker_style` is a **difference**, not a whole look: the editor works on the map's default with
+the pin's overrides laid over it and stores `diffMarker` of the result, so a field nobody touched is
+never written and keeps following the map afterwards. A key present and `null` means something else
+again — *"deliberately nothing"* — which is how "use the place's own colour" is stored.
+
+Trigger `trg_locations_clear_items` (step 22) runs `AFTER DELETE ON locations` and nulls
+`items.location_id` for the rows that pointed there — the ON DELETE SET NULL that `items` cannot
+declare without a full table rebuild. It fires however the row is deleted, so no caller can forget it.
 
 ### `filter_presets` — owner: `FilterPresetRepo` (`MainDbMigrations.cs`)
 
@@ -495,9 +570,11 @@ Key-value store, explicitly **not** exported/imported.
 | `value` | TEXT | |
 
 Keys in use: `filter_and_mode`, `filter_panel_open` (per timeline), `filter_display_mode`
-(global), `color_swatches` (per timeline, JSON array of 12 hex colors) and `default_lod_mask`
-(per timeline, integer bitmask new items start with — also read by `HandleGetItemForEdit`). The
-last two are wrapped by `Frontend/src/utils/timelinePrefs.ts`.
+(global), `color_swatches` (per timeline, JSON array of 12 hex colors), `default_lod_mask`
+(per timeline, integer bitmask new items start with — also read by `HandleGetItemForEdit`),
+`appearance_default_mentioned_only` (per timeline, `'1'` = a character attached to an item starts as
+only mentioned) and `map_descent_fade` (per timeline, `'0'` = cut instead of dissolving into a child
+map). All but the first three are wrapped by `Frontend/src/utils/timelinePrefs.ts`.
 
 ---
 
@@ -521,8 +598,15 @@ lod_profiles ──< calendars ──< timelines >── layout_settings
         ├──< item_tags >── tags (global, lower-cased, UNIQUE name)
         ├──< item_pictures >── pictures (files live in <DataRoot>\Media)
         ├──< item_story_refs >── stories (global)   [items.story_id = primary story FK]
-        └──< item_chapters >── chapters ──< books
-                                             └──< book_stories >── stories
+        ├──< item_chapters >── chapters ──< books
+        │                                    └──< book_stories >── stories
+        │
+        └── location_id ··> locations       (no FK; trg_locations_clear_items nulls it on delete)
+
+timelines ──< maps ──< locations
+                          └── child_map_id ──> maps   (the pin IS the doorway; a root map is one
+                                                       no location points at, so maps have no parent_id)
+              └── picture_id ──> pictures
 
 filter_presets   (global, standalone)
 misc_settings    (key-value, timeline_id=0 = global, standalone)
@@ -533,7 +617,7 @@ timeline_calendars (timeline↔calendar with year-0 offset; schema+import only)
 
 Key relationship facts:
 
-- **Timeline is the aggregate root.** `items`, `characters`, `settings`, `notes`, `timeline_hidden_ranges`, `timeline_filter_rules`, `character_relationships`, `item_characters`, and `timeline_calendars` all declare `FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE` — deleting a timeline removes everything under it (relied on by `TimelineRepo.DeleteTimeline`, `TimelineRepo.cs:114-119`).
+- **Timeline is the aggregate root.** `items`, `characters`, `settings`, `notes`, `timeline_hidden_ranges`, `timeline_filter_rules`, `character_relationships`, `item_characters`, `maps`, and `timeline_calendars` all declare `FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE` — deleting a timeline removes everything under it (relied on by `TimelineRepo.DeleteTimeline`, `TimelineRepo.cs:114-119`). `locations` comes along transitively, through `maps`.
 - **Item junctions cascade from both sides.** `item_tags`, `item_pictures`, `item_story_refs`, `item_chapters`, `item_character_appearances` cascade when either endpoint is deleted, so deleting an item (`ItemRepo.DeleteItem`) automatically cleans its links.
 - **Calendar → LOD profile:** each `calendars.lod_profile_id` points at a `lod_profiles` row; `TimelineInfo` composes calendar + LOD in memory (`TimelineRepo.cs:85-96`, `CalendarRepo.cs:17-23`).
 - **Layout settings** are shared presets: many timelines can point to the same `layout_settings` row via `timelines.layout_settings_id` (no cascade; presets outlive timelines).
@@ -709,6 +793,22 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | `Save` | `void Save(FilterPresetItem preset)` | Upsert of name/`rules_json`/`and_mode` (`FilterPresetRepo.cs:22-32`). |
 | `Delete` | `void Delete(string id)` | DELETE (`FilterPresetRepo.cs:34-38`). |
 
+### `MapRepo` — `StoryTimeline.Data/Database/MapRepo.cs`
+
+One repo for both `maps` and `locations`: a location cannot exist without a map and the map screen wants both in the same breath (`MapRepo.cs:6-10`).
+
+The canvas never draws the upload itself. `MapViews` (`MapViews.cs`) derives two capped WebP copies per picture — `mapviews/{pictureId}-ov.webp` at 2048px and `-dt.webp` at 4096px — lazily, beside the thumbnails, served over the same media origin. An image already inside a cap is used directly. Two ceilings are deliberate and documented in that file: no zoom past 4096px (upgrade path is a tile pyramid under the same naming), and a **PNG** over ~9800px square is refused because Skia can only scale JPEG and WebP as it reads — `MapItem.ViewError` then carries the "re-export it as WebP" message to the screen.
+
+| Method | Signature | Behaviour |
+|---|---|---|
+| `GetMaps` | `List<MapItem> GetMaps(int timelineId)` | Every map in the timeline with its pins already attached, in **two** queries — maps (LEFT JOIN `pictures` for `picture_path`/`width`/`height`), then all locations for the timeline, grouped in memory by `map_id`. Both ordered by name. Returns early if there are no maps. Ends with `MapViews.Attach`, which fills in the drawable copies that already exist and starts writing the rest off-thread — it does **not** wait (`MapRepo.cs:24-52`). |
+| `GetMap` | `MapItem? GetMap(string id, bool ensureViews = true)` | One map with its pins, and (unless told otherwise) its drawable copies built and waited for. What the map screen calls for the map it is about to draw, through the `EnsureMapViews` action (`MapRepo.cs:59-75`). |
+| `SaveMap` | `string SaveMap(MapItem map)` | GUID if `Id` is empty; upsert of name/description/`picture_id`/north/scale/`updated_at`. A blank `ScaleUnit` is normalized back to `miles`, because a bar with no unit reads as nothing. Returns the ID (`MapRepo.cs:77-99`). |
+| `DeleteMap` | `void DeleteMap(string id)` | DELETE. Its own pins cascade away; a pin on *another* map that opened into this one survives with `child_map_id` nulled (`MapRepo.cs:98-102`). |
+| `SaveLocation` | `string SaveLocation(LocationItem location)` | GUID if `Id` is empty; upsert of every field. Empty `ChildMapId` is normalized to SQL NULL. Returns the ID (`MapRepo.cs:104-127`). |
+| `DeleteLocation` | `void DeleteLocation(string id)` | DELETE. The events that pointed here keep their dates and forget the place — `trg_locations_clear_items`, not repo code (`MapRepo.cs:133-137`). |
+| `GetLocationItems` | `IEnumerable<TimelineItem> (string locationId)` | What happened here, ordered by `absolute_start` — the pin's detail panel (`MapRepo.cs:140-146`). |
+
 ### `MiscSettingsRepo` — `StoryTimeline.Data/Database/MiscSettingsRepo.cs`
 
 The only repo that does **not** set `MatchNamesWithUnderscores` (it only queries scalar strings).
@@ -741,6 +841,8 @@ The only repo that does **not** set `MatchNamesWithUnderscores` (it only queries
 | `RelationshipTypeItem` (`RelationshipTypeItem.cs`) | `relationship_types` | `Id` (GUID), `Name`, `Type`, `AToB`, `BToA`, `OneWay` — model exists but no repo uses it |
 | `FilterRuleItem` (`FilterRuleItem.cs`) | `timeline_filter_rules` | `Id`, `TimelineId`, `Dimension`, `ParamsJson`, `Label`, `State` (="neutral"), `SortOrder` |
 | `FilterPresetItem` (`FilterPresetItem.cs`) | `filter_presets` | `Id`, `Name`, `RulesJson`, `AndMode` (int), `CreatedAt` (string) |
+| `MapItem` (`MapItem.cs`) | `maps` | `Id` (GUID), `TimelineId`, `Name`, `Description`, `PictureId`, `PicturePath` / `PictureWidth` / `PictureHeight` (joined from `pictures`, read-only), `NorthOffset` (=0), `ScaleLength` (=10) / `ScaleUnit` (=`miles`) / `ScaleFraction` (=0.2), `MarkerStyle?` (JSON), `UpdatedAt`, `Locations` (`List<LocationItem>`, filled by `MapRepo.GetMaps`), `OverviewPath` / `DetailPath` / `ViewError` (derived files, not columns — see `MapViews`). No parent column — see `locations.child_map_id` |
+| `LocationItem` (`MapItem.cs`) | `locations` | `Id` (GUID), `MapId`, `ChildMapId?`, `Name`, `Description`, `X` (=0.5), `Y` (=0.5) — 0..1 fractions of the image, not pixels — `Color`, `FootprintW?` (0..1 of the parent's width, null until set), `MarkerStyle?` (JSON, only what this pin differs from its map in), `UpdatedAt` |
 | `LayoutSettingsItem` (`LayoutSettingsItem.cs`) | `layout_settings` | ~70 properties mirroring the table 1:1 — event box styling (`TimelineEventBoxWidth` … `TimelineEventHoverColor`), age/period styling, box-type options, canvas/now-line/tick/hover-line/data-range options, animation options, `TimelineTickColor`/`TimelineAxisColor`, notes-panel theme (`NotesPanelBackgroundColor` … `NotesPanelFontSize`), data-panel theme (`DataPanelBackgroundColor` … `DataPanelFontSize`) |
 
 `FullTimelineProject.cs` additionally defines DTOs used to ship a whole timeline to the frontend in one payload:
@@ -767,7 +869,7 @@ The backup is never read on its original schema. Instead:
 2. `DbInitializer.Initialize(scratch, backupFirst: false)` migrates the copy to the current schema — the same code path a live database goes through, so any historical v2 backup ends up with every table, column, default and seed row the app expects. A backup stamped by a newer app version throws here ("newer version of Story Timeline") and nothing is merged.
 3. `MergeMigratedBackup` opens the live DB with `PRAGMA foreign_keys = ON`, `ATTACH`es the scratch copy as `BackupDb`, and in one transaction:
    - cascade-deletes every `timelines` row whose id exists in the backup (removing its items, settings, characters, hidden ranges, filter rules and junction rows);
-   - copies each table in `V2CopyPlan` (FK-safe order) with the column set common to both sides (`pragma_table_info` intersection, by name). Conflict policy per table: `INSERT OR REPLACE` for global lookups the backup is authoritative for (`lod_profiles`, `calendars`, `stories`, `tags`, `layout_settings`, `filter_presets`); plain `INSERT` for the cascade-cleared timeline-scoped tables (`timelines`, `items`, `characters`); `INSERT OR IGNORE` for everything else (`pictures`, `settings`, all junctions, `books`/`chapters`, `notes`, `timeline_hidden_ranges`, `timeline_filter_rules`, and the reserved `item_characters` / `timeline_calendars`).
+   - copies each table in `V2CopyPlan` (FK-safe order) with the column set common to both sides (`pragma_table_info` intersection, by name). Conflict policy per table: `INSERT OR REPLACE` for global lookups the backup is authoritative for (`lod_profiles`, `calendars`, `stories`, `tags`, `layout_settings`, `filter_presets`); plain `INSERT` for the cascade-cleared timeline-scoped tables (`timelines`, `items`, `characters`, `maps`, `locations`); `INSERT OR IGNORE` for everything else (`pictures`, `settings`, all junctions, `books`/`chapters`, `notes`, `timeline_hidden_ranges`, `timeline_filter_rules`, and the reserved `item_characters` / `timeline_calendars`).
    - commits, then `DETACH`es (must happen after commit — SQLite refuses to detach a database still in a read transaction).
 4. Deletes the scratch file (`finally`).
 

@@ -236,7 +236,8 @@ public class ItemRepoTests
 
         string charId = SeedCharacter(ctx, tl);
         using (var db = ctx.OpenConnection())
-            db.Execute("UPDATE characters SET use_highlight_color = 1, birth_item_id = @Item WHERE id = @Id",
+            // Shown, or the birth item would rightly be left out of the read altogether.
+            db.Execute("UPDATE characters SET use_highlight_color = 1, show_on_timeline = 1, birth_item_id = @Item WHERE id = @Id",
                 new { Item = birth.Id, Id = charId });
 
         var byId = repo.GetItemsByTimeline(tl).ToDictionary(i => i.Id);
@@ -343,6 +344,51 @@ public class ItemRepoTests
         Assert.Contains(results, r => r.Id == hit.Id);
         Assert.Contains(results, r => r.Id == character.Id);
         Assert.DoesNotContain(results, r => r.Id == otherYear.Id);
+    }
+
+    /// <summary>
+    /// BL-16: the birth/death items exist whether or not the character is shown, so what a writer
+    /// puts on one survives the switch. Off therefore has to hide them at the source — a row nothing
+    /// draws has no business in the notes panel, a search or the calendar either.
+    /// </summary>
+    [Fact]
+    public void GeneratedCharacterItems_AreLeftOut_WhenTheirCharacterIsNotShownOnTheTimeline()
+    {
+        using var ctx = new DbTestContext();
+        int tl = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var ordinary = MakeItem(tl);
+        var shownBirth = MakeItem(tl);  shownBirth.TypeId = 7;
+        var hiddenBirth = MakeItem(tl); hiddenBirth.TypeId = 7;
+        repo.SaveItemFull(ordinary, [], [], [], []);
+        repo.SaveItemFull(shownBirth, [], [], [], []);
+        repo.SaveItemFull(hiddenBirth, [], [], [], []);
+
+        var characters = new CharacterRepo();
+        characters.SaveCharacter(new CharacterItem
+        {
+            Id = Guid.NewGuid().ToString(), FirstName = "Seen", LastName = "Vale", TimelineId = tl,
+            BirthYear = 1500, ShowOnTimeline = true, BirthItemId = shownBirth.Id,
+        });
+        characters.SaveCharacter(new CharacterItem
+        {
+            Id = Guid.NewGuid().ToString(), FirstName = "Unseen", LastName = "Vale", TimelineId = tl,
+            BirthYear = 1500, ShowOnTimeline = false, BirthItemId = hiddenBirth.Id,
+        });
+
+        var all = repo.GetItemsByTimeline(tl).Select(i => i.Id).ToList();
+        Assert.Contains(ordinary.Id, all);
+        Assert.Contains(shownBirth.Id, all);
+        Assert.DoesNotContain(hiddenBirth.Id, all);
+
+        // The calendar reads its own query, and has to agree.
+        var year = repo.GetItemsByYear(tl, 1500).Select(i => i.Id).ToList();
+        Assert.Contains(shownBirth.Id, year);
+        Assert.DoesNotContain(hiddenBirth.Id, year);
+
+        // The row itself is still there for the character window to open.
+        Assert.NotNull(repo.GetItemById(hiddenBirth.Id));
     }
 
     // ── timeline-wide link getters ────────────────────────────────────────────

@@ -8,6 +8,7 @@ vi.mock('@/bridge/api', () => ({
     GetItemForEdit: vi.fn(),
     GetTimelineCharacters: vi.fn().mockResolvedValue([]),
     GetAllStories: vi.fn().mockResolvedValue([]),
+    GetMaps: vi.fn().mockResolvedValue([]),
     SearchTags: vi.fn().mockResolvedValue([]),
     GetTopTags: vi.fn().mockResolvedValue([]),
     GetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok', value: null }),
@@ -430,6 +431,42 @@ describe('EditItem page', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))
     await flushPromises()
     expect((BackendAPI.SaveItem as ReturnType<typeof vi.fn>).mock.calls[1][0].Placement).toBe(0)
+
+    windowClose.mockRestore()
+    wrapper.unmount()
+  })
+
+  // A newly attached character takes the timeline's default, the switch flips it, and the save
+  // carries it — the appearance rows are deleted and reinserted, so a dropped field is silent.
+  it('a character added to an item starts at the timeline default and the switch saves', async () => {
+    ;(BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>).mockResolvedValue(makeItemForEdit())
+    ;(BackendAPI.GetTimelineCharacters as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { Id: 'char-1', Name: 'Ada', Color: '#fff', PortraitPath: null },
+    ])
+    ;(BackendAPI.GetMiscSetting as ReturnType<typeof vi.fn>).mockImplementation((key: string) =>
+      Promise.resolve({ status: 'ok', value: key === 'appearance_default_mentioned_only' ? '1' : null }),
+    )
+    ;(BackendAPI.SaveItem as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok', itemId: 'existing-uuid-1234' })
+    const windowClose = vi.spyOn(window, 'close').mockImplementation(() => {})
+    const wrapper = mount(EditItem, { global: { plugins: [pinia] } })
+    await flushPromises()
+
+    // The Characters section starts expanded: picker → pick Ada → Add
+    await wrapper.findAll('.btn-secondary').find(b => b.text() === '+ Add character')!.trigger('click')
+    await wrapper.find('.picker-item').trigger('click')
+    await wrapper.findAll('.picker-footer .btn-primary')[0].trigger('click')
+
+    const presence = () => wrapper.find('.char-presence')
+    expect(presence().text()).toBe('Mentioned')      // the timeline default said so
+
+    await presence().trigger('click')
+    expect(presence().text()).toBe('Present')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))
+    await flushPromises()
+    expect((BackendAPI.SaveItem as ReturnType<typeof vi.fn>).mock.calls[0][2]).toEqual([
+      { CharacterId: 'char-1', Role: null, AutoDetected: false, MentionedOnly: false },
+    ])
 
     windowClose.mockRestore()
     wrapper.unmount()

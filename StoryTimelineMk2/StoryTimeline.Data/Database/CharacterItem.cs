@@ -81,15 +81,14 @@ namespace StoryTimelineMk2.Database
         /// carries the color either way.
         /// </summary>
         public bool UseHighlightColor { get; set; }
+        /// <summary>
+        /// Birth and death are ordinary events (BL-16), so <i>where</i> someone was born is the birth
+        /// item's <c>LocationId</c> — the character owns the name, the date and the colour, the item
+        /// owns the place. The two <c>*_location_id</c> columns step 17 put here for that job were
+        /// dropped in step 22 with nothing ever having read them.
+        /// </summary>
         public string? BirthItemId { get; set; }
         public string? DeathItemId { get; set; }
-
-        /// <summary>
-        /// Where they were born and where they died. Groundwork for BL-16 (the Map feature): these
-        /// will hold location ids once locations exist. Nothing sets or reads them yet.
-        /// </summary>
-        public string? BirthLocationId { get; set; }
-        public string? DeathLocationId { get; set; }
 
         public int TimelineId { get; set; }
 

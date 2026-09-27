@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
 import { useModal } from '@/utils/modal'
 
@@ -16,12 +17,45 @@ const emit = defineEmits<{ close: [] }>()
 
 // Esc closes, Enter clicks the footer's `data-primary` button, the backdrop survives a drag.
 const { root, onMousedown, onClick } = useModal(() => emit('close'))
+
+// Drag by the header: a modal sits over the middle of whatever you are editing, and on the map that
+// is exactly the part you need to see. An offset from where the backdrop's flex box centred it.
+const panel = ref<HTMLElement | null>(null)
+const pos = ref({ x: 0, y: 0 })
+
+/** Anywhere that leaves the header reachable — a panel dragged off-screen cannot be dragged back. */
+function clamp(x: number, y: number) {
+    const el = panel.value
+    if (!el) return { x, y }
+    const edge = 70
+    const left = (window.innerWidth - el.offsetWidth) / 2
+    const top = (window.innerHeight - el.offsetHeight) / 2
+    return {
+        x: Math.min(Math.max(edge - el.offsetWidth - left, x), window.innerWidth - edge - left),
+        y: Math.min(Math.max(-top, y), window.innerHeight - edge - top),
+    }
+}
+
+/** Pointer capture rather than window listeners, so the drag survives leaving the header. */
+function startDrag(e: PointerEvent) {
+    if ((e.target as HTMLElement).closest('button')) return
+    const handle = e.currentTarget as HTMLElement
+    handle.setPointerCapture(e.pointerId)
+    const grab = { x: e.clientX - pos.value.x, y: e.clientY - pos.value.y }
+    const move = (m: PointerEvent) => { pos.value = clamp(m.clientX - grab.x, m.clientY - grab.y) }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', () => handle.removeEventListener('pointermove', move), { once: true })
+}
 </script>
 
 <template>
     <div ref="root" class="bm-backdrop" :style="{ zIndex }" @mousedown="onMousedown" @click="onClick">
-        <div class="bm-panel" :style="{ width, maxHeight }">
-            <div class="bm-header">
+        <div
+            ref="panel"
+            class="bm-panel"
+            :style="{ width, maxHeight, transform: `translate(${pos.x}px, ${pos.y}px)` }"
+        >
+            <div class="bm-header" title="Drag to move" @pointerdown="startDrag">
                 <slot name="header">
                     <span class="bm-title">{{ title ?? '' }}</span>
                     <button class="bm-close" @click="emit('close')"><PhX :size="18" /></button>
@@ -80,6 +114,11 @@ const { root, onMousedown, onClick } = useModal(() => emit('close'))
     background: var(--app-surface-high, #1e2b44);
     border-bottom: 1px solid var(--app-border, #2d3a56);
     flex-shrink: 0;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+
+    &:active { cursor: grabbing; }
 }
 
 .bm-title {

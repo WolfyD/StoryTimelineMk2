@@ -24,6 +24,8 @@ import type {
 	SessionChangeSummary,
 	SessionChangePreview,
 	SessionApplyResult,
+	MapItem,
+	LocationItem,
 } from '@/types/models';
 // Type-only: `installErrorReporting` needs the App shape, and importing Vue for real here would
 // pull the runtime into the transport.
@@ -395,7 +397,12 @@ export const BackendAPI = {
 	async SaveItem(
 		item: TimelineItem,
 		tagNames: string[],
-		characterAppearances: { CharacterId: string; Role: string | null; AutoDetected?: boolean }[],
+		characterAppearances: {
+			CharacterId: string;
+			Role: string | null;
+			AutoDetected?: boolean;
+			MentionedOnly?: boolean;
+		}[],
 		storyRefs: string[],
 		chapterRefs: string[]
 	) {
@@ -436,6 +443,53 @@ export const BackendAPI = {
 
 	async GetTimelineCharacters(timelineId: number) {
 		return await this.request<CharacterItem[]>('GetTimelineCharacters', { timelineId });
+	},
+
+	// ── BL-16: maps and locations ────────────────────────────────────────────────────────────────
+
+	/** Every map in the timeline with its pins already attached — the tree, in one call. */
+	async GetMaps(timelineId: number) {
+		return await this.request<MapItem[]>('GetMaps', { timelineId });
+	},
+	/**
+	 * One map with its pins and its drawable copies built — `GetMaps` deliberately does not wait for
+	 * those. Call it for the map about to be shown; it can take a moment on a first open.
+	 */
+	async EnsureMapViews(mapId: string) {
+		return await this.request<MapItem>('EnsureMapViews', { mapId });
+	},
+	/** The saved map comes back: a new one's Id is made backend-side. */
+	async SaveMap(map: Partial<MapItem>) {
+		return await this.request<{ status: string; map: MapItem }>('SaveMap', map);
+	},
+	/**
+	 * Opens a file dialog on the host, imports what is picked and points the map at it. The map comes
+	 * back with its drawable copies built. Replies `status: 'cancelled'` if the dialog is closed.
+	 */
+	async SetMapPicture(mapId: string) {
+		return await this.request<{ status: string; Map?: MapItem }>('SetMapPicture', { mapId });
+	},
+	/** `mapId` opens the window on that map, or points the open one at it. */
+	async OpenMapWindow(timelineId: number, mapId?: string) {
+		return await this.request<{ status: string }>('OpenMapWindow', { timelineId, mapId });
+	},
+	/**
+	 * The map and its own pins. A pin on another map that opened into this one keeps its place and
+	 * loses only the doorway — deleting a map does not delete the place it depicted.
+	 */
+	async DeleteMap(mapId: string) {
+		return await this.request<{ status: string }>('DeleteMap', { mapId });
+	},
+	async SaveLocation(location: Partial<LocationItem>) {
+		return await this.request<{ status: string; location: LocationItem }>('SaveLocation', location);
+	},
+	/** The events that pointed here keep their dates and forget the place. */
+	async DeleteLocation(locationId: string) {
+		return await this.request<{ status: string }>('DeleteLocation', { locationId });
+	},
+	/** What happened at this place, earliest first. */
+	async GetLocationItems(locationId: string) {
+		return await this.request<TimelineItem[]>('GetLocationItems', { locationId });
 	},
 
 	/** Remembers that the user took a character off an item, so the matcher stops re-adding them. */

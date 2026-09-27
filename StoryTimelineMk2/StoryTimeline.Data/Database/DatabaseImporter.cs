@@ -224,6 +224,12 @@ namespace StoryTimelineMk2.Database
             ("timelines",                  ""),
             ("items",                      ""),
             ("characters",                 ""),
+            // Maps before locations, because locations.child_map_id points at one. Both are cleared by
+            // the timeline cascade (locations transitively, through maps), so a plain INSERT restores
+            // the backup's version. items.location_id points the other way but carries no FK, so items
+            // copying first is fine.
+            ("maps",                       ""),
+            ("locations",                  ""),
             ("settings",                   "OR IGNORE"),
             ("item_tags",                  "OR IGNORE"),
             ("item_pictures",              "OR IGNORE"),

@@ -113,23 +113,46 @@ namespace StoryTimelineMk2.Database
         }
 
         internal static void WriteThumb(string sourcePath, string thumbPath)
+            => WriteResized(sourcePath, thumbPath, ThumbSize, SKEncodedImageFormat.Png, 100);
+
+        /// <summary>
+        /// The most pixels we will ever ask the allocator for in one block — 96 megapixels, about
+        /// 384 MB as BGRA, which is a ~9800px square. Thumbnails never came close, but a map image
+        /// (BL-16) can be any size the writer's tool exported and "decode it, then scale it" is what
+        /// falls over on a 20000px stitched panorama: 1.6 GB before the first resize. Past this the
+        /// file is refused with an explanation rather than attempted — see <see cref="DecodeBounded"/>
+        /// for why there is no smaller route.
+        /// </summary>
+        private const long DecodeBudgetPixels = 96L * 1024 * 1024;
+
+        /// <summary>
+        /// Writes <paramref name="sourcePath"/> to <paramref name="destPath"/> with its longest side
+        /// capped at <paramref name="cap"/>, upright, aspect kept. Images already inside the cap are
+        /// copied at their own size. Throws when the file cannot be decoded at all.
+        /// </summary>
+        /// <param name="budgetPixels">
+        /// Overridable only so a test can reach the refusal with a small fixture instead of a 400 MB
+        /// one; callers leave it alone.
+        /// </param>
+        internal static void WriteResized(string sourcePath, string destPath, int cap,
+            SKEncodedImageFormat format, int quality, long budgetPixels = DecodeBudgetPixels)
         {
             string name = Path.GetFileName(sourcePath);
             using var codec = SKCodec.Create(sourcePath)
                 ?? throw new InvalidOperationException($"No image decoder for '{name}'");
-            using var src = SKBitmap.Decode(codec)
-                ?? throw new InvalidOperationException($"Could not decode '{name}'");
 
-            // Honour EXIF orientation so the thumb matches what the browser shows for the original.
+            // Honour EXIF orientation so the output matches what the browser shows for the original.
             // ponytail: the same three rotations GDI+ handled; mirrored origins stay as-is (vanishingly rare).
             var origin = codec.EncodedOrigin;
             bool quarterTurn = origin is SKEncodedOrigin.RightTop or SKEncodedOrigin.LeftBottom;
-            int uprightW = quarterTurn ? src.Height : src.Width;
-            int uprightH = quarterTurn ? src.Width : src.Height;
+            int uprightW = quarterTurn ? codec.Info.Height : codec.Info.Width;
+            int uprightH = quarterTurn ? codec.Info.Width : codec.Info.Height;
 
-            double scale = Math.Min(1.0, (double)ThumbSize / Math.Max(uprightW, uprightH));
+            double scale = Math.Min(1.0, (double)cap / Math.Max(uprightW, uprightH));
             int w = Math.Max(1, (int)Math.Round(uprightW * scale));
             int h = Math.Max(1, (int)Math.Round(uprightH * scale));
+
+            using var src = DecodeBounded(codec, scale, budgetPixels, name);
 
             using var bmp = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
             using (var canvas = new SKCanvas(bmp))
@@ -150,9 +173,41 @@ namespace StoryTimelineMk2.Database
                 canvas.DrawImage(img, dest, new SKSamplingOptions(SKCubicResampler.Mitchell));
             }
 
-            using var data = bmp.Encode(SKEncodedImageFormat.Png, 100);
-            using var fs = File.Create(thumbPath);
+            using var data = bmp.Encode(format, quality);
+            using var fs = File.Create(destPath);
             data.SaveTo(fs);
+        }
+
+        /// <summary>
+        /// Decodes at or above the size the caller is about to scale to, refusing rather than asking
+        /// the allocator for more than <paramref name="budgetPixels"/> in one block. JPEG and WebP
+        /// scale as they decode, so their size here is the size being written and any upload is fine.
+        /// PNG cannot, so a PNG arrives whole and a huge one is turned away with a message saying
+        /// what to do about it.
+        ///
+        /// ponytail: no row-at-a-time fallback for the formats that cannot scale. Skia no longer
+        /// implements scanline decoding for PNG (<c>StartScanlineDecode</c> answers
+        /// <c>Unimplemented</c>) and incremental decoding needs the full destination allocated
+        /// anyway, so short of writing a PNG decoder there is no bounded route — and "re-export as
+        /// WebP" is a fix the writer can actually apply. Revisit if SkiaSharp ever exposes sampled
+        /// decode (<c>SkAndroidCodec</c>).
+        /// </summary>
+        private static SKBitmap DecodeBounded(SKCodec codec, double scale, long budgetPixels, string name)
+        {
+            var offered = codec.GetScaledDimensions((float)scale);
+            long pixels = (long)offered.Width * offered.Height;
+            if (pixels > budgetPixels)
+            {
+                throw new InvalidOperationException(
+                    $"'{name}' is {codec.Info.Width}x{codec.Info.Height} and its format cannot be scaled down while " +
+                    $"it is read, so opening it would need {pixels * 4 / (1024 * 1024)} MB in one block. Re-export it " +
+                    $"as WebP or JPEG — those open at any size — or keep it under about " +
+                    $"{(int)Math.Sqrt(budgetPixels)}x{(int)Math.Sqrt(budgetPixels)}.");
+            }
+
+            return SKBitmap.Decode(codec,
+                    new SKImageInfo(offered.Width, offered.Height, SKColorType.Bgra8888, SKAlphaType.Premul))
+                ?? throw new InvalidOperationException($"Could not decode '{name}'");
         }
 
         /// <summary>
@@ -256,11 +311,16 @@ namespace StoryTimelineMk2.Database
                 DeleteMedia(pictureId);
         }
 
-        public string GetFullPath(string fileNameOrPath)
+        public string GetFullPath(string fileNameOrPath) => ResolvePath(fileNameOrPath);
+
+        /// <summary>
+        /// Media-folder-relative path to a real one, without needing a repo instance — the map views
+        /// (BL-16) resolve the same way. Handles both legacy absolute paths and filename-only values.
+        /// </summary>
+        internal static string ResolvePath(string fileNameOrPath)
         {
-            // Handles both legacy absolute paths and new filename-only values
             if (Path.IsPathRooted(fileNameOrPath)) return fileNameOrPath;
-            return Path.Combine(_mediaFolder, fileNameOrPath);
+            return Path.Combine(AppConfig.Instance.GetMediaFolder(), fileNameOrPath);
         }
 
         public void DeleteMedia(string id)
@@ -282,6 +342,7 @@ namespace StoryTimelineMk2.Database
             // locked file (a viewer still holding it open) is the ordinary case here.
             TryDeleteFile(filePath);
             TryDeleteFile(Path.Combine(_mediaFolder, "thumbs", $"{id}.png"));
+            foreach (string view in MapViews.FilesFor(id)) TryDeleteFile(view);   // BL-16
         }
 
         private static void TryDeleteFile(string? path)

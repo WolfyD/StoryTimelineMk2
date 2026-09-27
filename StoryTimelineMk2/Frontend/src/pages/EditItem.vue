@@ -13,7 +13,7 @@ import HelpModal from '@/components/HelpModal.vue'
 import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import NotificationContainer from '@/components/NotificationContainer.vue'
 import { useAppTheme } from '@/utils/useAppTheme'
-import { DEFAULT_SWATCHES, loadSwatches } from '@/utils/timelinePrefs'
+import { DEFAULT_SWATCHES, loadSwatches, loadDefaultMentionedOnly } from '@/utils/timelinePrefs'
 import LodMaskToggles from '@/components/LodMaskToggles.vue'
 import { useLightbox } from '@/composables/useLightbox'
 import LightboxOverlay from '@/components/LightboxOverlay.vue'
@@ -33,6 +33,7 @@ import type {
   ItemStoryRef,
   ItemChapterRef,
   LodLevel,
+  MapItem,
 } from '@/types/models'
 
 useAppTheme()
@@ -113,6 +114,9 @@ const showImagePicker    = ref(false)
 // Lookup data
 const allCharacters   = ref<CharacterItem[]>([])
 const allStories      = ref<Story[]>([])
+// BL-16: every map with its pins, for the place picker. Grouped by map rather than flattened, so
+// two towns of the same name on different maps are still tellable apart.
+const maps            = ref<MapItem[]>([])
 const lodProfile      = ref<LodLevel[]>([])
 const monthNames      = ref<string[]>([])
 const monthLengths    = ref<number[]>([])
@@ -154,6 +158,8 @@ const pendingCharRole    = ref('')
 const creatingChar       = ref(false)
 // Characters the user took off this item. The matcher skips them, so a deleted link stays deleted.
 const dismissedChars     = ref(new Set<string>())
+/** BL-16: what a newly attached character starts as, set per timeline in Timeline Settings. */
+const defaultMentionedOnly = ref(false)
 
 const charEntities = computed(() => allCharacters.value.map(characterEntity))
 
@@ -241,6 +247,7 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
     Importance: 5,
     MinLodLevel: 3,
     LodVisibilityMask: 255,
+    LocationId: null,
   }
   startYear.value    = 0
   startSubYear.value = 0
@@ -248,6 +255,7 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   endSubYear.value   = 0
   tags.value               = []
   characterAppearances.value = []
+  maps.value               = []
   storyRefs.value          = []
   chapterRefs.value        = []
   images.value             = []
@@ -277,11 +285,16 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   isSaving.value           = false
 
   try {
-    const [data, characters, stories] = await Promise.all([
+    const [data, characters, stories, timelineMaps, mentionedDefault] = await Promise.all([
       BackendAPI.GetItemForEdit(tId, iId, dtype),
       BackendAPI.GetTimelineCharacters(tId),
       BackendAPI.GetAllStories(),
+      // Cheap: `GetMaps` skips building the drawable copies, so this is two queries and no decoding.
+      BackendAPI.GetMaps(tId),
+      loadDefaultMentionedOnly(tId),
     ])
+    maps.value = timelineMaps ?? []
+    defaultMentionedOnly.value = mentionedDefault
 
     if (data) {
       if (!isNew.value) {
@@ -559,6 +572,19 @@ function dismissTagSuggestions() {
 
 
 // ---------------------------------------------------------------------------
+// Place (BL-16)
+// ---------------------------------------------------------------------------
+/** The `<select>` speaks in strings and "nowhere" is the empty one; the column wants null. */
+const placeId = computed({
+  get: () => item.value.LocationId ?? '',
+  set: (v: string) => { item.value.LocationId = v || null },
+})
+
+/** Maps with at least one pin. A map with no places on it would be an empty group heading. */
+const mapsWithPlaces = computed(() => maps.value.filter(m => m.Locations.length))
+
+
+// ---------------------------------------------------------------------------
 // Characters
 // ---------------------------------------------------------------------------
 function openCharPicker() {
@@ -577,6 +603,7 @@ function confirmAddCharacter() {
     CharacterName: char.Name,
     CharacterColor: char.Color,
     Role: pendingCharRole.value || null,
+    MentionedOnly: defaultMentionedOnly.value,
   })
   dismissedChars.value.delete(char.Id)   // added by hand: the save clears the stored dismissal too
   showCharPicker.value = false
@@ -610,6 +637,7 @@ function attachDetectedCharacters(ids: string[]) {
       CharacterColor: char.Color,
       Role: null,
       AutoDetected: true,
+      MentionedOnly: defaultMentionedOnly.value,
     })
   }
 }
@@ -735,6 +763,9 @@ async function save(closeOnSuccess = true) {
       tags.value.map(t => t.Name),
       characterAppearances.value.map(a => ({
         CharacterId: a.CharacterId, Role: a.Role, AutoDetected: !!a.AutoDetected,
+        // BL-16: the save deletes and reinserts every appearance, so this has to come along or the
+        // Present/Mentioned switch is cleared on every save.
+        MentionedOnly: !!a.MentionedOnly,
       })),
       storyRefs.value.map(r => r.StoryId),
       chapterRefs.value.map(r => r.ChapterId),
@@ -942,6 +973,20 @@ async function removeImage(pictureId: string) {
           />
         </div>
 
+        <!-- Where it happened (BL-16). Grouped by map, so the same town name on two maps is clear. -->
+        <div class="field spaced-field">
+          <label>Place</label>
+          <select v-model="placeId">
+            <option value="">— nowhere in particular —</option>
+            <optgroup v-for="m in mapsWithPlaces" :key="m.Id" :label="m.Name">
+              <option v-for="loc in m.Locations" :key="loc.Id" :value="loc.Id">{{ loc.Name }}</option>
+            </optgroup>
+          </select>
+          <span v-if="!mapsWithPlaces.length" class="field-hint">
+            No places pinned yet — open the Map window and pin some.
+          </span>
+        </div>
+
         <div class="row">
           <div class="field flex-1">
             <label>Importance ({{ item.Importance }})</label>
@@ -1116,6 +1161,16 @@ async function removeImage(pictureId: string) {
                   @input="app.Role = ($event.target as HTMLInputElement).value || null"
                 />
               </div>
+              <!-- Present or only named (BL-16): only the present are drawn moving across the map. -->
+              <button
+                type="button"
+                class="char-presence"
+                :class="{ 'is-mentioned': app.MentionedOnly }"
+                :title="app.MentionedOnly
+                  ? 'Named here, but not present — click to say they were there'
+                  : 'There when this happened — click to say they were only named'"
+                @click="app.MentionedOnly = !app.MentionedOnly"
+              >{{ app.MentionedOnly ? 'Mentioned' : 'Present' }}</button>
               <button class="btn-icon" @click="removeCharacterAppearance(i)">×</button>
             </div>
           </div>
@@ -1474,6 +1529,11 @@ async function removeImage(pictureId: string) {
   textarea { resize: vertical; }
 }
 
+.field-hint {
+  font-size: 0.72rem;
+  color: var(--app-text-dim, #64748b);
+}
+
 .row {
   display: flex;
   gap: 10px;
@@ -1737,6 +1797,29 @@ async function removeImage(pictureId: string) {
 }
 
 .char-name { font-weight: 600; font-size: 0.9rem; }
+
+// Present / Mentioned switch on a character row: the active colours of .seg-btn, one button wide.
+.char-presence {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: #2c5f8a;
+  color: #e8f0ff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover { filter: brightness(1.15); }
+
+  &.is-mentioned {
+    background: var(--app-surface, #0c1524);
+    border-color: var(--app-border, #2d3a56);
+    color: var(--app-text-muted, #94a3b8);
+    font-weight: 500;
+  }
+}
 
 .char-role-input {
   border: 1px solid var(--app-border, #334155);

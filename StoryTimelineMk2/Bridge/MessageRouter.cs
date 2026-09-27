@@ -30,6 +30,9 @@ namespace StoryTimelineMk2.Bridge
         // Same deal for the relations window (BL-73).
         private static f_Relations? _relationsWindow;
 
+        // And the map window (BL-16): one per app, drilling from map to map inside itself.
+        private static f_Map? _mapWindow;
+
         /// <summary>
         /// BL-18 (H1): where data-layer actions run, instead of on the UI thread. One chain for
         /// every window's router, so messages still run one at a time and in arrival order —
@@ -60,6 +63,11 @@ namespace StoryTimelineMk2.Bridge
             var rels = _relationsWindow;
             if (rels != null && !rels.IsDisposed && rels.IsHandleCreated)
                 rels.BeginInvoke((MethodInvoker)rels.Close);
+
+            // Map window
+            var map = _mapWindow;
+            if (map != null && !map.IsDisposed && map.IsHandleCreated)
+                map.BeginInvoke((MethodInvoker)map.Close);
 
             // Calendar editor windows
             var toClose = new List<Form>();
@@ -192,6 +200,7 @@ namespace StoryTimelineMk2.Bridge
                 // EditItem actions
                 case "AddImageToItem":          HandleAddImageToItem(message); break;
                 case "SetCharacterPortrait":    HandleSetCharacterPortrait(message); break;
+                case "SetMapPicture":           HandleSetMapPicture(message); break;
                 case "ExportTimeline":          HandleExportTimeline(message); break;
                 case "ExportSessionChanges":    HandleExportSessionChanges(message); break;
                 case "BrowseAndPreviewSessionChanges": HandleBrowseAndPreviewSessionChanges(message); break;
@@ -216,6 +225,9 @@ namespace StoryTimelineMk2.Bridge
 
                 // Relations window (BL-73)
                 case "OpenRelationsWindow":         HandleOpenRelationsWindow(message); break;
+
+                // Map window (BL-16)
+                case "OpenMapWindow":               HandleOpenMapWindow(message); break;
 
                 // Year calendar window
                 case "OpenYearCalendarWindow":      HandleOpenYearCalendarWindow(message); break;
@@ -845,6 +857,75 @@ namespace StoryTimelineMk2.Bridge
             window.Activate();
 
             ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// BL-16: the map window. One per app like the other views onto the open timeline, and it
+        /// takes the map to show the same two ways: query string when it is new, broadcast when it is
+        /// already up (the window drills from map to map on its own once open).
+        /// </summary>
+        private void HandleOpenMapWindow(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            string? mapId = message.Payload.TryGetProperty("mapId", out var mid)
+                ? mid.GetString()
+                : null;
+
+            if (_mapWindow is { IsDisposed: false })
+            {
+                _mapWindow.Activate();
+                if (!string.IsNullOrEmpty(mapId))
+                    BridgeHub.Broadcast("ShowMap", new { MapId = mapId });
+                ReplyToVue(message.MessageId, new { status = "ok" });
+                return;
+            }
+
+            var window = f_Map.TakePrewarmed() ?? new f_Map();
+            window.TimelineId = timelineId;
+            window.MapId = mapId;
+            _mapWindow = window;
+            window.FormClosed += (_, _) =>
+            {
+                if (ReferenceEquals(_mapWindow, window)) _mapWindow = null;
+                f_Map.BeginPrewarm();   // closing it is the best hint it will be opened again
+            };
+            window.Show(_parentForm);
+            window.TopMost = _parentForm?.TopMost ?? false;
+            window.Activate();
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// BL-16: the map's picture, imported from a file the user picks. The same shape as
+        /// <see cref="HandleSetCharacterPortrait"/> — dialog, import, point the row at it — and the
+        /// saved map comes back with its drawable views already built, so the canvas can just draw.
+        /// </summary>
+        private void HandleSetMapPicture(BridgeMessage message)
+        {
+            string mapId = message.Payload.GetProperty("mapId").GetString()!;
+
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Select Map Image",
+                Filter = "Image files|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.tiff|All files|*.*",
+            };
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                ReplyToVue(message.MessageId, new { status = "cancelled" });
+                return;
+            }
+
+            var media = new MediaRepo();
+            var picture = media.ImportAndSaveMedia(dialog.FileName, Path.GetFileNameWithoutExtension(dialog.FileName), "");
+
+            var maps = new MapRepo();
+            var map = maps.GetMap(mapId, ensureViews: false)
+                ?? throw new InvalidOperationException($"There is no map with id '{mapId}'.");
+            map.PictureId = picture.Id;
+            maps.SaveMap(map);
+
+            ReplyToVue(message.MessageId, new { status = "ok", Map = maps.GetMap(mapId) });
         }
 
         private void HandleSetCharacterPortrait(BridgeMessage message)

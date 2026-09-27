@@ -1,5 +1,13 @@
 # Feature Design: World, Locations & Maps
 
+> **Superseded — do not build from this.** The BL-16 design sprint (2026-09-26) and migration 22
+> (2026-09-27) collapsed four things this document proposes: the separate location tree
+> (`Location.ParentLocationId`), the `MapPin` many-to-many, the `ItemLocation` junction and the
+> `World` table. What shipped is two tables — `maps` and `locations` — with nesting hanging off a
+> pin (`locations.child_map_id`), one place per event (`items.location_id`) and character whereabouts
+> *derived* from appearances rather than stored. See **[BL-16]** in `BACKLOG.md` for the current
+> design and `02-database.md` for the schema. Kept only for the reasoning it records.
+
 ## Overview
 
 Add a geographic dimension to the timeline. Users can define a world containing a hierarchy of locations, link timeline events to those locations, place locations as pins on map images, and visualize things like a character's movements across a map.

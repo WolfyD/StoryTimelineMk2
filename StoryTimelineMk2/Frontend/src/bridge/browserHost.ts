@@ -274,6 +274,17 @@ const handlers: Record<string, (payload: Payload) => unknown> = {
 		)
 	},
 
+	OpenMapWindow: (p) => {
+		// Re-opening the same named window navigates it, so the map rides the query string here
+		// rather than needing the ShowMap broadcast the desktop host uses.
+		openPopup(
+			'storytimeline-map',
+			`map.html${query({ timelineId: p.timelineId as number, mapId: p.mapId as string })}`,
+			1280,
+			860,
+		)
+	},
+
 	OpenYearCalendarWindow: (p) => {
 		const open = popups.get('storytimeline-year-calendar')
 		if (open && !open.closed) {

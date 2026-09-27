@@ -184,10 +184,10 @@ describe('CharactersApp save', () => {
   })
 
   it('leaves the draft alone when the save fails, so the retry still drops the same item', async () => {
-    // Show on timeline off, but an item still owned from when it was on: this save deletes it.
+    // The birth date has been cleared, but the item it made is still owned: this save deletes it.
     ;(BackendAPI.GetTimelineCharacters as ReturnType<typeof vi.fn>).mockResolvedValue([
       { ...blankCharacter(1), Id: 'arin', Name: 'Arin', FirstName: 'Arin',
-        ShowOnTimeline: false, BirthYear: 10, BirthItemId: 'old-birth' },
+        ShowOnTimeline: false, BirthYear: null, BirthItemId: 'old-birth' },
     ])
     const wrapper = await openFirst()
     ;(BackendAPI.SaveCharacterFull as ReturnType<typeof vi.fn>)

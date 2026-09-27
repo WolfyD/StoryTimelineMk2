@@ -5,7 +5,7 @@ import type { TimelineSettings, LayoutSettings } from '@/types/models'
 import { BackendAPI, type BridgeError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { MOD } from '@/utils/shortcuts'
-import { DEFAULT_SWATCHES, ALL_LODS_MASK, loadSwatches, saveSwatches, loadDefaultLodMask, saveDefaultLodMask, lodMaskSummary } from '@/utils/timelinePrefs'
+import { DEFAULT_SWATCHES, ALL_LODS_MASK, loadSwatches, saveSwatches, loadDefaultLodMask, saveDefaultLodMask, lodMaskSummary, loadDefaultMentionedOnly, saveDefaultMentionedOnly, loadMapDescentFade, saveMapDescentFade } from '@/utils/timelinePrefs'
 import SwatchEditorModal from './SwatchEditorModal.vue'
 import LodMaskModal from './LodMaskModal.vue'
 import FontPicker from './FontPicker.vue'
@@ -296,6 +296,8 @@ const strayStyle = computed(() =>
 
 const swatches = ref<string[]>([...DEFAULT_SWATCHES])   // quick-pick colors of the edit item window
 const defaultLodMask = ref(ALL_LODS_MASK)                // LOD visibility new items start with
+const defaultMentionedOnly = ref(false)                  // BL-16: present or mentioned for a newly attached character
+const mapDescentFade = ref(true)                         // BL-16: dissolve into a child map, or cut to it
 const showSwatchEditor = ref(false)
 const showLodPicker = ref(false)
 const lodSummary = computed(() => lodMaskSummary(defaultLodMask.value, store.lodProfile))
@@ -304,7 +306,7 @@ const lodSummary = computed(() => lodMaskSummary(defaultLodMask.value, store.lod
 // backdrop all have a panel's worth of deliberate changes to lose. Same snapshot guard as EditItem.
 let cleanSnapshot = ''
 const showDiscard = ref(false)
-const snapshot = () => JSON.stringify([local, localLayout, swatches.value, defaultLodMask.value])
+const snapshot = () => JSON.stringify([local, localLayout, swatches.value, defaultLodMask.value, defaultMentionedOnly.value, mapDescentFade.value])
 
 function requestClose() {
     if (snapshot() === cleanSnapshot) emit('close')
@@ -312,16 +314,20 @@ function requestClose() {
 }
 
 onMounted(async () => {
-    const [presets, fonts, sw, mask] = await Promise.all([
+    const [presets, fonts, sw, mask, mentioned, descentFade] = await Promise.all([
         BackendAPI.GetLayoutSettingsList(),
         BackendAPI.GetSystemFonts(),
         loadSwatches(store.currentProject!.Id),
         loadDefaultLodMask(store.currentProject!.Id),
+        loadDefaultMentionedOnly(store.currentProject!.Id),
+        loadMapDescentFade(store.currentProject!.Id),
     ])
     if (presets) layoutPresets.value = presets
     if (fonts) systemFonts.value = fonts
     swatches.value = sw
     defaultLodMask.value = mask
+    defaultMentionedOnly.value = mentioned
+    mapDescentFade.value = descentFade
     // After the loaded values land, or the modal is dirty the moment it opens.
     cleanSnapshot = snapshot()
 })
@@ -349,7 +355,7 @@ async function save() {
 
     localLayout.Id = local.selectedLayoutId
 
-    const [settingsResult, lsResult, swResult, maskResult] = await Promise.all([
+    const [settingsResult, lsResult, swResult, maskResult, mentionedResult, fadeResult] = await Promise.all([
         BackendAPI.SaveSettings({
             timelineId: store.currentProject!.Id,
             pixelsPerSubtick: local.PixelsPerSubtick,
@@ -368,9 +374,11 @@ async function save() {
         BackendAPI.SaveLayoutSettings(localLayout),
         saveSwatches(store.currentProject!.Id, swatches.value),
         saveDefaultLodMask(store.currentProject!.Id, defaultLodMask.value),
+        saveDefaultMentionedOnly(store.currentProject!.Id, defaultMentionedOnly.value),
+        saveMapDescentFade(store.currentProject!.Id, mapDescentFade.value),
     ])
 
-    if (settingsResult?.status === 'ok' && lsResult?.status === 'ok' && swResult?.status === 'ok' && maskResult?.status === 'ok') {
+    if (settingsResult?.status === 'ok' && lsResult?.status === 'ok' && swResult?.status === 'ok' && maskResult?.status === 'ok' && mentionedResult?.status === 'ok' && fadeResult?.status === 'ok') {
         if (store.settings) {
             store.settings.PixelsPerSubtick = local.PixelsPerSubtick
             store.settings.ShowGuides = local.ShowGuides
@@ -387,7 +395,7 @@ async function save() {
         if (lsResult.layoutSettings) store.setLayoutSettings(lsResult.layoutSettings)
         emit('close')
     } else {
-        console.error('[TimelineSettingsModal] save failed:', { settingsResult, lsResult, swResult, maskResult })
+        console.error('[TimelineSettingsModal] save failed:', { settingsResult, lsResult, swResult, maskResult, mentionedResult })
         saveError.value = 'Save failed. Please try again.'
     }
 
@@ -449,6 +457,18 @@ async function save() {
 
                     <span class="s-label">Visible At <SettingHint tip="LOD levels a newly created item is visible at; changeable per item in the edit window" /></span>
                     <button class="lod-summary" type="button" title="Choose levels" @click="showLodPicker = true">{{ lodSummary }}</button>
+
+                    <span class="s-label">Attached Characters <SettingHint tip="Whether a character added to an item starts as present at it or only mentioned in it; changeable per character in the edit window. Only characters who were present are drawn moving across the map" /></span>
+                    <div class="radio-group">
+                        <label class="radio-opt">
+                            <input type="radio" :checked="!defaultMentionedOnly" @change="defaultMentionedOnly = false" />
+                            Present
+                        </label>
+                        <label class="radio-opt">
+                            <input type="radio" :checked="defaultMentionedOnly" @change="defaultMentionedOnly = true" />
+                            Mentioned
+                        </label>
+                    </div>
                 </div>
 
                 <!-- FILTERING -->
@@ -485,6 +505,11 @@ async function save() {
 
                     <span class="s-label">LOD Duration (ms) <SettingHint tip="Duration of the level-of-detail change animation in milliseconds (0 = instant)" /></span>
                     <input class="s-input s-input--narrow" type="number" v-model.number="localLayout.TimelineLodChangeAnimationLength" :step="50" min="0" />
+
+                    <span class="s-label">Map Descent Fade <SettingHint tip="On the map screen, dissolve into the map behind a place while the view flies into the patch of ground it covers. Off keeps the same flight and cuts where the fade was" /></span>
+                    <button class="toggle" :class="{ 'is-on': mapDescentFade }" type="button" @click="mapDescentFade = !mapDescentFade">
+                        <span class="toggle-thumb" />
+                    </button>
                 </div>
 
                 <!-- WINDOW -->

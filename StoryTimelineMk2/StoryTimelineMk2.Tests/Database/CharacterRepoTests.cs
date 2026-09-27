@@ -371,6 +371,76 @@ public class CharacterRepoTests
         Assert.Equal(0, CountItems(ctx, character.BirthItemId));
     }
 
+    /// <summary>
+    /// A birth item is generated from the character *and* an ordinary event a writer opens and fills
+    /// in — where it happened, what it was like, who else was in the room. So a later character save
+    /// must not rebuild it: the character's half is enforced, everything else is left alone. It used
+    /// to blank the description and the notes and silently delete every link on the item.
+    /// </summary>
+    [Fact]
+    public void SaveCharacterFull_MergesTheGeneratedItem_AndKeepsWhatTheWriterPutOnIt()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new CharacterRepo();
+        var items = new ItemRepo();
+
+        var character = MakeCharacter(tlId, "Risha Vale");
+        character.FirstName = "Risha";
+        character.LastName  = "Vale";
+        character.ShowOnTimeline = true;
+        string birthId = Guid.NewGuid().ToString();
+        character.BirthItemId = birthId;
+        repo.SaveCharacterFull(character, new List<string>(), MakeGeneratedItem(birthId, tlId), null);
+
+        // The writer opens the generated event and makes it a real one.
+        var maps = new MapRepo();
+        string mapId = maps.SaveMap(new MapItem { TimelineId = tlId, Name = "The world" });
+        string locId = maps.SaveLocation(new LocationItem { MapId = mapId, Name = "Ashvale", X = 0.4, Y = 0.6 });
+        var midwife = MakeCharacter(tlId, "The midwife");
+        repo.SaveCharacter(midwife);
+
+        var written = items.GetItemById(birthId);
+        written.Description = "A hard winter birth.";
+        written.ItemNotes   = "Check against the almanac.";
+        written.LocationId  = locId;
+        items.SaveItemFull(written,
+            new List<string> { "birth", "kingsguard" },
+            new List<ItemRepo.CharacterAppearanceInput>
+            {
+                new() { CharacterId = character.Id, Role = "birth" },
+                new() { CharacterId = midwife.Id,   Role = "present" },
+            },
+            new List<string>(), new List<string>());
+
+        // Now the character is saved again, renamed, with a new date and colour.
+        character.LastName = "of Ashvale";
+        character.Color    = "#22c55e";
+        var regenerated = MakeGeneratedItem(birthId, tlId);
+        regenerated.Year = regenerated.EndYear = 1002;
+        regenerated.AbsoluteStart = regenerated.AbsoluteEnd = 1002;
+        regenerated.Color = "#22c55e";
+        repo.SaveCharacterFull(character, new List<string>(), regenerated, null);
+
+        var after = items.GetItemById(birthId);
+        // The character's half, enforced.
+        Assert.Equal("Birth of Risha of Ashvale", after.Title);
+        Assert.Equal(1002, after.Year);
+        Assert.Equal("#22c55e", after.Color);
+        // The writer's half, untouched.
+        Assert.Equal("A hard winter birth.", after.Description);
+        Assert.Equal("Check against the almanac.", after.ItemNotes);
+        Assert.Equal(locId, after.LocationId);
+
+        using var db = ctx.OpenConnection();
+        Assert.Equal(new[] { "birth", "kingsguard" }, db.Query<string>(@"
+            SELECT t.name FROM item_tags it INNER JOIN tags t ON t.id = it.tag_id
+            WHERE it.item_id = @I ORDER BY t.name", new { I = birthId }).ToArray());
+        Assert.Equal("present", db.QuerySingle<string>(@"
+            SELECT role FROM item_character_appearances WHERE item_id = @I AND character_id = @C",
+            new { I = birthId, C = midwife.Id }));
+    }
+
     // ── portrait ──────────────────────────────────────────────────────────────
 
     [Fact]

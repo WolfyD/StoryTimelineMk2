@@ -487,9 +487,13 @@ default (logging `console.error`) so a hand-edited or corrupt row cannot break t
 |---|---|---|---|
 | `loadSwatches(tlId)` / `saveSwatches(tlId, hex[])` | `color_swatches` | JSON array of exactly 12 `#rrggbb` strings | `DEFAULT_SWATCHES` |
 | `loadDefaultLodMask(tlId)` / `saveDefaultLodMask(tlId, mask)` | `default_lod_mask` | non-negative integer bitmask (bit *n* = visible at LOD index *n*) | `ALL_LODS_MASK` (255) |
+| `loadDefaultMentionedOnly(tlId)` / `saveDefaultMentionedOnly(tlId, flag)` | `appearance_default_mentioned_only` | `'1'` = only mentioned, anything else = present. Stored in the column's own terms (`mentioned_only`) so nothing is inverted on the way through (BL-16) | present (`false`) |
+| `loadMapDescentFade(tlId)` / `saveMapDescentFade(tlId, fade)` | `map_descent_fade` | `'0'` = cut, anything else = dissolve into the child map while the view flies into it (BL-16) | on (`true`) |
 
-Both are edited in `TimelineSettingsModal.vue` (General section) and consumed by `EditItem.vue`
-— the swatches directly, the mask via the new-item stub `HandleGetItemForEdit` returns.
+All four are edited in `TimelineSettingsModal.vue` — the first three in General (New Items), the fade
+under Animation. The swatches are consumed by `EditItem.vue` directly, the mask via the new-item stub
+`HandleGetItemForEdit` returns, the appearance default by `EditItem.vue` when a character is attached,
+and the fade by `MapApp.vue` when descending into a nested map.
 
 Two pure helpers for showing a mask to humans: `lodLevelLabel(lod)` (title-cased `formatKey`,
 e.g. `Years`) and `lodMaskSummary(mask, profile)` → `'No calendar'` / `'All levels'` /

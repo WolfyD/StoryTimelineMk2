@@ -106,6 +106,15 @@ namespace StoryTimelineMk2.Bridge
                 case "GetNotificationSettings":  HandleGetNotificationSettings(message); break;
                 case "SaveNotificationSettings": HandleSaveNotificationSettings(message); break;
                 case "SaveTimelineMinimised":    HandleSaveTimelineMinimised(message); break;
+                // BL-16, the Map feature. Setting a map's image reuses the existing picture library
+                // (GetAllPictures), so there is no upload action here.
+                case "GetMaps":                  HandleGetMaps(message); break;
+                case "EnsureMapViews":           HandleEnsureMapViews(message); break;
+                case "SaveMap":                  HandleSaveMap(message); break;
+                case "DeleteMap":                HandleDeleteMap(message); break;
+                case "SaveLocation":             HandleSaveLocation(message); break;
+                case "DeleteLocation":           HandleDeleteLocation(message); break;
+                case "GetLocationItems":         HandleGetLocationItems(message); break;
                 // BL-33. The baseline these diff against is taken in HandleGetTimelineData.
                 case "GetSessionChanges":        HandleGetSessionChanges(message); break;
                 case "GetSessionHistory":        HandleGetSessionHistory(message); break;
@@ -1209,6 +1218,72 @@ namespace StoryTimelineMk2.Bridge
             repo.SaveSettings(settings);
 
             ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        // ── BL-16: maps and locations ─────────────────────────────────────────────────────────────
+        //
+        // No try/catch in any of these: MessageRouter.Dispatch and the server's BridgeSession both
+        // log the full stack, reply with it and tell the user where the log is. A local catch here
+        // would only send ex.Message and lose the stack.
+
+        /// <summary>Every map in the timeline with its pins attached — the whole tree in one call.</summary>
+        private void HandleGetMaps(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new MapRepo().GetMaps(timelineId));
+        }
+
+        /// <summary>
+        /// One map, with its capped drawing copies built and waited for. GetMaps deliberately does not
+        /// block on that work, so the screen asks here for the map it is about to draw.
+        /// </summary>
+        private void HandleEnsureMapViews(BridgeMessage message)
+        {
+            string mapId = message.Payload.GetProperty("mapId").GetString()!;
+            var map = new MapRepo().GetMap(mapId)
+                ?? throw new InvalidOperationException($"There is no map with id '{mapId}'.");
+            ReplyToVue(message.MessageId, map);
+        }
+
+        /// <summary>The saved map goes back, because a new one's id is made in the repo.</summary>
+        private void HandleSaveMap(BridgeMessage message)
+        {
+            var map = JsonSerializer.Deserialize<MapItem>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveMap received an empty payload.");
+            new MapRepo().SaveMap(map);
+            ReplyToVue(message.MessageId, new { status = "ok", map });
+        }
+
+        private void HandleDeleteMap(BridgeMessage message)
+        {
+            string mapId = message.Payload.GetProperty("mapId").GetString()
+                ?? throw new InvalidOperationException("DeleteMap received no mapId.");
+            new MapRepo().DeleteMap(mapId);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleSaveLocation(BridgeMessage message)
+        {
+            var location = JsonSerializer.Deserialize<LocationItem>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveLocation received an empty payload.");
+            new MapRepo().SaveLocation(location);
+            ReplyToVue(message.MessageId, new { status = "ok", location });
+        }
+
+        private void HandleDeleteLocation(BridgeMessage message)
+        {
+            string locationId = message.Payload.GetProperty("locationId").GetString()
+                ?? throw new InvalidOperationException("DeleteLocation received no locationId.");
+            new MapRepo().DeleteLocation(locationId);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>What happened at this place — the pin's detail panel.</summary>
+        private void HandleGetLocationItems(BridgeMessage message)
+        {
+            string locationId = message.Payload.GetProperty("locationId").GetString()
+                ?? throw new InvalidOperationException("GetLocationItems received no locationId.");
+            ReplyToVue(message.MessageId, new MapRepo().GetLocationItems(locationId).ToList());
         }
 
         private static void CopyDirectory(string src, string dst)

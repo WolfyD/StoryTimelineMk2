@@ -1,0 +1,101 @@
+import { describe, it, expect } from 'vitest'
+import { unitsPerBasePx, distanceInUnits, niceScaleMultiplier, scaleBar, lockAxis } from '@/utils/mapScale'
+import type { MapItem } from '@/types/models'
+
+/** A 1000px-wide map whose middle fifth is 10 miles: 200px = 10 miles, so a mile is 20px. */
+function map(over: Partial<MapItem> = {}): MapItem {
+  return {
+    Id: 'm', TimelineId: 1, Name: 'The world', Description: null,
+    PictureId: null, PicturePath: null, PictureWidth: 1000, PictureHeight: 800,
+    NorthOffset: 0, CompassX: 1, CompassY: 0, CompassSize: 38,
+    ScaleLength: 10, ScaleUnit: 'miles', ScaleFraction: 0.2,
+    MarkerStyle: null,
+    OverviewPath: null, DetailPath: null, ViewError: null, Locations: [],
+    ...over,
+  }
+}
+
+describe('unitsPerBasePx', () => {
+  it('reads the bar the writer set', () => {
+    expect(unitsPerBasePx(map(), 1000)).toBeCloseTo(0.05) // 10 miles / 200px
+  })
+
+  it('falls back to the creation default rather than dividing by zero', () => {
+    expect(unitsPerBasePx(map({ ScaleFraction: 0 }), 1000)).toBeCloseTo(0.05)
+  })
+})
+
+describe('distanceInUnits', () => {
+  it('measures across and down the same way, because a map has one scale', () => {
+    const m = map()
+    expect(distanceInUnits(m, 1000, { x: 0, y: 0 }, { x: 400, y: 0 })).toBeCloseTo(20)
+    expect(distanceInUnits(m, 1000, { x: 0, y: 0 }, { x: 0, y: 400 })).toBeCloseTo(20)
+    expect(distanceInUnits(m, 1000, { x: 0, y: 0 }, { x: 300, y: 400 })).toBeCloseTo(25)
+  })
+})
+
+describe('niceScaleMultiplier', () => {
+  it('only ever lands on 1, 2 or 5 of a power of ten', () => {
+    for (const px of [3, 7, 19, 140, 900, 12345]) {
+      const mult = niceScaleMultiplier(px)
+      const rest = mult / 10 ** Math.floor(Math.log10(mult))
+      expect([1, 2, 5]).toContain(Math.round(rest))
+    }
+  })
+
+  it('keeps the bar near the length asked for, never past it', () => {
+    for (const px of [3, 7, 19, 140, 900, 12345]) {
+      const width = px * niceScaleMultiplier(px, 140)
+      expect(width).toBeLessThanOrEqual(140)
+      expect(width).toBeGreaterThan(140 / 5)
+    }
+  })
+
+  it('shrugs off a stage that has not been measured yet', () => {
+    expect(niceScaleMultiplier(0)).toBe(1)
+    expect(niceScaleMultiplier(NaN)).toBe(1)
+  })
+})
+
+describe('lockAxis', () => {
+  const from = { x: 100, y: 100 }
+
+  it('leaves the pointer alone when shift is not held', () => {
+    expect(lockAxis(from, { x: 140, y: 180 }, false)).toEqual({ x: 140, y: 180 })
+  })
+
+  it('keeps the axis the pointer travelled further along', () => {
+    expect(lockAxis(from, { x: 200, y: 130 }, true)).toEqual({ x: 200, y: 100 })
+    expect(lockAxis(from, { x: 130, y: 200 }, true)).toEqual({ x: 100, y: 200 })
+  })
+
+  it('works whichever way the pointer went', () => {
+    expect(lockAxis(from, { x: 10, y: 90 }, true)).toEqual({ x: 10, y: 100 })
+    expect(lockAxis(from, { x: 90, y: 10 }, true)).toEqual({ x: 100, y: 10 })
+  })
+
+  it('settles on horizontal at exactly 45°, rather than flickering between the two', () => {
+    expect(lockAxis(from, { x: 150, y: 150 }, true)).toEqual({ x: 150, y: 100 })
+  })
+})
+
+describe('scaleBar', () => {
+  it('says ten miles when ten miles is what fits', () => {
+    // 200px of image at 70% zoom = 140px on screen, which is the length it aims for.
+    expect(scaleBar(map(), 1000, 0.7)).toEqual({ px: 140, label: '10 miles' })
+  })
+
+  it('walks down the ladder as the map is zoomed into', () => {
+    const bar = scaleBar(map(), 1000, 7)
+    expect(bar.label).toBe('1 miles')
+    expect(bar.px).toBeLessThanOrEqual(140)
+  })
+
+  it('walks up it when the whole world is on screen', () => {
+    expect(scaleBar(map(), 1000, 0.007).label).toBe('1,000 miles')
+  })
+
+  it('carries whatever unit the writer typed', () => {
+    expect(scaleBar(map({ ScaleUnit: 'leagues' }), 1000, 0.7).label).toBe('10 leagues')
+  })
+})

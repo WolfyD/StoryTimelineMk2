@@ -30,7 +30,8 @@ export default defineConfig({
         calendar: resolve(__dirname, 'calendar.html'),
         yearCalendar: resolve(__dirname, 'yearCalendar.html'),
         characters: resolve(__dirname, 'characters.html'),
-        relations: resolve(__dirname, 'relations.html')
+        relations: resolve(__dirname, 'relations.html'),
+        map: resolve(__dirname, 'map.html')
       }
     }
   }

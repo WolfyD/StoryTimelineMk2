@@ -2,6 +2,7 @@
 using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace StoryTimelineMk2.Database
@@ -68,14 +69,14 @@ namespace StoryTimelineMk2.Database
                     death_year, death_date, death_alternative_year,
                     importance, color, state, gender, show_on_timeline, use_highlight_color,
                     birth_granularity, death_granularity, absolute_start, absolute_end, shared,
-                    birth_item_id, death_item_id, birth_location_id, death_location_id, timeline_id
+                    birth_item_id, death_item_id, timeline_id
                 ) VALUES (
                     @Id, @Name, @FirstName, @LastName, @Nicknames, @Aliases, @Race, @Faction, @Description, @Notes,
                     @BirthYear, @BirthDate, @BirthAlternativeYear,
                     @DeathYear, @DeathDate, @DeathAlternativeYear,
                     @Importance, @Color, @State, @Gender, @ShowOnTimeline, @UseHighlightColor,
                     @BirthGranularity, @DeathGranularity, @AbsoluteStart, @AbsoluteEnd, @Shared,
-                    @BirthItemId, @DeathItemId, @BirthLocationId, @DeathLocationId, @TimelineId
+                    @BirthItemId, @DeathItemId, @TimelineId
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name, first_name = excluded.first_name, last_name = excluded.last_name,
@@ -94,7 +95,6 @@ namespace StoryTimelineMk2.Database
                     absolute_start = excluded.absolute_start, absolute_end = excluded.absolute_end,
                     shared = excluded.shared,
                     birth_item_id = excluded.birth_item_id, death_item_id = excluded.death_item_id,
-                    birth_location_id = excluded.birth_location_id, death_location_id = excluded.death_location_id,
                     updated_at = CURRENT_TIMESTAMP;
                 -- portrait_picture_id is left alone: it is written by SetPortrait, which also has to
                 -- clean up the file the old one pointed at.";
@@ -142,13 +142,8 @@ namespace StoryTimelineMk2.Database
                     item.Id    = itemId;   // the character's column is what owns the id, not the payload
                     item.Title = $"{char.ToUpperInvariant(kind[0])}{kind[1..]} of {character.Name}";
 
-                    items.SaveItemFull(db, tx, item,
-                        new List<string> { kind },
-                        new List<ItemRepo.CharacterAppearanceInput>
-                        {
-                            new() { CharacterId = character.Id, Role = kind },
-                        },
-                        new List<string>(), new List<string>());
+                    var (row, tags, appearances, storyIds, chapterIds) = MergeGenerated(db, tx, items, item, character, kind);
+                    items.SaveItemFull(db, tx, row, tags, appearances, storyIds, chapterIds);
 
                     // The character's face belongs on the items they own. Idempotent, and a replaced
                     // portrait is deleted outright, so the old link cascades away with the picture row.
@@ -163,6 +158,46 @@ namespace StoryTimelineMk2.Database
                 tx.Rollback();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// BL-16: a birth or death item is rebuilt from the character on every save, and it is also an
+        /// ordinary event a writer can open and fill in — where it happened, a description, notes, the
+        /// other people in the room. So the generated payload is not the row. The character owns the
+        /// title, the dates, the type and the colour; everything else on an item that already exists
+        /// stays as the writer left it, its links included, because <c>SaveItemFull</c> deletes and
+        /// reinserts every link table and a list left out is a link deleted.
+        /// </summary>
+        private static (TimelineItem Row, List<string> Tags,
+            List<ItemRepo.CharacterAppearanceInput> Appearances,
+            List<string> StoryIds, List<string> ChapterIds) MergeGenerated(
+                SqliteConnection db, SqliteTransaction tx, ItemRepo items,
+                TimelineItem generated, CharacterItem character, string kind)
+        {
+            // The two links the character owns outright: its own tag, and being present at its own event.
+            var tags = new List<string> { kind };
+            var appearances = new List<ItemRepo.CharacterAppearanceInput>
+            {
+                new() { CharacterId = character.Id, Role = kind },
+            };
+
+            var prior = items.GetItemById(db, tx, generated.Id);
+            if (prior == null)
+                return (generated, tags, appearances, new List<string>(), new List<string>());
+
+            prior.Title               = generated.Title;
+            prior.TypeId              = generated.TypeId;
+            prior.Year                = generated.Year;
+            prior.EndYear             = generated.EndYear;
+            prior.AbsoluteStart       = generated.AbsoluteStart;
+            prior.AbsoluteEnd         = generated.AbsoluteEnd;
+            prior.CreationGranularity = generated.CreationGranularity;
+            prior.Color               = generated.Color;
+
+            var links = items.GetItemLinkRows(db, tx, prior.Id);
+            tags.AddRange(links.TagNames.Where(t => !string.Equals(t, kind, StringComparison.OrdinalIgnoreCase)));
+            appearances.AddRange(links.Appearances.Where(a => a.CharacterId != character.Id));
+            return (prior, tags, appearances, links.StoryIds, links.ChapterIds);
         }
 
         // --- C# BFS Graph Traversal ---

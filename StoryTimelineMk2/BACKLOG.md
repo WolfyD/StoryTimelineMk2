@@ -2530,17 +2530,439 @@ Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two
 
 ## [BL-16] The Map feature
 
-**Status:** Next up, targeted at **1.3.0** (2026-09-26). Design sprint done — data model, renderer
+**Status:** In progress, targeted at **1.3.0**. Design sprint done (2026-09-26) — data model, renderer
 and scope are all settled below, and the full feature ships: static maps, the time scrubber and
-animated character movement. Only the build order inside 1.3.0 is still open. No code written yet.
+animated character movement. **Static display is done** as of 2026-09-27, including all three cleanup
+batches; view rotation and the lettered grid are deliberately out. Next: the scrubber, then movement.
+
+**Schema and data layer done (2026-09-27).** Migration 22 creates `maps` and `locations`, indexes
+`items.location_id`, adds `item_character_appearances.mentioned_only`, and drops the two dead
+`characters.*_location_id` columns. `MapRepo` (both entities, one repo) plus six bridge actions —
+`GetMaps`, `SaveMap`, `DeleteMap`, `SaveLocation`, `DeleteLocation`, `GetLocationItems` — and the
+matching `api.ts` methods and `models.ts` types. `MapRepoTests` covers the two-query pin grouping,
+the delete trigger and the doorway FK; full suites green (481 .NET, 884 Vitest).
+
+Two things settled while building:
+
+- **Nesting hangs off the pin, not off the map.** `locations.child_map_id`, no `maps.parent_id` —
+  a pin on the world map *is* the doorway into the region map, so the child's position on its parent
+  is that pin's x/y instead of a second, duplicate record of the same thing. A root map is one no
+  location points at. Deleting a map keeps the place it depicted (`ON DELETE SET NULL`).
+- **Pin coordinates are 0..1 fractions**, not pixels, so the import downscaling this item requires
+  does not move every pin.
+
+**Static map screen done (2026-09-27).** `map.html` + `src/map.ts` + `MapApp.vue` + `f_Map`, opened
+from the activity strip's map icon (`OpenMapWindow` in both hosts). Konva stage with wheel zoom about
+the pointer, drag to pan, Fit; pins drawn at a constant screen size, dragged to move, saved as 0..1
+fractions; a dashed ring marks a pin that is a doorway and double-clicking it goes inside, with a
+breadcrumb trail back up. Sidebar edits the map (name, image, delete) and the selected pin (name,
+description, colour, what it opens into, "give it a map") and lists what happened there.
+`ImagePickerModal` gained a `pickOnly` mode instead of a second picker; "Import image…" is
+desktop-only, so the browser build keeps working.
+
+**The canvas never draws the upload.** `MapViews` derives two capped WebP copies per map picture —
+2048px overview, 4096px detail, lazily, beside the thumbnails — and the page swaps the sharper one in
+once the overview is stretched past its own pixels. Two documented ceilings: no zoom detail past
+4096px (upgrade path is a tile pyramid under the same file naming), and a **PNG** over ~9800px square
+is refused, because Skia can only scale JPEG and WebP while it reads — `MapItem.ViewError` then puts
+the "re-export it as WebP" message on the screen. WebP and JPEG have no size limit at all.
+
+**Events know where and who was there (2026-09-27).** The item editor gained a Place field — a native
+`<select>` with an `<optgroup>` per map, so the same town name on two maps is still tellable apart,
+and no custom picker was needed for arbitrary nesting depth. Each character row gained a two-state
+Present/Mentioned switch (`.char-presence`), and which one a newly attached character starts as is a
+per-timeline setting under Timeline Settings → New Items → Attached Characters, stored in
+`misc_settings` via `timelinePrefs.loadDefaultMentionedOnly` (no migration; default is Present). Both
+appearance-creation paths — the picker and text auto-detection — apply it. Covered by one test in
+`EditItem.test.ts` that walks picker → default → switch → save payload, because the save deletes and
+reinserts every appearance row and a dropped field would be silent.
+
+**Viewing a place is not editing it (2026-09-27).** Clicking a pin shows it — name with its colour as
+a dot, description, what it opens into, and what happened there — with Enter, Edit, *Give it a map* and
+Delete as buttons. Editing is `EditPlaceModal.vue` on top of the existing `BaseModal`, on a draft, so
+Cancel means it: name, description, colour and "opens into", and the panel that #3's marker styling
+(shape, size, label font and orientation, outline) will grow into. Dropping a new pin opens it at once,
+since "New place" wants naming. The pin's fields no longer save field-by-field behind the writer's back.
+
+**The list is a tree with a search (2026-09-27).** The sidebar listed root maps only, so a map five
+levels down was reachable by drilling and by nothing else. The tree logic came out of the component
+into `utils/mapTree.ts` — `parentMapIds`, `rootMaps`, `pathToMap`, `flattenMapTree`, `hasChildMaps`,
+`filterMapTree` — because it is the part of a Konva page worth testing, and `mapTree.test.ts` covers
+the depth walk, collapsing, the walk up to the root, the pruned search, and a cycle (two pins opening
+into each other's maps, which the schema permits and every walk guards against with a `seen` set).
+Rows are flattened with a depth and indented, rather than a recursive component. Picking a place goes
+to its map, selects it and tweens the view onto it (`centreOn`), and a jump into the middle of the
+tree rebuilds the breadcrumb from `pathToMap` instead of appending.
+
+**Four corrections after the first run (2026-09-27).** The breadcrumb showed "Top level" on a root map
+and the map's own name only from one level down — it now always renders the trail, one crumb included.
+The sidebar's "This map" block was an inline name field with image and delete buttons, i.e. the same
+mistake the place panel had just been cured of; it became read-only behind an *Edit map* button, with
+`EditMapModal` holding the name and description as a draft and handing the three acts that leave it —
+choose image, import image, delete — back to the page via `fromMapModal`. Search was a flat list of
+hits across maps *and* places, which double-listed every pin
+that has a map behind it and stripped the context that tells two same-named taverns apart; it is now
+one list either way, `filterMapTree` pruning the tree to the branches that lead to a matching **place**
+with the maps above each hit kept on screen and clickable. Twisties hide while searching, since a
+pruned branch is already showing all it has. The row pencil now edits whatever the row is — the place,
+or the map.
+
+**The current map's card floats over the map (2026-09-27).** Read-only or not, a block about the
+current map sitting in the sidebar directly under the selected place read as though it described that
+marker — the writer went to edit a pin and edited the map. `MapInfoPanel.vue` is that block lifted out
+onto the stage: name, description, place count, *Edit map*, an X, dragged by its title bar with pointer
+capture, position and open state in `localStorage` (per machine, like `useSideWidth` — where a card
+wants to sit is about the monitor, not the story), and a ⓘ at the stage's bottom-right to bring it
+back. Plain HTML above the Konva container rather than a shape on it: a wrapping description, a real
+button and an X are free in the DOM and hand-rolled on a canvas, and being a sibling of the container
+means neither the drag nor a wheel over the card reaches the map. `EditMapModal` gained the
+description, which `SaveMap` already round-tripped.
+
+**The list is of places, not of maps (2026-09-27).** Rows were maps, so a place only appeared while
+searching, and a place with *no* map of its own could not be reached from the list at all — which is
+most places. Every place is a row now, and a place that opens into a map stands in for that map rather
+than putting the same name on the next line: `placeRows` in `mapTree.ts` walks a map's pins, and where
+a pin is a door it recurses into that map's pins at the next depth. Only the top of each tree is still
+a map row, because nothing is pinned above it. `flattenMapTree` and `filterMapTree` are the same walk
+with and without a match predicate, `collapsed` is keyed by row key rather than map id (a map can hang
+off two pins), and `hasChildMaps` gave way to `rowHasChildren`. Clicking a row shows that place on the
+map it is pinned to — including for a door, which used to be the only thing a click could not do —
+and a door row gained an *enter* button beside the pencil that goes all the way down to its map. From
+the map already on screen that button now flies the descent; from anywhere else it still arrives, since
+there is nothing on screen to grow the child out of.
+
+**The descent, spelled out with the user (2026-09-27).** World → City → Inn is a chain of hops, one per
+level: pan across the World until the City pin is centred, zoom in on it, bring the City in at the exact
+position and scale the pin's region held, then carry on zooming onto the Inn. Reversed going up, ending
+in a slow zoom out. Two things are missing. The **footprint** is a rectangle on the *pin* rather than on
+the map — a map can hang off two pins and each is a different region — two fractions of the parent for
+width and height, centred on the pin, defaulting to about 12% of the parent's width so the transition
+works before anyone has drawn one; a drag handle to adjust it comes later. And `drawCurrent` has to
+become **one Konva group per map** instead of one shared image node, since a cross-fade needs both maps
+on the stage at once; that is also what lets the child's image load hide inside the first pan instead of
+showing as a stall. A scroll or another click mid-flight cancels the chain and lands on the destination.
+The **cross-fade itself is a timeline setting** (`misc_settings`, General → Animation, on by default):
+the dissolve is the intended effect but it is a matter of taste, and off means the same choreography
+with a cut where the fade was.
+
+**The descent, built (2026-09-27), and smaller than the plan above.** One hop, not a restructure. The
+child's image is added to the layer *inside its footprint on the parent*, the stage flies until that
+rectangle fills the view, and only then does the page switch to the child — `descentTransform`
+(`mapFootprint.ts`) aims the flight at exactly the frame the child's own fit view opens with, so the
+swap cannot be seen and there is no jump to smooth over. That is what "both maps on the stage at once"
+actually required: one more node, not one Konva group per map, and the child's image is loaded before
+the flight starts rather than during it. The fade is `Konva.Tween` on that node over the first 70% of
+the flight; with the setting off the node stays invisible until the landing, which is the cut. A wheel
+or a click mid-flight calls the one `skipFlight` closure, which lands on the destination — the same exit
+the tween's own `onFinish` takes, so there is one way out of the air.
+
+The footprint is **one** number, not two: `FootprintW` on the pin, with the height following the child
+map's aspect, because a rectangle with one degree of freedom cannot be dragged into stretching the
+child's picture. Its default is better than the planned flat 12% — both maps already know how much
+ground they cover, so `defaultFootprintW` divides one by the other and a 5-mile city on a 50-mile world
+starts out a tenth of it; the 12% is the fallback for maps measured in units that do not match, since
+nothing here converts leagues to miles. Setting it is a corner handle on the dashed footprint box
+(`redrawPlots`), held at a fixed screen size by `scalePins` like the pins themselves, and deliberately
+isolated so the draw-a-rectangle tool the user may want later replaces that one function.
+
+Ceilings, both accepted: going **up** is still a cut, and *enter* on a place several maps away still
+arrives rather than flying the chain of hops level by level — there is nothing on screen for a distant
+map to grow out of, and the reverse flight needs the parent's image back on the stage first. Covered by
+`mapFootprint.test.ts` (9 cases, including that the flight lands on the child's fit frame exactly).
+
+**Compass and scale bar, decided with the user (2026-09-27).** The compass is **freely rotatable**, so
+a map drawn at an angle can be told which way north really is — a `north_offset` degrees column on
+`maps`, the rose drawn at that angle, designs later. The scale is **calibrated by the writer, not
+guessed**: most maps already carry a scale in a corner, so the two-point pick is a convenience and not
+the only way in. A new map starts at a standard **10 miles**, and the map editor holds one row — a
+*Set from map* button, a number, and a unit — so a writer who knows the number just types it. Picking
+runs `PointA–PointB [ 50 ] ‹ Miles ›`: click two points on the map, type the real distance, unit
+optional. From the stored scale come (1) a scale bar that redraws itself at every zoom level, and (2) a
+measuring tool, its own small icon in the stage corner to the **left of the ⓘ**. The columns ride along
+with the footprint in migration 23.
+
+The typed number is **the length of the bar**, not the width of the map (asked, 2026-09-27): the bar is
+drawn at a fixed fraction of the map and the number labels it, which is what "a standard 10 miles" on a
+brand-new map with no picture yet can mean at all.
+
+**Built (2026-09-27), and the storage is the bar itself.** Not "units per map width" as the paragraph
+above first planned — three columns instead: `scale_length` units of `scale_unit` span `scale_fraction`
+of the image's width (defaults 10 / miles / 0.2). That way typing a number changes only the length and
+picking two points changes only the fraction, both routes write the same columns, and nothing anywhere
+converts between a stored unit and a drawn one. `Frontend/src/utils/mapScale.ts` is the only reader:
+`scaleBar` picks a round 1/2/5 multiple no longer than 140px at the current zoom, `distanceInUnits`
+serves the ruler (10 cases in `mapScale.test.ts`). Measuring and calibrating are **one** two-point pick
+mechanism sharing one strip and one `<datalist>` of units, because they differ only in what the second
+click means. `scalePins()` became the single place the view publishes its zoom, so no future pan or
+zoom path can forget to refresh the bar; `zoomAbout` is shared by the wheel and the new ± buttons.
+
+**Map view furniture (2026-09-27).** Above the ⓘ, a small cluster of view tools: four-way panning and
+zoom in and out. **Rotation and the grid are out of this round** (asked, 2026-09-27) — rotation means
+every pin and the compass rose draw through the view angle and every click hit-tests backwards through
+it, and the lettered grid is only worth it if a writer would actually cite squares, which a compass and
+a scale bar make unnecessary for "where is this". Both stay on the list; neither blocks anything.
+
+Built the same day: migration 23 (`north_offset`, the three scale columns, `locations.footprint_w`),
+the draggable compass rose top-right (double-click resets it to straight up), the pan/zoom/Fit pad
+under it, the ruler toggle left of the ⓘ, the scale bar bottom-left, and the *Set from map* row in
+*Edit map*. The footprint column exists but **nothing writes it yet** — it is there for the descent
+choreography, which still owes it a drag handle.
+
+**The generated birth/death item is merged, not rebuilt (2026-09-27).** `buildGeneratedItem` sends a
+whole item on every character save, and `SaveItemFull` deletes and reinserts all four link tables — so
+a character save blanked the description and notes of its own birth event *and* silently deleted every
+tag, story ref, chapter ref and other-character appearance on it. The parents at a birth did not
+survive a rename. The merge is backend-side in `SaveCharacterFull` (the frontend does not hold the
+existing row, so merging there would cost a round trip): `MergeGenerated` reads the prior row and its
+links on the transaction already open — `ItemRepo.GetItemById(db, tx, id)` and a new
+`GetItemLinkRows` — writes only the character's half onto it (title, type, year/end year, the absolute
+fractions, granularity, colour) and hands every other link back untouched. Deliberately *not*
+enforced: importance, LOD fields and notes flags, since the decision says the character owns name,
+date and colour and nothing more. Covered by
+`SaveCharacterFull_MergesTheGeneratedItem_AndKeepsWhatTheWriterPutOnIt`.
+
+**What *Show on timeline* off means, built (2026-09-27).** The row is left out of
+`GetTimelineData` altogether, not merely skipped by the canvas: an item nothing draws has no business
+in the notes panel or a search either. Off means the event is reachable from the character window, and
+later from an item management screen, and from nowhere else. The switch also stops being destructive —
+today turning it off deletes the generated items, which would now throw away the place, description and
+links the writer put on them.
+
+Done as described: `planGeneratedItems` mints an id whenever there is a date and drops one only when the
+date is cleared, so the switch no longer deletes anything; one shared SQL fragment,
+`ItemRepo.ExcludeHiddenCharacterItems`, leaves the hidden ones out of both `GetItemsByTimeline` and
+`GetItemsByYear`, so the calendar cannot disagree with the canvas. Known edge, accepted: clearing a date
+still deletes that event and whatever was written on it, because an event with no date has nowhere on a
+timeline to be.
+
+**The flight out, and the chain (2026-09-27).** Going up is the descent run backwards, and it is the
+same code: `throughFootprint(rect, childW, view)` is the parent-stage transform that shows the child
+exactly as the child's own stage shows it, so the descent flies *to* it — `descentTransform` is now
+one line of it, the case where the child's view is its fit view — and the ascent starts *from* it,
+taken from wherever the reader had actually got to rather than from a straightened-up view. Neither
+end has a jump to hide. `ascend` reuses the bitmap already on the canvas rather than fetching the
+picture again, and with the dissolve off it adds no node at all: the cut has already happened and what
+flies is the parent pulling back.
+
+One `fly(to, land, secs)` now owns the tween and the single `skipFlight` exit for both directions,
+which is what made the second one small. `hopsBetween` (in `mapTree.ts`, 3 new cases) is the route —
+out to the nearest shared map, then down the other side — and `travelTo` walks it, dividing the time
+budget between the hops so four levels is not four seconds. The tree decides each hop's direction, so
+two pins opening into each other cannot make a flight out animate as a flight in. The crumbs and the
+list's *enter* both travel; ~~clicking a row is still a jump, because browsing a list is a look and not
+a journey~~ — **reversed by the user in batch 3 below: a row click flies too.** Accepted ceiling: a
+wheel mid-chain lands the hop it is on and the rest still fly.
+
+**What a place looks like, decided with the user and built (2026-09-27).** Both forks resolved. The
+**map carries the default look and a pin overrides only what it differs in** — one map's worth of
+towns is styled once, and a pin that wants to stand out says only that. And the art is a **built-in
+set of six SVG shapes, no uploads**: dot, ring, teardrop, icon badge, tack, flag, two of which hold a
+Phosphor icon in a circular well (the badge on its balloon, the ring in its middle).
+
+Inheritance is a JSON column on each side — `maps.marker_style`, `locations.marker_style`
+(migration 24, following the `timelines.calendar` precedent) — because *"inherit this field"* has to be
+expressible, and a missing key says it where a NULL in a typed column cannot. The panel needs no
+inherit tick beside each field as a result: `MarkerStylePanel.vue` edits a full style that **starts** as
+what the pin would look like anyway, and the modal stores `diffMarker(draft, inherited)`, so a field
+nobody touched still matches and is never written. Move the map's shape afterwards and every pin that
+never claimed one moves with it. One documented consequence: setting a field to the value the map
+happens to hold is not recorded as a deliberate choice.
+
+`markerStyle.ts` keeps the two readings apart — `pinMarkerStyle` merges with the nulls intact (what an
+editor works on, so the diff stays honest) and `resolveMarker` fills them in (what the canvas draws,
+where a null colour becomes the place's own). `mapMarker.ts` is the shapes: a 24-unit design box with an
+explicit **anchor at the origin**, the point that sits on the place itself — middle for dot and ring,
+bottom tip for the other four — which is what lets one `labelCentre` put a name on any of the six and
+what folds the dashed door ring into the same box, so a name never lands on it. Everything in there is
+in screen pixels, since `scalePins()` already inverse-scales the pin groups.
+
+The icons are `Konva.Path`, not rasterised SVG: `markerIcons.ts` renders a Phosphor component once,
+keeps its `d` attributes and hands them to a path node. Rasterising to a `data:` URL would have worked —
+the root `<svg>` carries `xmlns` — but wanted a cache keyed by icon *and* colour and an async load
+that redraws on arrival; path data makes colour a plain `fill`, the key the icon name, and the whole of
+`redrawPins` stays synchronous. The filled weight, because a glyph in a 6px well has to read as a
+silhouette. A hand-picked 36 icons, imported by name — a name→component lookup over Phosphor's nine
+thousand would pull every one into the map bundle.
+
+The name is placed right, left, above or below **and** takes a free rotation angle (asked: both), with
+its own size, colour, font — `FontPicker` and `GetSystemFonts` already existed — and an optional card
+behind it; without the card it gets a shadow, since a pale map eats pale text. Covered by
+`markerStyle.test.ts` (10 cases): the parser's distrust of stored junk, a deliberate null kept apart
+from an unset field, the icon dropped on a shape with nowhere to put it, the anchor boxes, the label
+sides, and the storage contract itself — store a size, move the map's shape, find the pin on the new
+shape at its own size. Full suites green (489 .NET, 932 Vitest).
+
+**Cleanup, batch 1 of 3 (2026-09-27).** Seventeen small faults found by using the screen, split by the
+user into visual fixes, interaction, and the flight; this is the first batch, with a run-through in
+between each. Ten of them plus one pulled forward:
+
+- The **font list was clipped** a line and a half in — it was `position: absolute` inside the panel's own
+  `overflow: hidden`. Now `<Teleport to="body">` with hand-placed viewport coordinates that flip above
+  the field near the bottom of the window and follow it while a modal is dragged (`place()` runs
+  synchronously before the list is shown, or it paints once at 0,0). Each option is written in its own
+  face, showing the place's actual name where there is one, with the family name beside it in the UI font
+  because a display face at 11px is unreadable.
+- **The label got its own section.** Where a name sits has nothing to do with what shape the pin is, and
+  it was buried inside "Marker". Pulled forward out of batch 2 so the outline control and the font sample
+  landed in their final place rather than being built twice. Two sibling `<details>`, each reporting and
+  undoing only its own changes — every label field is named `label*`, so `isLabel()` is the whole of the
+  split and no list of which field belongs where exists to fall out of date.
+- **A text outline**, one `labelOutline` field on the marker style: `Konva.Text` already does
+  `stroke` + `fillAfterStrokeEnabled`, so white letters in a black line read on any map without a plate
+  covering the drawing. The thickness follows the text size (`size / 7`) rather than being a second field.
+- **Every modal drags by its header** (`BaseModal`), so a writer can see the pin they are styling.
+  `clamp` keeps the header reachable — a panel dragged off-screen cannot be dragged back — and
+  `useModal`'s backdrop test already required the mousedown to land on the backdrop itself, so a drag
+  that ends outside cannot close the thing. The ~8 lines of pointer capture are duplicated from
+  `MapInfoPanel` rather than extracted: two callers is not a composable.
+- **The footprint box is dimmed**, not just dashed: on a busy map a dashed outline lands on dashed
+  coastline and disappears.
+- **The measuring line is white inside a dark edge** and the distance sits on a `Konva.Label` plate —
+  the amber line and bare text were invisible on half the maps anyone would draw. Two lines and two
+  crosses per axis, dark under light, all `strokeScaleEnabled: false`.
+- **The second point has a rubber band**, dashed until it is placed, and **Shift locks it** to the axis
+  it has travelled further along — `lockAxis` in `mapScale.ts` (4 cases, including the 45° tie, which
+  would otherwise flicker between the two).
+- **A way out of a nested map**: a *Back out to…* chip top-left whenever there is a map above this one.
+  `MapInfoPanel`'s default position moved down 32px, since that corner is now taken; saved positions
+  are left alone.
+- **The scale row draws the bar it is talking about.** "The bar reads 10 miles" means nothing to someone
+  who has not noticed there is a bar, so `EditMapModal` renders the chip above the number.
+- **Nothing draggable has selectable text** — the compass, the info card's header, the modal header, the
+  exit chip and the scale bar. `WindowTitleBar` already had it.
+
+Full frontend suite green (937 Vitest across 57 files); `type-check` clean. Batch 2 is the interaction
+round — on-canvas label design, footprint and marker editing behind explicit buttons, compass handles
+with `compass_x/y/size` on `maps`, a real right-click menu with image export copied from the relations
+screen. Batch 3 is the flight: image prewarming for the fade, and the ascent that snaps.
+
+**Cleanup, batch 2 of 3 (2026-09-27).** The interaction round: #3, #6, #8 and #10, plus four things the
+user added while it was being built.
+
+- **Nothing on the map moves unless its own mode is running.** One `mode` ref — `place`, `footprint`,
+  `label`, `compass` — set by a button in the editor that saves the draft first, closes the modal, and is
+  handed back on *Finish*. Dragging a village into the sea by panning, or resizing a country's footprint
+  by brushing past its corner, are both gone; `draggable` is written into the node from the mode, so there
+  is no second place where it could stay true.
+- **A label is designed on a line, not in a box.** The line's length *is* the text size — one division,
+  since text width is linear in font size (`fitFontSize`, measured once off a 100px probe) — and its tilt
+  is `labelAngle`, which already existed. So the hand-placed label is three fields (`labelDx`, `labelDy`,
+  `labelW`), not five, and the two numbers a writer could never picture are now the thing they are looking
+  at: drag the name to move it, drag either end to size it, Shift for a straight line (`lockAxis`, reused
+  from measuring). `labelLineFrom` flips a right-to-left drag rather than standing the name on its head,
+  and clamps a line dragged shut to 12px. `labelW > 0` is the whole of the "designed" flag, which keeps
+  `diffMarker`'s `!==` honest; the panel then hides Angle and Text size — they would be lying — and offers
+  *Hang it off the marker again*, which puts all three back to what the map says.
+- **The text outline has a thickness** (`labelOutlineWidth`), which revises batch 1's decision to derive
+  it: 0 still follows the text size, which is the default, and anything else is pixels.
+- **A footprint is only drawn while it is being set.** It is a setting, not scenery — a map of forty doors
+  was a quilt of dashed rectangles.
+- **The compass belongs to the map, in the database.** Migration 25 adds `compass_x`, `compass_y`,
+  `compass_size` to `maps`, beside the `north_offset` that was already per-map. Position is a fraction of
+  the free space rather than pixels, so it survives a different window size; the defaults (1, 0, 38)
+  reproduce exactly the rose that used to be nailed to the top-right corner. The two grips and the turn
+  gesture exist only in compass mode.
+- **A right-click menu the map actually needs**: measure from here / to here, a new place at this point,
+  and on a pin — enter, edit, move, set label, set footprint, delete. Copy and save a picture are lifted
+  from the relations screen (`stageBlob` / `ClipboardItem` guard / `createObjectURL`), and MapApp finally
+  has the error and notice line it needed for them to be able to fail out loud.
+- **A selected place is shown on the map**: a flare that grows out of the pin and fades, then a steady
+  white ring that travels with it. Both live inside the pin's own group, so `scalePins` holds them at a
+  fixed size for free.
+- **Both map editors ask before discarding.** Same snapshot guard as `EditItem` and
+  `TimelineSettingsModal` — Cancel, the X, Esc and the backdrop all route through `requestClose`.
+
+`markerStyle.test.ts` carries the new arithmetic (19 cases): the parser's new fields and their bounds,
+the designed flag, the fit at both ends of its clamp, the dragged line read as middle/length/tilt, the
+flip, and the 12px floor. Full suites green — 945 Vitest across 57 files, 489 .NET; `type-check` clean.
+
+**Cleanup, batch 3 of 3 (2026-09-27).** The flight round: #14 (going in was laggy), #15 (coming out
+barely happened), and one the user added — an inn three maps down arrived as a cut.
+
+- **A zoom is a ratio, not a number.** Both faults were the same fault: `Konva.Tween` on `scaleX/scaleY`
+  is linear in the scale *number*, so 1×→16× is still near 1× for the first third and then lunges, and
+  16×→1× is most of the way out in its first instant and then crawls — which is why going in read as a
+  stall and coming out read as not happening. `betweenViews(from, to, t, w, h)` in `mapFootprint.ts`
+  interpolates the scale geometrically (`from * (to/from)^t`, so halfway is the square root) and walks
+  the point in the middle of the screen straight across the map, so a flight that pans as well as zooms
+  does both at once. `fly` drives it with a `Konva.Animation` instead of a tween, reusing
+  `Konva.Easings.EaseInOut` as a plain t→t mapping. Accepted ceiling: the focal point pans linearly,
+  which is honest for hop-per-level flights; Van Wijk's smooth zoom-and-pan is the upgrade if one
+  flight ever crosses a world sideways.
+- **Nothing in a flight waits for a picture.** Three stalls stacked on the linear tween. `img.decode()`
+  replaces `onload`, because a *loaded* WebP is still decoded on the first frame that draws it — the
+  frame a flight begins on. `ensureViews` short-circuits on a map whose `OverviewPath` it already holds,
+  since `GetMaps` carries the paths of every map whose capped copies are on disk, so the `EnsureMapViews`
+  round trip happens once per big picture instead of at every level of a descent. And `warmAll` decodes
+  ahead: the doors on the map being looked at, and a journey's whole route while its first leg is in the
+  air. The picture cache keys on the *promise*, so a warm and the load that follows it are one fetch.
+  Ceiling: the last eight pictures, oldest out first — an LRU is not worth the bookkeeping until someone
+  has more maps open at once than that.
+- **The ascent cannot snap, structurally.** Its from-view is now a callback `show` hands `(baseW, baseH)`,
+  so the parent is never drawn at its fit view at all — rather than drawn and then corrected within a
+  microtask, which is a frame that exists and can be seen.
+- **Clicking a row flies** (user, 2026-09-27), which reverses the decision above. Browsing a list is
+  still a look, but an inn three maps down told the reader nothing about where in the world it was when
+  it arrived as a cut. `goTo` routes through `travelTo`, so the sidebar, the crumbs and *enter* are all
+  the same journey. Per-leg time is `DESCENT_SECONDS / √hops` with a 0.35s floor rather than divided by
+  the count — three levels split evenly was three flights too quick to read as flights.
+- **A broken picture says so.** Every way onto a map is `void`ed or a template click, so a rejected image
+  load was a silent unhandled rejection and an empty canvas. One guard in `show` — which a click, a
+  flight, a reload and the host's *ShowMap* all route through — plus `descend`/`ascend` wrapping
+  `flyInto`/`flyOut`, both to the existing `failed()`. `decode()` made this louder rather than
+  introducing it: it throws where `onload` merely never fired. And `pickImage` clears
+  `OverviewPath`/`DetailPath` when the picture changes, or `ensureViews`' new short-circuit would
+  redraw the picture that was just replaced.
+
+`betweenViews` is covered by four cases in `mapFootprint.test.ts` (15 there now): it lands on exactly
+both views, halfway is 4× of a 1→16 flight and not 8.5, the screen centre walks straight, and a
+same-scale flight is a plain linear pan. Full suites green — 949 Vitest across 57 files, 489 .NET;
+`type-check` and eslint clean.
+
+**Two found by using it again (2026-09-28).**
+
+- **A journey that ends at a place ends *over* it.** Reported: coming out of the inn to look at the city,
+  the map above "zooms completely out, and then zooms back again onto the city". `flyOut` always landed on
+  `fitTransform()` and `goTo` then ran `centreOn` as a separate 0.4s tween, so the view swung out to the
+  whole region and was immediately dragged back in on top of the city it had just left — two moves for one
+  request. `travelTo(mapId, endOn?)` now hands the last leg out a landing view, asked for *after* that map
+  is on screen because that is the only moment the place is on it, and `flyOut` flies there instead of to
+  fit. `centreOn` keeps one definition of how close "looking at a place" is (`placeView` + `closeScale`,
+  four times into the whole map, capped at 2×) and returns early when the stage is already there, so the
+  call `goTo` still makes after a landing is free rather than a 0.4s hold. Descents are deliberately left
+  alone: their landing frame *has* to be the child's fit view or the seam between the two maps becomes
+  visible, and zooming in and then in again is not the jarring direction.
+- **Shift-drag a box to zoom to it** (user, 2026-09-28). A dashed rectangle in map coordinates with
+  `strokeScaleEnabled: false`, so it sits on the ground it was drawn on and stays a one-pixel line at any
+  zoom. `fitRectScale` + `centredOn` in `mapFootprint.ts` are the arithmetic — fits rather than fills, so
+  nothing deliberately boxed in is cropped back out, and the scale is clamped to the wheel's own 0.02–12
+  before the position is worked out from it, or the clamp would shift the box off centre. It lands through
+  `fly`, so the box zoom is geometric and interruptible like every other flight. Inert while a mode or a
+  measurement is running, where Shift already means "keep this line straight"; the mouseup is bound to the
+  window so a drag finishing past the edge of the canvas still counts. Four more cases in
+  `mapFootprint.test.ts` (19): the box's middle lands on the middle of the screen with both edges still on
+  it, the tighter axis wins, a clamped scale stays centred, and the new arithmetic agrees with the
+  flight's about where the middle is.
+
+  The stage pans on a left drag, so the band has to take that drag away from it, and **the first attempt
+  did it by turning `stage.draggable` off on mousedown and back on afterwards — which worked exactly
+  once.** Switching it back on makes Konva run `_listenDrag()`, re-registering its own drag listener
+  *behind* ours, so every later shift-drag panned the map and drew nothing. Vetoed at `dragstart` instead
+  (`if (band) stage.stopDrag()`), which Konva fires before it moves anything and re-checks `isDragging()`
+  after, so cancelling there moves the map not at all — and there is no state left to restore.
+
+Remaining: view rotation and the lettered grid, both deliberately out of the 2026-09-27 round;
+then scrubber, then movement. Build order is static display → scrubber → movement.
 
 A multi-layer interactive map screen: a world map containing regions, each region drillable into a sub-map, locations pinned on each map, locations linked to items/events, time-scrubbing to animate events and character movement across the map over time.
 
 ### Decisions (2026-09-26)
 
-**Layers nest to any depth.** `maps.parent_id` self-reference — world → region → city → floor plan,
-as deep as the writer goes. A fixed three-level world/region/sub-region tree buys nothing and boxes
-in anyone who wants a building.
+**Layers nest to any depth.** World → region → city → floor plan, as deep as the writer goes. A fixed
+three-level world/region/sub-region tree buys nothing and boxes in anyone who wants a building.
+
+*Built (2026-09-27) as `locations.child_map_id` rather than the `maps.parent_id` written here:* the
+link is the pin, so the child map's position on its parent comes free instead of being stored twice.
 
 **A location hangs off the event, and nothing else.** `items.location_id` becomes a real FK and that
 is the whole of it. A character's whereabouts are *derived*: they appear in an event, the event has a
@@ -2606,15 +3028,12 @@ Mapbox's proprietary terms; MapLibre GL JS is its BSD-3-Clause fork.)
 
 ### Open
 
-**Build order within 1.3.0.** Everything ships, but something has to be first. Static display →
-scrubber → movement is the obvious sequence and matches the aside below.
+Nothing on the data model. Build order is settled: static display → scrubber → movement.
 
-> **Columns are already waiting for this (migration 17).** `characters.birth_location_id`,
-> `characters.death_location_id` and `items.location_id` were added ahead of time so the relations
-> views could be built without a second migration later. They are TEXT, have no foreign key and
-> nothing reads or writes them — placeholders, not a decision. **This feature owns them:** if the
-> design lands on a junction table, or on coordinates rather than ids, change or drop them in the
-> step that builds locations. Do not treat them as a constraint.
+> ~~**Columns are already waiting for this (migration 17).**~~ Resolved by migration 22: the two
+> `characters.*_location_id` placeholders are dropped, `items.location_id` is indexed and cleared by
+> `trg_locations_clear_items` when a place is deleted (a real FK would have meant rebuilding `items`,
+> the widest table in the schema, to gain one constraint).
 
 > **Aside:** This is the most architecturally complex feature in the backlog by a significant margin. The data model alone needs careful design: a tree of map layers (world → region → sub-region), map images per layer (uploaded by the user), locations (x/y coordinates on a specific layer's image), and associations between locations and timeline items / characters. The time dimension is what makes this special — a scrubber that moves through the timeline and highlights which events are "current", with character movement paths drawn as animated lines between locations. For the canvas, Konva.js could handle this (we already use it for the timeline) but something like OpenLayers or Leaflet would give better image-overlay and zoom/pan behavior for map-style navigation. I'd strongly recommend a dedicated design sprint for this one before any code is written — the scope is large enough that getting the data model wrong early would be expensive to undo. Start with static display (locations visible on map, click to see linked events) before tackling the time animation.
 

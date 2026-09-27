@@ -16,6 +16,20 @@ namespace StoryTimelineMk2.Database
             DefaultTypeMap.MatchNamesWithUnderscores = true;
         }
 
+        /// <summary>
+        /// BL-16: a character's birth and death items exist whether or not *Show on timeline* is
+        /// ticked, so the place and description a writer puts on one survive the switch being
+        /// flicked. Off means nothing draws them — not the canvas, not the notes panel, not the
+        /// calendar — and the character window is the one way back to them. One condition, shared by
+        /// every read that feeds a display, so a new screen cannot forget it. Requires the items
+        /// table to be aliased <c>i</c>.
+        /// </summary>
+        private const string ExcludeHiddenCharacterItems = @"
+                AND NOT EXISTS (
+                    SELECT 1 FROM characters hc
+                    WHERE hc.show_on_timeline = 0
+                      AND (hc.birth_item_id = i.id OR hc.death_item_id = i.id))";
+
         public IEnumerable<TimelineItem> GetItemsByTimeline(int timelineId)
         {
             using var db = new SqliteConnection(_connString);
@@ -29,7 +43,7 @@ namespace StoryTimelineMk2.Database
                 SELECT i.*, COALESCE(c.use_highlight_color, 0) AS use_highlight_color
                 FROM items i
                 LEFT JOIN characters c ON i.type_id = 7 AND (c.birth_item_id = i.id OR c.death_item_id = i.id)
-                WHERE i.timeline_id = @TimelineId
+                WHERE i.timeline_id = @TimelineId" + ExcludeHiddenCharacterItems + @"
                 ORDER BY i.absolute_start, i.item_index";
             return db.Query<TimelineItem>(sql, new { TimelineId = timelineId });
         }
@@ -37,14 +51,25 @@ namespace StoryTimelineMk2.Database
         public IEnumerable<TimelineItem> GetItemsByYear(int timelineId, int year)
         {
             using var db = new SqliteConnection(_connString);
-            string sql = "SELECT * FROM items WHERE timeline_id = @TimelineId AND year = @Year ORDER BY absolute_start, item_index";
+            string sql = @"
+                SELECT i.* FROM items i
+                WHERE i.timeline_id = @TimelineId AND i.year = @Year" + ExcludeHiddenCharacterItems + @"
+                ORDER BY i.absolute_start, i.item_index";
             return db.Query<TimelineItem>(sql, new { TimelineId = timelineId, Year = year });
         }
 
         public TimelineItem GetItemById(string id)
         {
             using var db = new SqliteConnection(_connString);
-            return db.QueryFirstOrDefault<TimelineItem>("SELECT * FROM items WHERE id = @Id", new { Id = id })!;
+            return GetItemById(db, null, id)!;
+        }
+
+        /// <summary>The same read, on a connection and transaction the caller owns, so a save that has
+        /// to look at the row it is about to overwrite sees it as the transaction left it.</summary>
+        internal TimelineItem? GetItemById(SqliteConnection db, SqliteTransaction? tx, string id)
+        {
+            return db.QueryFirstOrDefault<TimelineItem>(
+                "SELECT * FROM items WHERE id = @Id", new { Id = id }, tx);
         }
 
         public IEnumerable<ItemTagLink> GetAllItemTagsForTimeline(int timelineId)
@@ -108,6 +133,8 @@ namespace StoryTimelineMk2.Database
             public string CharacterColor { get; set; } = null!;
             public string Role { get; set; } = null!;
             public bool AutoDetected { get; set; }
+            /// <summary>BL-16: named in the event, not there. Read so the editor can round-trip it.</summary>
+            public bool MentionedOnly { get; set; }
         }
 
         public IEnumerable<ItemCharacterAppearanceRow> GetItemCharacterAppearances(string itemId)
@@ -115,7 +142,8 @@ namespace StoryTimelineMk2.Database
             using var db = new SqliteConnection(_connString);
             return db.Query<ItemCharacterAppearanceRow>(@"
                 SELECT ica.character_id as CharacterId, c.name as CharacterName, c.color as CharacterColor,
-                       ica.role as Role, ica.auto_detected as AutoDetected
+                       ica.role as Role, ica.auto_detected as AutoDetected,
+                       ica.mentioned_only as MentionedOnly
                 FROM item_character_appearances ica
                 INNER JOIN characters c ON c.id = ica.character_id
                 WHERE ica.item_id = @ItemId", new { ItemId = itemId });
@@ -181,6 +209,49 @@ namespace StoryTimelineMk2.Database
             public string Role { get; set; } = null!;
             /// <summary>The matcher attached this one, not the user (BL-15 phase 2).</summary>
             public bool AutoDetected { get; set; }
+
+            /// <summary>
+            /// BL-16: named in the event, but not there. Movement paths read a character's appearances
+            /// in time order and take each event's place as a point, so these are skipped — otherwise
+            /// being talked about would teleport people across the map. It rides on the input DTO
+            /// because <see cref="SaveItemFull"/> deletes and reinserts every appearance row, so a flag
+            /// that is not carried through is a flag that is silently cleared on the next save.
+            /// </summary>
+            public bool MentionedOnly { get; set; }
+        }
+
+        /// <summary>Every link an item has, in the shape <see cref="SaveItemFull"/> takes them back in.</summary>
+        internal class ItemLinkRows
+        {
+            public List<string> TagNames { get; set; } = new();
+            public List<CharacterAppearanceInput> Appearances { get; set; } = new();
+            public List<string> StoryIds { get; set; } = new();
+            public List<string> ChapterIds { get; set; } = new();
+        }
+
+        /// <summary>
+        /// The link rows of one item, read back so a caller that only means to rewrite some of the
+        /// item's own columns can hand the rest of them to <see cref="SaveItemFull"/> unchanged — it
+        /// deletes and reinserts every link table, so a list left out is a link deleted.
+        /// </summary>
+        internal ItemLinkRows GetItemLinkRows(SqliteConnection db, SqliteTransaction tx, string itemId)
+        {
+            var arg = new { ItemId = itemId };
+            return new ItemLinkRows
+            {
+                TagNames = db.Query<string>(@"
+                    SELECT t.name FROM item_tags it
+                    INNER JOIN tags t ON t.id = it.tag_id
+                    WHERE it.item_id = @ItemId", arg, tx).ToList(),
+                Appearances = db.Query<CharacterAppearanceInput>(@"
+                    SELECT character_id AS CharacterId, role AS Role,
+                           auto_detected AS AutoDetected, mentioned_only AS MentionedOnly
+                    FROM item_character_appearances WHERE item_id = @ItemId", arg, tx).ToList(),
+                StoryIds = db.Query<string>(
+                    "SELECT story_id FROM item_story_refs WHERE item_id = @ItemId", arg, tx).ToList(),
+                ChapterIds = db.Query<string>(
+                    "SELECT chapter_id FROM item_chapters WHERE item_id = @ItemId", arg, tx).ToList(),
+            };
         }
 
         public string SaveItemFull(TimelineItem item, List<string> tagNames,
@@ -270,9 +341,9 @@ namespace StoryTimelineMk2.Database
             db.Execute("DELETE FROM item_character_appearances WHERE item_id = @Id", new { item.Id }, tx);
             foreach (var appearance in characterAppearances ?? new List<CharacterAppearanceInput>())
             {
-                db.Execute(@"INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role, auto_detected)
-                    VALUES (@ItemId, @CharacterId, @Role, @AutoDetected)",
-                    new { ItemId = item.Id, appearance.CharacterId, appearance.Role, appearance.AutoDetected }, tx);
+                db.Execute(@"INSERT OR IGNORE INTO item_character_appearances (item_id, character_id, role, auto_detected, mentioned_only)
+                    VALUES (@ItemId, @CharacterId, @Role, @AutoDetected, @MentionedOnly)",
+                    new { ItemId = item.Id, appearance.CharacterId, appearance.Role, appearance.AutoDetected, appearance.MentionedOnly }, tx);
 
                 // Attaching someone by hand takes back an earlier dismissal, so the matcher is
                 // free to find them again later.
