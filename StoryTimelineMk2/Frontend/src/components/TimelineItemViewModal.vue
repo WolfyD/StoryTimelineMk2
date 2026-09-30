@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { mediaUrl } from '@/utils/mediaUrl';
-import { BackendAPI } from '@/bridge/api';
+import { BackendAPI, logError } from '@/bridge/api';
 import type { ItemForEdit, LayoutSettings } from '@/types/models';
 import { useModal } from '@/utils/modal';
 import { useTimelineStore } from '@/stores/timelineStore';
@@ -44,7 +44,7 @@ function openCharacter() {
     if (!characterId.value) return;
     BackendAPI.OpenCharactersWindow(props.timelineId, characterId.value)
         .catch(e => {
-            console.error('[TimelineItemViewModal] OpenCharactersWindow failed:', e);
+            void logError('TimelineItemViewModal: OpenCharactersWindow failed', e);
             store.loadNotice = { title: 'Could not open that character', message: e instanceof Error ? e.message : String(e) };
         });
     emit('close');

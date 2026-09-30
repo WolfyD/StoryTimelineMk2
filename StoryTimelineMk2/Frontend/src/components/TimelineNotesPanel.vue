@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useTimelineStore } from '@/stores/timelineStore';
-import { BackendAPI } from '@/bridge/api';
+import { BackendAPI, logError } from '@/bridge/api';
 import BaseModal from '@/components/BaseModal.vue';
 import type { TimelineNote, LayoutSettings } from '@/types/models';
 import { MOD } from '@/utils/shortcuts';
@@ -93,7 +93,7 @@ async function addNote() {
 }
 
 function noteFailed(what: string, e: unknown) {
-    console.error(`[TimelineNotesPanel] ${what} failed:`, e);
+    void logError(`TimelineNotesPanel: ${what} failed`, e);
     store.loadNotice = { title: `${what} failed`, message: e instanceof Error ? e.message : String(e) };
 }
 

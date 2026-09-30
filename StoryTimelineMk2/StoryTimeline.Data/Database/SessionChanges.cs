@@ -79,6 +79,9 @@ namespace StoryTimelineMk2.Database
         /// “everything since” starts.</summary>
         [JsonPropertyName("lastExportDay")]  public string? LastExportDay  { get; set; }
         [JsonPropertyName("days")] public List<SessionDaySummary> Days { get; set; } = new();
+        /// <summary>BL-88: sealed days that changed nothing. Left out of <c>Days</c>; the Archive
+        /// offers to prune them.</summary>
+        [JsonPropertyName("emptyDays")] public int EmptyDays { get; set; }
     }
 
     /// <summary>The export tab: how much the chosen days changed, before anything is written.</summary>
@@ -308,6 +311,10 @@ namespace StoryTimelineMk2.Database
                     FROM session_days
                     WHERE timeline_id = @id AND (changes IS NULL OR added + changed + removed > 0)
                     ORDER BY day DESC", new { id = timelineId }).ToList(),
+                EmptyDays = db.ExecuteScalar<int>(@"
+                    SELECT COUNT(*) FROM session_days
+                    WHERE timeline_id = @id AND changes IS NOT NULL AND added + changed + removed = 0",
+                    new { id = timelineId }),
             };
 
             // Today's counts are not in the table — the day is still being written.
@@ -326,6 +333,78 @@ namespace StoryTimelineMk2.Database
         {
             public string ExportedAt { get; set; } = "";
             public string ThroughDay { get; set; } = "";
+        }
+
+        // ── Tidying (BL-88) ──────────────────────────────────────────────────
+
+        /// <summary>Deletes the sealed days that changed nothing — the days a timeline was only
+        /// opened to read. History already hides them; this is the Archive's prune.</summary>
+        public static int PruneEmptyDays(int timelineId)
+        {
+            using var db = new SqliteConnection(DbInitializer.GetConnectionString());
+            return db.Execute(@"
+                DELETE FROM session_days
+                WHERE timeline_id = @id AND changes IS NOT NULL AND added + changed + removed = 0",
+                new { id = timelineId });
+        }
+
+        /// <summary>
+        /// Folds neighbouring sealed days into one, newest edit winning — the fold an export of
+        /// those days makes anyway, so exporting after the merge sends what it would have before.
+        /// The merged row keeps the newest day's key and the oldest day's start, so it stays on
+        /// the same side of the last export as the days it replaced.
+        /// </summary>
+        public static void MergeDays(int timelineId, IReadOnlyCollection<string> days)
+        {
+            var wanted = new HashSet<string>(days, StringComparer.Ordinal);
+            if (wanted.Count < 2) throw new InvalidOperationException("Pick at least two days to merge.");
+            string from = wanted.Min(StringComparer.Ordinal)!;
+            string to   = wanted.Max(StringComparer.Ordinal)!;
+
+            using var db = new SqliteConnection(DbInitializer.GetConnectionString());
+            db.Open();
+            using var tx = db.BeginTransaction();
+
+            var rows = db.Query<DayRow>(@"
+                SELECT day AS Day, started_at AS StartedAt, baseline AS Baseline, changes AS Changes
+                FROM session_days
+                WHERE timeline_id = @id AND day BETWEEN @from AND @to
+                ORDER BY day", new { id = timelineId, from, to }, tx).ToList();
+
+            if (!wanted.All(d => rows.Any(r => r.Day == d)))
+                throw new InvalidOperationException("One of those days is no longer in the history.");
+            if (rows.Any(r => r.Changes == null))
+                throw new InvalidOperationException("Today is still being written — it can be merged once a later day has begun.");
+
+            var lists = rows.Select(r => JsonSerializer.Deserialize<List<SessionItemChange>>(r.Changes!) ?? new()).ToList();
+            // Empty days in between are hidden from the list, so they fold in silently; a day with
+            // changes that was not ticked means the ticked ones were not neighbours.
+            if (rows.Where((r, i) => lists[i].Count > 0 && !wanted.Contains(r.Day)).Any())
+                throw new InvalidOperationException("Only neighbouring days can be merged — there is a day in between.");
+
+            string? through = db.QuerySingleOrDefault<string>(
+                "SELECT through_day FROM session_exports WHERE timeline_id = @id", new { id = timelineId }, tx);
+            if (through != null && string.CompareOrdinal(from, through) <= 0 && string.CompareOrdinal(through, to) < 0)
+                throw new InvalidOperationException("Those days sit on both sides of the last export — merge the ones before it or the ones after it.");
+
+            var merged = Merge(lists);
+            db.Execute("DELETE FROM session_days WHERE timeline_id = @id AND day >= @from AND day < @to",
+                       new { id = timelineId, from, to }, tx);
+            db.Execute(@"
+                UPDATE session_days
+                SET started_at = @startedAt, changes = @changes, added = @added, changed = @changed, removed = @removed
+                WHERE timeline_id = @id AND day = @to",
+                new
+                {
+                    id        = timelineId,
+                    to,
+                    startedAt = rows[0].StartedAt,
+                    changes   = JsonSerializer.Serialize(merged),
+                    added     = merged.Count(c => c.Op == "insert"),
+                    changed   = merged.Count(c => c.Op == "update"),
+                    removed   = merged.Count(c => c.Op == "delete"),
+                }, tx);
+            tx.Commit();
         }
 
         // ── Diff ─────────────────────────────────────────────────────────────

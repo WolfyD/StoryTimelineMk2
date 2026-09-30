@@ -167,6 +167,96 @@ namespace StoryTimelineMk2.Database
             db.Execute("DELETE FROM locations WHERE id = @Id", new { Id = id });
         }
 
+        /// <summary>BL-88: the Archive's bulk edit of places. A null field is left alone.</summary>
+        public class BulkPlaceEdit
+        {
+            /// <summary>Pins.</summary>
+            public List<string> Ids { get; set; } = new();
+            /// <summary>Top-level maps, which have no pin to colour: only <see cref="MoveTo"/> reaches them.</summary>
+            public List<string> MapIds { get; set; } = new();
+            /// <summary>"" takes the colour off.</summary>
+            public string? Color { get; set; }
+            /// <summary>The marker and label back to the map's look.</summary>
+            public bool ResetLook { get; set; }
+            /// <summary>
+            /// The map they all go under. A pin keeps its spot as fractions of the picture; a top-level map
+            /// gets a door in the middle of this one, named after it.
+            /// </summary>
+            public string? MoveTo { get; set; }
+        }
+
+        /// <summary>
+        /// One transaction, so a refused move leaves every pin where it was. Nothing may go under a map
+        /// that is inside it: the tree would loop and the branch would drop off the list.
+        /// </summary>
+        public int BulkEdit(BulkPlaceEdit edit)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            using var tx = db.BeginTransaction();
+
+            int affected = 0;
+            string? color = edit.Color?.Trim();
+            if (color != null || edit.ResetLook)
+            {
+                affected = db.Execute(@"
+                    UPDATE locations
+                    SET color        = CASE WHEN @Color IS NULL THEN color WHEN @Color = '' THEN NULL ELSE @Color END,
+                        marker_style = CASE WHEN @Reset THEN NULL ELSE marker_style END,
+                        updated_at   = CURRENT_TIMESTAMP
+                    WHERE id IN @Ids", new { Color = color, Reset = edit.ResetLook, edit.Ids }, tx);
+            }
+
+            if (edit.MoveTo is { } to)
+            {
+                int timelineId = db.QuerySingleOrDefault<int?>("SELECT timeline_id FROM maps WHERE id = @To", new { To = to }, tx)
+                    ?? throw new InvalidOperationException("The map to move them under is gone.");
+                var doors = db.Query<(string MapId, string ChildMapId)>(@"
+                    SELECT l.map_id, l.child_map_id FROM locations l JOIN maps m ON m.id = l.map_id
+                    WHERE m.timeline_id = @TimelineId AND l.child_map_id IS NOT NULL", new { TimelineId = timelineId }, tx)
+                    .ToLookup(d => d.MapId, d => d.ChildMapId);
+                // ponytail: a walk per thing moved; hundreds of maps at most, so nothing to share between them.
+                bool holdsTarget(string mapId)
+                {
+                    var seen = new HashSet<string>();
+                    var next = new Stack<string>([mapId]);
+                    while (next.TryPop(out var id))
+                    {
+                        if (id == to) return true;
+                        if (seen.Add(id)) foreach (var child in doors[id]) next.Push(child);
+                    }
+                    return false;
+                }
+
+                var pins = db.Query<LocationItem>("SELECT * FROM locations WHERE id IN @Ids", new { edit.Ids }, tx).ToList();
+                var tops = db.Query<MapItem>("SELECT * FROM maps WHERE id IN @Ids AND timeline_id = @TimelineId",
+                    new { Ids = edit.MapIds, TimelineId = timelineId }, tx).ToList();
+                var inside = pins.Where(p => p.ChildMapId != null && holdsTarget(p.ChildMapId)).Select(p => p.Name)
+                    .Concat(tops.Where(m => holdsTarget(m.Id)).Select(m => m.Name)).ToList();
+                if (inside.Count > 0)
+                    throw new InvalidOperationException(
+                        $"{string.Join(", ", inside)} cannot go under a map that is inside {(inside.Count == 1 ? "it" : "them")}.");
+
+                foreach (var p in pins.Where(p => p.MapId != to))
+                {
+                    affected += db.Execute(@"
+                        UPDATE locations SET map_id = @To, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = @Id AND map_id IN (SELECT id FROM maps WHERE timeline_id = @TimelineId)",
+                        new { To = to, p.Id, TimelineId = timelineId }, tx);
+                }
+                foreach (var m in tops)
+                {
+                    affected += db.Execute(@"
+                        INSERT INTO locations (id, map_id, child_map_id, name, x, y, updated_at)
+                        VALUES (@Id, @To, @Child, @Name, 0.5, 0.5, CURRENT_TIMESTAMP)",
+                        new { Id = Guid.NewGuid().ToString(), To = to, Child = m.Id, m.Name }, tx);
+                }
+            }
+
+            tx.Commit();
+            return affected;
+        }
+
         /// <summary>
         /// A marker style of "{}" or whitespace is nothing to store: an empty override and no override
         /// look the same on the map, and NULL is the one that says so without being parsed first.

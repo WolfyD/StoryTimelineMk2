@@ -1178,6 +1178,403 @@ New moving parts; each needs its own design pass before code. This group was 1.1
 when the characters-and-relations release took that number for being far too large to ship as 1.1.1.
 The items themselves have not moved; only the number on the door has.
 
+## [BL-88] The Archive — one window for everything a timeline holds
+
+**Status:** Phases 1 to 7 done and reviewed (2026-09-30), and the second feedback round on them is
+done: *Edit multiple* on Items, Characters, Places and Media, and MISC on the right (see "Second
+feedback round" below). Phase 8, the timeline's search, is done too (see "Phase 8" below). Phase 1 is the
+window, the Items tab (type chips, sort by date / length / name / importance / date added, search,
+Jump / Edit / Delete, hidden character events with Show on timeline), the session trash with its
+close confirm, and the sidebar toggles for Characters, Relations, Map and Archive, browser build
+included. First feedback round done the same day:
+
+- sidebar dialogs light their button too;
+- a row title is a button (jump, or open for a hidden one) and rows are not text-selectable;
+- type icons keep the theme's colour, and the item's own colour is a triangle cut into the row's
+  top-left corner with a muted edge. If the corner doesn't work, the fallback the user named is a
+  dot after the title;
+- tooltips come from `HoverTip` (`data-tip`), which places them clear of the pointer;
+- icons are larger.
+
+Phase 2 (same day):
+
+- **Schema step 27.** New story columns: status, tense, person, genre, colour, reading order,
+  previous story, quotes (JSON), notes. New junction tables `story_characters` (with a POV flag) and
+  `story_locations`. Export/import carry them.
+- **Stories tab.** A list plus a side panel, like the Characters window.
+  - Status, tense and person are fixed choices, and each can be left blank; genre is free text.
+  - The next story and the span are derived.
+  - The book links are the existing `book_stories`.
+  - "Referenced in N" folds out to the citing items, each with Jump / Edit / Delete.
+- **Books tab.** Book → chapters (number and title, add and delete) → the items citing each
+  chapter. Hidden while there are no books; a **+ Book** tab button takes its place.
+- **Trash tab.** The trash is now its own tab, which appears once something is in it. It holds
+  items, stories, books and chapters, and the close confirm warns when a shared row is going.
+  This replaces the phase 1 Trash button, so chips and search no longer filter the trash.
+- **Item editor.**
+  - The story picker filters as you type and creates a story when nothing matches.
+  - The book search offers **+ New book**, and a chosen book offers **+ New chapter N**.
+- **Live updates.** Every story, book or chapter write broadcasts `StoriesChanged`. The Archive
+  reloads, the item editor refreshes its list, and the timeline store patches story titles and
+  drops deleted stories (`syncStories`).
+- **Deferred:** merging stories. The user's words: "maybe let's not merge stories just yet".
+  Rename is in.
+- **Known gaps:**
+  - `story_locations` doesn't survive `.stlm` export/import, because maps aren't exported.
+  - Importing a pre-step-27 `.stlm` with ids blanks the new details of the stories it carries.
+    The stories table takes `INSERT OR REPLACE`, and the old file has none of the columns.
+
+Phase 2 follow-up (same day):
+
+- **Story ↔ chapter.** Schema step 28 adds `story_chapters`. Under each book chip in a story, toggle
+  the chapters it is told in; the chip reads "The Long Winter · ch. 4, 6, 8". None picked means the
+  whole book. `SaveStory` keeps only chapters of the story's books, and chapter/book deletes clean
+  up. In the Books tab each chapter lists its stories as chips that open the story in the Stories
+  tab. Stories linked to a whole book are not shown in the Books tab. `.stlm` carries no books, so
+  no chapter links either; the full-database import does.
+- **Unsaved edits.** The Stories and Books tabs track their open draft. Closing the Archive asks
+  "Discard changes?" before the trash question, and so does opening another story or book, or
+  starting a new one, over an edited draft. In the browser, `beforeunload` covers drafts too.
+
+Phase 3 has started. The lightbox fix is in: `TimelineDataPanel` caches the thumb and the original
+side by side and opens the original. A bug found alongside it is fixed too:
+`MediaRepo.UnlinkAndPruneImage` counted only item links before deleting a picture, so removing a
+map image or a portrait (both are offered by the library picker) from an event deleted it. It now
+counts `maps.picture_id` and `characters.portrait_picture_id` as well.
+
+Phase 3, the Media tab (same day). The user chose a list with fold-outs and a Portraits section of
+its own:
+
+- **Sections.** Images, Maps and Portraits, by what *this* timeline uses the picture as. A map image
+  wins over a portrait, and a portrait over an image. Another timeline's use doesn't move it.
+- **Rows.** A thumbnail (click for full size; the arrows step through the list), the name, and
+  type · size · dimensions · use count. File-type chips (jpeg counts as jpg), sort by date added,
+  usage or size, and search over name, file name and description.
+- **Fold-out.** Name and description, saved by `SavePictureInfo`, with the same "Discard changes?"
+  guard as the other tabs. *Used by* chips: an item here jumps to it, maps and portraits are plain,
+  and other timelines' uses are a count.
+- **Delete.** Goes to the trash. If anything shows the picture, a confirm lists every use first,
+  other timelines' included. `DeleteMedia` now clears `maps.picture_id` and
+  `characters.portrait_picture_id` itself instead of trusting the FKs. `DeletePicture` re-broadcasts
+  `ItemSaved` for this timeline's shown items that had it, so the canvas drops the picture.
+- **Known gap.** An open map or character window keeps showing a deleted picture until it is
+  reopened. The fix, if it matters, is a `PicturesChanged` push.
+
+Feedback round on phases 2 and 3 (same day):
+
+- **Media sections fold.** Each section title folds its rows away, for as long as the window is
+  open; the lightbox steps only through what is showing.
+- **Span explained.** It was never meant to be typed: it is worked out from the first to the last
+  item in this timeline that cites the story. The empty state now says "No item cites it yet".
+- **Next story is a picker.** The user chose "one next, one previous": stories make one chain.
+  `GetArchiveStories` fills `NextStoryId` (not a column); `SaveStory` unlinks any other follower of
+  the chosen previous, and with a timeline it writes the next story's `previous_story_id` and lets
+  the old follower go. The item editor's quick create (no timeline) leaves the chain alone. The two
+  pickers leave out each other's choice. Longer loops (A → B → C → A) are allowed.
+- **Quotes.** The user chose a name box with the timeline's characters suggested, and pull-quote
+  cards. `quotes` now holds quotes as arrays of `{ text, speaker }` lines; the old array of strings
+  still reads. `StoryQuoteModal` edits one quote, with *Add a line* for an exchange; a card shows a
+  single line with "— speaker" under it, and an exchange as speaker / line rows.
+
+Phase 4, Characters and Places (same day). The user chose "fold-out rows, edit elsewhere": both tabs
+look things up, and the Characters, Relations and Map windows stay where editing happens. No new
+bridge actions; the tabs read `GetTimelineRelations`, `GetMapEvents` and `GetMaps`, and reload with
+the rest of the Archive.
+
+- **Characters.** Portrait, name, birth · death · appearance count; search over name, nicknames,
+  aliases and faction; sort by name, appearances or birth. The name opens their own timeline; row
+  buttons open the Relations and Characters windows. The fold-out lists the items naming them
+  (mentions count), their relations worded from their end (the other name opens that person's
+  row), and the places they were at.
+- **Places.** The Map window's tree (`mapTree.ts`), after the user's first look: a top-level map is a
+  place too, so it is a row that can be searched, opened and trashed. A door pin stands in for the
+  map behind it, with that map's places indented under it, and a caret folds them away. The name
+  opens the map (on the pin, for a place). The fold-out counts everything inside a row: Faerun
+  lists what happened at any place on it or on the maps behind its doors (`placesUnder`), along with
+  who was there (most often first) and the map it opens into. Search covers names and descriptions,
+  and a door also answers to its map's name. Delete goes to the session trash as `place`
+  (`DeleteLocation`) or `map` (`DeleteMap`). A map's pins go with it and their items lose the place;
+  the maps behind its doors become top-level. Neither is shared, so the close confirm doesn't warn.
+- **Who was where** is the map's reading: present only, not mentioned (`whereabouts` over
+  `GetMapEvents`).
+- **Family tree button:** added in phase 6.
+- **Known gap.** The Characters, Relations and Map windows don't broadcast their saves, so an edit
+  there shows in the Archive after the next item save or a reopen.
+
+Phase 5, Tags and Notes (same day). The user chose "rename onto an existing one" for the merge, and
+"read, jump, edit, trash" for notes. No schema change.
+
+- **Tags.** Listed: the tags this timeline's items carry, and the ones nothing carries. Each row
+  shows its count here and "M in other timelines". Sort by name or most used. The fold-out lists
+  the items here. The pencil renames in place. A name that is already another tag's asks "Merge into
+  X?" and runs the new `MergeTag` (links move with `INSERT OR IGNORE`, so an item carrying both keeps
+  one). A merge into a tag waiting in the trash is refused with a hint. Rename and merge happen at
+  once; delete is `tag:<id>` in the session trash, and the close confirm counts tags as shared.
+- **Notes.** The `notes` table: date and text, search over the text. The date or the crosshair
+  jumps (`FocusTimelineItem` with the note's id and time; the id matches no item, so nothing
+  pulses). Edit in place with Save / Cancel; delete goes through the trash.
+- **Live updates.** `RenameTag`, `MergeTag` and `DeleteTag` broadcast `TagsChanged {Id, Into}`; the
+  timeline store renames, merges or drops the tag on its items and in its tag list (`syncTag`), and
+  the Archive reloads. `SaveNote` / `DeleteNote` broadcast `NoteSaved` / `NoteDeleted`, which the
+  store applies (`syncNote`, `removeNote`), so the Notes panel follows the Archive.
+- **Fixed alongside.** `SaveNote` and `DeleteNote` caught their own errors and replied without
+  logging the stack. They now throw, and the router's safety net logs and replies.
+- **Known gaps.**
+  - Filter rules and saved presets that name a merged-away or deleted tag id keep it: the rule
+    stops matching anything.
+  - An open item editor keeps showing a tag's old name after a rename until it is reopened.
+
+Phase 6, family tree and calendar (same day). The user chose "its own small window", opened from
+the Archive's Characters rows, the Characters window and a portrait's right-click; "the living,
+with an age" for birthdays; and small icons.
+
+- **Family tree window.** `OpenFamilyTreeWindow` opens a second `f_Relations` with `TreeOnly`, which
+  loads `relations.html?…&only=tree`. It shows the genogram alone: no sidebar, no view buttons, no
+  "How are they related?" entries in the menu. Clicking a relative re-roots it, as in the relations
+  window. One at a time: a second call re-roots it with a directed `SetTreeRoot` push rather than
+  the `FocusCharacter` broadcast, so the two windows don't steer each other. Not pre-warmed, no
+  sidebar icon, and it closes with the timeline. Browser build: popup `storytimeline-family-tree`.
+- **Year calendar.** *Birthdays* and *Deaths* toggles next to *Items* (`lifeMarks` in
+  `calendarMath.ts`):
+  - A birthday shows for everyone born by that year and alive on the day: "Mira turns 30", or "is
+    born" in the birth year.
+  - A death anniversary shows from the year after: "Aldric died 25 years ago".
+  - Only dates picked to the day show; a birth known to the month or the year has no day to fall
+    on.
+  - A cake or a cross in the character's colour, up to three per day, then a count; the day's
+    tooltip lists them after the items.
+- **Fixed alongside.** `GetCalendarById` caught its own errors and replied without the stack; it now
+  throws to the router's safety net. The year calendar logged a failed calendar load without the
+  message, and a failed item load without telling the user; both now say so.
+- **Known gaps.**
+  - The calendar reads the cast once when it opens; a character saved meanwhile shows at the next
+    open, because the Characters window doesn't broadcast its saves.
+  - The toggles are not remembered; both start on.
+  - Someone with no death date keeps having birthdays for ever.
+  - F5 in the family tree window goes back to the character it was opened on.
+
+Phase 7, MISC and bulk edit (same day). The user chose checkboxes with a bar, add-or-remove for tags
+and stories, sessions as a list with fold-outs, prune and merge, and sub-tabs with Trash kept as
+its own tab.
+
+- **Bulk edit.** Each Items row has a checkbox, and shift-click ticks a run. *Select all shown*
+  honours the chips and the search. While anything is ticked, a bar under the list offers LOD,
+  Importance, Colour, Tags, Story and Trash. `BulkEditItems` changes one field on every ticked item
+  in one transaction (`ItemRepo.BulkEdit`), then broadcasts `ItemSaved` for each.
+  - A character's birth and death items keep their colour.
+  - A tag typed in that doesn't exist yet is created.
+  - Remove only offers a tag that exists.
+  - A tick that a chip or the search hides stays ticked but is left out of the edit until its row
+    shows again.
+  - Hidden birth/death rows and the timeline's start/end markers can't be ticked.
+  - The Archive's reload on `ItemSaved` is debounced (150 ms), so a hundred pushes cause one
+    reload.
+- **MISC tab** with three sub-tabs.
+  - **Loose ends** (`looseEnds` in `archiveItems.ts`) has six sections, all folded to start with:
+    - pictures nothing shows;
+    - tags on nothing;
+    - stories no item cites;
+    - characters with no birth;
+    - items with no description, which counts only events, periods, ages and notes (types 1, 2, 3
+      and 5): pictures, bookmarks and character events rarely have one;
+    - titles used more than once, compared trimmed and case-blind.
+  - **Hidden ranges** lists each range with *Restore*. `SaveHiddenRange` and `DeleteHiddenRange`
+    now broadcast `HiddenRangesChanged`, so the timeline follows. They and `ShiftTimelineItems`
+    lost the catches that replied without logging.
+  - **Sessions** lists each worked day, newest first, with a line where the last export stopped.
+    - A day folds out what changed on it.
+    - *Prune N empty days* (`PruneSessionDays`) drops the sealed days that changed nothing. Those
+      days are no longer listed (`emptyDays` counts them).
+    - *Merge* (`MergeSessionDays`) folds neighbouring sealed days into one, newest edit winning.
+      It never takes in today, and never takes days from both sides of the last export. The page
+      says which rule blocks it; the backend checks the same again.
+- **Known gaps.**
+  - Bulk edit sends one `ItemSaved` per item (four reads each). A thousand-item edit may want a
+    batch push.
+  - A merged day can't be split again. The confirm says so.
+
+Review pass over phases 1 to 7 (same day). Three review agents read the tabs, the window shell and
+the backend. Fixed:
+
+- **Drafts.**
+  - A story or book draft whose row drops out of the list is kept while it is dirty. It is dropped
+    only when it went to the trash or has nothing to lose.
+  - A save that lands after the writer moved to another draft no longer marks that one clean.
+  - The Books save reads the chapter list it sent, not the one showing when it returns.
+  - The Notes tab now has the "Discard changes?" guard and counts in the close check.
+- **Trash and hidden rows.**
+  - Emptying the trash takes entries off by identity from a copy of the list. Anything trashed
+    during the wait is asked about again rather than deleted unasked.
+  - Hidden birth/death rows are built from the cast, so a character's hidden events are listed
+    once.
+  - The bulk bar refuses to add a tag that is in the trash, and a tag rename refuses to merge into
+    one.
+- **Errors.**
+  - `logError` (api.ts) logs with the stack without the alert, for pages that show their own
+    banner. The Archive and the bulk bar use it.
+  - A failed load no longer wipes an earlier error.
+  - The store's load notice joins the banner rather than replacing it.
+  - Sessions checks the merge reply.
+- **Small.**
+  - A bulk dialog can't be closed while its change is on its way.
+  - The Importance slider shows focus.
+  - `HoverTip` is capped to the window width.
+  - A story's place chip says when the place is in the trash.
+- **Backend.**
+  - The item editor opened from the Archive or the Characters window is owned by the timeline
+    (`HandleOpenAddEditItemWindow` walks to the root owner). Closing the Archive used to dispose
+    it, half-typed edits and all.
+  - A replace import (`.stlm` with ids, and the full-database import) clears the timeline's
+    `story_characters` rows, and the full import its `story_locations` too, before the cascade.
+    The characters come back with the same ids, and links the file lacks used to come back with
+    them.
+
+Known gaps from the review:
+
+- Closing the timeline closes the Archive without asking, and any open draft goes with it, the same
+  as the trash queue (see Decisions).
+- A replace import of a `.stlm` deletes the timeline's maps and places. The timeline delete
+  cascades to `maps`, and a `.stlm` carries none. This predates BL-88 and ships with the map
+  feature in 1.2.0.
+- A replace import writes `stories` and `tags` with `INSERT OR REPLACE` while foreign keys are on.
+  Per the review, the delete half cascades to other timelines' `item_story_refs`, `book_stories`
+  and `item_tags`. This is not confirmed by a test. It is also why an old `.stlm` blanks the new
+  story details (phase 2 gap). The fix is an `ON CONFLICT DO UPDATE` upsert in both importers.
+
+Second feedback round (same day). The user: "the checkboxes should only appear when a "Multi
+select" switch is flipped, usually they are unused", and "Characters, places, media, tabs all need
+the multi-select option, with their own multi-select features".
+
+- **Edit multiple.** A switch (`ArchiveMultiSwitch`) on Items, Characters, Places and Media. The
+  checkboxes show only while it is on, and turning it off clears the ticks. *Select all shown* is a
+  toggle: it clears when everything shown is ticked. One composable (`useMultiPick`) holds the ticks
+  for all four tabs; the bars share the `ab-*` styles in `ArchiveApp`.
+- **Characters** (`ArchiveCastBar`). Trash, faction, colour and *Show on timeline* save each ticked
+  character through `SaveCharacterFull`. *Set relationships* (`BulkRelate`) gives every ticked
+  character the same relation to one person, from either end ("all adopted by the same parent",
+  "all hate the same guy"). It adds by default; *Replace* first drops the ticked characters' other
+  relations of that type. The relations are undated.
+- **Places** (`ArchivePlaceBar`, `BulkEditPlaces` → `MapRepo.BulkEdit`). Trash, pin colour, reset
+  pin look, and *Move under a different map*. A pin keeps its x/y fraction, so it lands on the
+  same spot of the new picture. A top-level map becomes a door pin at the middle of the target
+  map. Maps inside a ticked row can't be picked as the target.
+- **Media** (`ArchiveMediaBar`, `BulkEditMedia` → `MediaRepo.BulkEdit`). Trash (asks once when any
+  ticked picture is in use), *Put on an item* (search + list; character birth/death items and the
+  timeline markers are left out), and *Take off this timeline's items*. Taking off never deletes a
+  picture, and a character's birth and death items keep their portrait. The items changed are
+  pushed as `ItemSaved`.
+- **MISC** sits on the right of the tab row, apart from the others, and its sub-tabs are sideways
+  tabs down the left edge rather than pills.
+- **Tag field** placeholder reads "Pick a tag, or type a new one".
+- **Errors.** Bridge handlers that caught an error and replied without logging it now log the stack
+  (`Logger.Error("Bridge/<Action>", ex)`): the image link/unlink, duplicate timeline, layout,
+  calendar, filter rule and preset, and misc setting handlers.
+- **Known gaps.**
+  - The Map window doesn't follow a Places batch edit until it is reopened.
+  - Several top-level maps moved at once all land on the middle of the target map.
+
+Phase 8, the timeline's search (same day). The user chose a floating panel.
+
+- **Panel.** Ctrl+F or the strip's Search button opens `TimelineSearchPanel`. It floats over the
+  canvas, can be dragged by its header, and keeps its position for the session.
+  - Ctrl+F while the panel is open puts the cursor back in the box.
+  - Esc closes it, from the box or from the canvas.
+  - The strip button lights while it is open.
+- **Matching.** `timelineMatches` (in `archiveItems.ts`) looks at the title, the description and
+  tag names, and lists the hits by date. Only items the canvas draws are searched
+  (`filteredItems` + `dimmableItems`), so a filtered-out item is not found.
+- **Stepping.** Enter goes to the next match and Shift+Enter to the previous one. The up and down
+  buttons do the same. The first step starts from the middle of the view (`stepMatch`). Every step
+  pans to the item and makes it pulse. Clicking a row in the list goes to that match.
+- **Errors, all of them shown.** Every `console.error` in the frontend now goes through
+  `logError`, which logs the stack. These catches used to log and say nothing, and now tell the user:
+  - `itemDetails` (once a session);
+  - the reference timeline restore;
+  - the Relations window's remembered pins and sliders.
+
+  These catches were not logged at all, and now log and show:
+  - CalendarApp's save and its zoom-level parse;
+  - CalendarManagerModal's load;
+  - Export's session summary;
+  - TimelineSettingsModal's save, which also left the button stuck on "Saving…".
+
+A management window opened from the timeline sidebar. It stays open while you work in it, and it
+closes when its timeline does. It follows the old version's Archive layout, built with the app's
+theme variables. **Scope is the open timeline.** Stories, books, pictures and tags are shared
+between timelines, so their tabs say so. They also list the unused shared rows (orphan stories
+and pictures), because those rows are what the Archive is for cleaning up.
+
+### Decisions
+
+- **Session trash.** Delete does not delete. It queues the row in the MISC → Trash sub-tab, where
+  it can be restored while the window is open. Closing the Archive (the X, Alt+F4, the sidebar
+  icon) lists everything queued in one `ConfirmModal`: "You decided to delete the following
+  items… this can't be undone". Cancel keeps the window open. There is no schema change. When the
+  *timeline* closes, it takes the Archive with it and the queue is dropped: nothing is deleted
+  that was not confirmed. The user's words: "Trash for now but consider the idea of the remove on
+  close".
+- **Jump** asks the timeline to go to an item's start. For a character, that is their birth or
+  first appearance.
+- **Hidden character events**: the birth and death items of a character whose *Show on timeline*
+  switch is off. They are listed in Items with a **Show on timeline** button, which turns the
+  character's switch on (both items come back) and then jumps to it.
+- **Sidebar toggles**, for every window opened from the sidebar (Characters, Relations, Map,
+  Archive). The icon lights up while the window is open, and clicking it again closes the window.
+  The windows announce `WindowOpened` / `WindowClosed`, so the icon stays right even when the
+  window was opened from somewhere else.
+- The old `TagManagerModal` stays.
+
+### Phases
+
+1. **Window + Items.** The window itself. The Items tab has type chips, a sort (date, length,
+   name, importance, type), search, and rows showing title + type icon, date or range, and short
+   description. Each row has hover Jump / Edit / Delete, and hidden character events appear with
+   Show on timeline. This phase also covers the session trash with its close confirm and the
+   sidebar toggles.
+2. **Stories & Books + schema.** Editable stories with a wider schema:
+   - summary, status, POV characters, colour, reading order and a span derived from the items;
+   - previous/next story, a book link, tense, person, quotes, linked characters and places,
+     notes and genre.
+
+   Also: a "Referenced in" fold-out (each entry goes to the item, with jump/edit/delete),
+   rename (merge deferred), and Books → Chapters → Items. The Books tab is hidden when there are
+   no books.
+3. **Media + lightbox fix.**
+   - Two sections: Images and Maps (any picture used as a map's picture).
+   - Search, file-type chips, and sort by date added, usage or size.
+   - A fold-out of what uses each picture, with name and description editable.
+   - Click to open full size.
+   - Deleting warns about every item and map that uses the picture.
+   - Also here: `TimelineDataPanel` lightboxes showing the thumbnail instead of the full image.
+4. **Characters & Places.**
+   - Characters: birth and death, reference counts, an items fold-out, relations as a list or in
+     the relations window, a family-tree button, and places cross-referenced. Clicking a character
+     opens their own timeline.
+   - Places: grouped by map, with reference counts, a characters-who-were-there fold-out, an items
+     fold-out, edit/delete and jump to the map.
+5. **Tags & Notes.** Tags get usage counts, an items fold-out, rename/merge and delete. Notes are
+   the `notes` table (not type-5 items), each with click-to-jump.
+6. **Family tree + calendar.** A simple window with the relations tree chart. The year calendar
+   gets birthdays (whatever year is shown) and death anniversaries as toggles.
+7. **MISC + bulk edit.**
+   - Loose ends: unused pictures, tags on nothing, empty stories, characters without a birth, items
+     without a description, duplicate titles.
+   - Hidden ranges (list and restore), and Sessions (each day and what changed, prune empties,
+     merge).
+   - Trash.
+   - Multi-select bulk edit for LOD visibility, importance, colour, tags and story.
+8. **Find on the timeline (Ctrl+F).** Added 2026-09-30: "we need a search in the timeline as
+   well, a sort of ctrl+f feature". Agreed the same day:
+   - a small floating panel over the canvas that can be dragged, with the search box, visible
+     up/down buttons, "N of M" and the list of matches;
+   - Enter / Shift+Enter step through the matches and pan to each one;
+   - Ctrl+F and the strip's greyed-out **Search** button open it;
+   - title, description and tags are searched;
+   - the timeline only: "Other windows have their own search and filter bars, the timeline needs
+     it for easy access so the user doesn't have to open the archive every time".
+
+---
+
 ## [BL-18] Audit follow-ups — known issues deliberately not fixed yet (good to know)
 
 **Status:** Resolved. Moved to 1.1.0 (2026-09-20), then to 1.2.0 (2026-09-21), because what was

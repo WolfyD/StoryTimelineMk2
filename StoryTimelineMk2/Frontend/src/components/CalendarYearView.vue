@@ -34,7 +34,7 @@ const effectiveLabels = computed(() =>
 
                 <div class="year-header">
                     <span class="year-title">{{ calendarName }} — Year View</span>
-                    <button class="close-btn" title="Close" @click="emit('close')">
+                    <button class="close-btn" aria-label="Close" data-tip="Close" @click="emit('close')">
                         <PhX :size="16" />
                     </button>
                 </div>

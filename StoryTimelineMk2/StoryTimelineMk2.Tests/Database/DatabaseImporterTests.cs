@@ -634,6 +634,29 @@ public class DatabaseImporterTests
     }
 
     [Fact]
+    public void ImportV2_DropsStoryLinks_TheBackupDoesNotHave()
+    {
+        // Story links carry no FK, so the timeline cascade misses them; the character comes back with
+        // the same id, and a link made after the backup must not come back with it.
+        using var ctx = new DbTestContext();
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute("INSERT INTO timelines (id, title, author, description, start_year) VALUES (510, 'Links', '', '', 0)");
+            db.Execute("INSERT INTO characters (id, name, timeline_id) VALUES ('ch-510', 'Ada', 510)");
+            db.Execute("INSERT INTO stories (id, title) VALUES ('st-510', 'Tale')");
+        }
+        string backupPath = BackupService.CreateBackup(includeMedia: false);
+        using (var db = ctx.OpenConnection())
+            db.Execute("INSERT INTO story_characters (story_id, character_id) VALUES ('st-510', 'ch-510')");
+
+        DatabaseImporter.Import(backupPath);
+
+        using var verify = ctx.OpenConnection();
+        Assert.Equal(1, verify.QuerySingle<int>("SELECT COUNT(*) FROM characters WHERE id = 'ch-510'"));
+        Assert.Equal(0, verify.QuerySingle<int>("SELECT COUNT(*) FROM story_characters"));
+    }
+
+    [Fact]
     public void ImportV2_RefusesBackup_FromNewerAppVersion()
     {
         using var ctx = new DbTestContext();

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace StoryTimelineMk2.Database
 {
@@ -473,6 +474,71 @@ namespace StoryTimelineMk2.Database
                 SET lod_visibility_mask = @Mask, updated_at = CURRENT_TIMESTAMP
                 WHERE timeline_id = @TimelineId",
                 new { Mask = mask, TimelineId = timelineId });
+        }
+
+        /// <summary>BL-88: the Archive's bulk edit. A null field is left alone on every item.</summary>
+        public sealed class BulkItemEdit
+        {
+            [JsonPropertyName("ids")]           public List<string> Ids           { get; set; } = new();
+            [JsonPropertyName("importance")]    public int?         Importance    { get; set; }
+            /// <summary>"" takes the colour off.</summary>
+            [JsonPropertyName("color")]         public string?      Color         { get; set; }
+            [JsonPropertyName("lodMask")]       public int?         LodMask       { get; set; }
+            [JsonPropertyName("addTag")]        public string?      AddTag        { get; set; }
+            [JsonPropertyName("removeTagId")]   public int?         RemoveTagId   { get; set; }
+            [JsonPropertyName("addStoryId")]    public string?      AddStoryId    { get; set; }
+            [JsonPropertyName("removeStoryId")] public string?      RemoveStoryId { get; set; }
+        }
+
+        /// <summary>
+        /// One transaction over every item, so a failure halfway leaves none of them changed. Each row's
+        /// updated_at moves, as a save's would. A character's birth and death items keep their colour:
+        /// the character owns it, and the next character save would put it back anyway.
+        /// </summary>
+        public int BulkEdit(BulkItemEdit edit)
+        {
+            if (edit.Importance is < 1 or > 10)
+                throw new ArgumentOutOfRangeException(nameof(edit), $"Importance {edit.Importance} is not between 1 and 10.");
+
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            using var tx = db.BeginTransaction();
+
+            int? tagId = null;
+            string tagName = edit.AddTag?.Trim().ToLowerInvariant() ?? "";
+            if (tagName.Length > 0)
+            {
+                db.Execute("INSERT OR IGNORE INTO tags (name) VALUES (@tagName)", new { tagName }, tx);
+                tagId = db.QuerySingle<int>("SELECT id FROM tags WHERE name = @tagName", new { tagName }, tx);
+            }
+
+            int affected = 0;
+            foreach (string id in edit.Ids)
+            {
+                var arg = new
+                {
+                    Id = id, edit.Importance, edit.Color, edit.LodMask, TagId = tagId,
+                    edit.RemoveTagId, edit.AddStoryId, edit.RemoveStoryId,
+                };
+                affected += db.Execute(@"
+                    UPDATE items
+                    SET importance          = COALESCE(@Importance, importance),
+                        lod_visibility_mask = COALESCE(@LodMask, lod_visibility_mask),
+                        color               = CASE WHEN @Color IS NULL OR type_id IN (7, 8, 9) THEN color ELSE @Color END,
+                        updated_at          = CURRENT_TIMESTAMP
+                    WHERE id = @Id", arg, tx);
+                if (tagId != null)
+                    db.Execute("INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (@Id, @TagId)", arg, tx);
+                if (edit.RemoveTagId != null)
+                    db.Execute("DELETE FROM item_tags WHERE item_id = @Id AND tag_id = @RemoveTagId", arg, tx);
+                if (edit.AddStoryId != null)
+                    db.Execute("INSERT OR IGNORE INTO item_story_refs (item_id, story_id) VALUES (@Id, @AddStoryId)", arg, tx);
+                if (edit.RemoveStoryId != null)
+                    db.Execute("DELETE FROM item_story_refs WHERE item_id = @Id AND story_id = @RemoveStoryId", arg, tx);
+            }
+
+            tx.Commit();
+            return affected;
         }
 
         public int ShiftItems(int timelineId, int deltaYears)

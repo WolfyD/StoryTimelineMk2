@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/bridge/api', () => ({
+    logError: vi.fn(),
     BackendAPI: {
         GetTagList: vi.fn(),
         RenameTag: vi.fn(),

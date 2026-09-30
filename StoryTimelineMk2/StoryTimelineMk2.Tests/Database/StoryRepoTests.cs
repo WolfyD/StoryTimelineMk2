@@ -195,4 +195,109 @@ public class StoryRepoTests
         Assert.Single(stories);
         Assert.Equal(keepStory.Id, stories[0].Id);
     }
+
+    // ── BL-88: the Archive's story editor ─────────────────────────────────────
+
+    /// <summary>
+    /// Stories are shared but characters are not: a save from one timeline must replace only that
+    /// timeline's links and leave another timeline's alone, and a delete must take every link with it.
+    /// </summary>
+    [Fact]
+    public void SaveStory_WithTimeline_ReplacesOnlyThatTimelinesLinks_AndDeleteCleansUp()
+    {
+        using var ctx = new DbTestContext();
+        using var db = ctx.OpenConnection();
+        int Timeline(string t)
+        {
+            db.Execute("INSERT INTO timelines (title, author, description, start_year) VALUES (@t, '', '', 0)", new { t });
+            return db.QuerySingle<int>("SELECT last_insert_rowid()");
+        }
+        int tl1 = Timeline("One"), tl2 = Timeline("Two");
+        db.Execute("INSERT INTO characters (id, name, timeline_id) VALUES ('alice', 'Alice', @tl1), ('bob', 'Bob', @tl2), ('carl', 'Carl', @tl1)", new { tl1, tl2 });
+        db.Execute("INSERT INTO books (id, title) VALUES ('book', 'Book')");
+
+        var repo = new StoryRepo();
+        var story = MakeStory(title: "Shared");
+        story.Status = "Drafting";
+        story.Quotes = "[\"a\"]";
+        story.Characters = [new() { CharacterId = "alice", Pov = true }];
+        story.BookIds = ["book"];
+        repo.SaveStory(story, tl1);
+        story.Characters = [new() { CharacterId = "bob" }];
+        repo.SaveStory(story, tl2);
+
+        // Timeline one drops Alice for Carl; Bob, who belongs to timeline two, must survive it.
+        story.Characters = [new() { CharacterId = "carl" }];
+        repo.SaveStory(story, tl1);
+
+        var seen = repo.GetArchiveStories(tl1).Single();
+        Assert.Equal("Drafting", seen.Status);
+        Assert.Equal("[\"a\"]", seen.Quotes);
+        Assert.Equal(["carl"], seen.Characters.Select(c => c.CharacterId));
+        Assert.Equal(["book"], seen.BookIds);
+        Assert.Equal(["bob"], repo.GetArchiveStories(tl2).Single().Characters.Select(c => c.CharacterId));
+
+        repo.DeleteStory(story.Id);
+        Assert.Equal(0, db.QuerySingle<int>("SELECT COUNT(*) FROM story_characters"));
+        Assert.Equal(0, db.QuerySingle<int>("SELECT COUNT(*) FROM book_stories"));
+    }
+
+    /// <summary>Stories make one chain: previous or next, set from either end, moves the neighbour with it.</summary>
+    [Fact]
+    public void SaveStory_KeepsOneChain_FromEitherEnd()
+    {
+        using var ctx = new DbTestContext();
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO timelines (title, author, description, start_year) VALUES ('One', '', '', 0)");
+        int tl = db.QuerySingle<int>("SELECT last_insert_rowid()");
+        var repo = new StoryRepo();
+        StoryItem a = MakeStory("a", "A"), b = MakeStory("b", "B"), c = MakeStory("c", "C");
+        foreach (var s in new[] { a, b, c }) repo.SaveStory(s, tl);
+        string? Prev(string id) => db.QuerySingle<string?>("SELECT previous_story_id FROM stories WHERE id = @id", new { id });
+        string? Next(string id) => repo.GetArchiveStories(tl).Single(s => s.Id == id).NextStoryId;
+
+        a.NextStoryId = "b";                       // from the front
+        repo.SaveStory(a, tl);
+        Assert.Equal("a", Prev("b"));
+        Assert.Equal("b", Next("a"));
+
+        c.PreviousStoryId = "a";                   // from the back: B no longer follows A
+        repo.SaveStory(c, tl);
+        Assert.Null(Prev("b"));
+        Assert.Equal("c", Next("a"));
+
+        // A save without a timeline (the item editor's quick add) sends no next, and must not cut the chain.
+        repo.SaveStory(new StoryItem { Id = "a", Title = "A", Description = "" });
+        Assert.Equal("a", Prev("c"));
+
+        a.NextStoryId = null;                      // cleared from the front
+        repo.SaveStory(a, tl);
+        Assert.Null(Prev("c"));
+    }
+
+    /// <summary>A story keeps only chapters of books it is in, and loses them with the book or the chapter.</summary>
+    [Fact]
+    public void SaveStory_KeepsOnlyChaptersOfItsBooks_AndChapterDeletesCleanUp()
+    {
+        using var ctx = new DbTestContext();
+        using var db = ctx.OpenConnection();
+        db.Execute("INSERT INTO timelines (title, author, description, start_year) VALUES ('One', '', '', 0)");
+        int tl = db.QuerySingle<int>("SELECT last_insert_rowid()");
+        db.Execute("INSERT INTO books (id, title) VALUES ('b1', 'One'), ('b2', 'Two')");
+        db.Execute("INSERT INTO chapters (id, book_id, number) VALUES ('c1', 'b1', 1), ('c2', 'b1', 2), ('x1', 'b2', 1)");
+
+        var repo = new StoryRepo();
+        var story = MakeStory(title: "S");
+        story.BookIds = ["b1"];
+        story.ChapterIds = ["c1", "c2", "x1"];   // x1 is in a book the story is not
+        repo.SaveStory(story, tl);
+        Assert.Equal(["c1", "c2"], repo.GetArchiveStories(tl).Single().ChapterIds.Order());
+
+        new BookRepo().DeleteChapter("c2");
+        Assert.Equal(["c1"], repo.GetArchiveStories(tl).Single().ChapterIds);
+
+        story.BookIds = [];
+        repo.SaveStory(story, tl);
+        Assert.Empty(repo.GetArchiveStories(tl).Single().ChapterIds);
+    }
 }

@@ -43,6 +43,7 @@ namespace StoryTimelineMk2.Bridge
                 case "GetTagList":               HandleGetTagList(message); break;
                 case "RenameTag":                HandleRenameTag(message); break;
                 case "DeleteTag":                HandleDeleteTag(message); break;
+                case "MergeTag":                 HandleMergeTag(message); break;
                 case "GetTimelineCharacters":    HandleGetTimelineCharacters(message); break;
                 case "GetTimelineCalendar":      HandleGetTimelineCalendar(message); break;
                 case "SaveCharacter":            HandleSaveCharacter(message); break;
@@ -57,12 +58,27 @@ namespace StoryTimelineMk2.Bridge
                 case "GetTimelineRelations":     HandleGetTimelineRelations(message); break;
                 case "SaveCharacterRelation":    HandleSaveCharacterRelation(message); break;
                 case "DeleteCharacterRelation":  HandleDeleteCharacterRelation(message); break;
+                case "BulkRelate":               HandleBulkRelate(message); break;
                 case "GetRelationshipTypes":     HandleGetRelationshipTypes(message); break;
                 case "SaveRelationshipType":     HandleSaveRelationshipType(message); break;
                 case "DeleteRelationshipType":   HandleDeleteRelationshipType(message); break;
                 case "GetAllStories":            HandleGetAllStories(message); break;
                 case "SearchBooks":              HandleSearchBooks(message); break;
                 case "GetBookChapters":          HandleGetBookChapters(message); break;
+                // BL-88, the Archive's Stories and Books tabs. Every write broadcasts StoriesChanged.
+                case "GetArchiveStories":        HandleGetArchiveStories(message); break;
+                case "SaveStory":                HandleSaveStory(message); break;
+                case "DeleteStory":              HandleDeleteStory(message); break;
+                case "GetArchiveBooks":          HandleGetArchiveBooks(message); break;
+                case "SaveBook":                 HandleSaveBook(message); break;
+                case "SaveChapter":              HandleSaveChapter(message); break;
+                case "DeleteBook":               HandleDeleteBook(message); break;
+                case "DeleteChapter":            HandleDeleteChapter(message); break;
+                // BL-88, the Media tab.
+                case "GetArchiveMedia":          HandleGetArchiveMedia(message); break;
+                case "SavePictureInfo":          HandleSavePictureInfo(message); break;
+                case "DeletePicture":            HandleDeletePicture(message); break;
+                case "BulkEditMedia":            HandleBulkEditMedia(message); break;
                 case "GetLayoutSettingsList":    HandleGetLayoutSettingsList(message); break;
                 case "RemoveImageFromItem":      HandleRemoveImageFromItem(message); break;
                 case "GetAllPictures":           HandleGetAllPictures(message); break;
@@ -87,6 +103,7 @@ namespace StoryTimelineMk2.Bridge
                 case "DeleteHiddenRange":        HandleDeleteHiddenRange(message); break;
                 case "ShiftTimelineItems":       HandleShiftTimelineItems(message); break;
                 case "SetTimelineItemsLodMask":  HandleSetTimelineItemsLodMask(message); break;
+                case "BulkEditItems":            HandleBulkEditItems(message); break;
                 case "ResetLayoutPreset":        HandleResetLayoutPreset(message); break;
                 case "GetAppConfig":             HandleGetAppConfig(message); break;
                 case "SavePerformantPanning":    HandleSavePerformantPanning(message); break;
@@ -115,6 +132,7 @@ namespace StoryTimelineMk2.Bridge
                 case "DeleteMap":                HandleDeleteMap(message); break;
                 case "SaveLocation":             HandleSaveLocation(message); break;
                 case "DeleteLocation":           HandleDeleteLocation(message); break;
+                case "BulkEditPlaces":           HandleBulkEditPlaces(message); break;
                 case "GetLocationItems":         HandleGetLocationItems(message); break;
                 case "GetMapEvents":             HandleGetMapEvents(message); break;
                 // BL-33. The baseline these diff against is taken in HandleGetTimelineData.
@@ -122,6 +140,9 @@ namespace StoryTimelineMk2.Bridge
                 case "GetSessionHistory":        HandleGetSessionHistory(message); break;
                 case "PreviewSessionChanges":    HandlePreviewSessionChanges(message); break;
                 case "ApplySessionChanges":      HandleApplySessionChanges(message); break;
+                // BL-88, the Archive's Sessions list.
+                case "PruneSessionDays":         HandlePruneSessionDays(message); break;
+                case "MergeSessionDays":         HandleMergeSessionDays(message); break;
                 // The page's half of the project rule: the frontend has no file access, so its
                 // errors come here to be written with the same stack detail the backend logs.
                 case "LogFrontendError":         HandleLogFrontendError(message); break;
@@ -203,6 +224,20 @@ namespace StoryTimelineMk2.Bridge
         private void HandleGetSessionHistory(BridgeMessage message)
         {
             int id = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new { status = "ok", history = SessionChanges.History(id) });
+        }
+
+        private void HandlePruneSessionDays(BridgeMessage message)
+        {
+            int id = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new { status = "ok", pruned = SessionChanges.PruneEmptyDays(id) });
+        }
+
+        /// <summary><c>days</c>: the neighbouring sealed days to fold into one.</summary>
+        private void HandleMergeSessionDays(BridgeMessage message)
+        {
+            int id = message.Payload.GetProperty("timelineId").GetInt32();
+            SessionChanges.MergeDays(id, SessionChanges.DaysFrom(message.Payload) ?? new List<string>());
             ReplyToVue(message.MessageId, new { status = "ok", history = SessionChanges.History(id) });
         }
 
@@ -334,14 +369,25 @@ namespace StoryTimelineMk2.Bridge
             {
                 int id = message.Payload.GetProperty("id").GetInt32();
                 string name = message.Payload.GetProperty("name").GetString() ?? "";
-                new TagRepo().RenameTag(id, name);
+                string stored = new TagRepo().RenameTag(id, name);
                 ReplyToVue(message.MessageId, new { status = "ok" });
+                BridgeHub.Broadcast("TagsChanged", new { Id = id, Into = new { TagId = id, TagName = stored } });
             }
             catch (Exception ex)
             {
                 Logger.Error("RenameTag", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
+        }
+
+        private void HandleMergeTag(BridgeMessage message)
+        {
+            int fromId = message.Payload.GetProperty("fromId").GetInt32();
+            int intoId = message.Payload.GetProperty("intoId").GetInt32();
+            string into = new TagRepo().MergeTag(fromId, intoId);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            // Every window holding the old tag on an item swaps it for the survivor.
+            BridgeHub.Broadcast("TagsChanged", new { Id = fromId, Into = new { TagId = intoId, TagName = into } });
         }
 
         private void HandleDeleteTag(BridgeMessage message)
@@ -351,6 +397,7 @@ namespace StoryTimelineMk2.Bridge
                 int id = message.Payload.GetProperty("id").GetInt32();
                 int unlinked = new TagRepo().DeleteTag(id);
                 ReplyToVue(message.MessageId, new { status = "ok", unlinked });
+                BridgeHub.Broadcast("TagsChanged", new { Id = id, Into = (object?)null });
             }
             catch (Exception ex)
             {
@@ -422,10 +469,12 @@ namespace StoryTimelineMk2.Bridge
                 new MediaRepo().DeleteMedia(character.PortraitPictureId);
 
             var itemRepo = new ItemRepo();
-            foreach (string? itemId in new[] { character?.BirthItemId, character?.DeathItemId })
-                if (!string.IsNullOrEmpty(itemId)) itemRepo.DeleteItem(itemId);
+            string[] owned = new[] { character?.BirthItemId, character?.DeathItemId }.OfType<string>().Where(s => s != "").ToArray();
+            foreach (string itemId in owned) itemRepo.DeleteItem(itemId);
 
             ReplyToVue(message.MessageId, new { status = "ok" });
+            // The timeline drawing them is not the window that deleted them.
+            foreach (string itemId in owned) BridgeHub.Broadcast("ItemDeleted", new { ItemId = itemId });
         }
 
         private void HandleDismissCharacterLink(BridgeMessage message)
@@ -502,6 +551,14 @@ namespace StoryTimelineMk2.Bridge
         {
             new CharacterRepo().DeleteRelationship(message.Payload.GetProperty("id").GetInt64());
             ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>BL-88: the Archive's batch relation — see <see cref="CharacterRepo.BulkRelate"/>.</summary>
+        private void HandleBulkRelate(BridgeMessage message)
+        {
+            var bulk = JsonSerializer.Deserialize<CharacterRepo.BulkRelation>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("BulkRelate received an empty payload.");
+            ReplyToVue(message.MessageId, new { status = "ok", affected = new CharacterRepo().BulkRelate(bulk) });
         }
 
         private void HandleGetRelationshipTypes(BridgeMessage message)
@@ -581,6 +638,127 @@ namespace StoryTimelineMk2.Bridge
             ReplyToVue(message.MessageId, chapters);
         }
 
+        private void HandleGetArchiveStories(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new StoryRepo().GetArchiveStories(timelineId));
+        }
+
+        /// <summary>
+        /// The saved story goes back, because a new one's id is made in the repo. Everyone else hears
+        /// StoriesChanged: the item editor's story picker, and the canvas's story titles.
+        /// </summary>
+        private void HandleSaveStory(BridgeMessage message)
+        {
+            var payload = JsonSerializer.Deserialize<SaveStoryPayload>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveStory received an empty payload.");
+            var story = payload.Story ?? throw new InvalidOperationException("SaveStory received no story.");
+            new StoryRepo().SaveStory(story, payload.TimelineId);
+            ReplyToVue(message.MessageId, new { status = "ok", story });
+            BridgeHub.Broadcast("StoriesChanged", new { });
+        }
+
+        private sealed class SaveStoryPayload
+        {
+            public StoryItem? Story { get; set; }
+            /// <summary>Null saves only the story row, leaving its links alone.</summary>
+            public int? TimelineId { get; set; }
+        }
+
+        private void HandleDeleteStory(BridgeMessage message)
+        {
+            string id = message.Payload.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("DeleteStory received no id.");
+            new StoryRepo().DeleteStory(id);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            BridgeHub.Broadcast("StoriesChanged", new { });
+        }
+
+        private void HandleGetArchiveBooks(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new BookRepo().GetArchiveBooks(timelineId));
+        }
+
+        private void HandleSaveBook(BridgeMessage message)
+        {
+            var book = JsonSerializer.Deserialize<BookItem>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveBook received an empty payload.");
+            new BookRepo().SaveBook(book);
+            ReplyToVue(message.MessageId, new { status = "ok", book });
+            BridgeHub.Broadcast("StoriesChanged", new { });
+        }
+
+        private void HandleSaveChapter(BridgeMessage message)
+        {
+            var chapter = JsonSerializer.Deserialize<ChapterItem>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("SaveChapter received an empty payload.");
+            new BookRepo().SaveChapter(chapter);
+            ReplyToVue(message.MessageId, new { status = "ok", chapter });
+            BridgeHub.Broadcast("StoriesChanged", new { });
+        }
+
+        private void HandleDeleteBook(BridgeMessage message)
+        {
+            string id = message.Payload.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("DeleteBook received no id.");
+            new BookRepo().DeleteBook(id);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            BridgeHub.Broadcast("StoriesChanged", new { });
+        }
+
+        private void HandleDeleteChapter(BridgeMessage message)
+        {
+            string id = message.Payload.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("DeleteChapter received no id.");
+            new BookRepo().DeleteChapter(id);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            BridgeHub.Broadcast("StoriesChanged", new { });
+        }
+
+        private void HandleGetArchiveMedia(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new MediaRepo().GetArchiveMedia(timelineId));
+        }
+
+        private void HandleSavePictureInfo(BridgeMessage message)
+        {
+            string id = message.Payload.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("SavePictureInfo received no id.");
+            new MediaRepo().SavePictureInfo(id,
+                message.Payload.GetProperty("title").GetString(),
+                message.Payload.GetProperty("description").GetString());
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// The picture and every use of it. The open timeline's items that showed it are pushed again
+        /// so the canvas and the side panel drop it. ponytail: an open map or character window keeps
+        /// showing it until reopened; add a PicturesChanged push if that ever matters.
+        /// </summary>
+        private void HandleDeletePicture(BridgeMessage message)
+        {
+            string id = message.Payload.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("DeletePicture received no id.");
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            var repo = new MediaRepo();
+            var shown = repo.ShownItemsUsing(id, timelineId);
+            repo.DeleteMedia(id);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            foreach (string itemId in shown) BroadcastItemSaved(itemId);
+        }
+
+        /// <summary>BL-88: the items it changed are pushed again, so the canvas and the side panel follow.</summary>
+        private void HandleBulkEditMedia(BridgeMessage message)
+        {
+            var edit = JsonSerializer.Deserialize<MediaRepo.BulkMediaEdit>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("BulkEditMedia received an empty payload.");
+            var touched = new MediaRepo().BulkEdit(edit);
+            ReplyToVue(message.MessageId, new { status = "ok", affected = touched.Count });
+            foreach (string itemId in touched) BroadcastItemSaved(itemId);
+        }
+
         private void HandleGetLayoutSettingsList(BridgeMessage message)
         {
             var presets = new LayoutSettingsRepo().GetAll()
@@ -599,6 +777,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("Bridge/RemoveImageFromItem", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -619,6 +798,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("Bridge/LinkImageToItem", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -641,6 +821,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("Bridge/DuplicateTimeline", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -702,6 +883,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("Bridge/CreateLayoutPreset", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -721,22 +903,17 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("Bridge/SaveLayoutSettings", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
 
+        // No local catch: the router's safety net logs Bridge/{action} with the stack and replies with the error.
         private void HandleGetCalendarById(BridgeMessage message)
         {
-            try
-            {
-                string? id = message.Payload.GetProperty("id").GetString();
-                var cal = new CalendarRepo().GetCalendarById(id!);
-                ReplyToVue(message.MessageId, cal);
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
+            string? id = message.Payload.GetProperty("id").GetString();
+            var cal = new CalendarRepo().GetCalendarById(id!);
+            ReplyToVue(message.MessageId, cal);
         }
 
         private void HandleSaveCalendar(BridgeMessage message)
@@ -750,6 +927,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("Bridge/SaveCalendar", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -780,6 +958,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
+                Logger.Error("Bridge/CreateCalendar", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
             }
         }
@@ -819,33 +998,23 @@ namespace StoryTimelineMk2.Bridge
             BridgeHub.Broadcast("ItemDeleted", new { ItemId = itemId });
         }
 
+        // No local catch: the router's safety net logs Bridge/{action} with the stack and replies with the error.
         private void HandleSaveNote(BridgeMessage message)
         {
-            try
-            {
-                var note = JsonSerializer.Deserialize<NoteItem>(message.Payload.GetRawText(), _jsonOpts);
-                if (note == null) { ReplyToVue(message.MessageId, new { status = "error", message = "Invalid payload" }); return; }
-                string savedId = new NoteRepo().SaveNote(note);
-                ReplyToVue(message.MessageId, new { status = "ok", noteId = savedId });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
+            var note = JsonSerializer.Deserialize<NoteItem>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new ArgumentException("SaveNote: invalid payload");
+            note.Id = new NoteRepo().SaveNote(note);
+            ReplyToVue(message.MessageId, new { status = "ok", noteId = note.Id });
+            // The Archive edits notes too; the timeline's Notes panel follows without a reload.
+            BridgeHub.Broadcast("NoteSaved", note);
         }
 
         private void HandleDeleteNote(BridgeMessage message)
         {
-            try
-            {
-                string? noteId = message.Payload.GetProperty("noteId").GetString();
-                new NoteRepo().DeleteNote(noteId!);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
+            string noteId = message.Payload.GetProperty("noteId").GetString()!;
+            new NoteRepo().DeleteNote(noteId);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            BridgeHub.Broadcast("NoteDeleted", new { NoteId = noteId });
         }
 
         private void HandleGetHiddenRanges(BridgeMessage message)
@@ -854,57 +1023,61 @@ namespace StoryTimelineMk2.Bridge
             ReplyToVue(message.MessageId, new HiddenRangeRepo().GetByTimeline(timelineId).ToList());
         }
 
+        // No catch in these three: a failure goes to the router's safety net, which logs the stack
+        // and replies { status: 'error' } — the catch that was here replied without logging it.
         private void HandleSaveHiddenRange(BridgeMessage message)
         {
-            try
-            {
-                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-                int startYear  = message.Payload.GetProperty("startYear").GetInt32();
-                int endYear    = message.Payload.GetProperty("endYear").GetInt32();
-                string? label  = message.Payload.TryGetProperty("label", out var lp) ? lp.GetString() : null;
-                int id = 0;
-                if (message.Payload.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out int existingId))
-                    id = existingId;
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            int startYear  = message.Payload.GetProperty("startYear").GetInt32();
+            int endYear    = message.Payload.GetProperty("endYear").GetInt32();
+            string? label  = message.Payload.TryGetProperty("label", out var lp) ? lp.GetString() : null;
+            int id = 0;
+            if (message.Payload.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out int existingId))
+                id = existingId;
 
-                var item = new HiddenRangeItem { Id = id, TimelineId = timelineId, StartYear = startYear, EndYear = endYear, Label = label };
-                int savedId = new HiddenRangeRepo().Save(item);
-                item.Id = savedId;
-                ReplyToVue(message.MessageId, new { status = "ok", range = item });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
+            var item = new HiddenRangeItem { Id = id, TimelineId = timelineId, StartYear = startYear, EndYear = endYear, Label = label };
+            int savedId = new HiddenRangeRepo().Save(item);
+            item.Id = savedId;
+            ReplyToVue(message.MessageId, new { status = "ok", range = item });
+            BroadcastHiddenRanges(timelineId);
         }
 
         private void HandleDeleteHiddenRange(BridgeMessage message)
         {
-            try
-            {
-                int id = message.Payload.GetProperty("id").GetInt32();
-                new HiddenRangeRepo().Delete(id);
-                ReplyToVue(message.MessageId, new { status = "ok" });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
+            int id = message.Payload.GetProperty("id").GetInt32();
+            int? timelineId = new HiddenRangeRepo().Delete(id);
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            if (timelineId is int tl) BroadcastHiddenRanges(tl);
         }
+
+        /// <summary>BL-88: the Archive restores a range while the timeline's Actions menu may be open,
+        /// so every page holding this timeline takes the new list.</summary>
+        private static void BroadcastHiddenRanges(int timelineId)
+            => BridgeHub.Broadcast("HiddenRangesChanged", new
+            {
+                TimelineId = timelineId,
+                Ranges     = new HiddenRangeRepo().GetByTimeline(timelineId).ToList(),
+            });
 
         private void HandleShiftTimelineItems(BridgeMessage message)
         {
-            try
-            {
-                int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
-                int delta      = message.Payload.GetProperty("delta").GetInt32();
-                if (delta == 0) { ReplyToVue(message.MessageId, new { status = "ok", affected = 0 }); return; }
-                int affected = new ItemRepo().ShiftItems(timelineId, delta);
-                ReplyToVue(message.MessageId, new { status = "ok", affected });
-            }
-            catch (Exception ex)
-            {
-                ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
-            }
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            int delta      = message.Payload.GetProperty("delta").GetInt32();
+            if (delta == 0) { ReplyToVue(message.MessageId, new { status = "ok", affected = 0 }); return; }
+            int affected = new ItemRepo().ShiftItems(timelineId, delta);
+            ReplyToVue(message.MessageId, new { status = "ok", affected });
+        }
+
+        /// <summary>BL-88: the Archive's bulk edit — see <see cref="ItemRepo.BulkEdit"/>. Each item is
+        /// broadcast as a save once the batch has committed, so every canvas redraws it.</summary>
+        private void HandleBulkEditItems(BridgeMessage message)
+        {
+            var edit = JsonSerializer.Deserialize<ItemRepo.BulkItemEdit>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("BulkEditItems received an empty payload.");
+            int affected = new ItemRepo().BulkEdit(edit);
+            ReplyToVue(message.MessageId, new { status = "ok", affected });
+            // ponytail: one ItemSaved per item, four reads each; a batch push if a thousand-item edit lags.
+            foreach (string id in edit.Ids) BroadcastItemSaved(id);
         }
 
         private void HandleSetTimelineItemsLodMask(BridgeMessage message)
@@ -934,7 +1107,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ResetLayoutPreset] {ex}");
+                Logger.Error("Bridge/ResetLayoutPreset", ex);
                 ReplyToVue(message.MessageId, new { status = "error", message = ex.Message, detail = ex.ToString() });
             }
         }
@@ -1086,7 +1259,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleGetFilterRules] {ex}");
+                Logger.Error("Bridge/GetFilterRules", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1101,7 +1274,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleSaveFilterRule] {ex}");
+                Logger.Error("Bridge/SaveFilterRule", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1116,7 +1289,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleDeleteFilterRule] {ex}");
+                Logger.Error("Bridge/DeleteFilterRule", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1130,7 +1303,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleGetFilterPresets] {ex}");
+                Logger.Error("Bridge/GetFilterPresets", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1145,7 +1318,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleSaveFilterPreset] {ex}");
+                Logger.Error("Bridge/SaveFilterPreset", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1160,7 +1333,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleDeleteFilterPreset] {ex}");
+                Logger.Error("Bridge/DeleteFilterPreset", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1176,7 +1349,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleGetMiscSetting] {ex}");
+                Logger.Error("Bridge/GetMiscSetting", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1193,7 +1366,7 @@ namespace StoryTimelineMk2.Bridge
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HandleSetMiscSetting] {ex}");
+                Logger.Error("Bridge/SetMiscSetting", ex);
                 ReplyToVue(message.MessageId, new { status = "error", detail = ex.ToString() });
             }
         }
@@ -1288,6 +1461,14 @@ namespace StoryTimelineMk2.Bridge
                 ?? throw new InvalidOperationException("DeleteLocation received no locationId.");
             new MapRepo().DeleteLocation(locationId);
             ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>BL-88: see <see cref="MapRepo.BulkEdit"/>. No push: the map window listens for none, and shows it when next opened.</summary>
+        private void HandleBulkEditPlaces(BridgeMessage message)
+        {
+            var edit = JsonSerializer.Deserialize<MapRepo.BulkPlaceEdit>(message.Payload.GetRawText(), _jsonOpts)
+                ?? throw new InvalidOperationException("BulkEditPlaces received an empty payload.");
+            ReplyToVue(message.MessageId, new { status = "ok", affected = new MapRepo().BulkEdit(edit) });
         }
 
         /// <summary>What happened at this place — the pin's detail panel.</summary>

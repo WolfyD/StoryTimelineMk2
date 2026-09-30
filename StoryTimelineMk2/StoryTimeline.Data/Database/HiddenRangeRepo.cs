@@ -43,10 +43,14 @@ namespace StoryTimelineMk2.Database
             }
         }
 
-        public void Delete(int id)
+        /// <summary>Returns the timeline the range was on, or null if there was no such range.</summary>
+        public int? Delete(int id)
         {
             using var db = new SqliteConnection(_connString);
+            var timelineId = db.QuerySingleOrDefault<int?>(
+                "SELECT timeline_id FROM timeline_hidden_ranges WHERE id = @Id", new { Id = id });
             db.Execute("DELETE FROM timeline_hidden_ranges WHERE id = @Id", new { Id = id });
+            return timelineId;
         }
     }
 }

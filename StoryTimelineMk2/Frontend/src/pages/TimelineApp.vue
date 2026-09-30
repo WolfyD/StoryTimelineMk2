@@ -10,7 +10,7 @@ import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
 import TimelineFilterPanel from '@/components/TimelineFilterPanel.vue'
 import TimelineFilterSetupModal from '@/components/TimelineFilterSetupModal.vue'
 import { Splitpanes, Pane } from 'splitpanes'
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import type { TimelineItem } from '@/types/models';
 import TimelineCanvas from "@/components/TimelineCanvas.vue";
 import TimelineSettingsModal from "@/components/TimelineSettingsModal.vue";
@@ -29,7 +29,9 @@ import TimelineDataPanel from "@/components/TimelineDataPanel.vue";
 import TimelineGalleryPanel from "@/components/TimelineGalleryPanel.vue";
 import TimelineMinimap from "@/components/TimelineMinimap.vue";
 import TimelineItemViewModal from "@/components/TimelineItemViewModal.vue";
-import { BackendAPI, type BridgeMessage } from '@/bridge/api';
+import TimelineSearchPanel from "@/components/TimelineSearchPanel.vue";
+import HoverTip from "@/components/HoverTip.vue";
+import { BackendAPI, logError, type BridgeMessage } from '@/bridge/api';
 import { useAppTheme, applyAppTheme } from '@/utils/useAppTheme';
 
 const store = useTimelineStore()
@@ -45,6 +47,19 @@ const showMassAdd = ref(false);
 const showHelp = ref(false);
 const showShortcuts = ref(false);
 const showExport = ref(false);
+const showSearch = ref(false);
+const searchRef = ref<InstanceType<typeof TimelineSearchPanel> | null>(null);
+
+/** Ctrl+F again while it is open goes back to the box, the way a browser's find bar does. */
+function openSearch() {
+    if (showSearch.value) searchRef.value?.focus()
+    else showSearch.value = true
+}
+
+function onSearchJump(item: TimelineItem) {
+    jumpTo(item.AbsoluteStart)
+    store.pulseItem(item.Id)
+}
 
 async function exportTimeline(includeIds: boolean, includeMedia: boolean) {
     const id = store.currentProject?.Id
@@ -52,7 +67,7 @@ async function exportTimeline(includeIds: boolean, includeMedia: boolean) {
     try {
         await BackendAPI.ExportTimeline(id, includeIds, includeMedia, store.characterFocus?.Id)
     } catch (e) {
-        console.error('[ExportTimeline]', e)
+        void logError('TimelineApp: ExportTimeline', e)
         store.loadNotice = { title: 'Timeline export failed', message: e instanceof Error ? e.message : String(e) }
     } finally {
         showExport.value = false
@@ -77,6 +92,16 @@ const lightboxUrl = ref<string | null>(null);
 const isMinimised = ref(false)
 const miniHoverState = ref<{ item: TimelineItem; x: number; y: number } | null>(null)
 const yearCalendarOpen = ref(false)
+// The sidebar's windows that are up, as the host announces them — whoever opened them.
+const openWindows = reactive(new Set<string>())
+// ...and its dialogs, so a button lights while what it opened is up.
+const openTools = computed(() => {
+    const on = new Set(openWindows)
+    const dialogs = { tags: showTags, massAdd: showMassAdd, reference: showReference, export: showExport, settings: showSettings, search: showSearch }
+    for (const [name, shown] of Object.entries(dialogs)) if (shown.value) on.add(name)
+    if (showHelp.value || showShortcuts.value || showAbout.value) on.add('help')
+    return on
+})
 
 const updateBanner = ref<{ version: string; url: string } | null>(null)
 
@@ -93,6 +118,8 @@ function onHostPush(msg: BridgeMessage) {
         jumpTo(msg.payload.AbsoluteStart)
         store.pulseItem(msg.payload.ItemId)
     }
+    if (msg?.action === 'WindowOpened') openWindows.add(msg.payload.Window)
+    if (msg?.action === 'WindowClosed') openWindows.delete(msg.payload.Window)
 }
 async function dismissUpdate() { updateBanner.value = null }
 async function skipUpdate() {
@@ -174,7 +201,7 @@ async function onCharacterTimeline(itemId: string) {
         if (!characterId) return
         BackendAPI.OpenCharacterTimeline(store.currentProject!.Id, characterId)
     } catch (e) {
-        console.error('[onCharacterTimeline]', e)
+        void logError('TimelineApp: onCharacterTimeline', e)
         store.loadNotice = { title: "Could not open that character's timeline", message: e instanceof Error ? e.message : String(e) }
     }
 }
@@ -185,8 +212,19 @@ async function onEditCharacter(itemId: string) {
         if (!characterId) return
         await BackendAPI.OpenCharactersWindow(store.currentProject!.Id, characterId)
     } catch (e) {
-        console.error('[onEditCharacter]', e)
+        void logError('TimelineApp: onEditCharacter', e)
         store.loadNotice = { title: 'Could not open that character', message: e instanceof Error ? e.message : String(e) }
+    }
+}
+
+async function onFamilyTree(itemId: string) {
+    try {
+        const { characterId } = await BackendAPI.GetCharacterIdForItem(itemId)
+        if (!characterId) return
+        await BackendAPI.OpenFamilyTreeWindow(store.currentProject!.Id, characterId)
+    } catch (e) {
+        void logError('TimelineApp: onFamilyTree', e)
+        store.loadNotice = { title: 'Could not open the family tree', message: e instanceof Error ? e.message : String(e) }
     }
 }
 
@@ -360,6 +398,9 @@ useShortcuts('timeline', {
     addItemLast: rw(() => { if (lastTypeId.value) onTypePicked(lastTypeId.value); else showTypePicker.value = true }),
     undoDelete: rw(() => { undoDelete() }),
     filter: () => { store.setFilterPanelOpen(!store.filterPanelOpen) },
+    search: openSearch,
+    // Only the search panel answers to it here; everything else with an Esc handles its own.
+    escape: () => showSearch.value ? void (showSearch.value = false) : false,
     tags: rw(() => { showTags.value = true }),
     yearCalendar: rw(() => { toggleYearCalendar() }),
     miniMode: () => { toggleMiniMode() },
@@ -449,6 +490,7 @@ onBeforeUnmount(() => {
                 :filter-active="store.filterPanelOpen"
                 :mini-mode="isMinimised"
                 :year-calendar-open="yearCalendarOpen"
+                :open-tools="openTools"
                 :read-only="store.readOnly"
                 :allow-export="!!store.characterFocus"
                 :reference-active="!!store.reference"
@@ -463,12 +505,14 @@ onBeforeUnmount(() => {
                 @open-shortcuts="showShortcuts = true"
                 @open-export="showExport = true"
                 @toggle-year-calendar="toggleYearCalendar"
-                @open-characters="BackendAPI.OpenCharactersWindow(store.currentProject?.Id ?? 0)"
-                @open-relations="BackendAPI.OpenRelationsWindow(store.currentProject?.Id ?? 0)"
+                @open-characters="BackendAPI.OpenCharactersWindow(store.currentProject?.Id ?? 0, undefined, true)"
+                @open-relations="BackendAPI.OpenRelationsWindow(store.currentProject?.Id ?? 0, undefined, true)"
                 @open-map="BackendAPI.OpenMapWindow(
                     store.currentProject?.Id ?? 0, undefined, undefined,
-                    store.characterFocusId ?? undefined,
+                    store.characterFocusId ?? undefined, true,
                 )"
+                @open-archive="BackendAPI.OpenArchiveWindow(store.currentProject?.Id ?? 0, true)"
+                @toggle-search="showSearch = !showSearch"
             >
                 <template #actions>
                     <TimelineActionsMenu ref="actionsMenuRef" @shift-complete="onShiftComplete" />
@@ -484,7 +528,7 @@ onBeforeUnmount(() => {
         <div class="update-banner-actions">
             <button class="update-banner-btn primary" @click="openUpdateUrl">Download</button>
             <button class="update-banner-btn" @click="skipUpdate">Skip this version</button>
-            <button class="update-banner-close" @click="dismissUpdate" title="Dismiss"><i class="ri-close-line"></i></button>
+            <button class="update-banner-close" @click="dismissUpdate" aria-label="Dismiss" data-tip="Dismiss"><i class="ri-close-line"></i></button>
         </div>
     </div>
     <!-- HeaderMode (timeline settings): 0 full, 1 compact (title only), 2 hidden — the window title bar keeps the title -->
@@ -521,6 +565,7 @@ onBeforeUnmount(() => {
     />
     <ItemTypePickerModal v-if="showTypePicker" :last-type-id="lastTypeId" @pick="onTypePicked" @close="showTypePicker = false" />
     <ReferenceTimelineModal v-if="showReference" :current-id="store.currentProject?.Id" @close="showReference = false" />
+    <TimelineSearchPanel v-if="showSearch" ref="searchRef" @jump="onSearchJump" @close="showSearch = false" />
     <ConfirmModal v-if="store.loadNotice" :title="store.loadNotice.title" :message="store.loadNotice.message" confirm-label="I understand" hide-cancel @confirm="store.loadNotice = null" @cancel="store.loadNotice = null" />
 
     <div v-if="store.filterPanelOpen" class="filter-area">
@@ -563,6 +608,7 @@ onBeforeUnmount(() => {
 				@item-click="onItemClick"
 				@edit-character="onEditCharacter"
 				@character-timeline="onCharacterTimeline"
+				@family-tree="onFamilyTree"
 				@view-item="onViewItem"
 				@view-reference-item="refViewItemId = $event"
 				@add-item="onAddItem"
@@ -574,7 +620,7 @@ onBeforeUnmount(() => {
 				<button
 					class="osc-btn osc-btn--left"
 					aria-label="Scroll towards earlier years"
-					title="Hold to scroll towards earlier years (Shift = 3×)"
+					data-tip="Hold to scroll towards earlier years (Shift = 3×)"
 					@pointerdown="oscDown($event, 1)"
 					@pointerup="stopPan()"
 					@pointercancel="stopPan()"
@@ -583,7 +629,7 @@ onBeforeUnmount(() => {
 				<button
 					class="osc-btn osc-btn--right"
 					aria-label="Scroll towards later years"
-					title="Hold to scroll towards later years (Shift = 3×)"
+					data-tip="Hold to scroll towards later years (Shift = 3×)"
 					@pointerdown="oscDown($event, -1)"
 					@pointerup="stopPan()"
 					@pointercancel="stopPan()"
@@ -623,6 +669,7 @@ onBeforeUnmount(() => {
                 @item-click="onItemClick"
                 @edit-character="onEditCharacter"
                 @character-timeline="onCharacterTimeline"
+                @family-tree="onFamilyTree"
                 @view-item="onViewItem"
                 @add-item="onAddItem"
                 @mini-hover="onMiniHover"
@@ -704,7 +751,7 @@ onBeforeUnmount(() => {
 		</div>
 
 		<div id="timeline-info-right">
-			<label id="pan-speed" title="How fast ← / → and the on-screen buttons scroll, in pixels per second (Shift = 3×)">
+			<label id="pan-speed" data-tip="How fast ← / → and the on-screen buttons scroll, in pixels per second (Shift = 3×)">
 				<span>Pan</span>
 				<input
 					type="number"
@@ -723,6 +770,7 @@ onBeforeUnmount(() => {
         </div><!-- end #timeline-layout -->
 	</div>
 	<NotificationContainer />
+	<HoverTip />
 </template>
 
 <style scoped lang="scss">

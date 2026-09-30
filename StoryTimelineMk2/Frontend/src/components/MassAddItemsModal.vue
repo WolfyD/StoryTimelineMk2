@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { PhX, PhTrash, PhMinus, PhPlus } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
 import ConfirmModal from './ConfirmModal.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { ALL_LODS_MASK, loadDefaultLodMask } from '@/utils/timelinePrefs'
 import type { TimelineItem } from '@/types/models'
@@ -145,7 +145,7 @@ async function finish() {
             const result = await BackendAPI.SaveItem(toItem(d), [], [], [], [])
             if (result?.status !== 'ok') throw new Error(result?.message ?? 'no response')
         } catch (e) {
-            console.error('[MassAddItemsModal] SaveItem failed:', d, e)
+            void logError(`MassAddItemsModal: SaveItem failed for "${d.title}"`, e)
             error.value = `Saving "${d.title}" failed: ${e instanceof Error ? e.message : e}. ${saved} item(s) before it were saved; the rest are still listed.`
             break
         }

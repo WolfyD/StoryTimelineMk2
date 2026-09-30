@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { parseCalendarDef, parseCalendarConfig } from '@/utils/calendarDef'
 import { DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig } from '@/utils/timelineLayout'
@@ -14,9 +14,10 @@ import { useSideWidth } from '@/composables/useSideWidth'
 import LodDateInput from '@/components/LodDateInput.vue'
 import CharacterRelationsPanel from '@/components/CharacterRelationsPanel.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import HoverTip from '@/components/HoverTip.vue'
 import {
     PhPlus, PhTrash, PhFloppyDisk, PhImage, PhMagnifyingGlass, PhUser, PhPencilSimple, PhUserFocus,
-    PhUsersThree,
+    PhUsersThree, PhTreeStructure,
 } from '@phosphor-icons/vue'
 import type { CharacterAppearance, CharacterItem, LodLevel } from '@/types/models'
 
@@ -85,6 +86,12 @@ const filtered = computed(() => {
 /** Item type names, by TypeId — the same order the store keeps them in. */
 const TYPE_NAMES = ['Event', 'Period', 'Age', 'Picture', 'Note', 'Bookmark', 'Character', 'Start', 'End']
 
+/** Everything a caught exception knows, in the log, and its point in the window. */
+function failed(what: string, ex: unknown) {
+    error.value = `${what}: ${ex instanceof Error ? ex.message : String(ex)}`
+    void logError(`CharactersApp: ${what}`, ex)
+}
+
 // ── Loading ───────────────────────────────────────────────────────────────────
 async function loadCharacters(selectId?: string) {
     characters.value = (await BackendAPI.GetTimelineCharacters(timelineId.value)) ?? []
@@ -101,8 +108,7 @@ async function loadAppearances() {
     try {
         appearances.value = (await BackendAPI.GetCharacterAppearances(draft.value.Id)) ?? []
     } catch (ex) {
-        error.value = `Could not load the appearances: ${ex}`
-        console.error('GetCharacterAppearances failed', ex)
+        failed('Could not load the appearances', ex)
     }
 }
 
@@ -112,19 +118,13 @@ async function loadAppearances() {
  */
 const stopFocusListener = BackendAPI.onHostMessage(msg => {
     if (msg?.action !== 'FocusCharacter') return
-    loadCharacters(msg.payload.CharacterId).catch(ex => {
-        error.value = `Could not open that character: ${ex}`
-        console.error('FocusCharacter failed', ex)
-    })
+    loadCharacters(msg.payload.CharacterId).catch(ex => failed('Could not open that character', ex))
 })
 onBeforeUnmount(stopFocusListener)
 
 /** Row click: the open timeline window jumps to the item and pulses it. */
 function showAppearance(a: CharacterAppearance) {
-    BackendAPI.FocusTimelineItem(a.ItemId, a.AbsoluteStart).catch(ex => {
-        error.value = `Could not reach the timeline window: ${ex}`
-        console.error('FocusTimelineItem failed', ex)
-    })
+    BackendAPI.FocusTimelineItem(a.ItemId, a.AbsoluteStart).catch(ex => failed('Could not reach the timeline window', ex))
 }
 
 async function load() {
@@ -147,8 +147,7 @@ async function load() {
             weekCount.value    = def.weekCount
         }
     } catch (ex) {
-        error.value = `Failed to load: ${ex}`
-        console.error('CharactersApp load failed', ex)
+        failed('Failed to load', ex)
     } finally {
         loading.value = false
     }
@@ -183,6 +182,10 @@ const isNew = computed(() => !!draft.value && !characters.value.some(c => c.Id =
 const relationsPanel = ref<InstanceType<typeof CharacterRelationsPanel> | null>(null)
 /** Nobody to tie them to yet — a saved cast of one, or a character that has no row of its own. */
 const canRelate = computed(() => !isNew.value && characters.value.length > 1)
+
+function openFamilyTree(id: string) {
+    BackendAPI.OpenFamilyTreeWindow(timelineId.value, id).catch(ex => failed('Could not open the family tree', ex))
+}
 
 function select(c: CharacterItem) {
     error.value = ''
@@ -251,8 +254,7 @@ async function save() {
         await loadCharacters(c.Id)
         await loadAppearances()
     } catch (ex) {
-        error.value = `Save failed: ${ex}`
-        console.error('SaveCharacter failed', ex)
+        failed('Save failed', ex)
     } finally {
         saving.value = false
     }
@@ -275,8 +277,7 @@ async function deleteCharacter() {
         draft.value = null
         await loadCharacters()
     } catch (ex) {
-        error.value = `Delete failed: ${ex}`
-        console.error('DeleteCharacter failed', ex)
+        failed('Delete failed', ex)
     } finally {
         saving.value = false
     }
@@ -295,8 +296,7 @@ async function pickPortrait() {
         await loadCharacters(c.Id)
         if (draft.value) await linkPortraitToItems(draft.value)
     } catch (ex) {
-        error.value = `Could not set the portrait: ${ex}`
-        console.error('SetCharacterPortrait failed', ex)
+        failed('Could not set the portrait', ex)
     }
 }
 </script>
@@ -315,7 +315,7 @@ async function pickPortrait() {
                         <PhMagnifyingGlass :size="14" />
                         <input v-model="search" type="text" placeholder="Search…" />
                     </label>
-                    <button class="ch-btn ch-btn--primary" title="New character" @click="newCharacter">
+                    <button class="ch-btn ch-btn--primary" aria-label="New character" data-tip="New character" @click="newCharacter">
                         <PhPlus :size="15" />
                     </button>
                 </div>
@@ -344,7 +344,7 @@ async function pickPortrait() {
                     </li>
                 </ul>
             </aside>
-            <div class="side-grip" title="Drag to resize" @pointerdown="startResize" />
+            <div class="side-grip" data-tip="Drag to resize" @pointerdown="startResize" />
 
             <!-- ── Detail ───────────────────────────────────────────── -->
             <div class="ch-pane">
@@ -409,7 +409,7 @@ async function pickPortrait() {
                             type="text"
                             list="ch-genders"
                             placeholder="not stated"
-                            title="Only used to word relations — mother of, brother of"
+                            data-tip="Only used to word relations — mother of, brother of"
                         />
                         <datalist id="ch-genders">
                             <option v-for="g in GENDER_SUGGESTIONS" :key="g" :value="g" />
@@ -506,7 +506,8 @@ async function pickPortrait() {
                             <span v-if="a.Role" class="ch-app-role">{{ a.Role }}</span>
                             <button
                                 class="ch-app-edit"
-                                title="Open in the item editor"
+                                aria-label="Open in the item editor"
+                                data-tip="Open in the item editor"
                                 @click.stop="BackendAPI.OpenAddEditItemWindow(timelineId, a.ItemId)"
                             ><PhPencilSimple :size="13" /></button>
                         </li>
@@ -547,15 +548,21 @@ async function pickPortrait() {
                     <button
                         class="ch-btn"
                         :disabled="!canRelate"
-                        :title="canRelate ? 'Tie them to someone else' : 'Save them first, and add someone to tie them to'"
+                        :data-tip="canRelate ? 'Tie them to someone else' : 'Save them first, and add someone to tie them to'"
                         @click="relationsPanel?.open(null)"
                     ><PhUsersThree :size="15" /> Relate</button>
                     <button
                         class="ch-btn"
                         :disabled="isNew"
-                        title="Open a read-only timeline of this character alone"
+                        data-tip="Open a read-only timeline of this character alone"
                         @click="BackendAPI.OpenCharacterTimeline(timelineId, draft.Id)"
                     ><PhUserFocus :size="15" /> Their timeline</button>
+                    <button
+                        class="ch-btn"
+                        :disabled="isNew"
+                        data-tip="Their family tree, in a window of its own"
+                        @click="openFamilyTree(draft.Id)"
+                    ><PhTreeStructure :size="15" /> Family tree</button>
                 </div>
             </footer>
             </div>
@@ -568,6 +575,8 @@ async function pickPortrait() {
             confirm-label="Delete" cancel-label="Keep" danger
             @confirm="deleteCharacter" @cancel="showDelete = false"
         />
+
+        <HoverTip />
     </div>
 </template>
 

@@ -15,9 +15,10 @@ const props = defineProps<{
 
 const store = useTimelineStore();
 
-// Cache: itemId → first picture URL (null = no picture, undefined = not yet fetched)
+// Cache: item → first picture's thumb (the card) and original (the lightbox); null = no picture, undefined = not yet fetched
 // Keyed by item object: upsertItem replaces the object, so a saved item refetches its picture automatically
-const pictureCache = reactive(new WeakMap<TimelineItem, string | null>());
+type Pic = { thumb: string; full: string };
+const pictureCache = reactive(new WeakMap<TimelineItem, Pic | null>());
 
 const { lightboxSrc, lightboxCollection, lightboxIndex, openLightbox, closeLightbox, lightboxPrev, lightboxNext, onLbBeforeEnter, onLbEnter, onLbBeforeLeave, onLbLeave } = useLightbox()
 
@@ -98,15 +99,12 @@ watch(inRangeItems, (items) => {
             pictureCache.set(item, undefined as any);
             const data = await getItemDetails(item);
             const first = data?.Pictures?.[0];
-            pictureCache.set(item, first ? mediaUrl(first.ThumbPath) : null);
+            pictureCache.set(item, first ? { thumb: mediaUrl(first.ThumbPath), full: mediaUrl(first.FilePath) } : null);
         }
     }, 300);
 }, { immediate: true });
 
-function picUrl(item: TimelineItem): string | null {
-    const v = pictureCache.get(item);
-    return v === undefined ? null : v;
-}
+const pic = (item: TimelineItem): Pic | null => pictureCache.get(item) ?? null;
 </script>
 
 <template>
@@ -168,11 +166,11 @@ function picUrl(item: TimelineItem): string | null {
                         <div v-if="item.Content" class="data-item-content">{{ item.Content }}</div>
                     </div>
                     <div
-                        v-if="picUrl(item)"
+                        v-if="pic(item)"
                         class="data-item-image"
-                        @click="openLightbox($event, picUrl(item)!)"
+                        @click="openLightbox($event, pic(item)!.full)"
                     >
-                        <img :src="picUrl(item)!" alt="" />
+                        <img :src="pic(item)!.thumb" alt="" />
                     </div>
                 </div>
             </template>

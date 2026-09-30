@@ -53,6 +53,7 @@ export const SHORTCUTS: Shortcut[] = [
     { id: 'pickPicture', keys: 'I', group: 'New item type', label: 'Picture', context: 'timeline' },
     { id: 'pickNote',    keys: 'O', group: 'New item type', label: 'Note',    context: 'timeline' },
 
+    { id: 'search',       keys: 'Ctrl+F',       group: 'Panels & windows', label: 'Search this timeline — title, description, tags (Enter / Shift+Enter step)', context: 'timeline' },
     { id: 'filter',       keys: 'F',            group: 'Panels & windows', label: 'Filter panel',      context: 'timeline' },
     { id: 'tags',         keys: 'T',            group: 'Panels & windows', label: 'Tags',              context: 'timeline' },
     { id: 'yearCalendar', keys: 'Y',            group: 'Panels & windows', label: 'Year calendar',     context: 'timeline' },

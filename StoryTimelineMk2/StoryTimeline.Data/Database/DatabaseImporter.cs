@@ -241,6 +241,11 @@ namespace StoryTimelineMk2.Database
             ("book_stories",               "OR IGNORE"),
             ("chapters",                   "OR IGNORE"),
             ("item_chapters",              "OR IGNORE"),
+            // BL-88. Keyed by story, not timeline, so the cascade does not clear them; the merge clears the
+            // backup's timelines' by hand. IGNORE keeps other timelines' links and adds the backup's.
+            ("story_characters",           "OR IGNORE"),
+            ("story_locations",            "OR IGNORE"),
+            ("story_chapters",             "OR IGNORE"),
             ("item_character_appearances", "OR IGNORE"),
             ("notes",                      "OR IGNORE"),
             ("timeline_hidden_ranges",     "OR IGNORE"),
@@ -311,7 +316,14 @@ namespace StoryTimelineMk2.Database
                 if (backupIds.Count > 0)
                 {
                     string idList = string.Join(",", backupIds);
-                    dbTarget.Execute($"DELETE FROM main.timelines WHERE id IN ({idList})", transaction: tx);
+                    // BL-88. Story links carry no FK, so the cascade misses them; the characters and
+                    // places come back with the same ids, and a link the backup lacks would with them.
+                    dbTarget.Execute($@"
+                        DELETE FROM main.story_characters WHERE character_id IN
+                            (SELECT id FROM main.characters WHERE timeline_id IN ({idList}));
+                        DELETE FROM main.story_locations WHERE location_id IN
+                            (SELECT l.id FROM main.locations l JOIN main.maps m ON m.id = l.map_id WHERE m.timeline_id IN ({idList}));
+                        DELETE FROM main.timelines WHERE id IN ({idList});", transaction: tx);
                 }
 
                 foreach (var (table, conflict) in V2CopyPlan)

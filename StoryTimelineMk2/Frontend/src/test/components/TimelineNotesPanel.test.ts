@@ -6,6 +6,7 @@ import type { LayoutSettings, LodLevel } from '@/types/models'
 
 // Mock BackendAPI to prevent real bridge calls
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     SaveNote: vi.fn().mockResolvedValue({ status: 'ok', noteId: 'new-id' }),
     DeleteNote: vi.fn().mockResolvedValue({ status: 'ok' }),

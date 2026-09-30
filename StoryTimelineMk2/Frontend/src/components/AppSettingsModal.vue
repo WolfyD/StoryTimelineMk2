@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { PhFolderOpen, PhArrowSquareOut, PhCopy, PhFloppyDisk, PhPaintBrush } from '@phosphor-icons/vue'
-import { BackendAPI, type BridgeError } from '@/bridge/api'
+import { BackendAPI, logError, type BridgeError } from '@/bridge/api'
 import type { BackupInfo } from '@/types/models'
 import BaseModal from './BaseModal.vue'
 import AppThemeModal from './AppThemeModal.vue'
@@ -47,8 +47,8 @@ async function guard<T>(what: string, call: () => Promise<T>): Promise<T | null>
     try {
         return await call()
     } catch (e) {
-        // `detail` carries the C# stack; `reported` means the backend already put its own dialog up.
-        console.error(`[AppSettings] ${what} failed:`, e, (e as BridgeError).payload?.detail)
+        // `reported` means the backend already put its own dialog up.
+        void logError(`AppSettingsModal: ${what} failed`, e)
         if (!(e as BridgeError).payload?.reported) {
             showFeedback('error', `${what} failed: ${e instanceof Error ? e.message : String(e)}`)
         }

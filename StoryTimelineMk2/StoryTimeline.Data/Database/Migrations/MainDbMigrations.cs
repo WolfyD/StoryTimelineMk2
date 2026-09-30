@@ -44,6 +44,8 @@ namespace StoryTimelineMk2.Database.Migrations
             new(24, "what a place looks like on the map", "1.1.1", V24_MarkerStyles),
             new(25, "where the compass sits on a map", "1.1.1", V25_CompassPlacement),
             new(26, "squares to cite on a map", "1.1.1", V26_MapGrid),
+            new(27, "stories you can keep notes on", "1.1.1", V27_StoryDetails),
+            new(28, "the chapters a story is told in", "1.1.1", V28_StoryChapters),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1702,6 +1704,70 @@ namespace StoryTimelineMk2.Database.Migrations
         private static void V26_MapGrid(MigrationDb db)
         {
             AddCol(db, "maps", "grid_cols", "INTEGER NOT NULL DEFAULT 0");
+        }
+
+        // ── 27: stories you can keep notes on ──────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-88 phase 2. A story stops being a title and becomes something the Archive can edit: where
+        /// it stands, how it is told, what order it is read in, what it quotes. The summary is the
+        /// existing <c>description</c>; <c>status</c>, <c>tense</c> and <c>person</c> hold one of the
+        /// fixed choices the editor offers, or null for "not said". <c>quotes</c> is a JSON array of
+        /// strings, the way <c>timelines.calendar</c> holds its set — read and written whole, never
+        /// queried into.
+        ///
+        /// Only <c>previous_story_id</c> is stored; "next" is whichever story names this one as its
+        /// previous, so the two can never disagree.
+        ///
+        /// Stories are shared by every timeline but characters and places are not, so the link tables
+        /// are keyed by story and a timeline only ever replaces the rows whose character or place is its
+        /// own. No foreign keys: the app runs with them off, and the importers that switch them on do
+        /// <c>INSERT OR REPLACE INTO stories</c>, which would cascade these rows away. Deletes clean up
+        /// in the repos, and an orphan left by a deleted character is unreachable through the joins.
+        /// </summary>
+        private static void V27_StoryDetails(MigrationDb db)
+        {
+            AddCol(db, "stories", "status", "TEXT");
+            AddCol(db, "stories", "tense", "TEXT");
+            AddCol(db, "stories", "person", "TEXT");
+            AddCol(db, "stories", "genre", "TEXT");
+            AddCol(db, "stories", "color", "TEXT");
+            AddCol(db, "stories", "reading_order", "INTEGER");
+            AddCol(db, "stories", "previous_story_id", "TEXT");
+            AddCol(db, "stories", "quotes", "TEXT");
+            AddCol(db, "stories", "notes", "TEXT");
+
+            db.Execute(@"
+                CREATE TABLE IF NOT EXISTS story_characters (
+                    story_id TEXT NOT NULL,
+                    character_id TEXT NOT NULL,
+                    pov INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (story_id, character_id)
+                );
+                CREATE TABLE IF NOT EXISTS story_locations (
+                    story_id TEXT NOT NULL,
+                    location_id TEXT NOT NULL,
+                    PRIMARY KEY (story_id, location_id)
+                );
+            ");
+        }
+
+        // ── 28: the chapters a story is told in ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-88. A story in a book can name the chapters it runs through; none named means the whole
+        /// book, as before. Only chapters of a book in <c>book_stories</c> are kept — SaveStory drops the
+        /// rest. No foreign keys, for the reasons step 27 gives.
+        /// </summary>
+        private static void V28_StoryChapters(MigrationDb db)
+        {
+            db.Execute(@"
+                CREATE TABLE IF NOT EXISTS story_chapters (
+                    story_id TEXT NOT NULL,
+                    chapter_id TEXT NOT NULL,
+                    PRIMARY KEY (story_id, chapter_id)
+                );
+            ");
         }
     }
 }

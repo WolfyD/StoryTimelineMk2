@@ -58,7 +58,8 @@ namespace StoryTimelineMk2.Database
                 GROUP BY t.id ORDER BY t.name");
         }
 
-        public void RenameTag(int id, string name)
+        /// <summary>Renames a tag; returns the name as stored (lowercased, trimmed).</summary>
+        public string RenameTag(int id, string name)
         {
             var normalized = name.ToLowerInvariant().Trim();
             if (normalized.Length == 0) throw new ArgumentException("Tag name cannot be empty.");
@@ -66,6 +67,28 @@ namespace StoryTimelineMk2.Database
             if (db.ExecuteScalar<int>("SELECT COUNT(*) FROM tags WHERE name = @Name AND id <> @Id", new { Name = normalized, Id = id }) > 0)
                 throw new InvalidOperationException($"A tag named '{normalized}' already exists.");
             db.Execute("UPDATE tags SET name = @Name WHERE id = @Id", new { Name = normalized, Id = id });
+            return normalized;
+        }
+
+        /// <summary>
+        /// Folds one tag into another: every item carrying <paramref name="fromId"/> carries
+        /// <paramref name="intoId"/> instead, and the old tag is gone. Returns the surviving tag's name.
+        /// </summary>
+        public string MergeTag(int fromId, int intoId)
+        {
+            if (fromId == intoId) throw new ArgumentException("A tag cannot be merged into itself.");
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            using var tx = db.BeginTransaction();
+            var into = db.ExecuteScalar<string?>("SELECT name FROM tags WHERE id = @Id", new { Id = intoId }, tx)
+                ?? throw new InvalidOperationException("The tag to merge into no longer exists.");
+            // OR IGNORE: an item carrying both keeps one link.
+            db.Execute("INSERT OR IGNORE INTO item_tags (item_id, tag_id) SELECT item_id, @Into FROM item_tags WHERE tag_id = @From",
+                new { Into = intoId, From = fromId }, tx);
+            db.Execute("DELETE FROM item_tags WHERE tag_id = @From", new { From = fromId }, tx);
+            db.Execute("DELETE FROM tags WHERE id = @From", new { From = fromId }, tx);
+            tx.Commit();
+            return into;
         }
 
         /// <summary>

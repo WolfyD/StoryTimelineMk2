@@ -9,7 +9,7 @@ import HighlightedTextarea from '@/components/HighlightedTextarea.vue'
 import { findPlaces, type PlaceHit } from '@/utils/placeMatcher'
 import { filterMapTree, flattenMapTree, trailToPlace } from '@/utils/mapTree'
 import { PhMagicWand, PhMapPin, PhMapTrifold } from '@phosphor-icons/vue'
-import { BackendAPI, IS_BROWSER_HOST, type BridgeError } from '@/bridge/api'
+import { BackendAPI, IS_BROWSER_HOST, logError } from '@/bridge/api'
 import { useShortcuts, MOD } from '@/utils/shortcuts'
 import HelpModal from '@/components/HelpModal.vue'
 import ShortcutsModal from '@/components/ShortcutsModal.vue'
@@ -23,6 +23,7 @@ import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import LodDateInput from '@/components/LodDateInput.vue'
 import ImagePickerModal from '@/components/ImagePickerModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import HoverTip from '@/components/HoverTip.vue'
 import type {
   TimelineItem,
   MediaItem,
@@ -168,6 +169,9 @@ const charEntities = computed(() => allCharacters.value.map(characterEntity))
 
 // Story picker
 const showStoryPicker    = ref(false)
+const storyFilter        = ref('')
+// BL-88: a story, book or chapter made from here, so its button cannot be pressed twice.
+const creatingRef        = ref(false)
 
 // Book / chapter
 const bookSearchValue    = ref('')
@@ -379,7 +383,7 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
     // `item.value` is still the default from the top of this function, carrying a fresh UUID,
     // so saving it wrote a new untitled item at year 0 instead of editing the real one.
     // Say so, and refuse to save until the load has actually succeeded.
-    console.error('[EditItem] loadData error:', err, (err as BridgeError).payload?.detail)
+    void logError('EditItem: loadData error', err)
     loadFailed.value = true
     saveError.value = `Could not load this item: ${err instanceof Error ? err.message : String(err)}`
   } finally {
@@ -521,6 +525,18 @@ function closePaletteOutside(e: MouseEvent) {
   if (!(e.target as HTMLElement).closest('.color-palette-wrap')) paletteOpen.value = false
 }
 
+// BL-88: a story made, renamed or deleted in the Archive reaches the picker and the linked chips.
+const stopStoryListen = BackendAPI.onHostMessage(m => {
+  if (m?.action !== 'StoriesChanged') return
+  BackendAPI.GetAllStories().then(stories => {
+    allStories.value = stories ?? []
+    for (const r of storyRefs.value) r.StoryTitle = allStories.value.find(s => s.Id === r.StoryId)?.Title ?? r.StoryTitle
+  }, err => {
+    saveError.value = `Could not reload the stories: ${err}`
+    void logError('EditItem: StoriesChanged reload error', err)
+  })
+})
+
 onMounted(() => {
   loadData(timelineId, itemId, defaultType, defaultAbsoluteTime, defaultGranularity)
   window.chrome?.webview?.addEventListener('message', handlePushMessage)
@@ -528,6 +544,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopStoryListen()
   window.chrome?.webview?.removeEventListener('message', handlePushMessage)
   document.removeEventListener('mousedown', closePaletteOutside)
 })
@@ -700,7 +717,7 @@ function removeCharacterAppearance(index: number) {
   dismissedChars.value.add(removed.CharacterId)
   BackendAPI.DismissCharacterLink(item.value.Id, removed.CharacterId).catch(err => {
     saveError.value = `Could not remember that removal: ${err}`
-    console.error('[EditItem] DismissCharacterLink error:', err)
+    void logError('EditItem: DismissCharacterLink error', err)
   })
 }
 
@@ -750,7 +767,7 @@ async function createCharacterFromFilter() {
     charPickerFilter.value = ''
   } catch (err) {
     saveError.value = `Could not create the character: ${err}`
-    console.error('[EditItem] createCharacter error:', err)
+    void logError('EditItem: createCharacter error', err)
   } finally {
     creatingChar.value = false
   }
@@ -774,6 +791,34 @@ function isStoryLinked(storyId: string) {
 
 function removeStoryRef(index: number) {
   storyRefs.value.splice(index, 1)
+}
+
+const filteredStories = computed(() => {
+  const needle = storyFilter.value.trim().toLowerCase()
+  return needle ? allStories.value.filter(s => s.Title.toLowerCase().includes(needle)) : allStories.value
+})
+/** What the filter holds, if no story has that title yet — offered as a new one. */
+const newStoryTitle = computed(() => {
+  const title = storyFilter.value.trim()
+  return title && !allStories.value.some(s => s.Title.toLowerCase() === title.toLowerCase()) ? title : ''
+})
+
+/** BL-88: the story row only; its details are the Archive's. Linked to this item straight away. */
+async function createStoryFromFilter() {
+  if (!newStoryTitle.value || creatingRef.value) return
+  creatingRef.value = true
+  try {
+    const result = await BackendAPI.SaveStory({ Id: '', Title: newStoryTitle.value, Description: null })
+    if (result?.status !== 'ok') throw new Error('The story was not saved.')
+    allStories.value.push(result.story)
+    toggleStory(result.story)
+    storyFilter.value = ''
+  } catch (err) {
+    saveError.value = `Could not create the story: ${err}`
+    void logError('EditItem: createStory error', err)
+  } finally {
+    creatingRef.value = false
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -816,6 +861,47 @@ function addChapterRef() {
 
 function removeChapterRef(index: number) {
   chapterRefs.value.splice(index, 1)
+}
+
+/** What was typed, if the search found no book of that title — offered as a new one. */
+const newBookTitle = computed(() => {
+  const title = bookSearchValue.value.trim()
+  return title && !selectedBook.value && !bookSuggestions.value.some(b => b.Title.toLowerCase() === title.toLowerCase()) ? title : ''
+})
+const nextChapterNumber = computed(() => Math.max(0, ...bookChapters.value.map(c => c.Number)) + 1)
+
+/** BL-88: a book from the search box, then selected as if it had been found. */
+async function createBookFromSearch() {
+  if (!newBookTitle.value || creatingRef.value) return
+  creatingRef.value = true
+  try {
+    clearTimeout(bookDebounce)
+    const result = await BackendAPI.SaveBook({ Id: '', Title: newBookTitle.value, Author: null })
+    if (result?.status !== 'ok') throw new Error('The book was not saved.')
+    await selectBook(result.book)
+  } catch (err) {
+    saveError.value = `Could not create the book: ${err}`
+    void logError('EditItem: createBook error', err)
+  } finally {
+    creatingRef.value = false
+  }
+}
+
+/** BL-88: the next chapter of the selected book, untitled — the Archive names it — and picked. */
+async function createChapter() {
+  if (!selectedBook.value || creatingRef.value) return
+  creatingRef.value = true
+  try {
+    const result = await BackendAPI.SaveChapter({ Id: '', BookId: selectedBook.value.Id, Number: nextChapterNumber.value, Title: null })
+    if (result?.status !== 'ok') throw new Error('The chapter was not saved.')
+    bookChapters.value.push(result.chapter)
+    selectedChapterId.value = result.chapter.Id
+  } catch (err) {
+    saveError.value = `Could not create the chapter: ${err}`
+    void logError('EditItem: createChapter error', err)
+  } finally {
+    creatingRef.value = false
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -952,13 +1038,13 @@ async function removeImage(pictureId: string) {
           <label>Color</label>
           <div class="color-row">
             <input type="color" v-model="item.Color" />
-            <button type="button" class="color-tool" title="Random" @click="randomColor"><i class="ri-shuffle-line" /></button>
+            <button type="button" class="color-tool" aria-label="Random" data-tip="Random" @click="randomColor"><i class="ri-shuffle-line" /></button>
             <div class="color-palette-wrap">
-              <button type="button" class="color-tool" :class="{ open: paletteOpen }" title="Palette" @click="paletteOpen = !paletteOpen"><i class="ri-arrow-down-s-line" /></button>
+              <button type="button" class="color-tool" :class="{ open: paletteOpen }" aria-label="Palette" data-tip="Palette" @click="paletteOpen = !paletteOpen"><i class="ri-arrow-down-s-line" /></button>
               <div v-if="paletteOpen" class="color-palette">
                 <button
                   v-for="c in swatches" :key="c" type="button" class="color-swatch"
-                  :class="{ active: item.Color?.toLowerCase() === c }" :style="{ background: c }" :title="c"
+                  :class="{ active: item.Color?.toLowerCase() === c }" :style="{ background: c }" :aria-label="c" :data-tip="c"
                   @click="item.Color = c; paletteOpen = false" />
               </div>
             </div>
@@ -1086,31 +1172,31 @@ async function removeImage(pictureId: string) {
               >{{ name }}</button>
             </div>
           </div>
-          <div class="field checkbox-field" v-if="hasStemBox" title="Center the box on its stem instead of offsetting it to one side">
+          <div class="field checkbox-field" v-if="hasStemBox" data-tip="Center the box on its stem instead of offsetting it to one side">
             <label>
               <input type="checkbox" v-model="item.Centered" />
               Centered
             </label>
           </div>
-          <div class="field checkbox-field" v-if="item.TypeId === 4" title="Draw the title as a caption strip along the bottom of the picture">
+          <div class="field checkbox-field" v-if="item.TypeId === 4" data-tip="Draw the title as a caption strip along the bottom of the picture">
             <label>
               <input type="checkbox" v-model="item.ShowTitle" />
               Show title
             </label>
           </div>
-          <div class="field checkbox-field" v-if="hasOpenEnds" title="It began before this — draw an arrow off the left instead of a hard edge, so the timeline needn't stretch back to say so">
+          <div class="field checkbox-field" v-if="hasOpenEnds" data-tip="It began before this — draw an arrow off the left instead of a hard edge, so the timeline needn't stretch back to say so">
             <label>
               <input type="checkbox" v-model="item.OpenStart" />
               Open start
             </label>
           </div>
-          <div class="field checkbox-field" v-if="hasOpenEnds" title="It carries on after this — draw an arrow off the right instead of a hard edge">
+          <div class="field checkbox-field" v-if="hasOpenEnds" data-tip="It carries on after this — draw an arrow off the right instead of a hard edge">
             <label>
               <input type="checkbox" v-model="item.OpenEnd" />
               Open end
             </label>
           </div>
-          <div class="field checkbox-field" v-if="hasOpenEnds && (item.OpenStart || item.OpenEnd)" title="Trail the open side off instead of ending it flat: half-transparent at the arrow's point, full color a year in">
+          <div class="field checkbox-field" v-if="hasOpenEnds && (item.OpenStart || item.OpenEnd)" data-tip="Trail the open side off instead of ending it flat: half-transparent at the arrow's point, full color a year in">
             <label>
               <input type="checkbox" v-model="item.OpenFade" />
               Fade out
@@ -1173,10 +1259,10 @@ async function removeImage(pictureId: string) {
               @click="openLightbox($event, mediaUrl(img.FilePath), images.map(i => mediaUrl(i.FilePath)))"
             />
             <div class="image-thumb-footer">
-              <span class="image-label" :title="img.Title || img.FileName">
+              <span class="image-label" :data-tip="img.Title || img.FileName">
                 {{ img.Title || img.FileName }}
               </span>
-              <button class="btn-icon btn-icon--danger" @click="removeImage(img.Id)" title="Remove">×</button>
+              <button class="btn-icon btn-icon--danger" @click="removeImage(img.Id)" aria-label="Remove" data-tip="Remove">×</button>
             </div>
           </div>
         </div>
@@ -1250,7 +1336,7 @@ async function removeImage(pictureId: string) {
               class="chip chip-suggest"
               v-for="s in placeSuggestions"
               :key="s.id"
-              :title="`Set the place to ${s.trail.join(' › ')}`"
+              :data-tip="`Set the place to ${s.trail.join(' › ')}`"
               @click="item.LocationId = s.id"
             >+ {{ s.trail.join(' › ') }}</button>
           </div>
@@ -1309,7 +1395,7 @@ async function removeImage(pictureId: string) {
               <div class="char-info">
                 <span class="char-name">
                   {{ app.CharacterName }}
-                  <span v-if="app.AutoDetected" class="char-auto" title="Found in this item's text"><PhMagicWand :size="12" /></span>
+                  <span v-if="app.AutoDetected" class="char-auto" data-tip="Found in this item's text"><PhMagicWand :size="12" /></span>
                 </span>
                 <input
                   class="char-role-input"
@@ -1324,7 +1410,7 @@ async function removeImage(pictureId: string) {
                 type="button"
                 class="char-presence"
                 :class="{ 'is-mentioned': app.MentionedOnly }"
-                :title="app.MentionedOnly
+                :data-tip="app.MentionedOnly
                   ? 'Named here, but not present — click to say they were there'
                   : 'There when this happened — click to say they were only named'"
                 @click="app.MentionedOnly = !app.MentionedOnly"
@@ -1407,9 +1493,16 @@ async function removeImage(pictureId: string) {
               {{ showStoryPicker ? 'Close' : '+ Link story' }}
             </button>
             <div class="story-picker" v-if="showStoryPicker">
+              <input
+                type="text"
+                class="story-filter"
+                v-model="storyFilter"
+                placeholder="Filter, or type a new title…"
+                @keydown.enter.prevent="createStoryFromFilter"
+              />
               <label
                 class="story-option"
-                v-for="story in allStories"
+                v-for="story in filteredStories"
                 :key="story.Id"
               >
                 <input
@@ -1419,7 +1512,13 @@ async function removeImage(pictureId: string) {
                 />
                 {{ story.Title }}
               </label>
-              <p v-if="!allStories.length" class="placeholder-note">No stories in this timeline.</p>
+              <button
+                v-if="newStoryTitle"
+                class="btn btn-secondary btn-sm picker-new"
+                :disabled="creatingRef"
+                @click="createStoryFromFilter"
+              >+ New story &ldquo;{{ newStoryTitle }}&rdquo;</button>
+              <p v-else-if="!filteredStories.length" class="placeholder-note">No stories yet — type a title to add one.</p>
             </div>
           </div>
 
@@ -1443,13 +1542,18 @@ async function removeImage(pictureId: string) {
                   placeholder="Book title…"
                   @input="onBookSearchInput"
                 />
-                <div class="suggestions" v-if="bookSuggestions.length">
+                <div class="suggestions" v-if="bookSuggestions.length || newBookTitle">
                   <div
                     class="suggestion-item"
                     v-for="b in bookSuggestions"
                     :key="b.Id"
                     @mousedown.prevent="selectBook(b)"
                   >{{ b.Title }}</div>
+                  <div
+                    v-if="newBookTitle"
+                    class="suggestion-item suggestion-new"
+                    @mousedown.prevent="createBookFromSearch"
+                  >+ New book &ldquo;{{ newBookTitle }}&rdquo;</div>
                 </div>
               </div>
               <div class="field flex-1" v-if="selectedBook && bookChapters.length">
@@ -1464,6 +1568,10 @@ async function removeImage(pictureId: string) {
               <div class="field" v-if="selectedChapterId">
                 <label>&nbsp;</label>
                 <button class="btn btn-secondary btn-sm" @click="addChapterRef">+ Add</button>
+              </div>
+              <div class="field" v-else-if="selectedBook">
+                <label>&nbsp;</label>
+                <button class="btn btn-secondary btn-sm" :disabled="creatingRef" @click="createChapter">+ New chapter {{ nextChapterNumber }}</button>
               </div>
             </div>
           </div>
@@ -1503,6 +1611,7 @@ async function removeImage(pictureId: string) {
   <HelpModal v-if="showHelp" @close="showHelp = false" />
   <ShortcutsModal v-if="showShortcuts" context="edit" @close="showShortcuts = false" />
   <NotificationContainer />
+  <HoverTip />
 </template>
 
 <style scoped lang="scss">
@@ -2168,6 +2277,21 @@ async function removeImage(pictureId: string) {
   overflow-y: auto;
   background: var(--app-surface, #162032);
 }
+
+.story-filter {
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  border: 1px solid var(--app-border, #334155);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: var(--app-bg, #0f172a);
+  color: var(--app-text, #e2e8f0);
+  &:focus { outline: 2px solid var(--app-accent, #4a90d9); }
+  &::placeholder { color: var(--app-text-dim, #64748b); }
+}
+
+.suggestion-new { color: var(--app-accent-hover, #818cf8); }
 
 .story-option {
   display: flex;

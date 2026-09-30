@@ -240,6 +240,8 @@ export interface TimelineItem {
 	Importance: number;
 	MinLodLevel: number;
 	LodVisibilityMask: number;
+	/** Read-only, set by the database on insert — the Archive's "date added" sort. */
+	CreatedAt?: string;
 }
 
 export interface KonvaGroupObject {
@@ -505,13 +507,46 @@ export interface Tag {
 export interface Story {
 	Id: string;
 	Title: string;
+	/** The summary. */
 	Description: string | null;
+	// BL-88: the Archive's story editor. Absent from GetAllStories' lighter rows.
+	Status?: string | null;
+	Tense?: string | null;
+	Person?: string | null;
+	Genre?: string | null;
+	Color?: string | null;
+	ReadingOrder?: number | null;
+	/** Stories make one chain: at most one previous and one next. */
+	PreviousStoryId?: string | null;
+	/** Not a column: the story whose previous is this one. SaveStory with a timeline writes it back there. */
+	NextStoryId?: string | null;
+	/** JSON: an array of quotes, each an array of `QuoteLine`s — `storyQuotes()` reads it, older shapes too. */
+	Quotes?: string | null;
+	Notes?: string | null;
+	/** This timeline's (and shared) characters only — another timeline's links are its own. */
+	Characters?: { CharacterId: string; Pov: boolean }[];
+	LocationIds?: string[];
+	BookIds?: string[];
+	/** Chapters of those books it is told in; none for a book means the whole book. */
+	ChapterIds?: string[];
+	/** Items in other timelines that cite it: non-zero means edits reach them too. */
+	OtherTimelineRefs?: number;
+}
+
+/** One line of a story's quote; a quote of several lines is an exchange. The speaker is a name as typed. */
+export interface QuoteLine {
+	text: string;
+	speaker: string;
 }
 
 export interface Book {
 	Id: string;
 	Title: string;
 	Author: string | null;
+	Description?: string | null;
+	/** BL-88: GetArchiveBooks fills these in; SearchBooks does not. */
+	Chapters?: Chapter[];
+	OtherTimelineRefs?: number;
 }
 
 export interface Chapter {
@@ -519,6 +554,8 @@ export interface Chapter {
 	BookId: string;
 	Number: number;
 	Title: string | null;
+	/** BL-88: this timeline's items citing the chapter. */
+	ItemIds?: string[];
 }
 
 export interface ItemCharacterAppearance {
@@ -562,6 +599,18 @@ export interface MediaItem {
 	Title: string;
 	Description: string;
 	CreatedAt: string;
+	/** GetArchiveMedia only (BL-88): everything that shows it, in every timeline. */
+	Uses?: MediaUse[] | null;
+}
+
+export interface MediaUse {
+	Kind: 'item' | 'map' | 'portrait';
+	Id: string;
+	Name: string | null;
+	/** Items only. */
+	TypeId: number | null;
+	/** In the timeline asked about — a shared character's portrait counts as in every one. */
+	Here: boolean;
 }
 
 export interface ItemForEdit {
@@ -755,6 +804,49 @@ export interface SessionHistory {
 	/** The newest day the last export covered; “everything since” starts the day after. */
 	lastExportDay: string | null;
 	days: SessionDaySummary[];
+	/** BL-88: sealed days that changed nothing — left out of `days`, offered for pruning. */
+	emptyDays: number;
+}
+
+/** BL-88: the Archive's bulk edit. A field left out is left alone on every item. */
+export interface BulkItemEdit {
+	ids: string[];
+	importance?: number;
+	/** '' takes the colour off. Birth and death items keep their character's colour regardless. */
+	color?: string;
+	lodMask?: number;
+	addTag?: string;
+	removeTagId?: number;
+	addStoryId?: string;
+	removeStoryId?: string;
+}
+
+/**
+ * BL-88: one relation given to many characters at once. `tickedFirst` makes each of them the end the
+ * kind reads from ("parent of"). `replace` first drops the ties of the kind each has at that end to anyone else.
+ */
+export interface BulkRelation {
+	ids: string[];
+	otherId: string;
+	relationshipType: string;
+	tickedFirst: boolean;
+	relationshipModifier: string | null;
+	relationshipDegree: string | null;
+	replace: boolean;
+	timelineId: number;
+}
+
+/**
+ * BL-88: the Archive's bulk edit of places. `mapIds` are top-level maps, which only `moveTo` reaches:
+ * each gets a door in the middle of that map. A pin keeps its spot as fractions of the picture.
+ */
+export interface BulkPlaceEdit {
+	ids: string[];
+	mapIds?: string[];
+	/** '' takes the colour off. */
+	color?: string;
+	resetLook?: boolean;
+	moveTo?: string;
 }
 
 export interface SessionChangeSummary {

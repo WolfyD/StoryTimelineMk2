@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { PhX, PhPencilSimple, PhEye, PhPlus, PhArrowsClockwise, PhTrash, PhExport, PhDownloadSimple } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import CalendarViewModal from './CalendarViewModal.vue'
 import ConfirmDeleteModal from './ConfirmDeleteModal.vue'
@@ -26,8 +26,9 @@ async function load() {
     try {
         const list = await BackendAPI.GetCalendarList()
         calendars.value = list ?? []
-    } catch {
-        error.value = 'Failed to load calendars.'
+    } catch (e) {
+        void logError('CalendarManagerModal: GetCalendarList failed', e)
+        error.value = `Failed to load calendars: ${e instanceof Error ? e.message : String(e)}`
     } finally {
         loading.value = false
     }
@@ -59,7 +60,7 @@ async function confirmDelete() {
         if (result.reassigned) useTimelineStore().loadTimelines()
         await load()
     } catch (e) {
-        console.error('[CalendarManagerModal] delete failed:', e)
+        void logError('CalendarManagerModal: delete failed', e)
         error.value = `Failed to delete calendar: ${e instanceof Error ? e.message : String(e)}`
     }
 }
@@ -72,7 +73,7 @@ async function exportCalendar(c: CalendarRow) {
         if (result?.status !== 'ok') throw new Error(result?.message ?? 'Export failed')
         notice.value = { kind: 'ok', text: `Exported "${c.Name}" to ${result.path}.` }
     } catch (e) {
-        console.error('[CalendarManagerModal] export failed:', e)
+        void logError('CalendarManagerModal: export failed', e)
         notice.value = { kind: 'error', text: `Failed to export calendar: ${e instanceof Error ? e.message : String(e)}` }
     }
 }
@@ -91,7 +92,7 @@ async function importCalendar() {
         // Reloads this list and any open calendar pickers.
         window.dispatchEvent(new Event('calendars-changed'))
     } catch (e) {
-        console.error('[CalendarManagerModal] import failed:', e)
+        void logError('CalendarManagerModal: import failed', e)
         notice.value = { kind: 'error', text: `Failed to import calendar: ${e instanceof Error ? e.message : String(e)}` }
     }
 }

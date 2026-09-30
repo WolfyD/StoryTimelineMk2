@@ -11,6 +11,7 @@ vi.mock('@phosphor-icons/vue', () => ({
 }))
 
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     send: vi.fn(),
     GetAllTimelines: vi.fn().mockResolvedValue({ data: [
@@ -24,7 +25,7 @@ vi.mock('@/bridge/api', () => ({
 }))
 
 import ReferenceTimelineModal from '@/components/ReferenceTimelineModal.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 
 const refProject = { Id: 2, Title: 'Other', CalendarId: 'cal-b', Calendar: { Name: 'Lunar' } }
 
@@ -85,7 +86,7 @@ describe('ReferenceTimelineModal', () => {
     expect(store.reference).toBeNull()
     expect(w.emitted('close')).toBeUndefined()
     expect(w.find('.rt-error').text()).toContain('boom')
-    expect(console.error).toHaveBeenCalled()
+    expect(logError).toHaveBeenCalledWith('ReferenceTimelineModal: loadReference failed', expect.any(Error))
     w.unmount()
   })
 

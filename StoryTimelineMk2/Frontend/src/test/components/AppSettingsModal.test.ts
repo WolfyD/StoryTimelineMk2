@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     GetAppConfig: vi.fn().mockResolvedValue({
       DataRoot: 'C:/test/data',

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseModal from './BaseModal.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import type { SessionChangeSummary, SessionHistory } from '@/types/models'
 
@@ -98,7 +98,7 @@ async function loadHistory() {
         else pickAll()
     } catch (e) {
         summaryError.value = 'Could not read your work history — check the application log.'
-        console.error('[GetSessionHistory]', e)
+        void logError('ExportTimelineModal: GetSessionHistory', e)
     }
 }
 
@@ -109,12 +109,14 @@ async function loadSummary() {
         summary.value = null
         return
     }
-    const result = await BackendAPI.GetSessionChanges(props.sessionTimelineId, days)
-    if (result?.status === 'ok' && result.summary) {
+    try {
+        const result = await BackendAPI.GetSessionChanges(props.sessionTimelineId, days)
+        if (!(result?.status === 'ok' && result.summary))
+            throw new Error(`the backend replied ${result?.status ?? 'nothing'}, with no summary`)
         summary.value = result.summary
-    } else {
+    } catch (e) {
         summaryError.value = 'Could not read those changes — check the application log.'
-        console.error('[GetSessionChanges]', result)
+        void logError('ExportTimelineModal: GetSessionChanges', e)
     }
 }
 
@@ -137,7 +139,7 @@ async function confirm() {
         const result = await BackendAPI.ExportSessionChanges(props.sessionTimelineId!, pickedDays.value)
         if (result?.status === 'ok') emit('close')
     } catch (e) {
-        console.error('[ExportSessionChanges]', e)
+        void logError('ExportTimelineModal: ExportSessionChanges', e)
         useTimelineStore().loadNotice = { title: 'Session export failed', message: e instanceof Error ? e.message : String(e) }
     } finally {
         isWorking.value = false

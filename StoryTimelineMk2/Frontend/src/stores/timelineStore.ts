@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed, watch } from 'vue';
 import { type TimelineProject, type TimelineItem, type FullTimelineProject, type TimelineSettings, type LodLevel, type Calendar, type LayoutSettings, type HiddenRange, type TimelineNote, type CharacterItem, type ItemTagLink, type ItemCharacterLink, type ItemStoryRefLink, type FilterRule, type FilterPreset, type FilterState } from '@/types/models';
-import { BackendAPI, type BridgeError } from '@/bridge/api';
+import { BackendAPI, logError } from '@/bridge/api';
 import { buildFormatRegistry, tickDistanceOf, type CalendarFormatConfig, type FormatRegistryType } from '@/utils/timelineLayout';
 import { parseCalendarConfig } from '@/utils/calendarDef';
 import { applyFilters, buildItemDataMap } from '@/utils/filterMatcher';
@@ -102,7 +102,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 			}
 		} catch (ex) {
 			// The window still works without the family, so this must not take the whole load down.
-			console.error('Could not load the relations for the character window', ex);
+			void logError('timelineStore: Could not load the relations for the character window', ex);
 			const why = ex instanceof Error ? ex.message : String(ex);
 			loadNotice.value = {
 				title: `${focus.Name}'s family could not be loaded`,
@@ -224,10 +224,12 @@ export const useTimelineStore = defineStore('timeline', () => {
 		try {
 			await loadReference(saved.id, saved.shift ?? 0);
 		} catch (err) {
-			console.error('[timelineStore] restoring reference timeline failed', err);
+			void logError('timelineStore: restoring reference timeline failed', err);
 			if (seq !== _loadSeq) return;
 			clearReference();
 			referenceError.value = `The timeline drawn underneath could not be loaded and was removed: ${(err as Error).message}`;
+			// The modal is where that line lives, and nobody opens it to find out why a reference vanished.
+			loadNotice.value = { title: 'Reference timeline removed', message: referenceError.value };
 		}
 	}
 
@@ -341,7 +343,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		} catch (error) {
 			// The window has nothing to show without this, so it cannot be a console line: it used to end
 			// as an empty canvas that looked like an empty timeline.
-			console.error("Bridge Error loading timeline:", error, (error as BridgeError).payload?.detail);
+			void logError('timelineStore: Bridge Error loading timeline', error);
 			const why = error instanceof Error ? error.message : String(error);
 			loadNotice.value = { title: 'This timeline could not be loaded', message: `The window is empty.\n\n${why}` };
 		} finally {
@@ -355,6 +357,43 @@ export const useTimelineStore = defineStore('timeline', () => {
 
 	function addItem(item: TimelineItem) {
 		items.value.push(item);
+	}
+
+	/** BL-88: a story renamed or deleted in the Archive — new titles, and a deleted one's links gone. */
+	function syncStories(stories: { Id: string; Title: string }[]) {
+		const titles = new Map(stories.map(s => [s.Id, s.Title]));
+		const next = new Map<string, ItemStoryRefLink[]>();
+		for (const [itemId, links] of itemStoryMap.value) {
+			next.set(itemId, links.filter(l => titles.has(l.StoryId)).map(l => ({ ...l, StoryTitle: titles.get(l.StoryId)! })));
+		}
+		itemStoryMap.value = next;
+		allTimelineStories.value = allTimelineStories.value
+			.filter(s => titles.has(s.StoryId))
+			.map(s => ({ ...s, StoryTitle: titles.get(s.StoryId)! }))
+			.sort((a, b) => a.StoryTitle.localeCompare(b.StoryTitle));
+	}
+
+	/**
+	 * BL-88: a tag renamed, merged or deleted in the Archive. `into` is the tag it became (itself with
+	 * a new name, or the one it merged into); null means deleted.
+	 */
+	function syncTag(id: number, into: { TagId: number; TagName: string } | null) {
+		const retag = <T extends { TagId: number; TagName: string }>(list: T[]): T[] => {
+			// A list that already carries the survivor just loses the old tag — never two of the same.
+			const merged = into !== null && into.TagId !== id && list.some(t => t.TagId === into.TagId);
+			return list.flatMap(t => t.TagId !== id ? [t] : into && !merged ? [{ ...t, ...into }] : []);
+		};
+		const next = new Map<string, ItemTagLink[]>();
+		for (const [itemId, links] of itemTagMap.value) next.set(itemId, retag(links));
+		itemTagMap.value = next;
+		allTimelineTags.value = retag(allTimelineTags.value).sort((a, b) => a.TagName.localeCompare(b.TagName));
+	}
+
+	/** BL-88: a note saved in another window (the Archive) — this timeline's only. */
+	function syncNote(note: TimelineNote) {
+		if (note.TimelineId !== currentProject.value?.Id) return;
+		if (notes.value.some(n => n.Id === note.Id)) updateNote(note);
+		else addNote(note);
 	}
 
 	function upsertItem(
@@ -594,7 +633,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 			}));
 		} catch (ex) {
 			// A preset whose rules will not parse cannot be applied, and clicking it used to do nothing at all.
-			console.error('[timelineStore] filter preset rules could not be read', preset.Id, ex);
+			void logError(`timelineStore: filter preset rules could not be read (${preset.Id})`, ex);
 			loadNotice.value = { title: 'Filter preset not applied', message: `The filter preset "${preset.Name}" could not be read.` };
 			return;
 		}
@@ -683,7 +722,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		characterFocusId, characterFocus, focusKinItemIds, loadNotice,
 
 		// functions
-		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,
+		loadItems, addItem, upsertItem, removeItem, syncStories, syncTag, syncNote, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,
 		setDistanceFrom, setDistanceTo, setNotesDistanceTab, setShowMeasureInTimeline, setHiddenRanges, setLayoutSettings,
 		pulseItem,
 		addNote, updateNote, removeNote,

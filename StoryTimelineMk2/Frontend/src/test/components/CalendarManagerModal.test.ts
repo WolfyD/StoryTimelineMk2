@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/bridge/api', () => ({
+    logError: vi.fn(),
     BackendAPI: {
         GetCalendarList: vi.fn(),
         ExportCalendar: vi.fn(),
@@ -30,7 +31,7 @@ vi.mock('@phosphor-icons/vue', () => {
 })
 
 import CalendarManagerModal from '@/components/CalendarManagerModal.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 
 const list = () => BackendAPI.GetCalendarList as ReturnType<typeof vi.fn>
 const exp = () => BackendAPI.ExportCalendar as ReturnType<typeof vi.fn>
@@ -87,16 +88,14 @@ describe('CalendarManagerModal — export / import', () => {
 
     it('a failed import is logged and shown without hiding the list', async () => {
         imp().mockResolvedValueOnce({ status: 'error', message: 'not a calendar file' })
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
         const wrapper = mountModal()
         await flushPromises()
 
         await wrapper.find('.import-btn').trigger('click')
         await flushPromises()
-        expect(consoleError).toHaveBeenCalled()
+        expect(logError).toHaveBeenCalledWith('CalendarManagerModal: import failed', expect.any(Error))
         expect(wrapper.find('.notice.error').text()).toContain('not a calendar file')
         expect(wrapper.findAll('.cal-row').length).toBe(2)
-        consoleError.mockRestore()
         wrapper.unmount()
     })
 })

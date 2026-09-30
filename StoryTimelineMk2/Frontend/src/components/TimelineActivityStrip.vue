@@ -19,13 +19,20 @@ import {
     PhKeyboard,
     PhBooks,
     PhExport,
+    PhArchive,
 } from '@phosphor-icons/vue'
 import { ref } from 'vue'
+import { MOD } from '@/utils/shortcuts'
 
 defineProps<{
     filterActive: boolean
     miniMode: boolean
     yearCalendarOpen: boolean
+    /**
+     * What the sidebar has up, window or dialog, so its button lights: 'characters', 'relations', 'map',
+     * 'archive', 'search', 'tags', 'massAdd', 'reference', 'export', 'settings', 'help'.
+     */
+    openTools?: ReadonlySet<string>
     /** BL-66 reference window: hides everything that edits or opens child windows */
     readOnly?: boolean
     /** BL-15 phase 3: an appearances window is read-only but may still be exported. */
@@ -49,23 +56,29 @@ const emit = defineEmits<{
     'open-characters': []
     'open-relations': []
     'open-map': []
+    'open-archive': []
+    'toggle-search': []
 }>()
 
 const helpMenuOpen = ref(false)
 
-/** Search and statistics are still placeholders; the rest lead somewhere. */
+/** Statistics is still a placeholder; the rest lead somewhere. */
 function navClick(id: string) {
     if (id === 'chars') emit('open-characters')
     else if (id === 'relations') emit('open-relations')
     else if (id === 'map') emit('open-map')
+    else if (id === 'archive') emit('open-archive')
+    else if (id === 'search') emit('toggle-search')
 }
 
+// `win` is the window a button opens, as the host names it when it announces it (WindowOpened).
 const navItems = [
     { id: 'timeline', icon: PhRuler,            label: 'Timeline',            active: true,  available: true  },
-    { id: 'chars',    icon: PhUsersThree,        label: 'Characters',          active: false, available: true  },
-    { id: 'relations',icon: PhGraph,             label: 'Relations',           active: false, available: true  },
-    { id: 'map',      icon: PhMapPin,            label: 'Map',                 active: false, available: true  },
-    { id: 'search',   icon: PhMagnifyingGlass,   label: 'Search',              active: false, available: false },
+    { id: 'chars',    icon: PhUsersThree,        label: 'Characters',          active: false, available: true,  win: 'characters' },
+    { id: 'relations',icon: PhGraph,             label: 'Relations',           active: false, available: true,  win: 'relations' },
+    { id: 'map',      icon: PhMapPin,            label: 'Map',                 active: false, available: true,  win: 'map' },
+    { id: 'archive',  icon: PhArchive,           label: 'Archive',             active: false, available: true,  win: 'archive', edits: true },
+    { id: 'search',   icon: PhMagnifyingGlass,   label: `Search (${MOD}+F)`,   active: false, available: true,  win: 'search' },
     { id: 'stats',    icon: PhChartBar,          label: 'Statistics',          active: false, available: false },
 ]
 </script>
@@ -112,18 +125,18 @@ const navItems = [
         </button>
 
         <!-- ── Tags ───────────────────────────────────────────────── -->
-        <button v-if="!readOnly" class="strip-btn strip-btn--tags" title="Tags" @click="emit('open-tags')">
-            <PhTag :size="20" />
+        <button v-if="!readOnly" class="strip-btn strip-btn--tags" :class="{ 'strip-btn--tool-active': openTools?.has('tags') }" title="Tags" @click="emit('open-tags')">
+            <PhTag :size="20" :weight="openTools?.has('tags') ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── Mass add ───────────────────────────────────────────── -->
-        <button v-if="!readOnly" class="strip-btn strip-btn--mass-add" title="Mass add items" @click="emit('open-mass-add')">
-            <PhListPlus :size="20" />
+        <button v-if="!readOnly" class="strip-btn strip-btn--mass-add" :class="{ 'strip-btn--tool-active': openTools?.has('massAdd') }" title="Mass add items" @click="emit('open-mass-add')">
+            <PhListPlus :size="20" :weight="openTools?.has('massAdd') ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── Reference timeline (BL-66) ─────────────────────────── -->
-        <button v-if="!readOnly" class="strip-btn strip-btn--reference" :class="{ 'strip-btn--tool-active': referenceActive }" title="Reference timeline (R)" @click="emit('open-reference')">
-            <PhBooks :size="20" :weight="referenceActive ? 'fill' : 'regular'" />
+        <button v-if="!readOnly" class="strip-btn strip-btn--reference" :class="{ 'strip-btn--tool-active': referenceActive || openTools?.has('reference') }" title="Reference timeline (R)" @click="emit('open-reference')">
+            <PhBooks :size="20" :weight="referenceActive || openTools?.has('reference') ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── gap + separator ───────────────────────────────────── -->
@@ -132,11 +145,12 @@ const navItems = [
 
         <!-- ── Navigation icons ──────────────────────────────────── -->
         <button
-            v-for="item in navItems.filter(i => i.available)"
+            v-for="item in navItems.filter(i => i.available && !(readOnly && i.edits))"
             :key="item.id"
             class="strip-btn"
             :class="{
                 'strip-btn--active':   item.active,
+                'strip-btn--tool-active': !!item.win && !!openTools?.has(item.win),
                 'strip-btn--disabled': !item.available,
                 [`strip-btn--nav-${item.id}`]: true,
             }"
@@ -144,26 +158,30 @@ const navItems = [
             :tabindex="item.available ? 0 : -1"
             @click="navClick(item.id)"
         >
-            <component :is="item.icon" :size="20" :weight="item.active ? 'duotone' : 'regular'" />
+            <component
+                :is="item.icon"
+                :size="20"
+                :weight="item.active ? 'duotone' : item.win && openTools?.has(item.win) ? 'fill' : 'regular'"
+            />
         </button>
 
         <!-- ── big spacer ────────────────────────────────────────── -->
         <div class="strip-spacer" />
 
         <!-- ── Export (whole timeline / my work) ────────────────── -->
-        <button v-if="!readOnly || allowExport" class="strip-btn strip-btn--export" title="Export…" @click="emit('open-export')">
-            <PhExport :size="20" />
+        <button v-if="!readOnly || allowExport" class="strip-btn strip-btn--export" :class="{ 'strip-btn--tool-active': openTools?.has('export') }" title="Export…" @click="emit('open-export')">
+            <PhExport :size="20" :weight="openTools?.has('export') ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── Help / About flyout ──────────────────────────────── -->
         <div class="strip-help-wrap">
             <button
                 class="strip-btn strip-btn--about"
-                :class="{ 'strip-btn--tool-active': helpMenuOpen }"
+                :class="{ 'strip-btn--tool-active': helpMenuOpen || openTools?.has('help') }"
                 title="Help / About"
                 @click="helpMenuOpen = !helpMenuOpen"
             >
-                <PhQuestion :size="20" />
+                <PhQuestion :size="20" :weight="helpMenuOpen || openTools?.has('help') ? 'fill' : 'regular'" />
             </button>
             <Transition name="flyout">
                 <div v-if="helpMenuOpen" class="help-flyout">
@@ -188,10 +206,11 @@ const navItems = [
         <button
             v-if="!readOnly"
             class="strip-btn strip-btn--settings"
+            :class="{ 'strip-btn--tool-active': openTools?.has('settings') }"
             title="Settings"
             @click="emit('open-settings')"
         >
-            <PhGear :size="20" />
+            <PhGear :size="20" :weight="openTools?.has('settings') ? 'fill' : 'regular'" />
         </button>
 
     </nav>

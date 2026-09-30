@@ -22,9 +22,10 @@
  */
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, nextTick, watch, toRaw } from 'vue'
 import Konva from 'konva'
-import { BackendAPI, type BridgeMessage } from '@/bridge/api'
+import { BackendAPI, logError, type BridgeMessage } from '@/bridge/api'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import HoverTip from '@/components/HoverTip.vue'
 import ImagePickerModal from '@/components/ImagePickerModal.vue'
 import EditPlaceModal from '@/components/EditPlaceModal.vue'
 import EditMapModal from '@/components/EditMapModal.vue'
@@ -182,7 +183,7 @@ function say(what: string, ms = 2500) {
 /** Everything a caught exception knows, in the log, and its point in the window. */
 function failed(what: string, ex: unknown) {
     error.value = `${what}: ${ex instanceof Error ? ex.message : String(ex)}`
-    console.error(`[MapApp] ${what}`, ex)
+    void logError(`MapApp: ${what}`, ex)
 }
 
 const current = computed(() => maps.value.find(m => m.Id === currentId.value) ?? null)
@@ -313,7 +314,7 @@ async function warmAll(ids: string[]) {
         } catch (ex) {
             // Nothing is on screen because of this, so it is logged and not said: going there is what
             // puts the failure in front of the reader, with the same message.
-            console.error(`[MapApp] The picture of map ${id} could not be read ahead of time`, ex)
+            void logError(`MapApp: The picture of map ${id} could not be read ahead of time`, ex)
         }
     }
 }
@@ -4142,10 +4143,10 @@ const isDesktop = !!window.chrome?.webview
 
             <div class="bar-actions" v-if="current">
                 <button class="tool" :class="{ active: placing }" :disabled="!current.OverviewPath"
-                        title="Click the map to drop a new place" @click="startPlacing">
+                        data-tip="Click the map to drop a new place" @click="startPlacing">
                     <PhMapPin :size="15" /> {{ placing ? 'Click the map…' : 'Add place' }}
                 </button>
-                <button class="tool" :disabled="!current.OverviewPath" title="Fit the whole map in view"
+                <button class="tool" :disabled="!current.OverviewPath" data-tip="Fit the whole map in view"
                         @click="fitView">
                     <PhCrosshair :size="15" /> Fit
                 </button>
@@ -4153,7 +4154,7 @@ const isDesktop = !!window.chrome?.webview
                     class="tool"
                     :class="{ active: timeOn }"
                     :disabled="!span"
-                    :title="!span
+                    :data-tip="!span
                         ? 'Nothing in this timeline has a place yet'
                         : timeOn
                             ? 'Turn the clock off: back to the plain map'
@@ -4171,7 +4172,7 @@ const isDesktop = !!window.chrome?.webview
                 <section class="side-block places-block">
                     <header class="side-head">
                         <PhMapPin :size="14" /> Places
-                        <button class="icon-btn" title="New top-level map" @click="newMap">
+                        <button class="icon-btn" aria-label="New top-level map" data-tip="New top-level map" @click="newMap">
                             <PhPlus :size="14" />
                         </button>
                     </header>
@@ -4181,7 +4182,7 @@ const isDesktop = !!window.chrome?.webview
                         <div class="search-row">
                             <PhMagnifyingGlass :size="13" class="search-icon" />
                             <input v-model="query" placeholder="Find a place…" />
-                            <button v-if="query" class="icon-btn" title="Clear" @click="query = ''">
+                            <button v-if="query" class="icon-btn" aria-label="Clear" data-tip="Clear" @click="query = ''">
                                 <PhX :size="12" />
                             </button>
                         </div>
@@ -4200,7 +4201,8 @@ const isDesktop = !!window.chrome?.webview
                                     <button
                                         v-if="!searching && rowHasChildren(row)"
                                         class="icon-btn twisty"
-                                        :title="collapsed.has(row.key) ? 'Show what is inside' : 'Hide what is inside'"
+                                        :aria-label="collapsed.has(row.key) ? 'Show what is inside' : 'Hide what is inside'"
+                                        :data-tip="collapsed.has(row.key) ? 'Show what is inside' : 'Hide what is inside'"
                                         @click="toggleCollapsed(row.key)"
                                     >
                                         <PhCaretRight :size="11" :class="{ open: !collapsed.has(row.key) }" />
@@ -4226,14 +4228,16 @@ const isDesktop = !!window.chrome?.webview
                                     <button
                                         v-if="row.childMap"
                                         class="icon-btn row-edit"
-                                        :title="`Go into ${row.childMap.Name}`"
+                                        :aria-label="`Go into ${row.childMap.Name}`"
+                                        :data-tip="`Go into ${row.childMap.Name}`"
                                         @click="enterRow(row)"
                                     >
                                         <PhSignIn :size="12" />
                                     </button>
                                     <button
                                         class="icon-btn row-edit"
-                                        :title="row.loc ? 'Edit this place' : 'Edit this map'"
+                                        :aria-label="row.loc ? 'Edit this place' : 'Edit this map'"
+                                        :data-tip="row.loc ? 'Edit this place' : 'Edit this map'"
                                         @click="editRow(row)"
                                     >
                                         <PhPencilSimple :size="12" />
@@ -4287,7 +4291,7 @@ const isDesktop = !!window.chrome?.webview
                             <button
                                 v-if="timeOn && pinEvents.has(it.Id)"
                                 class="here-go"
-                                title="Take the clock to when this happened"
+                                data-tip="Take the clock to when this happened"
                                 @click="setClock(pinEvents.get(it.Id)!.AbsoluteStart)"
                             >{{ it.Title }}</button>
                             <template v-else>{{ it.Title }}</template>
@@ -4295,7 +4299,7 @@ const isDesktop = !!window.chrome?.webview
                     </ul>
                 </section>
             </aside>
-            <div class="side-grip" title="Drag to resize" @pointerdown="startResize" />
+            <div class="side-grip" data-tip="Drag to resize" @pointerdown="startResize" />
 
             <div class="map-stage-wrap">
                 <div ref="stageHost" class="map-stage" />
@@ -4317,7 +4321,7 @@ const isDesktop = !!window.chrome?.webview
                 <button
                     v-if="upMap"
                     class="exit-up"
-                    :title="`Back out to ${upMap.Name}`"
+                    :data-tip="`Back out to ${upMap.Name}`"
                     @click="travelTo(upMap.Id)"
                 >
                     <PhSignOut :size="14" /> {{ upMap.Name }}
@@ -4335,7 +4339,7 @@ const isDesktop = !!window.chrome?.webview
                      column, so it grows the stack instead of landing on the clock. -->
                 <p v-if="error" class="map-flash bad">
                     {{ error }}
-                    <button class="icon-btn" title="Dismiss" @click="error = ''"><PhX :size="11" /></button>
+                    <button class="icon-btn" aria-label="Dismiss" data-tip="Dismiss" @click="error = ''"><PhX :size="11" /></button>
                 </p>
                 <p v-else-if="notice" class="map-flash">{{ notice }}</p>
 
@@ -4422,7 +4426,7 @@ const isDesktop = !!window.chrome?.webview
                         wash of colour over the ground an age covers would claim a border the story
                         never drew, and most of these have no edge on any map at all.
                     -->
-                    <div v-if="backdrop.length" class="age-strip" :title="backdrop.map(ev => ev.Title).join('\n')">
+                    <div v-if="backdrop.length" class="age-strip" :data-tip="backdrop.map(ev => ev.Title).join('\n')">
                         <PhHourglassMedium :size="12" />
                         <span class="age-names">{{ backdropNames.join(' · ') }}</span>
                         <span v-if="backdropMore" class="age-more">+{{ backdropMore }}</span>
@@ -4432,7 +4436,7 @@ const isDesktop = !!window.chrome?.webview
                     <button
                         v-if="following"
                         class="age-strip shown-chip"
-                        title="Put everyone back on the map"
+                        data-tip="Put everyone back on the map"
                         @click="following = null"
                     >
                         <PhUsers :size="12" />
@@ -4465,11 +4469,11 @@ const isDesktop = !!window.chrome?.webview
                         </select>
                         <input ref="yearInput" v-model.number="dateEdit.year" class="strip-num" type="number" aria-label="Year" />
                         <button class="tool" @click="applyDate">Go</button>
-                        <button class="nav" title="Cancel" @click="dateEdit = null"><PhX :size="12" /></button>
+                        <button class="nav" aria-label="Cancel" data-tip="Cancel" @click="dateEdit = null"><PhX :size="12" /></button>
                     </div>
 
                     <div class="time-strip">
-                        <div class="dock-grip" title="Drag to make the clock wider or narrower" @pointerdown="startDockResize" />
+                        <div class="dock-grip" data-tip="Drag to make the clock wider or narrower" @pointerdown="startDockResize" />
                         <!--
                             One date: step, play, or drag. A window: the stepper and player go, because
                             everything between the two handles is already on the map at once, and the
@@ -4479,14 +4483,16 @@ const isDesktop = !!window.chrome?.webview
                             <button
                                 class="nav"
                                 :disabled="stepTo(beats, now, -1) === null"
-                                title="Back to the previous thing that happened (←)"
+                                aria-label="Back to the previous thing that happened (←)"
+                                data-tip="Back to the previous thing that happened (←)"
                                 @click="step(-1)"
                             >
                                 <PhSkipBack :size="13" weight="fill" />
                             </button>
                             <button
                                 class="nav"
-                                :title="playing ? 'Pause (Space)' : 'Play: walk from one happening to the next (Space)'"
+                                :aria-label="playing ? 'Pause (Space)' : 'Play: walk from one happening to the next (Space)'"
+                                :data-tip="playing ? 'Pause (Space)' : 'Play: walk from one happening to the next (Space)'"
                                 @click="playing ? pausePlay() : startPlay()"
                             >
                                 <PhPause v-if="playing" :size="13" weight="fill" />
@@ -4495,7 +4501,8 @@ const isDesktop = !!window.chrome?.webview
                             <button
                                 class="nav"
                                 :disabled="stepTo(beats, now, 1) === null"
-                                title="On to the next thing that happens (→)"
+                                aria-label="On to the next thing that happens (→)"
+                                data-tip="On to the next thing that happens (→)"
                                 @click="step(1)"
                             >
                                 <PhSkipForward :size="13" weight="fill" />
@@ -4503,7 +4510,7 @@ const isDesktop = !!window.chrome?.webview
                         </span>
                         <button
                             class="strip-value date-btn"
-                            :title="rangeOn ? 'Type where the date range starts' : 'Type a date to go to'"
+                            :data-tip="rangeOn ? 'Type where the date range starts' : 'Type a date to go to'"
                             @click="openDateEdit(rangeOn ? 'from' : 'at')"
                         >
                             <span>{{ dateOf(rangeOn ? window0 : now) }}</span>
@@ -4525,7 +4532,7 @@ const isDesktop = !!window.chrome?.webview
                         <button
                             v-if="rangeOn"
                             class="strip-value date-btn"
-                            title="Type where the date range ends"
+                            data-tip="Type where the date range ends"
                             @click="openDateEdit('at')"
                         >
                             <span>{{ dateOf(now) }}</span>
@@ -4536,7 +4543,8 @@ const isDesktop = !!window.chrome?.webview
                                 v-if="!rangeOn"
                                 v-model.number="speed"
                                 class="strip-unit"
-                                title="How fast play walks: at 1× each step to the next happening takes half a second"
+                                aria-label="How fast play walks: at 1× each step to the next happening takes half a second"
+                                data-tip="How fast play walks: at 1× each step to the next happening takes half a second"
                             >
                                 <option v-for="s in SPEEDS" :key="s.v" :value="s.v">{{ s.name }}</option>
                             </select>
@@ -4544,7 +4552,10 @@ const isDesktop = !!window.chrome?.webview
                             <button
                                 class="nav"
                                 :class="{ on: rangeOn }"
-                                :title="rangeOn
+                                :aria-label="rangeOn
+                                    ? 'Back to one date at a time'
+                                    : 'Open a date range: every path between the two dates, drawn at once'"
+                                :data-tip="rangeOn
                                     ? 'Back to one date at a time'
                                     : 'Open a date range: every path between the two dates, drawn at once'"
                                 @click="toggleRange"
@@ -4555,7 +4566,10 @@ const isDesktop = !!window.chrome?.webview
                             <button
                                 class="nav"
                                 :class="{ on: autoFollow }"
-                                :title="autoFollow
+                                :aria-label="autoFollow
+                                    ? 'Stop flying with them: the map stays where you put it'
+                                    : 'Fly with the people on the map: into the closest map that holds all of them, and back out when they part'"
+                                :data-tip="autoFollow
                                     ? 'Stop flying with them: the map stays where you put it'
                                     : 'Fly with the people on the map: into the closest map that holds all of them, and back out when they part'"
                                 @click="toggleAutoFollow"
@@ -4565,13 +4579,14 @@ const isDesktop = !!window.chrome?.webview
                             <!-- The cast lives in its own window; this brings it back if it was closed. -->
                             <button
                                 class="nav"
-                                title="Who is where: the cast, in its own window"
+                                aria-label="Who is where: the cast, in its own window"
+                                data-tip="Who is where: the cast, in its own window"
                                 @click="openCastWindow(true)"
                             >
                                 <PhUsers :size="13" />
                             </button>
                             <!-- An empty range is worth saying; an instant between two happenings is just the clock. -->
-                            <span class="time-count" :title="happeningHere.map(ev => ev.Title).join('\n')">
+                            <span class="time-count" :data-tip="happeningHere.map(ev => ev.Title).join('\n')">
                                 <span>{{ happeningHere.length ? `${happeningHere.length} event${happeningHere.length === 1 ? '' : 's'}` : rangeOn ? 'nothing here' : '' }}</span>
                                 <span class="sizer" aria-hidden="true">nothing here</span>
                                 <span class="sizer" aria-hidden="true">88 events</span>
@@ -4603,7 +4618,7 @@ const isDesktop = !!window.chrome?.webview
                     class="compass"
                     :class="{ live: mode === 'compass' }"
                     :style="compassStyle"
-                    :title="mode === 'compass'
+                    :data-tip="mode === 'compass'
                         ? `North is ${Math.round(current.NorthOffset)}° from up on this map — drag the rose to turn it, double-click to reset`
                         : `North is ${Math.round(current.NorthOffset)}° from up on this map — drag the rose to turn the view, double-click to square it up`"
                     @pointerdown.prevent="turnNorth"
@@ -4616,37 +4631,37 @@ const isDesktop = !!window.chrome?.webview
                         <text y="-6.5" class="rose-n">N</text>
                     </svg>
                     <template v-if="mode === 'compass'">
-                        <button class="rose-grip move" title="Move the compass" @pointerdown.prevent.stop="moveCompass">
+                        <button class="rose-grip move" aria-label="Move the compass" data-tip="Move the compass" @pointerdown.prevent.stop="moveCompass">
                             <PhArrowsOutCardinal :size="11" />
                         </button>
-                        <button class="rose-grip size" title="Resize the compass" @pointerdown.prevent.stop="sizeCompass" />
+                        <button class="rose-grip size" aria-label="Resize the compass" data-tip="Resize the compass" @pointerdown.prevent.stop="sizeCompass" />
                     </template>
                 </div>
 
                 <!-- The view tools, stacked above the ⓘ, with the ruler beside it. -->
                 <div v-if="current?.OverviewPath && showChrome" class="nav-pad">
-                    <button class="nav" title="Pan up" @click="panBy(0, 1)">
+                    <button class="nav" aria-label="Pan up" data-tip="Pan up" @click="panBy(0, 1)">
                         <PhCaretUp :size="14" weight="bold" />
                     </button>
                     <div class="nav-mid">
-                        <button class="nav" title="Pan left" @click="panBy(1, 0)">
+                        <button class="nav" aria-label="Pan left" data-tip="Pan left" @click="panBy(1, 0)">
                             <PhCaretLeft :size="14" weight="bold" />
                         </button>
-                        <button class="nav" title="Fit the whole map in view" @click="fitView">
+                        <button class="nav" aria-label="Fit the whole map in view" data-tip="Fit the whole map in view" @click="fitView">
                             <PhCrosshair :size="14" weight="bold" />
                         </button>
-                        <button class="nav" title="Pan right" @click="panBy(-1, 0)">
+                        <button class="nav" aria-label="Pan right" data-tip="Pan right" @click="panBy(-1, 0)">
                             <PhCaretRight :size="14" weight="bold" />
                         </button>
                     </div>
-                    <button class="nav" title="Pan down" @click="panBy(0, -1)">
+                    <button class="nav" aria-label="Pan down" data-tip="Pan down" @click="panBy(0, -1)">
                         <PhCaretDown :size="14" weight="bold" />
                     </button>
                     <div class="nav-mid">
-                        <button class="nav" title="Zoom in" @click="zoomBy(1.25)">
+                        <button class="nav" aria-label="Zoom in" data-tip="Zoom in" @click="zoomBy(1.25)">
                             <PhPlus :size="14" weight="bold" />
                         </button>
-                        <button class="nav" title="Zoom out" @click="zoomBy(0.8)">
+                        <button class="nav" aria-label="Zoom out" data-tip="Zoom out" @click="zoomBy(0.8)">
                             <PhMinus :size="14" weight="bold" />
                         </button>
                     </div>
@@ -4658,7 +4673,7 @@ const isDesktop = !!window.chrome?.webview
                     <div
                         ref="dial"
                         class="dial"
-                        :title="`Held at ${degrees}° — drag to turn the map, double-click to square it up`"
+                        :data-tip="`Held at ${degrees}° — drag to turn the map, double-click to square it up`"
                         @pointerdown.prevent="turnDial"
                         @dblclick="straighten"
                     >
@@ -4670,20 +4685,23 @@ const isDesktop = !!window.chrome?.webview
                     </div>
                     <!-- The same turn in steps, for a reader who wants to count them — and for the keyboard. -->
                     <div class="nav-mid">
-                        <button class="nav" title="Turn the map left" @click="turnViewBy(-TURN_STEP)">
+                        <button class="nav" aria-label="Turn the map left" data-tip="Turn the map left" @click="turnViewBy(-TURN_STEP)">
                             <PhArrowArcLeft :size="14" weight="bold" />
                         </button>
-                        <button class="nav" :disabled="!viewRot" title="Square the map up again" @click="straighten">
+                        <button class="nav" :disabled="!viewRot" aria-label="Square the map up again" data-tip="Square the map up again" @click="straighten">
                             <PhArrowLineUp :size="14" weight="bold" />
                         </button>
-                        <button class="nav" title="Turn the map right" @click="turnViewBy(TURN_STEP)">
+                        <button class="nav" aria-label="Turn the map right" data-tip="Turn the map right" @click="turnViewBy(TURN_STEP)">
                             <PhArrowArcRight :size="14" weight="bold" />
                         </button>
                     </div>
                     <button
                         class="nav"
                         :class="{ on: showGrid }"
-                        :title="showGrid
+                        :aria-label="showGrid
+                            ? `Hide the grid — ${grid?.cols ?? 0} squares across (Edit map to change)`
+                            : 'Show the lettered grid'"
+                        :data-tip="showGrid
                             ? `Hide the grid — ${grid?.cols ?? 0} squares across (Edit map to change)`
                             : 'Show the lettered grid'"
                         @click="showGrid = !showGrid"
@@ -4696,7 +4714,7 @@ const isDesktop = !!window.chrome?.webview
                         while they are watching the ninth, not while they are setting the map up.
                     -->
                     <div class="nav-mid">
-                        <button class="nav" :title="flightHint" @click="cycleFlight">
+                        <button class="nav" :aria-label="flightHint" :data-tip="flightHint" @click="cycleFlight">
                             <PhPath v-if="flight === 'full'" :size="14" weight="bold" />
                             <PhAirplaneTilt v-else-if="flight === 'ends'" :size="14" weight="bold" />
                             <PhLightning v-else :size="14" weight="bold" />
@@ -4705,7 +4723,10 @@ const isDesktop = !!window.chrome?.webview
                             class="nav"
                             :class="{ on: descentFade }"
                             :disabled="flight === 'cut'"
-                            :title="descentFade
+                            :aria-label="descentFade
+                                ? 'Stop dissolving between one map and the next'
+                                : 'Dissolve between one map and the next'"
+                            :data-tip="descentFade
                                 ? 'Stop dissolving between one map and the next'
                                 : 'Dissolve between one map and the next'"
                             @click="toggleFade"
@@ -4727,7 +4748,8 @@ const isDesktop = !!window.chrome?.webview
                     v-if="current?.OverviewPath"
                     class="info-toggle measure-toggle"
                     :class="{ active: picking === 'measure' }"
-                    title="Measure between two places"
+                    aria-label="Measure between two places"
+                    data-tip="Measure between two places"
                     @click="picking === 'measure' ? stopPicking() : startPicking('measure')"
                 >
                     <PhRuler :size="16" />
@@ -4742,7 +4764,10 @@ const isDesktop = !!window.chrome?.webview
                     v-if="current?.OverviewPath"
                     class="info-toggle chrome-toggle"
                     :class="{ active: showChrome }"
-                    :title="showChrome
+                    :aria-label="showChrome
+                        ? 'Hide the map controls — the pan and zoom pad, and the hint under it'
+                        : 'Show the map controls'"
+                    :data-tip="showChrome
                         ? 'Hide the map controls — the pan and zoom pad, and the hint under it'
                         : 'Show the map controls'"
                     @click="toggleChrome"
@@ -4753,7 +4778,8 @@ const isDesktop = !!window.chrome?.webview
                     v-if="current"
                     class="info-toggle"
                     :class="{ active: showInfo }"
-                    :title="showInfo ? 'Hide the map panel' : 'Show the map panel'"
+                    :aria-label="showInfo ? 'Hide the map panel' : 'Show the map panel'"
+                    :data-tip="showInfo ? 'Hide the map panel' : 'Show the map panel'"
                     @click="toggleInfo"
                 >
                     <PhInfo :size="17" />
@@ -4890,6 +4916,8 @@ const isDesktop = !!window.chrome?.webview
         @confirm="doDelete"
         @cancel="confirmDelete = null"
     />
+
+    <HoverTip />
 </template>
 
 <style scoped lang="scss">

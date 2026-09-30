@@ -1,10 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { getItemDetails } from '@/utils/itemDetails'
-import { BackendAPI } from '@/bridge/api'
+import { useTimelineStore } from '@/stores/timelineStore'
+import { BackendAPI, logError } from '@/bridge/api'
 import type { TimelineItem } from '@/types/models'
 
 vi.mock('@/bridge/api', () => ({
   BackendAPI: { GetItemForEdit: vi.fn() },
+  logError: vi.fn(),
 }))
 
 const fetchItem = BackendAPI.GetItemForEdit as ReturnType<typeof vi.fn>
@@ -15,6 +18,7 @@ const makeItem = () =>
   ({ Id: `item-${nextId++}`, TimelineId: 1 }) as unknown as TimelineItem
 
 describe('getItemDetails (BL-18 TC-H5)', () => {
+  beforeAll(() => setActivePinia(createPinia()))
   beforeEach(() => {
     fetchItem.mockReset()
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -46,6 +50,11 @@ describe('getItemDetails (BL-18 TC-H5)', () => {
     expect(await getItemDetails(item)).toBeNull()
     expect(await getItemDetails(item)).toBeNull()
     expect(fetchItem).toHaveBeenCalledTimes(1)
-    expect(console.error).toHaveBeenCalled()
+    expect(logError).toHaveBeenCalledWith(`itemDetails: loading item ${item.Id} failed`, expect.any(Error))
+    expect(useTimelineStore().loadNotice?.message).toContain('backend said no')
+
+    useTimelineStore().loadNotice = null
+    await getItemDetails(makeItem())
+    expect(useTimelineStore().loadNotice, 'said once, not per item').toBeNull()
   })
 })

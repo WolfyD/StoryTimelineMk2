@@ -6,6 +6,7 @@ import type { HiddenRange } from '@/types/models'
 
 // Mock BackendAPI before importing the component
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     SaveHiddenRange: vi.fn(),
     DeleteHiddenRange: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock('@phosphor-icons/vue', () => {
 })
 
 import TimelineActionsMenu from '@/components/TimelineActionsMenu.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -66,10 +67,7 @@ describe('TimelineActionsMenu', () => {
     vi.clearAllMocks()
   })
 
-  /**
-   * Mount and open the popover. The component snapshots store.hiddenRanges at
-   * setup, so the store must be populated BEFORE calling this.
-   */
+  /** Mount and open the popover. */
   async function mountOpen() {
     const wrapper = mount(TimelineActionsMenu, { global: { plugins: [pinia], stubs: { teleport: true } } })
     await wrapper.find('.actions-trigger').trigger('click')
@@ -232,8 +230,8 @@ describe('TimelineActionsMenu', () => {
 
   it('a failed LOD update keeps the modal open and shows the error in it', async () => {
     store.lodProfile = [{ index: 3, formatKey: 'Years', stepFraction: 1 }]
-    ;(BackendAPI.SetTimelineItemsLodMask as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'error', message: 'locked' })
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // The bridge rejects a { status: 'error' } reply (BL-18 FC-C1), so that is what a failure looks like.
+    ;(BackendAPI.SetTimelineItemsLodMask as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('locked'))
 
     const wrapper = await mountOpen()
     await wrapper.find('.lod-open').trigger('click')
@@ -243,8 +241,7 @@ describe('TimelineActionsMenu', () => {
     expect(wrapper.find('.bm-panel').exists()).toBe(true)
     expect(wrapper.find('.lod-error').text()).toBe('Update failed: locked')
     expect(wrapper.find('.lod-ok').exists()).toBe(false)
-    expect(consoleError).toHaveBeenCalled()
-    consoleError.mockRestore()
+    expect(logError).toHaveBeenCalledWith('TimelineActionsMenu: SetTimelineItemsLodMask failed', expect.any(Error))
     wrapper.unmount()
   })
 
@@ -260,6 +257,31 @@ describe('TimelineActionsMenu', () => {
     await flushPromises()
 
     expect(setHiddenRangesSpy).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('follows the store, so a range restored in the Archive leaves the open menu', async () => {
+    store.hiddenRanges = [makeHiddenRange({ Id: 1 }), makeHiddenRange({ Id: 2, StartYear: 900, EndYear: 950 })]
+    const wrapper = await mountOpen()
+    expect(wrapper.findAll('.range-row')).toHaveLength(2)
+
+    store.setHiddenRanges([makeHiddenRange({ Id: 2, StartYear: 900, EndYear: 950 })])   // the HiddenRangesChanged push
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findAll('.range-row')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('a failed remove says so instead of doing nothing', async () => {
+    store.hiddenRanges = [makeHiddenRange({ Id: 99 })]
+    ;(BackendAPI.DeleteHiddenRange as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('disk full'))
+
+    const wrapper = await mountOpen()
+    await wrapper.find('.icon-btn--danger').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.range-error').text()).toBe('Failed to remove range: disk full')
+    expect(wrapper.findAll('.range-row')).toHaveLength(1)
+    expect(logError).toHaveBeenCalledWith('TimelineActionsMenu: DeleteHiddenRange failed', expect.any(Error))
     wrapper.unmount()
   })
 })

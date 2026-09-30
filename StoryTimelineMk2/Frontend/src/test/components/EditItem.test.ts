@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 
 // Mock BackendAPI before importing the component
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     GetItemForEdit: vi.fn(),
     GetTimelineCharacters: vi.fn().mockResolvedValue([]),
@@ -16,6 +17,7 @@ vi.mock('@/bridge/api', () => ({
     RemoveImageFromItem: vi.fn().mockResolvedValue({ status: 'ok' }),
     SearchBooks: vi.fn().mockResolvedValue([]),
     GetBookChapters: vi.fn().mockResolvedValue([]),
+    onHostMessage: vi.fn(() => () => {}),
     WindowClose: vi.fn(),
     WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
     WindowGetTopMost: vi.fn().mockResolvedValue({ isTopmost: false }),

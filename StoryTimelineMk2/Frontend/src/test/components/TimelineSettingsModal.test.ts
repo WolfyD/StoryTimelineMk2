@@ -6,6 +6,7 @@ import type { LayoutSettings, TimelineSettings } from '@/types/models'
 
 // Mock BackendAPI before importing the component
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     GetLayoutSettingsList: vi.fn().mockResolvedValue([{ Id: 'ls_default', Name: 'Default' }]),
     GetSystemFonts: vi.fn().mockResolvedValue(['Arial', 'Times New Roman']),

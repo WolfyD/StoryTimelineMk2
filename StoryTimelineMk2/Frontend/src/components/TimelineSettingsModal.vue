@@ -2,7 +2,7 @@
 import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { PhPlus } from '@phosphor-icons/vue'
 import type { TimelineSettings, LayoutSettings } from '@/types/models'
-import { BackendAPI, type BridgeError } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { MOD } from '@/utils/shortcuts'
 import { DEFAULT_SWATCHES, ALL_LODS_MASK, loadSwatches, saveSwatches, loadDefaultLodMask, saveDefaultLodMask, lodMaskSummary, loadDefaultMentionedOnly, saveDefaultMentionedOnly } from '@/utils/timelinePrefs'
@@ -154,7 +154,7 @@ async function resetPreset() {
         const result = await BackendAPI.ResetLayoutPreset(local.selectedLayoutId)
         if (result?.layoutSettings) adoptLayout(result.layoutSettings)
     } catch (e) {
-        console.error('[resetPreset] failed:', e, (e as BridgeError).payload?.detail)
+        void logError('TimelineSettingsModal: resetPreset failed', e)
         store.loadNotice = { title: 'Reset failed', message: e instanceof Error ? e.message : String(e) }
     } finally {
         isResetting.value = false
@@ -354,50 +354,59 @@ async function save() {
 
     localLayout.Id = local.selectedLayoutId
 
-    const [settingsResult, lsResult, swResult, maskResult, mentionedResult] = await Promise.all([
-        BackendAPI.SaveSettings({
-            timelineId: store.currentProject!.Id,
-            pixelsPerSubtick: local.PixelsPerSubtick,
-            showGuides: local.ShowGuides,
-            displayRadius: local.DisplayRadius,
-            isFullscreen: local.IsFullscreen,
-            useCustomScaling: local.UseCustomScaling,
-            customScale: local.CustomScale,
-            layoutPresetId: local.selectedLayoutId,
-            panSpeedMultiplier: local.PanSpeedMultiplier,
-            panDeadzone: local.PanDeadzone,
-            keyboardPanSpeed: local.KeyboardPanSpeed,
-            defaultItemColor: local.DefaultItemColor,
-            headerMode: local.HeaderMode,
-        }),
-        BackendAPI.SaveLayoutSettings(localLayout),
-        saveSwatches(store.currentProject!.Id, swatches.value),
-        saveDefaultLodMask(store.currentProject!.Id, defaultLodMask.value),
-        saveDefaultMentionedOnly(store.currentProject!.Id, defaultMentionedOnly.value),
-    ])
+    // A failed write rejects (the bridge turns an error reply into one), and without this the button
+    // stayed on "Saving…" for good.
+    try {
+        const [settingsResult, lsResult, swResult, maskResult, mentionedResult] = await Promise.all([
+            BackendAPI.SaveSettings({
+                timelineId: store.currentProject!.Id,
+                pixelsPerSubtick: local.PixelsPerSubtick,
+                showGuides: local.ShowGuides,
+                displayRadius: local.DisplayRadius,
+                isFullscreen: local.IsFullscreen,
+                useCustomScaling: local.UseCustomScaling,
+                customScale: local.CustomScale,
+                layoutPresetId: local.selectedLayoutId,
+                panSpeedMultiplier: local.PanSpeedMultiplier,
+                panDeadzone: local.PanDeadzone,
+                keyboardPanSpeed: local.KeyboardPanSpeed,
+                defaultItemColor: local.DefaultItemColor,
+                headerMode: local.HeaderMode,
+            }),
+            BackendAPI.SaveLayoutSettings(localLayout),
+            saveSwatches(store.currentProject!.Id, swatches.value),
+            saveDefaultLodMask(store.currentProject!.Id, defaultLodMask.value),
+            saveDefaultMentionedOnly(store.currentProject!.Id, defaultMentionedOnly.value),
+        ])
 
-    if (settingsResult?.status === 'ok' && lsResult?.status === 'ok' && swResult?.status === 'ok' && maskResult?.status === 'ok' && mentionedResult?.status === 'ok') {
-        if (store.settings) {
-            store.settings.PixelsPerSubtick = local.PixelsPerSubtick
-            store.settings.ShowGuides = local.ShowGuides
-            store.settings.DisplayRadius = local.DisplayRadius
-            store.settings.IsFullscreen = local.IsFullscreen
-            store.settings.UseCustomScaling = local.UseCustomScaling
-            store.settings.CustomScale = local.CustomScale
-            store.settings.PanSpeedMultiplier = local.PanSpeedMultiplier
-            store.settings.PanDeadzone = local.PanDeadzone
-            store.settings.KeyboardPanSpeed = local.KeyboardPanSpeed
-            store.settings.DefaultItemColor = local.DefaultItemColor
-            store.settings.HeaderMode = local.HeaderMode
+        if (settingsResult?.status === 'ok' && lsResult?.status === 'ok' && swResult?.status === 'ok' && maskResult?.status === 'ok' && mentionedResult?.status === 'ok') {
+            if (store.settings) {
+                store.settings.PixelsPerSubtick = local.PixelsPerSubtick
+                store.settings.ShowGuides = local.ShowGuides
+                store.settings.DisplayRadius = local.DisplayRadius
+                store.settings.IsFullscreen = local.IsFullscreen
+                store.settings.UseCustomScaling = local.UseCustomScaling
+                store.settings.CustomScale = local.CustomScale
+                store.settings.PanSpeedMultiplier = local.PanSpeedMultiplier
+                store.settings.PanDeadzone = local.PanDeadzone
+                store.settings.KeyboardPanSpeed = local.KeyboardPanSpeed
+                store.settings.DefaultItemColor = local.DefaultItemColor
+                store.settings.HeaderMode = local.HeaderMode
+            }
+            if (lsResult.layoutSettings) store.setLayoutSettings(lsResult.layoutSettings)
+            emit('close')
+        } else {
+            void logError('TimelineSettingsModal: save failed', new Error(
+                `replies: settings ${settingsResult?.status}, layout ${lsResult?.status}, swatches ${swResult?.status}, ` +
+                `LOD mask ${maskResult?.status}, mentioned-only ${mentionedResult?.status}`))
+            saveError.value = 'Save failed. Please try again.'
         }
-        if (lsResult.layoutSettings) store.setLayoutSettings(lsResult.layoutSettings)
-        emit('close')
-    } else {
-        console.error('[TimelineSettingsModal] save failed:', { settingsResult, lsResult, swResult, maskResult, mentionedResult })
-        saveError.value = 'Save failed. Please try again.'
+    } catch (e) {
+        void logError('TimelineSettingsModal: save failed', e)
+        saveError.value = `Save failed: ${e instanceof Error ? e.message : String(e)}`
+    } finally {
+        isSaving.value = false
     }
-
-    isSaving.value = false
 }
 </script>
 

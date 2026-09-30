@@ -13,7 +13,8 @@ import {
 } from '@phosphor-icons/vue'
 import CastCharts from '@/components/CastCharts.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
-import { BackendAPI, type BridgeMessage } from '@/bridge/api'
+import HoverTip from '@/components/HoverTip.vue'
+import { BackendAPI, logError, type BridgeMessage } from '@/bridge/api'
 import { keepOnScreen } from '@/utils/modal'
 import {
     clockKey, followSection, isTimed, listSections,
@@ -60,7 +61,7 @@ const closed = ref(new Set<string>())
 
 function failed(what: string, ex: unknown) {
     error.value = `${what}: ${ex instanceof Error ? ex.message : String(ex)}`
-    console.error(`[MapCastApp] ${what}`, ex)
+    void logError(`MapCastApp: ${what}`, ex)
 }
 
 function send(command: CastCommand) {
@@ -418,14 +419,14 @@ const ms = (n: number) => n.toFixed(1)
         <div class="cast-body">
             <p v-if="error" class="cast-flash">
                 {{ error }}
-                <button class="icon-btn" title="Dismiss" @click="error = ''"><PhX :size="11" /></button>
+                <button class="icon-btn" aria-label="Dismiss" data-tip="Dismiss" @click="error = ''"><PhX :size="11" /></button>
             </p>
 
             <p v-if="!state" class="side-note">Waiting for the map…</p>
             <p v-else-if="!state.timeOn" class="side-note">The map's clock is off. Turn on Time to see who is where.</p>
 
             <template v-else>
-                <p class="cast-clock" title="The map's clock"><PhClock :size="13" /> {{ state.clock.text }}</p>
+                <p class="cast-clock" data-tip="The map's clock"><PhClock :size="13" /> {{ state.clock.text }}</p>
 
                 <div class="cast-tabs" role="tablist">
                     <button role="tab" :aria-selected="tab === 'people'" :class="{ on: tab === 'people' }" @click="tab = 'people'">
@@ -438,12 +439,12 @@ const ms = (n: number) => n.toFixed(1)
                         :aria-selected="tab === c.id"
                         :aria-label="c.label"
                         :class="{ on: tab === c.id }"
-                        :title="`${c.label} — ${c.about}`"
+                        :data-tip="`${c.label} — ${c.about}`"
                         @click="tab = c.id"
                     >
                         <component :is="c.icon" :size="18" />
                     </button>
-                    <button class="tab-pick" title="Pick which charts have a tab" :aria-expanded="!!pickAt" @click="openPick">
+                    <button class="tab-pick" data-tip="Pick which charts have a tab" :aria-expanded="!!pickAt" @click="openPick">
                         <PhSquaresFour :size="15" /> Charts
                     </button>
                 </div>
@@ -470,7 +471,7 @@ const ms = (n: number) => n.toFixed(1)
                         <p v-if="state.facts.faint" class="side-note">
                             +{{ state.facts.faint }} minor {{ state.facts.faint === 1 ? 'road' : 'roads' }} drawn faint
                         </p>
-                        <p v-if="state.facts.parties.length" class="range-line" title="People who made every journey of the range together">
+                        <p v-if="state.facts.parties.length" class="range-line" data-tip="People who made every journey of the range together">
                             Together: {{ state.facts.parties.join(' · ') }}
                         </p>
                     </template>
@@ -493,7 +494,7 @@ const ms = (n: number) => n.toFixed(1)
                     <header class="who-head">
                         <span class="place-dot" :style="{ background: state.detail.colour }" />
                         <span class="who-name">{{ state.detail.name }}</span>
-                        <button class="icon-btn" title="Put them back among everyone" @click="spot(null)">
+                        <button class="icon-btn" aria-label="Put them back among everyone" data-tip="Put them back among everyone" @click="spot(null)">
                             <PhX :size="12" />
                         </button>
                     </header>
@@ -512,7 +513,7 @@ const ms = (n: number) => n.toFixed(1)
                             :key="c.id"
                             class="chip"
                             :class="{ hot: state.hover === c.id }"
-                            :title="`${count(c.n, 'event')} together — pick them out`"
+                            :data-tip="`${count(c.n, 'event')} together — pick them out`"
                             @click="spot(c.id)"
                             @mouseenter="hover(c.id)"
                             @mouseleave="hover(null)"
@@ -529,7 +530,7 @@ const ms = (n: number) => n.toFixed(1)
                         <li v-for="(s, i) in state.detail.stops" :key="i">
                             <button
                                 :class="{ now: i === nowStop, faint: faint(s) }"
-                                :title="`${s.event} — set the map's clock here`"
+                                :data-tip="`${s.event} — set the map's clock here`"
                                 @click="send({ kind: 'clock', at: s.from })"
                             >
                                 <span class="stop-date">{{ s.date }}</span>
@@ -543,7 +544,7 @@ const ms = (n: number) => n.toFixed(1)
                 <div
                     v-if="state.detail"
                     class="card-grip"
-                    title="Drag to resize — double-click for the default"
+                    data-tip="Drag to resize — double-click for the default"
                     @pointerdown.prevent="resizeCard"
                     @dblclick="resetCard"
                 />
@@ -557,7 +558,7 @@ const ms = (n: number) => n.toFixed(1)
                         <p v-if="state.focus" class="cast-focus">
                             <PhUserFocus :size="13" />
                             <span class="focus-name">Around {{ state.focus.name || 'that character' }}</span>
-                            <button class="icon-btn" title="Show everyone on this timeline" @click="send({ kind: 'unfocus' })">
+                            <button class="icon-btn" aria-label="Show everyone on this timeline" data-tip="Show everyone on this timeline" @click="send({ kind: 'unfocus' })">
                                 <PhX :size="11" />
                             </button>
                         </p>
@@ -565,15 +566,15 @@ const ms = (n: number) => n.toFixed(1)
                         <div class="search-row">
                             <PhMagnifyingGlass :size="13" class="search-icon" />
                             <input v-model="query" placeholder="Find someone…" />
-                            <button v-if="query" class="icon-btn" title="Clear" @click="query = ''">
+                            <button v-if="query" class="icon-btn" aria-label="Clear" data-tip="Clear" @click="query = ''">
                                 <PhX :size="12" />
                             </button>
                         </div>
 
                         <div class="cast-tools">
-                            <button class="chip" title="Show everyone" @click="send({ kind: 'follow', ids: null })">All</button>
-                            <button class="chip" title="Show nobody" @click="send({ kind: 'follow', ids: [] })">None</button>
-                            <select :value="state.grouping" class="cast-pick" title="How the list is cut up" @change="setGrouping">
+                            <button class="chip" data-tip="Show everyone" @click="send({ kind: 'follow', ids: null })">All</button>
+                            <button class="chip" data-tip="Show nobody" @click="send({ kind: 'follow', ids: [] })">None</button>
+                            <select :value="state.grouping" class="cast-pick" aria-label="How the list is cut up" data-tip="How the list is cut up" @change="setGrouping">
                                 <option value="none">Flat list</option>
                                 <option value="moving">By who is moving</option>
                                 <option value="family">By family</option>
@@ -586,7 +587,7 @@ const ms = (n: number) => n.toFixed(1)
                             <button
                                 v-if="state.grouping !== 'none'"
                                 class="chip"
-                                :title="allFolded ? 'Open every group' : 'Fold every group'"
+                                :data-tip="allFolded ? 'Open every group' : 'Fold every group'"
                                 @click="foldAll"
                             >
                                 <PhArrowsOutLineVertical v-if="allFolded" :size="12" />
@@ -601,7 +602,8 @@ const ms = (n: number) => n.toFixed(1)
                                 <li v-if="group.label" class="cast-group-head">
                                     <button
                                         class="icon-btn twisty"
-                                        :title="closed.has(group.key) ? 'Show them' : 'Hide them'"
+                                        :aria-label="closed.has(group.key) ? 'Show them' : 'Hide them'"
+                                        :data-tip="closed.has(group.key) ? 'Show them' : 'Hide them'"
                                         @click="toggleClosed(group.key)"
                                     >
                                         <PhCaretRight :size="11" :class="{ open: !closed.has(group.key) }" />
@@ -610,17 +612,19 @@ const ms = (n: number) => n.toFixed(1)
                                         type="checkbox"
                                         :checked="groupState(group.members) === 'all'"
                                         :indeterminate="groupState(group.members) === 'some'"
-                                        :title="`Show all of ${group.label}`"
+                                        :aria-label="`Show all of ${group.label}`"
+                                        :data-tip="`Show all of ${group.label}`"
                                         @change="follow(group.members.map(p => p.id), groupState(group.members) !== 'all')"
                                     />
                                     <span v-if="group.colour" class="place-dot" :style="{ background: group.colour }" />
                                     <span class="group-name">{{ group.label }}</span>
                                     <template v-if="group.colour">
                                         <!-- The picker itself, unseen over the pencil, so it opens where it was clicked. -->
-                                        <label class="icon-btn colour-btn" :title="`Colour ${group.label} on the map and in the relations window`">
+                                        <label class="icon-btn colour-btn" :data-tip="`Colour ${group.label} on the map and in the relations window`">
                                             <PhPencilSimple :size="11" />
                                             <input
                                                 type="color"
+                                                :aria-label="`Colour ${group.label} on the map and in the relations window`"
                                                 :value="pickerHex(group.colour)"
                                                 @change="send({ kind: 'colour', group: group.label, colour: valueOf($event) })"
                                             />
@@ -628,7 +632,8 @@ const ms = (n: number) => n.toFixed(1)
                                         <button
                                             v-if="group.own"
                                             class="icon-btn"
-                                            :title="`Give ${group.label} back its own colour`"
+                                            :aria-label="`Give ${group.label} back its own colour`"
+                                            :data-tip="`Give ${group.label} back its own colour`"
                                             @click="send({ kind: 'colour', group: group.label, colour: null })"
                                         >
                                             <PhArrowCounterClockwise :size="11" />
@@ -649,14 +654,15 @@ const ms = (n: number) => n.toFixed(1)
                                 >
                                     <input
                                         type="checkbox"
-                                        :title="isFollowed(who.id) ? 'Take them off the map' : 'Show them on the map'"
+                                        :aria-label="isFollowed(who.id) ? 'Take them off the map' : 'Show them on the map'"
+                                        :data-tip="isFollowed(who.id) ? 'Take them off the map' : 'Show them on the map'"
                                         :checked="isFollowed(who.id)"
                                         @change="follow([who.id], !isFollowed(who.id))"
                                     />
                                     <!-- The second click of a double-click is not a second toggle. -->
                                     <button
                                         class="who"
-                                        :title="state.spotlight === who.id
+                                        :data-tip="state.spotlight === who.id
                                             ? 'Put them back among everyone — double-click to go to them'
                                             : 'Pick them out on the map — double-click to go to them'"
                                         @click="$event.detail < 2 && spot(who.id)"
@@ -680,7 +686,7 @@ const ms = (n: number) => n.toFixed(1)
                         <button
                             v-if="zoom && isTimed(chartInfo.id)"
                             class="icon-btn chart-scope zoom-out"
-                            :title="zooms.length > 1
+                            :data-tip="zooms.length > 1
                                 ? 'Back one step, to the stretch zoomed into before (Escape)'
                                 : `Back to ${state.clock.from !== null ? 'the whole range' : 'the whole story'} (Escape)`"
                             @click="zooms.pop()"
@@ -712,7 +718,7 @@ const ms = (n: number) => n.toFixed(1)
         <!-- The map's own settings: set here, they reach the open map at once and are kept per timeline. -->
         <details v-if="state" class="cast-settings">
             <summary><PhSlidersHorizontal :size="13" /> Map settings</summary>
-            <label class="set-row" title="How people get from one place to the next on the map">
+            <label class="set-row" data-tip="How people get from one place to the next on the map">
                 <span>Movement</span>
                 <select :value="state.prefs.movement" @change="setPref('movement', valueOf($event) as CastPrefs['movement'])">
                     <option value="glide">Glide</option>
@@ -721,7 +727,7 @@ const ms = (n: number) => n.toFixed(1)
                     <option value="comet">Comet</option>
                 </select>
             </label>
-            <label v-if="state.prefs.movement !== 'glide'" class="set-row" title="How far back the trail reaches, as a share of the whole story">
+            <label v-if="state.prefs.movement !== 'glide'" class="set-row" data-tip="How far back the trail reaches, as a share of the whole story">
                 <span>Trail length (%)</span>
                 <input
                     type="number"
@@ -732,7 +738,7 @@ const ms = (n: number) => n.toFixed(1)
                     @change="setPref('trail', Number(valueOf($event)))"
                 />
             </label>
-            <label class="set-row" title="How much of a journey across several maps is flown">
+            <label class="set-row" data-tip="How much of a journey across several maps is flown">
                 <span>Flight</span>
                 <select :value="state.prefs.flight" @change="setPref('flight', valueOf($event) as CastPrefs['flight'])">
                     <option value="full">Every level</option>
@@ -740,17 +746,17 @@ const ms = (n: number) => n.toFixed(1)
                     <option value="cut">Arrive</option>
                 </select>
             </label>
-            <label class="set-row" title="Dissolve into the map behind a place while the view flies into it; off cuts instead">
+            <label class="set-row" data-tip="Dissolve into the map behind a place while the view flies into it; off cuts instead">
                 <span>Descent fade</span>
                 <input type="checkbox" :checked="state.prefs.fade" @change="setPref('fade', ($event.target as HTMLInputElement).checked)" />
             </label>
-            <label class="set-row" title="In a date range, how many of the busiest roads are drawn in full; the rest are faint">
+            <label class="set-row" data-tip="In a date range, how many of the busiest roads are drawn in full; the rest are faint">
                 <span>Roads shown</span>
                 <select :value="state.prefs.roads" @change="setPref('roads', Number(valueOf($event)))">
                     <option v-for="n in ROADS_SHOWN" :key="n" :value="n">{{ n ? `Busiest ${n}` : 'All' }}</option>
                 </select>
             </label>
-            <label class="set-row" title="In a date range, what the soft disc at each place measures">
+            <label class="set-row" data-tip="In a date range, what the soft disc at each place measures">
                 <span>Places show</span>
                 <select :value="state.prefs.places" @change="setPref('places', valueOf($event) as CastPrefs['places'])">
                     <option value="time">Time spent</option>
@@ -792,7 +798,7 @@ const ms = (n: number) => n.toFixed(1)
         <!-- Ticking one gives it a tab; it stays open for ticking several. -->
         <div v-if="pickAt" ref="pickEl" class="map-menu" :style="{ left: `${pickAt.x}px`, top: `${pickAt.y}px` }">
             <p class="menu-title"><PhSquaresFour :size="14" /> Charts with a tab</p>
-            <label v-for="c in CHARTS" :key="c.id" :title="c.about">
+            <label v-for="c in CHARTS" :key="c.id" :data-tip="c.about">
                 <input type="checkbox" :checked="openCharts.includes(c.id)" @change="toggleChart(c.id)" />
                 <component :is="c.icon" :size="14" /> {{ c.label }}
             </label>
@@ -803,6 +809,8 @@ const ms = (n: number) => n.toFixed(1)
             @click="menu = null; pickAt = null"
             @contextmenu.prevent="menu = null; pickAt = null"
         />
+
+        <HoverTip />
     </div>
 </template>
 

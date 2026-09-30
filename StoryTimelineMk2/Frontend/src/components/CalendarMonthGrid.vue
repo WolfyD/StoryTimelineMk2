@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import { PhCake, PhCross } from '@phosphor-icons/vue'
 import type { MemDayMarker } from '@/types/models'
+import type { LifeMark } from '@/utils/calendarMath'
+import { placeTip } from '@/utils/modal'
 
 export type { MemDayMarker }
 
@@ -15,6 +18,8 @@ const props = defineProps<{
     weekendDays: number[]
     memorableDays?: MemDayMarker[]
     itemDots?: Record<number, ItemDot[]>
+    /** BL-88: birthdays and death anniversaries, by day. */
+    lifeMarks?: Record<number, LifeMark[]>
 }>()
 
 const abbrevLen = computed(() => props.weekLength > 10 ? 1 : 2)
@@ -63,6 +68,23 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
         return false
     })
 }
+
+// The day's card. It hung above its cell, centred, so a day by an edge pushed it out of the window
+// and the scrolling calendar clipped its top; now it is drawn over everything and placed by placeTip.
+const tip = ref<{ day: number; col: number } | null>(null)
+const tipEl = ref<HTMLElement | null>(null)
+
+function onCellMove(e: MouseEvent, day: number, col: number) {
+    if (!itemDotsFor(day).length && !lifeMarksFor(day).length && !markersForCell(day, col).length) {
+        tip.value = null
+        return
+    }
+    if (tip.value?.day !== day) tip.value = { day, col }
+    void nextTick(() => placeTip(tipEl.value, e.clientX, e.clientY))
+}
+
+const itemDotsFor = (day: number) => props.itemDots?.[day] ?? []
+const lifeMarksFor = (day: number) => props.lifeMarks?.[day] ?? []
 </script>
 
 <template>
@@ -80,7 +102,8 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
                 <tr v-for="(row, ri) in rows" :key="ri">
                     <td v-for="(day, ci) in row" :key="ci"
                         :class="{ weekend: isWeekend(ci), empty: day === null, 'has-items': day !== null && !!itemDots?.[day]?.length }">
-                        <div v-if="day !== null" class="cell-wrap">
+                        <div v-if="day !== null" class="cell-wrap"
+                            @mousemove="onCellMove($event, day, ci)" @mouseleave="tip = null">
                             <span class="day-num">{{ day }}</span>
                             <!-- Item dots -->
                             <div v-if="itemDots?.[day]?.length" class="dot-row item-dot-row">
@@ -96,6 +119,22 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
                                     <span class="item-count-badge">{{ itemDots[day]?.length }}</span>
                                 </template>
                             </div>
+                            <!-- Birthdays and death anniversaries -->
+                            <div v-if="lifeMarks?.[day]?.length" class="dot-row life-row">
+                                <template v-if="(lifeMarks[day]?.length ?? 0) <= 3">
+                                    <component
+                                        :is="m.kind === 'birth' ? PhCake : PhCross"
+                                        v-for="(m, li) in lifeMarks[day]"
+                                        :key="li"
+                                        :size="9"
+                                        weight="fill"
+                                        class="life-icon"
+                                        :class="`life-icon--${m.kind}`"
+                                        :style="{ color: m.color }"
+                                    />
+                                </template>
+                                <span v-else class="item-count-badge life-count-badge">{{ lifeMarks[day]?.length }}</span>
+                            </div>
                             <!-- Memorable day dots -->
                             <div v-if="markersForCell(day, ci).length" class="dot-row">
                                 <span
@@ -105,23 +144,29 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
                                     :style="{ background: m.color || '#aaa' }"
                                 />
                             </div>
-                            <!-- Tooltip: items first, then memorable days -->
-                            <div v-if="itemDots?.[day]?.length || markersForCell(day, ci).length" class="cell-tooltip">
-                                <div v-for="(dot, di) in (itemDots?.[day] ?? [])" :key="`i${di}`" class="tooltip-row">
-                                    <span class="tooltip-dot" :style="{ background: dot.color || '#6366f1' }" />
-                                    <span class="tooltip-name">{{ dot.title }}</span>
-                                </div>
-                                <div v-if="markersForCell(day, ci).length && itemDots?.[day]?.length" class="tooltip-sep" />
-                                <div v-for="m in markersForCell(day, ci)" :key="m.id" class="tooltip-row">
-                                    <span class="tooltip-dot" :style="{ background: m.color || '#aaa' }" />
-                                    <span class="tooltip-name">{{ m.name }}</span>
-                                </div>
-                            </div>
                         </div>
                     </td>
                 </tr>
             </tbody>
         </table>
+        <!-- The hovered day: items first, then birthdays and anniversaries, then memorable days -->
+        <Teleport to="body">
+            <div v-if="tip" ref="tipEl" class="cell-tooltip" role="tooltip">
+                <div v-for="(dot, di) in itemDotsFor(tip.day)" :key="`i${di}`" class="tooltip-row">
+                    <span class="tooltip-dot" :style="{ background: dot.color || '#6366f1' }" />
+                    <span class="tooltip-name">{{ dot.title }}</span>
+                </div>
+                <div v-for="(m, li) in lifeMarksFor(tip.day)" :key="`l${li}`" class="tooltip-row">
+                    <component :is="m.kind === 'birth' ? PhCake : PhCross" :size="10" weight="fill" :style="{ color: m.color }" />
+                    <span class="tooltip-name">{{ m.title }}</span>
+                </div>
+                <div v-if="markersForCell(tip.day, tip.col).length && (itemDotsFor(tip.day).length || lifeMarksFor(tip.day).length)" class="tooltip-sep" />
+                <div v-for="m in markersForCell(tip.day, tip.col)" :key="m.id" class="tooltip-row">
+                    <span class="tooltip-dot" :style="{ background: m.color || '#aaa' }" />
+                    <span class="tooltip-name">{{ m.name }}</span>
+                </div>
+            </div>
+        </Teleport>
     </div>
 </template>
 
@@ -130,7 +175,6 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
     background: var(--app-surface, #0c1524);
     border: 1px solid var(--app-border, #2d3a56);
     border-radius: var(--app-radius-sm, 6px);
-    overflow: visible; // allow tooltips to escape
     user-select: none; // a display, not text — dragging across days must not highlight them
 }
 
@@ -188,10 +232,6 @@ function markersForCell(day: number, colIndex: number): MemDayMarker[] {
     align-items: center;
     gap: 1px;
     padding: 1px;
-
-    &:hover .cell-tooltip {
-        display: block;
-    }
 }
 
 .day-num {
@@ -235,6 +275,15 @@ td.has-items {
     line-height: 1;
 }
 
+// ── Birthdays and death anniversaries ────────────────────────────────────────
+
+.life-icon { flex-shrink: 0; }
+
+.life-count-badge {
+    background: var(--app-surface-high, #1e2b44);
+    color: var(--app-text, #e2e8f0);
+}
+
 .tooltip-sep {
     height: 1px;
     background: var(--app-border, #2d3a56);
@@ -261,17 +310,16 @@ td.has-items {
 // ── Tooltip ──────────────────────────────────────────────────────────────────
 
 .cell-tooltip {
-    display: none;
-    position: absolute;
-    bottom: calc(100% + 4px);
-    left: 50%;
-    transform: translateX(-50%);
+    position: fixed;
+    top: 0;
+    left: 0;
+    // A long title wraps rather than widening the card past the window.
+    max-width: min(320px, calc(100vw - 8px));
     background: var(--app-bg, #0f172a);
     border: 1px solid var(--app-accent, #6366f1);
     border-radius: var(--app-radius-sm, 5px);
     padding: 5px 8px;
     z-index: var(--z-menu);
-    white-space: nowrap;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     pointer-events: none;
 }

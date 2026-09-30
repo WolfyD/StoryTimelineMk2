@@ -107,4 +107,39 @@ describe('CalendarMonthGrid', () => {
     expect(wrapper.find('.item-dot-row').exists()).toBe(false)
     expect(wrapper.find('.item-dot').exists()).toBe(false)
   })
+
+  // ── Birthdays and death anniversaries (BL-88) ────────────────────────────
+
+  it('draws a cake and a cross in the character colours, then a count past three', () => {
+    const birth = { kind: 'birth' as const, color: '#f00', title: 'Mira turns 30' }
+    const death = { kind: 'death' as const, color: '#0f0', title: 'Aldric died 25 years ago' }
+    const wrapper = mountGrid({ lifeMarks: { 2: [birth, death], 5: [birth, birth, birth, death] } })
+
+    expect(wrapper.findAll('.life-icon--birth')).toHaveLength(1)
+    expect(wrapper.findAll('.life-icon--death')).toHaveLength(1)
+    expect(wrapper.find('.life-icon--death').attributes('style')).toContain('color')
+    expect(wrapper.find('.life-count-badge').text()).toBe('4')
+  })
+
+  // ── Day card ─────────────────────────────────────────────────────────────
+
+  it('shows the hovered day in one card over the page, and takes it away after', async () => {
+    const death = { kind: 'death' as const, color: '#0f0', title: 'Aldric died 25 years ago' }
+    const wrapper = mountGrid({ itemDots: { 2: [{ color: '#f00', title: 'Battle of Helm' }] }, lifeMarks: { 2: [death] } })
+    const day2 = wrapper.findAll('.cell-wrap')[1]!
+
+    await wrapper.findAll('.cell-wrap')[0]!.trigger('mousemove')   // nothing on day 1: no card
+    expect(document.body.querySelector('.cell-tooltip')).toBeNull()
+
+    await day2.trigger('mousemove', { clientX: 5, clientY: 5 })
+    // In the body, not the cell, so no scrolling box or window edge can cut it off.
+    const card = document.body.querySelector<HTMLElement>('.cell-tooltip')!
+    expect(card.textContent).toContain('Battle of Helm')
+    expect(card.textContent).toContain('Aldric died 25 years ago')
+    expect(wrapper.find('.cell-tooltip').exists()).toBe(false)
+
+    await day2.trigger('mouseleave')
+    expect(document.body.querySelector('.cell-tooltip')).toBeNull()
+    wrapper.unmount()
+  })
 })

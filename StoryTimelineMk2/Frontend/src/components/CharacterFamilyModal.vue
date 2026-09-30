@@ -5,7 +5,7 @@
  * every row can be re-kinded, swapped or dropped, and nothing is written until it is ticked.
  */
 import { ref, computed, onMounted } from 'vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import BaseModal from '@/components/BaseModal.vue'
 import { mediaUrl } from '@/utils/mediaUrl'
 import { initials, lifespan } from '@/utils/characterItems'
@@ -88,7 +88,7 @@ onMounted(async () => {
         }))
     } catch (ex) {
         error.value = `Could not check who is already related: ${ex instanceof Error ? ex.message : String(ex)}`
-        console.error('Family suggestion load failed', ex)
+        void logError('CharacterFamilyModal: Family suggestion load failed', ex)
     } finally {
         loading.value = false
     }
@@ -107,7 +107,7 @@ async function save() {
         emit('close')
     } catch (ex) {
         error.value = `Could not add the relations: ${ex instanceof Error ? ex.message : String(ex)}`
-        console.error('Family relations save failed', ex)
+        void logError('CharacterFamilyModal: Family relations save failed', ex)
     } finally {
         busy.value = false
     }

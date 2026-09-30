@@ -7,6 +7,7 @@ vi.mock('@phosphor-icons/vue', () => ({ PhX: { template: '<span class="ph-icon-s
 // Remaps save through the bridge, which is not there in a test run.
 const setMisc = vi.fn().mockResolvedValue({ status: 'ok' })
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     GetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok', value: null }),
     SetMiscSetting: (...a: unknown[]) => setMisc(...a),

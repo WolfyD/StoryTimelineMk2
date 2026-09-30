@@ -55,7 +55,7 @@ function startDrag(e: PointerEvent) {
             class="bm-panel"
             :style="{ width, maxHeight, transform: `translate(${pos.x}px, ${pos.y}px)` }"
         >
-            <div class="bm-header" title="Drag to move" @pointerdown="startDrag">
+            <div class="bm-header" data-tip="Drag to move" @pointerdown="startDrag">
                 <slot name="header">
                     <span class="bm-title">{{ title ?? '' }}</span>
                     <button class="bm-close" @click="emit('close')"><PhX :size="18" /></button>

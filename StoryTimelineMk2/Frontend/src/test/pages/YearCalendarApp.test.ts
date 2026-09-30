@@ -10,10 +10,12 @@ const onHostMessage = vi.hoisted(() => (listener: (message: { action: string; pa
 })
 
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     GetCalendarById:    vi.fn().mockResolvedValue(null),
     onHostMessage,
     GetItemsForYear:    vi.fn().mockResolvedValue({ status: 'ok', items: [] }),
+    GetTimelineCharacters: vi.fn().mockResolvedValue([]),
     WindowGetMaximized: vi.fn().mockResolvedValue({ isMaximized: false }),
     WindowGetTopMost:   vi.fn().mockResolvedValue({ isTopmost: false }),
     WindowSetTopMost:   vi.fn(),
@@ -38,7 +40,7 @@ vi.mock('@/components/CalendarMonthGrid.vue', () => ({
   default: {
     name: 'CalendarMonthGrid',
     template: '<div class="month-grid-stub"></div>',
-    props: ['monthName', 'monthIndex', 'days', 'weekLength', 'dayLabels', 'weekendDays', 'memorableDays', 'itemDots'],
+    props: ['monthName', 'monthIndex', 'days', 'weekLength', 'dayLabels', 'weekendDays', 'memorableDays', 'itemDots', 'lifeMarks'],
   },
 }))
 
@@ -46,7 +48,7 @@ vi.mock('@/components/CalendarMonthGrid.vue', () => ({
 vi.mock('@/utils/useAppTheme', () => ({ useAppTheme: vi.fn() }))
 
 import YearCalendarApp from '@/pages/YearCalendarApp.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 
 // Gregorian-like calendar with 2 months for testing item mapping
 const FAKE_CAL = {
@@ -82,6 +84,7 @@ describe('YearCalendarApp', () => {
     vi.clearAllMocks()
     ;(BackendAPI.GetCalendarById as ReturnType<typeof vi.fn>).mockResolvedValue(null)
     ;(BackendAPI.GetItemsForYear as ReturnType<typeof vi.fn>).mockResolvedValue({ status: 'ok', items: [] })
+    ;(BackendAPI.GetTimelineCharacters as ReturnType<typeof vi.fn>).mockResolvedValue([])
     ;(BackendAPI.WindowGetTopMost as ReturnType<typeof vi.fn>).mockResolvedValue({ isTopmost: false })
     ;(BackendAPI.WindowGetMaximized as ReturnType<typeof vi.fn>).mockResolvedValue({ isMaximized: false })
     setUrlParams({ timelineId: '5' })
@@ -217,6 +220,46 @@ describe('YearCalendarApp', () => {
     // Total dots across all months = 1
     const totalDots = Object.values(byMonth).flatMap(days => Object.values(days)).flat()
     expect(totalDots).toHaveLength(1)
+
+    wrapper.unmount()
+  })
+
+  // ── Birthdays and death anniversaries (BL-88) ─────────────────────────────
+
+  it('reads the cast once and says so in the toolbar when it cannot', async () => {
+    ;(BackendAPI.GetTimelineCharacters as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('db locked'))
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    expect(BackendAPI.GetTimelineCharacters).toHaveBeenCalledWith(5)
+    expect(wrapper.find('.yc-warning').text()).toContain('db locked')
+    expect(logError).toHaveBeenCalledWith('YearCalendarApp: GetTimelineCharacters failed', expect.any(Error))
+
+    wrapper.unmount()
+  })
+
+  it('the Birthdays toggle takes the cakes off the calendar', async () => {
+    setUrlParams({ timelineId: '5', calendarId: 'cal_test' })
+    // The profile comes as the JSON string the backend stores; only a birth picked to the day has a birthday.
+    ;(BackendAPI.GetCalendarById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...FAKE_CAL, LodProfile: { Profile: JSON.stringify([{ index: 9, formatKey: 'days', stepFraction: 1 / 365 }]) },
+    })
+    ;(BackendAPI.GetTimelineCharacters as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { Id: 'c1', Name: 'Mira', Color: '#f00', AbsoluteStart: 2000 + 40 / 365, AbsoluteEnd: null, BirthGranularity: 9, DeathGranularity: 9 },
+    ])
+
+    const wrapper = mountApp()
+    await flushPromises()
+
+    const vm = wrapper.vm as any
+    vm.currentYear = 2030
+    await wrapper.vm.$nextTick()
+    expect(vm.lifeMarksByMonth[1][10][0].title).toBe('Mira turns 30')
+
+    vm.showBirthdays = false
+    await wrapper.vm.$nextTick()
+    expect(vm.lifeMarksByMonth).toEqual({})
 
     wrapper.unmount()
   })

@@ -10,12 +10,12 @@ public class MediaRepoTests
 {
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private static int SeedTimeline(DbTestContext ctx)
+    private static int SeedTimeline(DbTestContext ctx, string title = "Test Timeline")
     {
         using var db = ctx.OpenConnection();
         db.Execute(@"
             INSERT INTO timelines (title, author, description, start_year)
-            VALUES ('Test Timeline', '', '', 0)");
+            VALUES (@title, '', '', 0)", new { title });
         return db.QuerySingle<int>("SELECT last_insert_rowid()");
     }
 
@@ -145,6 +145,32 @@ public class MediaRepoTests
         using var db = ctx.OpenConnection();
         var count = db.QuerySingle<int>("SELECT COUNT(*) FROM pictures WHERE id = @Id", new { Id = picId });
         Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public void UnlinkAndPruneImage_KeepsPicture_StillUsedByAMapOrAPortrait()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        string itemId = SeedItem(ctx, tlId);
+        string mapPic = SeedPicture(ctx);
+        string portrait = SeedPicture(ctx);
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute("INSERT INTO maps (id, timeline_id, name, picture_id) VALUES ('m1', @Tl, 'World', @P)", new { Tl = tlId, P = mapPic });
+            db.Execute("INSERT INTO characters (id, timeline_id, name, portrait_picture_id) VALUES ('c1', @Tl, 'Ada', @P)", new { Tl = tlId, P = portrait });
+        }
+        var repo = new MediaRepo();
+        repo.LinkPictureToItem(mapPic, itemId);
+        repo.LinkPictureToItem(portrait, itemId);
+
+        repo.UnlinkAndPruneImage(mapPic, itemId);
+        repo.UnlinkAndPruneImage(portrait, itemId);
+
+        Assert.Empty(repo.GetItemPictures(itemId));
+        using var check = ctx.OpenConnection();
+        Assert.Equal(2, check.QuerySingle<int>("SELECT COUNT(*) FROM pictures WHERE id IN (@A, @B)", new { A = mapPic, B = portrait }));
+        Assert.Equal(mapPic, check.QuerySingle<string>("SELECT picture_id FROM maps WHERE id = 'm1'"));
     }
 
     // ── image helpers ─────────────────────────────────────────────────────────
@@ -344,6 +370,97 @@ public class MediaRepoTests
         using var db = ctx.OpenConnection();
         Assert.Equal(0, db.QuerySingle<int>("SELECT COUNT(*) FROM pictures WHERE id = @Id", new { media.Id }));
         Assert.Equal(0, db.QuerySingle<int>("SELECT COUNT(*) FROM item_pictures WHERE picture_id = @Id", new { media.Id }));
+    }
+
+    [Fact]
+    public void DeleteMedia_ClearsTheMapAndThePortraitUsingIt()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        string pic = SeedPicture(ctx);
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute("INSERT INTO maps (id, timeline_id, name, picture_id) VALUES ('m1', @Tl, 'World', @P)", new { Tl = tlId, P = pic });
+            db.Execute("INSERT INTO characters (id, timeline_id, name, portrait_picture_id) VALUES ('c1', @Tl, 'Ada', @P)", new { Tl = tlId, P = pic });
+        }
+
+        new MediaRepo().DeleteMedia(pic);
+
+        using var check = ctx.OpenConnection();
+        Assert.Null(check.QuerySingle<string?>("SELECT picture_id FROM maps WHERE id = 'm1'"));
+        Assert.Null(check.QuerySingle<string?>("SELECT portrait_picture_id FROM characters WHERE id = 'c1'"));
+    }
+
+    // ── GetArchiveMedia (BL-88) ───────────────────────────────────────────────
+
+    [Fact]
+    public void GetArchiveMedia_ListsThisTimelinesPicturesAndUnusedOnes_WithEveryUse()
+    {
+        using var ctx = new DbTestContext();
+        int here = SeedTimeline(ctx), there = SeedTimeline(ctx, "Other");
+        string hereItem = SeedItem(ctx, here), thereItem = SeedItem(ctx, there);
+        string both = SeedPicture(ctx), elsewhere = SeedPicture(ctx), unused = SeedPicture(ctx), sharedFace = SeedPicture(ctx);
+        var repo = new MediaRepo();
+        repo.LinkPictureToItem(both, hereItem);
+        repo.LinkPictureToItem(both, thereItem);
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute("INSERT INTO maps (id, timeline_id, name, picture_id) VALUES ('m1', @Tl, 'World', @P)", new { Tl = there, P = elsewhere });
+            // Shared characters belong to every timeline, so their portrait is this one's too.
+            db.Execute("INSERT INTO characters (id, timeline_id, name, portrait_picture_id, shared) VALUES ('c1', @Tl, 'Ada', @P, 1)", new { Tl = there, P = sharedFace });
+        }
+
+        var listed = repo.GetArchiveMedia(here).ToDictionary(p => p.Id);
+
+        Assert.Equal(new[] { both, unused, sharedFace }.Order(), listed.Keys.Order());
+        Assert.Equal([(hereItem, true), (thereItem, false)],
+            listed[both].Uses!.Select(u => (u.Id, u.Here)).OrderByDescending(u => u.Here));
+        Assert.Empty(listed[unused].Uses!);
+        Assert.Equal(("portrait", true), (listed[sharedFace].Uses!.Single().Kind, listed[sharedFace].Uses!.Single().Here));
+    }
+
+    [Fact]
+    public void ShownItemsUsing_LeavesOutOtherTimelinesAndHiddenCharacterItems()
+    {
+        using var ctx = new DbTestContext();
+        int here = SeedTimeline(ctx), there = SeedTimeline(ctx, "Other");
+        string shown = SeedItem(ctx, here), hidden = SeedItem(ctx, here), other = SeedItem(ctx, there);
+        string pic = SeedPicture(ctx);
+        var repo = new MediaRepo();
+        foreach (string i in new[] { shown, hidden, other }) repo.LinkPictureToItem(pic, i);
+        using (var db = ctx.OpenConnection())
+            db.Execute("INSERT INTO characters (id, timeline_id, name, show_on_timeline, birth_item_id) VALUES ('c1', @Tl, 'Ada', 0, @I)", new { Tl = here, I = hidden });
+
+        Assert.Equal([shown], repo.ShownItemsUsing(pic, here));
+    }
+
+    [Fact]
+    public void BulkEdit_AttachesToOneItem_AndTakesOffThisTimelinesItemsOnly_WithoutPruning()
+    {
+        using var ctx = new DbTestContext();
+        int here = SeedTimeline(ctx), there = SeedTimeline(ctx, "Other");
+        string a = SeedItem(ctx, here), b = SeedItem(ctx, here), birth = SeedItem(ctx, here), other = SeedItem(ctx, there);
+        string p1 = SeedPicture(ctx), p2 = SeedPicture(ctx), p3 = SeedPicture(ctx);
+        var repo = new MediaRepo();
+        repo.LinkPictureToItem(p1, a);   // already there: attaching again must not duplicate
+        repo.LinkPictureToItem(p3, a);   // not ticked: stays
+        repo.LinkPictureToItem(p2, other);
+        repo.LinkPictureToItem(p2, birth);
+        using (var db = ctx.OpenConnection())
+            db.Execute("UPDATE items SET type_id = 7 WHERE id = @birth", new { birth });
+
+        Assert.Equal([b], repo.BulkEdit(new() { Ids = [p1, p2], AttachTo = b }));
+        Assert.Equal(2, repo.GetItemPictures(b).Count());
+
+        var off = repo.BulkEdit(new() { Ids = [p1, p2], DetachFrom = here });
+
+        Assert.Equal(new[] { a, b }.Order(), off.Order());
+        Assert.Equal([p3], repo.GetItemPictures(a).Select(p => p.Id));
+        Assert.Empty(repo.GetItemPictures(b));
+        Assert.Single(repo.GetItemPictures(birth));   // the portrait is the character's
+        Assert.Single(repo.GetItemPictures(other));   // another timeline's
+        using var check = ctx.OpenConnection();
+        Assert.Equal(3, check.QuerySingle<int>("SELECT COUNT(*) FROM pictures"));   // nothing pruned
     }
 
     [Fact]

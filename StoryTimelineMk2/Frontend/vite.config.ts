@@ -30,7 +30,8 @@ export default defineConfig({
         characters: resolve(__dirname, 'characters.html'),
         relations: resolve(__dirname, 'relations.html'),
         map: resolve(__dirname, 'map.html'),
-        mapCast: resolve(__dirname, 'mapCast.html')
+        mapCast: resolve(__dirname, 'mapCast.html'),
+        archive: resolve(__dirname, 'archive.html')
       }
     }
   }

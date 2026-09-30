@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 vi.mock('@/bridge/api', () => ({
+    logError: vi.fn(),
     BackendAPI: {
         GetCalendarById: vi.fn().mockResolvedValue(null),
         SaveCalendar: vi.fn().mockResolvedValue({ status: 'ok' }),
@@ -199,7 +200,7 @@ describe('CalendarApp — new calendar', () => {
     // ── Export ─────────────────────────────────────────────────────────────────
 
     it('Export sends the on-screen calendar in the SaveCalendar shape and surfaces backend errors', async () => {
-        const { BackendAPI } = await import('@/bridge/api')
+        const { BackendAPI, logError } = await import('@/bridge/api')
         const wrapper = mountApp()
         await flushPromises()
         const vm = wrapper.vm as any
@@ -216,12 +217,10 @@ describe('CalendarApp — new calendar', () => {
 
         // The bridge rejects on a backend error now (BL-18 FC-C1), so that is what a failure looks like.
         ;(BackendAPI.ExportCalendar as any).mockRejectedValueOnce(new Error('disk full'))
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
         await wrapper.find('.btn-export').trigger('click')
         await flushPromises()
         expect(vm.saveError).toBe('Export failed: disk full')
-        expect(consoleError).toHaveBeenCalled()
-        consoleError.mockRestore()
+        expect(logError).toHaveBeenCalledWith('CalendarApp: export failed', expect.any(Error))
 
         vm.lodLevels = []
         await wrapper.find('.btn-export').trigger('click')

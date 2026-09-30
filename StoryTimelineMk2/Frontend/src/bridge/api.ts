@@ -24,6 +24,9 @@ import type {
 	SessionChangeSummary,
 	SessionChangePreview,
 	SessionApplyResult,
+	BulkItemEdit,
+	BulkRelation,
+	BulkPlaceEdit,
 	MapItem,
 	LocationItem,
 	MapEvent,
@@ -106,6 +109,14 @@ function alertFailure(message: string) {
  * actually went to — and so the detail is on disk before the user is invited to go looking.
  */
 async function reportError(context: string, error: unknown): Promise<void> {
+	alertFailure(await logError(context, error));
+}
+
+/**
+ * The log half of `reportError`, for a page that catches a failure and shows it itself — a banner,
+ * a line in a dialog — so the alert would say it twice. Resolves to the message, never rejects.
+ */
+export async function logError(context: string, error: unknown): Promise<string> {
 	const err = error instanceof Error ? error : undefined;
 	const message = err?.message ?? String(error ?? 'Unknown error');
 	console.error(`[${context}]`, error);
@@ -123,7 +134,7 @@ async function reportError(context: string, error: unknown): Promise<void> {
 		// to report, forever. `alertFailure` says so in its message instead.
 	}
 
-	alertFailure(message);
+	return message;
 }
 
 const pendingRequests = new Map<number, (data: any) => void>();
@@ -438,6 +449,11 @@ export const BackendAPI = {
 		return await this.request<{ status: string; unlinked?: number; message?: string }>('DeleteTag', { id });
 	},
 
+	/** Every item carrying `fromId` carries `intoId` instead, and `fromId` is gone. */
+	async MergeTag(fromId: number, intoId: number) {
+		return await this.request<{ status: string }>('MergeTag', { fromId, intoId });
+	},
+
 	/** Just the calendar, for windows that need dates but not the whole project. */
 	async GetTimelineCalendar(timelineId: number) {
 		return await this.request<Calendar | null>('GetTimelineCalendar', { timelineId });
@@ -476,10 +492,10 @@ export const BackendAPI = {
 	 * further and lands on the pin — the map flies the journey down to it itself. `characterId` comes
 	 * from a character's own timeline and cuts the map's cast down to the people they appear with.
 	 */
-	async OpenMapWindow(timelineId: number, mapId?: string, locationId?: string, characterId?: string) {
+	async OpenMapWindow(timelineId: number, mapId?: string, locationId?: string, characterId?: string, toggle = false) {
 		return await this.request<{ status: string }>(
 			'OpenMapWindow',
-			{ timelineId, mapId, locationId, characterId },
+			{ timelineId, mapId, locationId, characterId, toggle },
 		);
 	},
 	/** BL-16: the map's cast window. `activate` false leaves the keys with the map. */
@@ -506,6 +522,10 @@ export const BackendAPI = {
 	/** The events that pointed here keep their dates and forget the place. */
 	async DeleteLocation(locationId: string) {
 		return await this.request<{ status: string }>('DeleteLocation', { locationId });
+	},
+	/** Refused whole when anything would go under a map inside it. */
+	async BulkEditPlaces(edit: BulkPlaceEdit) {
+		return await this.request<{ status: string; affected: number }>('BulkEditPlaces', edit);
 	},
 	/** What happened at this place, earliest first. */
 	async GetLocationItems(locationId: string) {
@@ -559,9 +579,17 @@ export const BackendAPI = {
 		return await this.request<{ status: string }>('DeleteCharacter', { id });
 	},
 
-	/** `characterId` opens the window on that character, or points the open one at them. */
-	async OpenCharactersWindow(timelineId: number, characterId?: string) {
-		return await this.request<{ status: string }>('OpenCharactersWindow', { timelineId, characterId });
+	/**
+	 * `characterId` opens the window on that character, or points the open one at them. `toggle` is the
+	 * sidebar's: an open window closes instead. The same goes for the relations, map and archive opens.
+	 */
+	async OpenCharactersWindow(timelineId: number, characterId?: string, toggle = false) {
+		return await this.request<{ status: string }>('OpenCharactersWindow', { timelineId, characterId, toggle });
+	},
+
+	/** BL-88: the Archive — everything the timeline holds, in one window that stays open. */
+	async OpenArchiveWindow(timelineId: number, toggle = false) {
+		return await this.request<{ status: string }>('OpenArchiveWindow', { timelineId, toggle });
 	},
 
 	/** The character a birth/death item belongs to — null for every other item. */
@@ -587,8 +615,13 @@ export const BackendAPI = {
 	},
 
 	/** `characterId` centres the graph and roots the family tree on them. */
-	async OpenRelationsWindow(timelineId: number, characterId?: string) {
-		return await this.request<{ status: string }>('OpenRelationsWindow', { timelineId, characterId });
+	async OpenRelationsWindow(timelineId: number, characterId?: string, toggle = false) {
+		return await this.request<{ status: string }>('OpenRelationsWindow', { timelineId, characterId, toggle });
+	},
+
+	/** BL-88: the genogram alone, rooted on `characterId`, in a window of its own. */
+	async OpenFamilyTreeWindow(timelineId: number, characterId: string) {
+		return await this.request<{ status: string }>('OpenFamilyTreeWindow', { timelineId, characterId });
 	},
 
 	async SaveCharacterRelation(relation: CharacterRelationship) {
@@ -597,6 +630,11 @@ export const BackendAPI = {
 			'SaveCharacterRelation',
 			relation,
 		);
+	},
+
+	/** BL-88: `affected` is how many of them it related; the other, ticked too, is skipped. */
+	async BulkRelate(bulk: BulkRelation) {
+		return await this.request<{ status: string; affected: number }>('BulkRelate', bulk);
 	},
 
 	async DeleteCharacterRelation(id: number) {
@@ -633,6 +671,55 @@ export const BackendAPI = {
 
 	async GetBookChapters(bookId: string) {
 		return await this.request<Chapter[]>('GetBookChapters', { bookId });
+	},
+
+	// ── BL-88: the Archive's stories and books. Every write pushes `StoriesChanged`. ────────────────
+
+	/** Every story, with this timeline's links; the page decides which to list. */
+	async GetArchiveStories(timelineId: number) {
+		return await this.request<Story[]>('GetArchiveStories', { timelineId });
+	},
+	/**
+	 * A new story's Id is made backend-side. `timelineId` replaces that timeline's character, place and
+	 * book links with the story's lists; without it (the item editor's quick create) links are untouched.
+	 */
+	async SaveStory(story: Partial<Story>, timelineId?: number) {
+		return await this.request<{ status: string; story: Story }>('SaveStory', { story, timelineId });
+	},
+	/** Everywhere: items in every timeline lose the reference. */
+	async DeleteStory(id: string) {
+		return await this.request<{ status: string }>('DeleteStory', { id });
+	},
+	async GetArchiveBooks(timelineId: number) {
+		return await this.request<Book[]>('GetArchiveBooks', { timelineId });
+	},
+	async SaveBook(book: Partial<Book>) {
+		return await this.request<{ status: string; book: Book }>('SaveBook', book);
+	},
+	async SaveChapter(chapter: Partial<Chapter>) {
+		return await this.request<{ status: string; chapter: Chapter }>('SaveChapter', chapter);
+	},
+	/** The book, its chapters and every item's reference to them. */
+	async DeleteBook(id: string) {
+		return await this.request<{ status: string }>('DeleteBook', { id });
+	},
+	async DeleteChapter(id: string) {
+		return await this.request<{ status: string }>('DeleteChapter', { id });
+	},
+	/** This timeline's pictures and the unused ones, each with every use it has anywhere. */
+	async GetArchiveMedia(timelineId: number) {
+		return await this.request<import('@/types/models').MediaItem[]>('GetArchiveMedia', { timelineId });
+	},
+	async SavePictureInfo(id: string, title: string, description: string) {
+		return await this.request<{ status: string }>('SavePictureInfo', { id, title, description });
+	},
+	/** The picture and every use of it; `timelineId`'s items that showed it are pushed again as ItemSaved. */
+	async DeletePicture(id: string, timelineId: number) {
+		return await this.request<{ status: string }>('DeletePicture', { id, timelineId });
+	},
+	/** BL-88: pictures onto one item, or off every item of a timeline (a character's birth and death kept); the items changed are pushed as ItemSaved. */
+	async BulkEditMedia(edit: { ids: string[]; attachTo?: string; detachFrom?: number }) {
+		return await this.request<{ status: string; affected: number }>('BulkEditMedia', edit);
 	},
 
 	async GetLayoutSettingsList() {
@@ -684,6 +771,16 @@ export const BackendAPI = {
 			'BrowseAndPreviewSessionChanges',
 			{},
 		);
+	},
+
+	/** BL-88: deletes the sealed days that changed nothing. */
+	async PruneSessionDays(timelineId: number) {
+		return await this.request<{ status: string; pruned: number }>('PruneSessionDays', { timelineId });
+	},
+
+	/** BL-88: folds neighbouring sealed days into one; replies with the new history. */
+	async MergeSessionDays(timelineId: number, days: string[]) {
+		return await this.request<{ status: string; history: SessionHistory }>('MergeSessionDays', { timelineId, days });
 	},
 
 	/** `decisions` names only the items to keep as they are: `{ itemId: 'local' }`. */
@@ -824,6 +921,12 @@ export const BackendAPI = {
 
 	async ShiftTimelineItems(timelineId: number, delta: number) {
 		return await this.request<{ status: string; affected?: number }>('ShiftTimelineItems', { timelineId, delta });
+	},
+
+	/** BL-88: the Archive's bulk edit. Every field left out is left alone; each item then comes
+	 *  back as an ItemSaved push. */
+	async BulkEditItems(edit: BulkItemEdit) {
+		return await this.request<{ status: string; affected: number }>('BulkEditItems', edit);
 	},
 
 	/** Overwrites the LOD visibility mask of every item of the timeline */
@@ -984,6 +1087,21 @@ function handleIncoming(data: BridgeMessage) {
 			store.upsertItem(data.payload.Item, data.payload.Tags, data.payload.Characters, data.payload.StoryRefs, data.payload.HasPicture);
 		} else if (data.action === 'ItemDeleted') {
 			useTimelineStore().removeItem(data.payload.ItemId);
+		} else if (data.action === 'StoriesChanged') {
+			// Only a window with story links loaded has titles to fix.
+			const store = useTimelineStore();
+			if (store.itemStoryMap.size) {
+				BackendAPI.GetAllStories().then(s => store.syncStories(s ?? []), err => reportError('StoriesChanged', err));
+			}
+		} else if (data.action === 'TagsChanged') {
+			useTimelineStore().syncTag(data.payload.Id, data.payload.Into ?? null);
+		} else if (data.action === 'HiddenRangesChanged') {
+			const store = useTimelineStore();
+			if (store.currentProject?.Id === data.payload.TimelineId) store.setHiddenRanges(data.payload.Ranges);
+		} else if (data.action === 'NoteSaved') {
+			useTimelineStore().syncNote(data.payload);
+		} else if (data.action === 'NoteDeleted') {
+			useTimelineStore().removeNote(data.payload.NoteId);
 		} else if (data.action === 'CalendarsChanged') {
 			// Calendar editor window closed — any open calendar list reloads itself.
 			window.dispatchEvent(new Event('calendars-changed'));

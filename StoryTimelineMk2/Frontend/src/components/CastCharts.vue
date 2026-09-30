@@ -525,17 +525,17 @@ const sankeyView = computed(() => {
         <template v-else>
             <!-- What the chart is about, where it can be about something else. -->
             <div v-if="crowd && crowd.places.length" class="chart-tools">
-                <select :value="crowd.place ?? ''" class="chart-pick" title="The place charted" @change="emit('ask', { place: valueOf($event) })">
+                <select :value="crowd.place ?? ''" class="chart-pick" aria-label="The place charted" data-tip="The place charted" @change="emit('ask', { place: valueOf($event) })">
                     <option v-for="p in crowd.places" :key="p.id" :value="p.id">{{ p.name }} · {{ count(p.n, 'person', 'people') }}</option>
                 </select>
             </div>
             <template v-if="apart && apart.people.length > 1 && apart.unit">
                 <div class="chart-tools">
-                    <select :value="apart.a ?? ''" class="chart-pick" title="Measured from" @change="askApart('a', $event)">
+                    <select :value="apart.a ?? ''" class="chart-pick" aria-label="Measured from" data-tip="Measured from" @change="askApart('a', $event)">
                         <option v-for="p in apart.people" :key="p.id" :value="p.id">{{ p.name }}</option>
                     </select>
                     <PhArrowsLeftRight :size="12" />
-                    <select :value="apart.b ?? ''" class="chart-pick" title="Measured to" @change="askApart('b', $event)">
+                    <select :value="apart.b ?? ''" class="chart-pick" aria-label="Measured to" data-tip="Measured to" @change="askApart('b', $event)">
                         <option v-for="p in apart.people" :key="p.id" :value="p.id" :disabled="p.id === apart.a">{{ p.name }}</option>
                     </select>
                 </div>
@@ -764,7 +764,7 @@ const sankeyView = computed(() => {
                                         v-for="(col, i) in table.cols"
                                         :key="col.label"
                                         :class="{ on: sort.col === i }"
-                                        :title="col.title ?? 'Sort by this'"
+                                        :data-tip="col.title ?? 'Sort by this'"
                                         @click="sortBy(i)"
                                     >
                                         {{ col.label }}
@@ -780,7 +780,7 @@ const sankeyView = computed(() => {
                                     v-for="r in table.rows"
                                     :key="r.id"
                                     :class="{ on: state.spotlight === r.id, hot: state.hover === r.id }"
-                                    :title="tableOf === 'places'
+                                    :data-tip="tableOf === 'places'
                                         ? 'Click for who was there, and when'
                                         : 'Pick them out — double-click to go to them, right-click for more'"
                                     @click="tableOf === 'places' ? toPlace(r.id) : $event.detail < 2 && spot(r.id)"
@@ -789,7 +789,7 @@ const sankeyView = computed(() => {
                                     @mouseenter="tableOf === 'people' && hover(r.id)"
                                     @mouseleave="tableOf === 'people' && hover(null)"
                                 >
-                                    <td :title="r.cells[0]!.text">
+                                    <td :data-tip="r.cells[0]!.text">
                                         <span class="dot" :style="{ background: r.colour }" />{{ r.cells[0]!.text }}
                                     </td>
                                     <td v-for="(c, i) in r.cells.slice(1)" :key="i">{{ c.text }}</td>

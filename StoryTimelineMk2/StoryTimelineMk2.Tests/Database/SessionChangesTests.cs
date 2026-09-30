@@ -505,4 +505,76 @@ public class SessionChangesTests
         Assert.Equal("Theirs", entry.Local!.Title);
         Assert.Equal("Second pass", entry.Incoming!.Title);
     }
+
+    // ── Tidying the log (BL-88) ────────────────────────────────────────────
+
+    [Fact]
+    public void MergedDaysExportAsTheyDidApart()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        SessionChanges.EnsureSnapshot(tlId);
+
+        string itemId = InsertItem(ctx, tlId, "Draft");
+        string dayOne = CloseDay(ctx, tlId, 3);
+        CloseDay(ctx, tlId, 2);                     // opened and read: folds in unasked
+        Edit(ctx, itemId, "Polished", "2026-09-21 12:00:00");
+        string dayThree = CloseDay(ctx, tlId, 1);
+
+        string startedAt = SessionChanges.History(tlId).Days.Single(d => d.Day == dayOne).StartedAt;
+        SessionChanges.MergeDays(tlId, new[] { dayOne, dayThree });
+
+        var history = SessionChanges.History(tlId);
+        Assert.Equal(new[] { Today, dayThree }, history.Days.Select(d => d.Day));
+        var merged = history.Days[1];
+        Assert.Equal(startedAt, merged.StartedAt);
+        Assert.Equal((1, 0, 0), (merged.Added, merged.Changed, merged.Removed));
+        Assert.Equal(0, history.EmptyDays);
+
+        var change = Assert.Single(SessionChanges.Read(ExportDays(ctx, tlId, dayThree)).Changes);
+        Assert.Equal(("insert", "Polished"), (change.Op, change.Title));
+    }
+
+    [Fact]
+    public void MergeRefusesGapsTodayAndTheLastExport()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        SessionChanges.EnsureSnapshot(tlId);
+
+        InsertItem(ctx, tlId, "Monday");
+        string mon = CloseDay(ctx, tlId, 3);
+        InsertItem(ctx, tlId, "Tuesday");
+        string tue = CloseDay(ctx, tlId, 2);
+        InsertItem(ctx, tlId, "Wednesday");
+        string wed = CloseDay(ctx, tlId, 1);
+        ExportDays(ctx, tlId, mon);
+
+        Assert.Throws<InvalidOperationException>(() => SessionChanges.MergeDays(tlId, new[] { mon, wed }));
+        Assert.Throws<InvalidOperationException>(() => SessionChanges.MergeDays(tlId, new[] { mon, tue }));
+        Assert.Throws<InvalidOperationException>(() => SessionChanges.MergeDays(tlId, new[] { wed, Today }));
+        Assert.Equal(4, SessionChanges.History(tlId).Days.Count);   // nothing half-done
+
+        SessionChanges.MergeDays(tlId, new[] { tue, wed });
+        Assert.Equal(new[] { Today, wed, mon }, SessionChanges.History(tlId).Days.Select(d => d.Day));
+    }
+
+    [Fact]
+    public void PruningDropsOnlyTheDaysThatChangedNothing()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        SessionChanges.EnsureSnapshot(tlId);
+
+        InsertItem(ctx, tlId, "Worked");
+        string worked = CloseDay(ctx, tlId, 2);
+        CloseDay(ctx, tlId, 1);
+
+        Assert.Equal(1, SessionChanges.History(tlId).EmptyDays);
+        Assert.Equal(1, SessionChanges.PruneEmptyDays(tlId));
+
+        var history = SessionChanges.History(tlId);
+        Assert.Equal(0, history.EmptyDays);
+        Assert.Equal(new[] { Today, worked }, history.Days.Select(d => d.Day));
+    }
 }

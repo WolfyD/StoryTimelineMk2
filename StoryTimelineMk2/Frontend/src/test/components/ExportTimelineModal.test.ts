@@ -6,6 +6,7 @@ const GetSessionChanges = vi.fn()
 const ExportSessionChanges = vi.fn()
 
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     GetSessionHistory: (...args: unknown[]) => GetSessionHistory(...args),
     GetSessionChanges: (...args: unknown[]) => GetSessionChanges(...args),

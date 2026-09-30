@@ -14,6 +14,7 @@ const onHostMessage = vi.hoisted(() => (listener: (message: { action: string; pa
 })
 
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     send: vi.fn(),
     request: vi.fn(),
@@ -804,6 +805,18 @@ describe('TimelineApp', () => {
     await wrapper.vm.$nextTick()
     const modal = wrapper.findComponent({ name: 'TimelineItemViewModal' })
     expect(modal.props()).toMatchObject({ itemId: 'ref-item', timelineId: 42, viewOnly: true })
+    wrapper.unmount()
+  })
+
+  it('a sidebar button lights while its window or dialog is up', async () => {
+    const wrapper = await mountReady()
+    const lit = (cls: string) => wrapper.find(cls).classes().includes('strip-btn--tool-active')
+    expect(lit('.strip-btn--tags')).toBe(false)
+    await wrapper.find('.strip-btn--tags').trigger('click')
+    expect(lit('.strip-btn--tags')).toBe(true)
+    for (const l of hostListeners.slice()) l({ action: 'WindowOpened', payload: { Window: 'archive' } })
+    await wrapper.vm.$nextTick()
+    expect(lit('.strip-btn--nav-archive')).toBe(true)
     wrapper.unmount()
   })
 

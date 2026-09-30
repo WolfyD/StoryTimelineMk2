@@ -124,13 +124,13 @@ function memDayDescription(d: MemDay): string {
         <BaseModal width="50vw" max-height="85vh" :z-index="1100" @close="emit('close')">
             <template #header>
                 <div class="header-left">
-                    <button class="icon-btn" title="Back to list" @click="emit('close')">
+                    <button class="icon-btn" aria-label="Back to list" data-tip="Back to list" @click="emit('close')">
                         <PhArrowLeft :size="16" />
                     </button>
                     <span class="modal-title">{{ loading ? 'Loading…' : (cal?.Name ?? 'Calendar') }}</span>
                 </div>
                 <div class="header-right">
-                    <button v-if="!loading && cal && months.length" class="action-btn" title="Show full year calendar" @click="showYearView = true">
+                    <button v-if="!loading && cal && months.length" class="action-btn" data-tip="Show full year calendar" @click="showYearView = true">
                         <PhCalendarDots :size="15" />
                         Year View
                     </button>
@@ -138,7 +138,7 @@ function memDayDescription(d: MemDay): string {
                         <PhPencilSimple :size="14" />
                         Edit
                     </button>
-                    <button class="icon-btn" title="Close" @click="emit('close')">
+                    <button class="icon-btn" aria-label="Close" data-tip="Close" @click="emit('close')">
                         <PhX :size="16" />
                     </button>
                 </div>

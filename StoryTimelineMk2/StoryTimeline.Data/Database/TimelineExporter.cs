@@ -104,6 +104,12 @@ namespace StoryTimelineMk2.Database
                 }
             }
 
+            // BL-88: who each exported story is about, among the exported characters.
+            var storyCharRows = new List<Dictionary<string, object?>>();
+            var storyUuidsOut = storyRows.Select(r => Val(r, "id")).OfType<string>().ToList();
+            if (storyUuidsOut.Any() && charUuids.Any() && TableExists(db, "story_characters"))
+                storyCharRows = QueryRows(db, $"SELECT * FROM story_characters WHERE story_id IN ({UL(storyUuidsOut)}) AND character_id IN ({UL(charUuids)})");
+
             // Pictures
             var pictureRows    = new List<Dictionary<string, object?>>();
             var itemPicRows    = new List<Dictionary<string, object?>>();
@@ -164,6 +170,7 @@ namespace StoryTimelineMk2.Database
                 characters               = charRows,
                 tags                     = tagRows,
                 stories                  = storyRows,
+                storyCharacters          = storyCharRows,
                 itemTags                 = itemTagRows,
                 itemStoryRefs            = itemStoryRows,
                 itemCharacterAppearances = icaRows,
@@ -291,9 +298,13 @@ namespace StoryTimelineMk2.Database
         private static void ImportWithIds(SqliteConnection db, SqliteTransaction tx,
             JsonElement root, TimelineManifest manifest, string tempDir)
         {
-            // Cascade-delete old timeline (cascade removes items, characters, settings, etc.)
+            // Cascade-delete old timeline (cascade removes items, characters, settings, etc.). Story links
+            // are keyed by story and carry no FK, so the timeline's are cleared by hand first: its
+            // characters come back with the same ids, and an old link would come back with them.
             if (manifest.TimelineId > 0)
-                db.Execute("DELETE FROM timelines WHERE id = @id", new { id = manifest.TimelineId }, transaction: tx);
+                db.Execute(@"
+                    DELETE FROM story_characters WHERE character_id IN (SELECT id FROM characters WHERE timeline_id = @id);
+                    DELETE FROM timelines WHERE id = @id;", new { id = manifest.TimelineId }, transaction: tx);
 
             // Global data (INSERT OR REPLACE keeps existing global data intact or updates it)
             BulkInsert(db, tx, "lod_profiles", GetRows(root, "lodProfile", single: true), "OR REPLACE");
@@ -310,7 +321,8 @@ namespace StoryTimelineMk2.Database
             BulkInsert(db, tx, "timelines",                   GetRows(root, "timeline",                 single: true));
             BulkInsert(db, tx, "items",                       GetRows(root, "items"));
             BulkInsert(db, tx, "characters",                  GetRows(root, "characters"));
-            BulkInsert(db, tx, "settings",                    GetRows(root, "settings",                 single: true), "OR IGNORE");
+            BulkInsert(db, tx, "story_characters",            GetRows(root, "storyCharacters"),         "OR IGNORE");
+            BulkInsert(db, tx, "settings",                   GetRows(root, "settings",                 single: true), "OR IGNORE");
             BulkInsert(db, tx, "item_tags",                   GetRows(root, "itemTags"),                "OR IGNORE");
             BulkInsert(db, tx, "item_pictures",               GetRows(root, "itemPictures"),            "OR IGNORE");
             BulkInsert(db, tx, "item_character_appearances",  GetRows(root, "itemCharacterAppearances"), "OR IGNORE");
@@ -344,19 +356,29 @@ namespace StoryTimelineMk2.Database
                 if (oldId != 0) tagIdMap[oldId] = newId;
             }
 
-            // Stories by title → build id map (old uuid → new or existing uuid)
+            // Stories by title → build id map (old uuid → new or existing uuid). A story with that title
+            // already here is reused as it stands; only a new one takes the file's details. (Titles are
+            // not UNIQUE, so the old INSERT OR IGNORE always inserted and left a duplicate behind.)
             var storyIdMap = new Dictionary<string, string>();
+            var newStories = new List<(string Id, string? OldPrevious)>();
             foreach (var row in GetRows(root, "stories"))
             {
                 string title = row.TryGetValue("title",       out var tv) ? tv?.ToString() ?? "" : "";
                 string oldId = row.TryGetValue("id",          out var iv) ? iv?.ToString() ?? "" : "";
-                string desc  = row.TryGetValue("description", out var dv) ? dv?.ToString() ?? "" : "";
-                string newId = Guid.NewGuid().ToString();
-                db.Execute("INSERT OR IGNORE INTO stories (id, title, description) VALUES (@newId, @title, @desc)",
-                    new { newId, title, desc }, transaction: tx);
-                string actual = db.QuerySingle<string>("SELECT id FROM stories WHERE title = @title LIMIT 1", new { title }, transaction: tx);
+                string? actual = db.QuerySingleOrDefault<string>("SELECT id FROM stories WHERE title = @title LIMIT 1", new { title }, transaction: tx);
+                if (actual == null)
+                {
+                    actual = Guid.NewGuid().ToString();
+                    var r = Strip(row, "previous_story_id");
+                    r["id"] = actual;
+                    BulkInsert(db, tx, "stories", new() { r });
+                    newStories.Add((actual, Val(row, "previous_story_id")));
+                }
                 if (!string.IsNullOrEmpty(oldId)) storyIdMap[oldId] = actual;
             }
+            foreach (var (id, oldPrevious) in newStories)
+                if (oldPrevious != null && storyIdMap.TryGetValue(oldPrevious, out var previous))
+                    db.Execute("UPDATE stories SET previous_story_id = @previous WHERE id = @id", new { previous, id }, transaction: tx);
 
             // Insert pictures (INSERT OR IGNORE — keep original UUIDs to avoid duplication)
             BulkInsert(db, tx, "pictures", GetRows(root, "pictures"), "OR IGNORE");
@@ -386,6 +408,16 @@ namespace StoryTimelineMk2.Database
                 r["id"]          = newCharId;
                 r["timeline_id"] = newTlId;
                 BulkInsert(db, tx, "characters", new() { r }, "OR IGNORE");
+            }
+
+            // story_characters, onto the new characters
+            foreach (var row in GetRows(root, "storyCharacters"))
+            {
+                string? os = Val(row, "story_id"), oc = Val(row, "character_id");
+                if (os == null || oc == null) continue;
+                if (!storyIdMap.TryGetValue(os, out var ns) || !charIdMap.TryGetValue(oc, out var nc)) continue;
+                var r = new Dictionary<string, object?>(row) { ["story_id"] = ns, ["character_id"] = nc };
+                BulkInsert(db, tx, "story_characters", new() { r }, "OR IGNORE");
             }
 
             // Items

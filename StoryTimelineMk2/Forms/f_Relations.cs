@@ -29,6 +29,14 @@ namespace StoryTimelineMk2.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string? CharacterId { get; set; }
 
+        /// <summary>BL-88: the family tree window — the genogram alone. Never pre-warmed, so it rides the query.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool TreeOnly { get; set; }
+
+        /// <summary>BL-88: re-root the family tree window's genogram on someone else.</summary>
+        public void ShowTree(string characterId) =>
+            _messageRouter?.SendToVue("SetTreeRoot", new { CharacterId = characterId });
+
         public f_Relations()
         {
             InitializeComponent();
@@ -143,6 +151,7 @@ namespace StoryTimelineMk2.Forms
                 var query = $"?timelineId={TimelineId}";
                 if (!string.IsNullOrEmpty(CharacterId))
                     query += $"&characterId={Uri.EscapeDataString(CharacterId)}";
+                if (TreeOnly) query += "&only=tree";
 
                 string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
                 if (Directory.Exists(distPath))

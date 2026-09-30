@@ -14,6 +14,7 @@ vi.mock('@/bridge/api', () => ({
     onHostMessage: vi.fn(() => () => {}),
   },
   IS_BROWSER_HOST: false,
+  logError: vi.fn(),
 }))
 
 vi.mock('@/components/WindowTitleBar.vue', () => ({
@@ -84,7 +85,7 @@ describe('CharactersApp bottom bar', () => {
 
     await wrapper.findAll('.ch-row')[0]!.trigger('click')
     await flushPromises()
-    expect(barButtons(wrapper)).toEqual(['Save', 'Delete', 'Relate', 'Their timeline'])
+    expect(barButtons(wrapper)).toEqual(['Save', 'Delete', 'Relate', 'Their timeline', 'Family tree'])
     // Inside the form's pane, not across the window — it acts on the open character, not the list.
     expect(wrapper.find('.ch-pane > .ch-bar').exists()).toBe(true)
     // Red standing, not only under the pointer.

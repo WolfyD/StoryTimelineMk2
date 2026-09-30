@@ -187,7 +187,7 @@ const leadingEmpties = computed(() =>
                     :key="i"
                     :class="['season-seg', { active: i === currentSeasonIdx }]"
                     :style="{ flex: seg.length, background: seg.color }"
-                    :title="seg.name"
+                    :data-tip="seg.name"
                 >
                     <span class="season-seg-label">{{ seg.name }}</span>
                 </div>

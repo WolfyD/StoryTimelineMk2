@@ -337,4 +337,26 @@ public class TagRepoTests
         Assert.Throws<InvalidOperationException>(() => repo.RenameTag(oneId, "TWO"));
         Assert.Equal(["one", "two"], repo.GetAllWithUsage().Select(t => t.Name));
     }
+
+    // ── MergeTag ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void MergeTag_MovesLinks_KeepsOnePerItem_AndDropsTheOldTag()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        string a = InsertItem(ctx, tlId), b = InsertItem(ctx, tlId);
+
+        var repo = new TagRepo();
+        Link(ctx, a, "dragon"); Link(ctx, a, "dragons");   // a carries both
+        Link(ctx, b, "dragon");
+        var ids = repo.GetAllWithUsage().ToDictionary(t => t.Name, t => t.Id);
+
+        Assert.Equal("dragons", repo.MergeTag(ids["dragon"], ids["dragons"]));
+
+        Assert.Equal(["dragons"], TagNames(a));
+        Assert.Equal(["dragons"], TagNames(b));
+        Assert.Equal([("dragons", 2)], repo.GetAllWithUsage().Select(t => (t.Name, t.UsageCount)));
+        Assert.Throws<InvalidOperationException>(() => repo.MergeTag(ids["dragons"], ids["dragon"]));
+    }
 }

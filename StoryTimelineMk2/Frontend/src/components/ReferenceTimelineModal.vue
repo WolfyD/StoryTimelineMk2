@@ -2,7 +2,7 @@
 // BL-66: pick another timeline — draw it underneath this one, or open it read-only in its own window.
 import { ref, computed, onMounted } from 'vue'
 import { PhAppWindow, PhStack, PhWarning } from '@phosphor-icons/vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import type { TimelineProject } from '@/types/models'
 import BaseModal from './BaseModal.vue'
@@ -34,7 +34,7 @@ async function showUnderneath(id: number) {
         await store.loadReference(id)
         emit('close')
     } catch (err) {
-        console.error('[ReferenceTimelineModal] loadReference failed', err)
+        void logError('ReferenceTimelineModal: loadReference failed', err)
         error.value = `Could not load that timeline: ${(err as Error).message}`
     } finally {
         busy.value = false

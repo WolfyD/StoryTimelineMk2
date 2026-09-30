@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parentMapIds, rootMaps, pathToMap, hopsBetween, commonMap, flightRoute, flattenMapTree,
-  rowHasChildren, filterMapTree, pinStandingFor, foldableAt, foldToDepth,
+  rowHasChildren, filterMapTree, pinStandingFor, foldableAt, foldToDepth, placesUnder, pruneMapTree,
 } from '@/utils/mapTree'
 import type { MapItem, LocationItem } from '@/types/models'
 
@@ -204,6 +204,19 @@ describe('mapTree', () => {
     expect(filterMapTree(nested, 'Highgate').map(r => r.loc?.Id ?? `[${r.map.Id}]`))
       .toEqual(['[world]', 'l-aurea', 'l-highgate'])
     expect(filterMapTree(nested, '   ')).toEqual([])
+  })
+
+  it('can let a top-level map match on its own, with nothing under it matching', () => {
+    expect(pruneMapTree(nested, () => false, m => m.Name === 'The world').map(r => r.key)).toEqual(['world'])
+    expect(pruneMapTree(nested, () => false)).toEqual([])
+  })
+
+  it('gathers every place on a map and behind its doors, and stops at a cycle', () => {
+    expect(placesUnder(nested, 'world')).toEqual(['l-aurea', 'l-highgate', 'l-inn', 'l-sea'])
+    expect(placesUnder(nested, 'aurea')).toEqual(['l-highgate', 'l-inn'])
+    const a = map('a', 'A', [place('l-a', 'a', 'door to B', 'b')])
+    const b = map('b', 'B', [place('l-b', 'b', 'door to A', 'a')])
+    expect(placesUnder([a, b], 'a')).toEqual(['l-a', 'l-b'])
   })
 
   it('gives every row a key of its own, even down a cycle', () => {

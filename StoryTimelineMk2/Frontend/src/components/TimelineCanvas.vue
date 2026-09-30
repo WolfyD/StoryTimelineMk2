@@ -9,7 +9,7 @@ import type { Stage } from 'konva/lib/Stage';
 import { BackendAPI } from '@/bridge/api';
 import { canvasColor, textHalo } from '@/utils/canvasTheme';
 import { characterAbsolute } from '@/utils/characterItems';
-import { PhUserCircle, PhUserFocus } from '@phosphor-icons/vue';
+import { PhTreeStructure, PhUserCircle, PhUserFocus } from '@phosphor-icons/vue';
 
 import {
 	BREAK_TICKS, absoluteToVisual, visualToAbsolute,
@@ -99,6 +99,7 @@ const emit = defineEmits<{
     itemClick: [itemId: string]
     editCharacter: [itemId: string]
     characterTimeline: [itemId: string]
+    familyTree: [itemId: string]
     viewItem: [itemId: string]
     viewReferenceItem: [itemId: string]
     addItem: [typeId: number, absoluteTime: number, lodIndex: number]
@@ -2364,6 +2365,13 @@ defineExpose({
                     @click="emit('characterTimeline', contextMenu.itemId!); closeContextMenu()"
                 >
                     <PhUserFocus :size="16" /> Their timeline
+                </button>
+                <button
+                    v-if="contextMenu.itemTypeId === 7"
+                    class="menu-item"
+                    @click="emit('familyTree', contextMenu.itemId!); closeContextMenu()"
+                >
+                    <PhTreeStructure :size="16" /> Family tree
                 </button>
                 <button class="menu-item dist-from" @click="setItemDistancePoint('from')">
                     <i class="ri-map-pin-2-fill"></i> Distance – From

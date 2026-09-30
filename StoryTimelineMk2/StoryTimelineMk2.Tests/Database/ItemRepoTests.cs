@@ -44,6 +44,43 @@ public class ItemRepoTests
         return db.QuerySingle<int>("SELECT last_insert_rowid()");
     }
 
+    // ── BulkEdit (BL-88) ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void BulkEdit_ChangesOnlyWhatItNames_AndSparesACharactersColour()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = SeedTimeline(ctx);
+        var repo = new ItemRepo();
+
+        var evt  = MakeItem(tlId);
+        var born = MakeItem(tlId);
+        born.TypeId = 7;
+        born.Color  = "#123456";
+        repo.SaveItemFull(evt,  ["keep", "drop"], [], [], []);
+        repo.SaveItemFull(born, [], [], [], []);
+        int dropId;
+        using (var db = ctx.OpenConnection())
+            dropId = db.QuerySingle<int>("SELECT id FROM tags WHERE name = 'drop'");
+
+        int affected = repo.BulkEdit(new ItemRepo.BulkItemEdit
+        {
+            Ids = [evt.Id, born.Id], Importance = 9, Color = "#ff0000", AddTag = "  Siege ", RemoveTagId = dropId,
+        });
+
+        Assert.Equal(2, affected);
+        var e = repo.GetItemById(evt.Id);
+        var b = repo.GetItemById(born.Id);
+        Assert.Equal((9, "#ff0000", 255), (e.Importance, e.Color, e.LodVisibilityMask));
+        Assert.Equal((9, "#123456"), (b.Importance, b.Color));
+        using var check = ctx.OpenConnection();
+        Assert.Equal(new[] { "keep", "siege" }, check.Query<string>(@"
+            SELECT t.name FROM item_tags it JOIN tags t ON t.id = it.tag_id
+            WHERE it.item_id = @id ORDER BY t.name", new { id = evt.Id }));
+        Assert.Equal(new[] { "siege" }, check.Query<string>(@"
+            SELECT t.name FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE it.item_id = @id", new { id = born.Id }));
+    }
+
     // ── SaveItemFull / GetItemById ────────────────────────────────────────────
 
     /// <summary>

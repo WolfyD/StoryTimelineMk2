@@ -165,6 +165,23 @@ public class MapRepoTests
     }
 
     [Fact]
+    public void DeleteMap_ClearsTheEventsAtItsPins()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new MapRepo();
+
+        string world = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "World" });
+        string itemId = InsertItem(ctx, tlId, repo.SaveLocation(new LocationItem { MapId = world, Name = "Osgiliath" }));
+
+        repo.DeleteMap(world);
+
+        // The pin goes by the cascade, and the trigger still fires for it: the event keeps its date only.
+        Assert.Null(ItemLocation(ctx, itemId));
+        Assert.NotNull(new ItemRepo().GetItemById(itemId));
+    }
+
+    [Fact]
     public void GetLocationItems_ReturnsWhatHappenedThere_EarliestFirst()
     {
         using var ctx = new DbTestContext();
@@ -377,5 +394,43 @@ public class MapRepoTests
         Assert.Equal(0.08, pins.Single(p => p.Id == doorway).FootprintW!.Value, precision: 6);
         // A place nobody has sized has no rectangle, which is not the same as a rectangle of nothing.
         Assert.Null(pins.Single(p => p.Id == plain).FootprintW);
+    }
+
+    // BL-88: pins misplaced in Asia go to North America at the same spot on the picture; a loose
+    // continent map hangs under the new world map by a door in its middle; nothing goes inside itself.
+    [Fact]
+    public void BulkEdit_MovesPinsAndMaps_AndRefusesALoop()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new MapRepo();
+
+        string world = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "World" });
+        string asia = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "Asia" });
+        string america = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "North America" });
+        string city = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "Boston" });
+        string asiaDoor = repo.SaveLocation(new LocationItem { MapId = world, Name = "Asia", ChildMapId = asia });
+        string pin = repo.SaveLocation(new LocationItem { MapId = asia, Name = "Boston", X = 0.2, Y = 0.3, ChildMapId = city, MarkerStyle = "{\"size\":30}" });
+
+        Assert.Equal(1, repo.BulkEdit(new MapRepo.BulkPlaceEdit { Ids = [pin], MoveTo = america }));
+        var moved = repo.GetMap(america, ensureViews: false)!.Locations.Single();
+        Assert.Equal((pin, 0.2, 0.3), (moved.Id, moved.X, moved.Y));
+
+        repo.BulkEdit(new MapRepo.BulkPlaceEdit { MapIds = [america], MoveTo = world });
+        var door = repo.GetMap(world, ensureViews: false)!.Locations.Single(l => l.ChildMapId == america);
+        Assert.Equal(("North America", 0.5, 0.5), (door.Name, door.X, door.Y));
+
+        // The Asia door cannot go on Asia itself; the whole batch is refused, the North America door with it.
+        var loop = Assert.Throws<InvalidOperationException>(() =>
+            repo.BulkEdit(new MapRepo.BulkPlaceEdit { Ids = [asiaDoor, door.Id], Color = "#ff0000", MoveTo = asia }));
+        Assert.Contains("Asia", loop.Message);
+        // The colour went in the same transaction, so it did not stick either.
+        Assert.Null(repo.GetMap(world, ensureViews: false)!.Locations.Single(l => l.Id == asiaDoor).Color);
+
+        repo.BulkEdit(new MapRepo.BulkPlaceEdit { Ids = [pin], Color = "#00ff00", ResetLook = true });
+        var looked = repo.GetMap(america, ensureViews: false)!.Locations.Single();
+        Assert.Equal(("#00ff00", (string?)null), (looked.Color, looked.MarkerStyle));
+        repo.BulkEdit(new MapRepo.BulkPlaceEdit { Ids = [pin], Color = "" });
+        Assert.Null(repo.GetMap(america, ensureViews: false)!.Locations.Single().Color);
     }
 }

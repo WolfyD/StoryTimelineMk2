@@ -94,6 +94,11 @@ message event →
 | `ItemSaved` | `HandleSaveItem` in the **edit window's** router, relayed through `f_AddEditItem.NotifyCallback` — a delegate wired in `HandleOpenAddEditItemWindow` as `(action, payload) => SendToVue(action, payload)` so the push lands in the **opener's** (timeline's) WebView2 | `{ Item: TimelineItem }` (PascalCase — C# serialization) | `timelineStore.upsertItem(payload.Item)` — updates the canvas without a full reload |
 | `CalendarsChanged` | `HandleOpenCalendarEditorWindow`: the opener's router sends it when the `f_Calendar` editor closes | `{}` | `api.ts` re-dispatches it as a `calendars-changed` window event; `SelectCalendarModal`, `EditTimelineModal` and `CalendarManagerModal` reload their calendar lists |
 | `CloseRequested` | `f_AddEditItem.OnFormClosing` (user pressed the window's X, Alt+F4, …) — sent to the **edit window's own** WebView2 | `{}` | `EditItem.vue` runs its dirty check: clean → `WindowClose`; dirty → "Discard changes?" modal. WinForms only hides the form once `WindowClose` arrives (`ConfirmedClose`) |
+| `TagsChanged` | `BridgeHub.Broadcast` from `HandleRenameTag`, `HandleMergeTag` and `HandleDeleteTag`, to every page | `{ Id, Into: { TagId, TagName } \| null }` — what tag `Id` became: itself renamed, the tag it merged into, or `null` for deleted | `timelineStore.syncTag` retags `itemTagMap` and `allTimelineTags` (an item already carrying the survivor just loses the old one); the Archive reloads its tag list |
+| `NoteSaved` | `BridgeHub.Broadcast` from `HandleSaveNote`, to every page | the saved note (`NoteItem`, PascalCase) | `timelineStore.syncNote` — updates it, or adds it when it is this timeline's and not there yet |
+| `NoteDeleted` | `BridgeHub.Broadcast` from `HandleDeleteNote`, to every page | `{ NoteId }` | `timelineStore.removeNote` |
+| `HiddenRangesChanged` | `BridgeHub.Broadcast` from `HandleSaveHiddenRange` and `HandleDeleteHiddenRange`, to every page | `{ TimelineId, Ranges: HiddenRange[] }` — the timeline's whole list after the change | `api.ts` calls `timelineStore.setHiddenRanges` when `TimelineId` is the store's timeline, so a range restored in the Archive comes back on the canvas |
+| `SetTreeRoot` | `f_Relations.ShowTree`, from `HandleOpenFamilyTreeWindow` when the family tree window is already open — to that window only | `{ CharacterId }` | `RelationsApp` (in `only=tree` mode) re-roots the genogram. The relations window ignores it and keeps listening to `FocusCharacter`. |
 | `ZoomChanged` | `f_Timeline.OnZoomFactorChanged` — every WebView2 `ZoomFactorChanged` (Ctrl+wheel, F10, settings Save) after it has been persisted to the timeline's `UseCustomScaling` / `CustomScale` (100% only clears the flag; the last real scale is kept so F10 can restore it) | `{ useCustomScaling, customScale }` | `TimelineApp.onHostPush` copies both into `store.settings` so a later settings Save does not put the old zoom back |
 
 Any other pushed action is logged to the console and otherwise ignored.
@@ -121,6 +126,7 @@ lowercase while serialized domain models keep their C# PascalCase names.
 | `ExportTimeline` | req | `ExportTimeline(id, includeIds)` | `{ id, includeIds }` | `HandleExportTimeline` | `{ status: "ok" }` \| `{ status: "cancelled" }` | Opens native `SaveFileDialog`, writes JSON (`exportVersion: 1`). `cancelled` when the user dismisses the dialog. |
 | `ShiftTimelineItems` | req | `ShiftTimelineItems(timelineId, delta)` | `{ timelineId, delta }` | `HandleShiftTimelineItems` | `{ status: "ok", affected }` \| `{ status: "error", message }` | `delta == 0` short-circuits with `affected: 0`. |
 | `SetTimelineItemsLodMask` | req | `SetTimelineItemsLodMask(timelineId, mask)` | `{ timelineId, mask }` | `HandleSetTimelineItemsLodMask` | `{ status: "ok", affected }` \| `{ status: "error", message }` | `ItemRepo.SetLodMask` — one `UPDATE` of `lod_visibility_mask` for every item of the timeline. Caller reloads the timeline. |
+| `BulkEditItems` | req | `BulkEditItems(edit)` | `{ ids, importance?, color?, lodMask?, addTag?, removeTagId?, addStoryId?, removeStoryId? }` | `HandleBulkEditItems` | `{ status: "ok", affected }` | BL-88, the Archive's bulk edit. `ItemRepo.BulkEdit` changes every item in one transaction; a field left out is left alone. `color: ""` takes the colour off; character birth/death items (types 7–9) keep theirs. `addTag` is trimmed and lower-cased, and made when new. Importance outside 1–10 throws. Broadcasts `ItemSaved` for each id after the commit. |
 
 ### 4.2 Edit item window
 
@@ -134,17 +140,44 @@ lowercase while serialized domain models keep their C# PascalCase names.
 | `GetTagList` | req | `GetTagList()` | `{}` | `HandleGetTagList` | `{ Id, Name, UsageCount }[]` | Tags manager (`TagManagerModal.vue`). |
 | `RenameTag` | req | `RenameTag(id, name)` | `{ id, name }` | `HandleRenameTag` | `{ status: "ok" }` \| `{ status: "error", message }` | Name is lower-cased/trimmed; collisions and empty names come back as errors. |
 | `DeleteTag` | req | `DeleteTag(id)` | `{ id }` | `HandleDeleteTag` | `{ status: "ok", unlinked }` \| `{ status: "error", message }` | Removes the tag from every item first; `unlinked` is that count. |
-| `GetTimelineCharacters` | req | `GetTimelineCharacters(timelineId)` | `{ timelineId }` | `HandleGetTimelineCharacters` | `CharacterItem[]` | |
+| `MergeTag` | req | `MergeTag(fromId, intoId)` | `{ fromId, intoId }` | `HandleMergeTag` | `{ status: "ok" }` | Every item carrying `fromId` carries `intoId` instead (one link when it had both), and `fromId` is deleted. Throws when `intoId` is gone or the same tag. Archive Tags tab (BL-88). Rename, merge and delete all broadcast `TagsChanged` (§3). |
+| `GetTimelineCharacters` | req | `GetTimelineCharacters(timelineId)` | `{ timelineId }` | `HandleGetTimelineCharacters` | `CharacterItem[]` | The year calendar reads it once on open for birthdays and death anniversaries (BL-88). |
+| `OpenFamilyTreeWindow` | req | `OpenFamilyTreeWindow(timelineId, characterId)` | `{ timelineId, characterId }` | `HandleOpenFamilyTreeWindow` | `{ status: "ok" }` | BL-88. A second `f_Relations` with `TreeOnly`: `relations.html?…&only=tree` shows the genogram alone, no sidebar. One at a time; a second call re-roots it with the `SetTreeRoot` push (§3) and brings it forward. Not pre-warmed, no sidebar icon, closes with the timeline. Browser build: popup `storytimeline-family-tree`. Called from the Archive's Characters tab, the Characters window and a portrait's right-click menu. |
 | `GetTimelineStories` | req | `GetTimelineStories(timelineId)` | `{ timelineId }` | `HandleGetTimelineStories` | `Story[]` | **Quirk:** handler ignores `timelineId` and returns *all* stories (`StoryRepo.GetAllStories()`). |
 | `SearchBooks` | req | `SearchBooks(query)` | `{ query }` | `HandleSearchBooks` | `Book[]` | |
 | `GetBookChapters` | req | `GetBookChapters(bookId)` | `{ bookId }` | `HandleGetBookChapters` | `Chapter[]` | |
+
+### 4.2a Archive — stories and books (BL-88)
+
+In `DataActions`, so the browser build has them too. Every write broadcasts **`StoriesChanged`** (empty
+payload) to every open page: the Archive reloads, the item editor refreshes its story picker, and
+`api.ts` patches the timeline store's story titles (`syncStories`).
+
+| Action | Dir | Frontend method | Payload | Response | Notes |
+|--------|-----|-----------------|---------|----------|-------|
+| `GetArchiveStories` | req | `GetArchiveStories(timelineId)` | `{ timelineId }` | `Story[]` with `NextStoryId`, `Characters`, `LocationIds`, `BookIds`, `ChapterIds`, `OtherTimelineRefs` | All stories — the page picks which to list. |
+| `SaveStory` | req | `SaveStory(story, timelineId?)` | `{ story, timelineId? }` | `{ status: "ok", story }` | Send `Id: ''` for a new story; the reply carries the made id. Setting `PreviousStoryId` unlinks that story's other follower. With `timelineId`, `NextStoryId` is written onto the next story too. No `timelineId` = the row only, links and next untouched. |
+| `DeleteStory` | req | `DeleteStory(id)` | `{ id }` | `{ status: "ok" }` | Reaches every timeline. |
+| `GetArchiveBooks` | req | `GetArchiveBooks(timelineId)` | `{ timelineId }` | `Book[]` with `Chapters[].ItemIds`, `OtherTimelineRefs` | |
+| `SaveBook` | req | `SaveBook(book)` | the **Book object itself** | `{ status: "ok", book }` | `Id: ''` for new. |
+| `SaveChapter` | req | `SaveChapter(chapter)` | the **Chapter object itself** | `{ status: "ok", chapter }` | `Id: ''` for new. |
+| `DeleteBook` | req | `DeleteBook(id)` | `{ id }` | `{ status: "ok" }` | Its chapters and their item links go too. |
+| `DeleteChapter` | req | `DeleteChapter(id)` | `{ id }` | `{ status: "ok" }` | |
+| `GetArchiveMedia` | req | `GetArchiveMedia(timelineId)` | `{ timelineId }` | `MediaItem[]` with `Uses[]` (`Kind` item/map/portrait, `Id`, `Name`, `TypeId`, `Here`) | This timeline's pictures and the unused ones. |
+| `SavePictureInfo` | req | `SavePictureInfo(id, title, description)` | `{ id, title, description }` | `{ status: "ok" }` | |
+| `DeletePicture` | req | `DeletePicture(id, timelineId)` | `{ id, timelineId }` | `{ status: "ok" }` | Reaches every timeline: items, maps and portraits lose it. Broadcasts `ItemSaved` for each of this timeline's shown items that had it. |
+| `BulkEditMedia` | req | `BulkEditMedia(edit)` | `{ ids, attachTo?, detachFrom? }` | `{ status: "ok", affected }` | The Media tab's *Edit multiple*. `attachTo` (an item id) links every picture to it; `detachFrom` (a timeline id) unlinks them from that timeline's items, character birth/death items (type 7) excepted. Nothing is pruned. One transaction; broadcasts `ItemSaved` for each item changed. |
+| `BulkRelate` | req | `BulkRelate(bulk)` | `{ ids, otherId, relationshipType, tickedFirst, relationshipModifier, relationshipDegree, replace, timelineId }` | `{ status: "ok", affected }` | The Characters tab's *Edit multiple*: relates each of `ids` to `otherId`, undated. A tie already there keeps its dates and notes and takes the modifier and degree. `replace` first drops each one's ties of that kind, at that end, to anyone else. `otherId` among `ids` is skipped. No broadcast. |
+| `BulkEditPlaces` | req | `BulkEditPlaces(edit)` | `{ ids, mapIds?, color?, resetLook?, moveTo? }` | `{ status: "ok", affected }` | The Places tab's *Edit multiple*. `ids` are places, `mapIds` top-level maps. `color: ""` takes the colour off; `resetLook` nulls `marker_style`. `moveTo` (a map id) moves the places there at the same x/y fraction, and gives each top-level map a door on it at 0.5/0.5 named after it. One transaction, refused whole when something would go under a map inside it. No broadcast: the map window listens for none. |
+
+A handler that throws replies with an error, which rejects the promise (`api.ts` logs and shows it).
 
 ### 4.3 Calendar
 
 | Action | Dir | Frontend method | Payload | Backend handler | Response | Notes |
 |--------|-----|-----------------|---------|-----------------|----------|-------|
 | `GetCalendarList` | req | `GetCalendarList()` | `{}` | `HandleGetCalendarList` | `{ Id, Name, UsageCount }[]` | `UsageCount` = timelines using the calendar. |
-| `GetCalendarById` | req | `GetCalendarById(id)` | `{ id }` | `HandleGetCalendarById` | `Calendar` \| `{ status: "error", message }` | Error shape differs from the success shape — callers must sniff for `status`. |
+| `GetCalendarById` | req | `GetCalendarById(id)` | `{ id }` | `HandleGetCalendarById` | `Calendar` | An unknown id throws; the router's safety net logs `Bridge/GetCalendarById` with the stack and the promise rejects. |
 | `SaveCalendar` | req | `SaveCalendar(calendar)` | the **calendar object itself** (not wrapped) — deserialized into `CalendarItem` | `HandleSaveCalendar` | `{ status: "ok" }` \| `{ status: "error", message }` | Saves calendar + its LOD profile (`SaveCalendarWithLod`). |
 | `CreateCalendar` | req | `CreateCalendar(cloneFrom = 'cal_default_gregorian')` | `{ cloneFrom }` | `HandleCreateCalendar` | `{ status: "ok", calendarId }` \| `{ status: "error", message }` | Clones the source calendar *and* its LOD profile with new GUIDs; name is `"New Calendar"`. |
 | `DeleteCalendar` | req | `DeleteCalendar(id)` | `{ id }` | `HandleDeleteCalendar` | `{ status: "ok", reassigned }` \| `{ status: "error", message }` | Timelines that used it switch to the default Gregorian calendar (`reassigned` = how many); the default calendar itself cannot be deleted. Only offered from `CalendarManagerModal`. |
@@ -193,16 +226,29 @@ thread with `BeginInvoke`.
 
 | Action | Dir | Frontend method | Payload | Backend handler | Response | Notes |
 |--------|-----|-----------------|---------|-----------------|----------|-------|
-| `SaveNote` | req | `SaveNote(note)` | the **TimelineNote object itself** (not wrapped) — deserialized into `NoteItem` | `HandleSaveNote` | `{ status: "ok", noteId }` \| `{ status: "error", message }` | |
-| `DeleteNote` | req | `DeleteNote(noteId)` | `{ noteId }` | `HandleDeleteNote` | `{ status: "ok" }` \| `{ status: "error", message }` | |
+| `SaveNote` | req | `SaveNote(note)` | the **TimelineNote object itself** (not wrapped) — deserialized into `NoteItem` | `HandleSaveNote` | `{ status: "ok", noteId }` | Broadcasts `NoteSaved` (§3), so the Notes panel follows an edit made in the Archive. |
+| `DeleteNote` | req | `DeleteNote(noteId)` | `{ noteId }` | `HandleDeleteNote` | `{ status: "ok" }` | Broadcasts `NoteDeleted`. |
+
+Both throw on failure; the router's safety net logs it and replies with the error.
 
 ### 4.8 Hidden ranges
 
 | Action | Dir | Frontend method | Payload | Backend handler | Response | Notes |
 |--------|-----|-----------------|---------|-----------------|----------|-------|
 | `GetHiddenRanges` | req | `GetHiddenRanges(timelineId)` | `{ timelineId }` | `HandleGetHiddenRanges` | `HiddenRange[]` | |
-| `SaveHiddenRange` | req | `SaveHiddenRange(timelineId, startYear, endYear, label = null, id = 0)` | `{ timelineId, startYear, endYear, label, id }` | `HandleSaveHiddenRange` | `{ status: "ok", range: HiddenRange }` \| `{ status: "error", message }` | `id = 0` inserts; nonzero updates. Reply includes the saved id. |
-| `DeleteHiddenRange` | req | `DeleteHiddenRange(id)` | `{ id }` (int) | `HandleDeleteHiddenRange` | `{ status: "ok" }` \| `{ status: "error", message }` | |
+| `SaveHiddenRange` | req | `SaveHiddenRange(timelineId, startYear, endYear, label = null, id = 0)` | `{ timelineId, startYear, endYear, label, id }` | `HandleSaveHiddenRange` | `{ status: "ok", range: HiddenRange }` | `id = 0` inserts; nonzero updates. Reply includes the saved id. Broadcasts `HiddenRangesChanged` (§3). |
+| `DeleteHiddenRange` | req | `DeleteHiddenRange(id)` | `{ id }` (int) | `HandleDeleteHiddenRange` | `{ status: "ok" }` | Broadcasts `HiddenRangesChanged`. The Archive's MISC → Hidden ranges restores with it. |
+
+Both throw on failure, as does `ShiftTimelineItems`; the router's safety net logs the stack and replies with the error.
+
+### 4.8a Work history (BL-33, BL-88)
+
+| Action | Dir | Frontend method | Payload | Response | Notes |
+|--------|-----|-----------------|---------|----------|-------|
+| `GetSessionHistory` | req | `GetSessionHistory(timelineId)` | `{ timelineId }` | `{ status: "ok", history: { timelineTitle, lastExportedAt, lastExportDay, emptyDays, days[] } }` | `days` are the days that changed something plus today, newest first. `emptyDays` counts the sealed days that changed nothing, which are left out. |
+| `GetSessionChanges` | req | `GetSessionChanges(timelineId, days?)` | `{ timelineId, days? }` | `{ status: "ok", summary }` | Without `days`, today alone. |
+| `PruneSessionDays` | req | `PruneSessionDays(timelineId)` | `{ timelineId }` | `{ status: "ok", pruned }` | Drops the sealed days that changed nothing. |
+| `MergeSessionDays` | req | `MergeSessionDays(timelineId, days)` | `{ timelineId, days }` | `{ status: "ok", history }` | Folds two or more neighbouring sealed days into one, newest edit winning. Throws for today, for days that aren't next to each other, or for days on both sides of the last export. |
 
 ### 4.9 Images / media
 
@@ -258,8 +304,7 @@ thread with `BeginInvoke`.
     **PascalCase** (`Item`, `Pictures`, `DataRoot`, `Id`, `Name`) while anonymous-object
     envelope fields are lowercase (`status`, `itemId`, `newId`, `rules`, `presets`). Some
     replies mix both in one object (e.g. `AddImageToItem` → `{ status, Pictures }`).
-- **Success/error shapes can differ per action.** `GetCalendarById` returns a `Calendar` on
-  success but `{ status: "error" }` on failure; `GetLayoutSettingsById` returns `null` on
+- **Success/error shapes can differ per action.** `GetLayoutSettingsById` returns `null` on
   failure; `CreateProject` returns a bare number. There is no uniform envelope.
 - **`GetTimelineStories` ignores its `timelineId`** and returns all stories globally.
 - **`messageId` counters are per-window.** Each WebView2 page has its own counter starting at

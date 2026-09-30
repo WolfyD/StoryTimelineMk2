@@ -31,6 +31,56 @@ namespace StoryTimelineMk2.Database
         }
 
         /// <summary>
+        /// BL-88, the Archive's Media tab. The library is shared by every timeline; this is the part
+        /// of it a timeline uses — an item, a map or a portrait of its own shows it — plus whatever
+        /// nothing uses at all, newest first, each with every use it has anywhere.
+        /// </summary>
+        public List<MediaItem> GetArchiveMedia(int timelineId)
+        {
+            using var db = new SqliteConnection(_connString);
+            var uses = db.Query<MediaUse>(@"
+                SELECT ip.picture_id AS PictureId, 'item' AS Kind, i.id AS Id, i.title AS Name, i.type_id AS TypeId,
+                       i.timeline_id = @Tl AS Here
+                  FROM item_pictures ip JOIN items i ON i.id = ip.item_id
+                UNION ALL
+                SELECT m.picture_id, 'map', m.id, m.name, NULL, m.timeline_id = @Tl
+                  FROM maps m WHERE m.picture_id IS NOT NULL
+                UNION ALL
+                SELECT c.portrait_picture_id, 'portrait', c.id, c.name, NULL, c.timeline_id = @Tl OR c.shared = 1
+                  FROM characters c WHERE c.portrait_picture_id IS NOT NULL", new { Tl = timelineId })
+                .ToLookup(u => u.PictureId);
+
+            var listed = db.Query<MediaItem>("SELECT * FROM pictures ORDER BY created_at DESC")
+                .Where(p =>
+                {
+                    p.Uses = uses[p.Id].ToList();
+                    return p.Uses.Count == 0 || p.Uses.Any(u => u.Here);
+                });
+            return WithThumbs(listed);
+        }
+
+        public void SavePictureInfo(string id, string? title, string? description)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Execute("UPDATE pictures SET title = @title, description = @description WHERE id = @id",
+                new { id, title, description });
+        }
+
+        /// <summary>
+        /// The items of <paramref name="timelineId"/> the canvas draws that carry the picture — the ones
+        /// to push again once it is gone. A hidden character's birth or death item is left out: pushing
+        /// it would put it on a canvas that deliberately does not show it.
+        /// </summary>
+        public List<string> ShownItemsUsing(string pictureId, int timelineId)
+        {
+            using var db = new SqliteConnection(_connString);
+            return db.Query<string>(@"
+                SELECT i.id FROM item_pictures ip JOIN items i ON i.id = ip.item_id
+                 WHERE ip.picture_id = @pictureId AND i.timeline_id = @timelineId" + ItemRepo.ExcludeHiddenCharacterItems,
+                new { pictureId, timelineId }).AsList();
+        }
+
+        /// <summary>
         /// Points every row at its thumbnail, and at the original where there is not one yet.
         ///
         /// Missing thumbnails are built on a background thread rather than here. This used to
@@ -299,14 +349,61 @@ namespace StoryTimelineMk2.Database
                 new { itemId, pictureId }, tx);
         }
 
+        /// <summary>BL-88, the Archive Media tab's bulk edit: <see cref="Ids"/> are pictures.</summary>
+        public class BulkMediaEdit
+        {
+            public List<string> Ids { get; set; } = new();
+            /// <summary>An item to show every one of them, next to what it shows already.</summary>
+            public string? AttachTo { get; set; }
+            /// <summary>A timeline whose items stop showing them.</summary>
+            public int? DetachFrom { get; set; }
+        }
+
+        /// <summary>
+        /// One transaction. Taking pictures off a timeline's items leaves them in the library — nothing is
+        /// pruned, the Archive's trash is the way to delete — and a character's birth or death item keeps
+        /// its portrait, which the character owns.
+        /// </summary>
+        /// <returns>The items that changed, to be pushed to the canvas again.</returns>
+        public List<string> BulkEdit(BulkMediaEdit edit)
+        {
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            using var tx = db.BeginTransaction();
+            var touched = new List<string>();
+
+            if (edit.AttachTo != null)
+            {
+                foreach (string id in edit.Ids) LinkPictureToItem(db, tx, id, edit.AttachTo);
+                touched.Add(edit.AttachTo);
+            }
+            if (edit.DetachFrom is int timelineId)
+            {
+                var off = db.Query<string>(@"
+                    SELECT DISTINCT i.id FROM item_pictures ip JOIN items i ON i.id = ip.item_id
+                     WHERE ip.picture_id IN @Ids AND i.timeline_id = @timelineId AND i.type_id <> 7",
+                    new { edit.Ids, timelineId }, tx).AsList();
+                db.Execute("DELETE FROM item_pictures WHERE picture_id IN @Ids AND item_id IN @off",
+                    new { edit.Ids, off }, tx);
+                touched.AddRange(off);
+            }
+
+            tx.Commit();
+            return touched;
+        }
+
         public void UnlinkAndPruneImage(string pictureId, string itemId)
         {
             using var db = new SqliteConnection(_connString);
             db.Execute("DELETE FROM item_pictures WHERE picture_id = @pictureId AND item_id = @itemId",
                 new { pictureId, itemId });
 
-            int remaining = db.QuerySingle<int>(
-                "SELECT COUNT(*) FROM item_pictures WHERE picture_id = @Id", new { Id = pictureId });
+            // Every other use counts, not just item links: the library picker offers map images and
+            // portraits too, and pruning one of those took the map's or the character's picture with it.
+            int remaining = db.QuerySingle<int>(@"
+                SELECT (SELECT COUNT(*) FROM item_pictures WHERE picture_id = @Id)
+                     + (SELECT COUNT(*) FROM maps WHERE picture_id = @Id)
+                     + (SELECT COUNT(*) FROM characters WHERE portrait_picture_id = @Id)", new { Id = pictureId });
             if (remaining == 0)
                 DeleteMedia(pictureId);
         }
@@ -330,8 +427,19 @@ namespace StoryTimelineMk2.Database
             string? storedPath = db.QuerySingleOrDefault<string>("SELECT file_path FROM pictures WHERE id = @Id", new { Id = id });
             string? filePath = storedPath != null ? GetFullPath(storedPath) : null;
 
-            // 1. Delete from SQLite (CASCADE removes item_pictures junctions)
-            db.Execute("DELETE FROM pictures WHERE id = @Id", new { Id = id });
+            // 1. Delete from SQLite, and every use with it. Spelled out rather than left to the foreign
+            // keys: characters.portrait_picture_id has none, and a map left pointing at a missing row
+            // draws nothing without saying why.
+            db.Open();
+            using (var tx = db.BeginTransaction())
+            {
+                db.Execute(@"
+                    DELETE FROM item_pictures WHERE picture_id = @Id;
+                    UPDATE maps SET picture_id = NULL WHERE picture_id = @Id;
+                    UPDATE characters SET portrait_picture_id = NULL WHERE portrait_picture_id = @Id;
+                    DELETE FROM pictures WHERE id = @Id;", new { Id = id }, tx);
+                tx.Commit();
+            }
 
             // 2. Delete physical files to save disk space.
             // The row goes first on purpose — the other order risks a row that points at a file

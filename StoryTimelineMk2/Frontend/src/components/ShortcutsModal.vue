@@ -5,6 +5,7 @@ import { computed, ref, shallowRef, onBeforeUnmount } from 'vue'
 import BaseModal from './BaseModal.vue'
 import { SHORTCUTS, chordParts, chordOf, keysOf, conflictOf, rejectChord, remapKey, shortcutOverrides, IS_MAC, MOD, ALT, type Shortcut, type ShortcutContext } from '@/utils/shortcuts'
 import { setShortcutKey, resetShortcutKeys } from '@/utils/shortcutOverrides'
+import { logError } from '@/bridge/api'
 
 const props = defineProps<{ context: ShortcutContext }>()
 defineEmits<{ close: [] }>()
@@ -59,7 +60,7 @@ async function apply(s: Shortcut, chord: string | null) {
     try {
         await setShortcutKey(s, chord)
     } catch (e) {
-        console.error('[shortcuts] saving the remap failed', e)
+        void logError('ShortcutsModal: saving the remap failed', e)
         error.value = 'Could not save that — see the log for details.'
     }
 }
@@ -100,7 +101,7 @@ async function resetAll() {
     try {
         await resetShortcutKeys()
     } catch (e) {
-        console.error('[shortcuts] resetting the remaps failed', e)
+        void logError('ShortcutsModal: resetting the remaps failed', e)
         error.value = 'Could not reset — see the log for details.'
     }
 }

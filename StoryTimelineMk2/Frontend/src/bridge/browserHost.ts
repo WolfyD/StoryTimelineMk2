@@ -96,8 +96,14 @@ async function askForScreens() {
 	}
 }
 
-// The cast window belongs to the map that opened it: it goes when the map does, as its desktop form does.
-window.addEventListener('pagehide', () => popups.get('storytimeline-map-cast')?.close())
+const ARCHIVE = 'storytimeline-archive'
+
+// The cast window belongs to the map that opened it and the Archive to its timeline: each goes when
+// its opener does, as their desktop forms do.
+window.addEventListener('pagehide', () => {
+	popups.get('storytimeline-map-cast')?.close()
+	popups.get(ARCHIVE)?.close()
+})
 
 /** Delivers a push into this page the way the socket would, so api.ts routes it as usual. */
 function pushToSelf(action: string, payload: unknown) {
@@ -106,6 +112,27 @@ function pushToSelf(action: string, payload: unknown) {
 
 function pushTo(target: Window, action: string, payload: unknown) {
 	target.postMessage({ __storytimeline: true, action, payload }, location.origin)
+}
+
+/**
+ * A window the timeline's sidebar opens: `toggle` closes it when it is already up, and the page hears
+ * it come and go, which is what lights its button on the strip.
+ * ponytail: only the opener hears — the desktop host tells every page. Enough while the timeline is
+ * the one opening them; a pop-up opening another's sidebar window leaves that button dark.
+ */
+function sidebarPopup(p: Payload, win: string, name: string, url: string, width: number, height: number) {
+	const open = popups.get(name)
+	const up = !!open && !open.closed
+	if (up && p.toggle) {
+		open!.close()
+		return { status: 'ok' }
+	}
+	const popup = openPopup(name, url, width, height)
+	if (!up) {
+		pushToSelf('WindowOpened', { Window: win })
+		whenClosed(popup, () => pushToSelf('WindowClosed', { Window: win }))
+	}
+	return { status: 'ok' }
 }
 
 function query(parts: Record<string, string | number | boolean | null | undefined>): string {
@@ -301,30 +328,44 @@ const handlers: Record<string, (payload: Payload) => unknown> = {
 		whenClosed(popup, () => pushToSelf('CalendarsChanged', {}))
 	},
 
-	OpenCharactersWindow: (p) => {
+	OpenCharactersWindow: (p) =>
 		// Re-opening the same named window navigates it, so the character rides the query string
 		// here rather than needing the broadcast the desktop host uses.
-		openPopup(
+		sidebarPopup(
+			p,
+			'characters',
 			'storytimeline-characters',
 			`characters.html${query({ timelineId: p.timelineId as number, characterId: p.characterId as string })}`,
 			1200,
 			860,
-		)
-	},
+		),
 
-	OpenRelationsWindow: (p) => {
-		openPopup(
+	OpenRelationsWindow: (p) =>
+		sidebarPopup(
+			p,
+			'relations',
 			'storytimeline-relations',
 			`relations.html${query({ timelineId: p.timelineId as number, characterId: p.characterId as string })}`,
 			1280,
 			860,
+		),
+
+	// BL-88: the genogram alone, beside the relations window rather than in it.
+	OpenFamilyTreeWindow: (p) => {
+		openPopup(
+			'storytimeline-family-tree',
+			`relations.html${query({ timelineId: p.timelineId as number, characterId: p.characterId as string, only: 'tree' })}`,
+			960,
+			700,
 		)
 	},
 
-	OpenMapWindow: (p) => {
+	OpenMapWindow: (p) =>
 		// Re-opening the same named window navigates it, so the map rides the query string here
 		// rather than needing the ShowMap broadcast the desktop host uses.
-		openPopup(
+		sidebarPopup(
+			p,
+			'map',
 			'storytimeline-map',
 			`map.html${query({
 				timelineId: p.timelineId as number,
@@ -334,7 +375,18 @@ const handlers: Record<string, (payload: Payload) => unknown> = {
 			})}`,
 			1280,
 			860,
-		)
+		),
+
+	OpenArchiveWindow: (p) => {
+		const open = popups.get(ARCHIVE)
+		if (open && !open.closed) {
+			// Navigating it would empty its trash, so it is never re-opened in place: the toggle asks it
+			// to close, the way its desktop form does, and anything else brings it forward.
+			if (p.toggle) pushTo(open, 'CloseRequested', {})
+			else open.focus()
+			return { status: 'ok' }
+		}
+		return sidebarPopup(p, 'archive', ARCHIVE, `archive.html${query({ timelineId: p.timelineId as number })}`, 960, 760)
 	},
 
 	OpenMapCastWindow: (p) => {

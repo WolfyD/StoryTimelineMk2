@@ -5,6 +5,7 @@ import type { ItemForEdit } from '@/types/models'
 
 // Mock the BackendAPI so we never hit the real bridge
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     GetItemForEdit: vi.fn(),
     GetCharacterIdForItem: vi.fn(),

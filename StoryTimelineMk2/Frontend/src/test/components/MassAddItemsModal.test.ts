@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useTimelineStore } from '@/stores/timelineStore'
 
 vi.mock('@/bridge/api', () => ({
+    logError: vi.fn(),
     BackendAPI: {
         SaveItem: vi.fn(),
         GetMiscSetting: vi.fn().mockResolvedValue({ status: 'ok', value: '9' }),
@@ -18,7 +19,7 @@ vi.mock('@phosphor-icons/vue', () => {
 })
 
 import MassAddItemsModal from '@/components/MassAddItemsModal.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 
 let store: ReturnType<typeof useTimelineStore>
 
@@ -175,7 +176,6 @@ describe('MassAddItemsModal', () => {
             .mockResolvedValueOnce({ status: 'ok', itemId: 'x' })
             .mockResolvedValueOnce({ status: 'error', message: 'disk full' })
         const reload = vi.spyOn(store, 'loadTimelineData').mockResolvedValue(undefined)
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
         const wrapper = mountModal()
         await flushPromises()
 
@@ -188,7 +188,7 @@ describe('MassAddItemsModal', () => {
         expect(BackendAPI.SaveItem).toHaveBeenCalledTimes(2)
         expect(wrapper.findAll('.queue-row').map(r => r.find('.q-title').text())).toEqual(['Two', 'Three'])
         expect(wrapper.find('.state-msg.error').text()).toContain('Saving "Two" failed: disk full')
-        expect(consoleError).toHaveBeenCalled()
+        expect(logError).toHaveBeenCalledWith('MassAddItemsModal: SaveItem failed for "Two"', expect.any(Error))
         expect(reload).toHaveBeenCalledWith(1)
         expect(wrapper.emitted('close')).toBeUndefined()
 
@@ -201,7 +201,6 @@ describe('MassAddItemsModal', () => {
         await wrapper.find('.bm-footer .btn-cancel').trigger('click')
         await wrapper.find('.bm-footer .btn-danger').trigger('click')          // Discard
         expect(wrapper.emitted('close')).toHaveLength(1)
-        consoleError.mockRestore()
         wrapper.unmount()
     })
 })

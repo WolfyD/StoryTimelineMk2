@@ -5,7 +5,7 @@
  * is the summary; adding and editing happen in the modal, which has room for it.
  */
 import { ref, computed, watch } from 'vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import CharacterRelateModal from '@/components/CharacterRelateModal.vue'
 import CharacterFamilyModal from '@/components/CharacterFamilyModal.vue'
 import { relationLabel, relationOtherId, relationWhen, sameFamily } from '@/utils/characterRelations'
@@ -73,7 +73,7 @@ async function load() {
         types.value = res?.Types ?? []
     } catch (ex) {
         error.value = `Could not load the relations: ${ex instanceof Error ? ex.message : String(ex)}`
-        console.error('GetCharacterRelations failed', ex)
+        void logError('CharacterRelationsPanel: GetCharacterRelations failed', ex)
     }
 }
 

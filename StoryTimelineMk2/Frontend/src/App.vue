@@ -2,7 +2,7 @@
 	import ProjectContainer from "./components/ProjectContainer.vue";
 	import SplashTitle from "./components/SplashTitle.vue";
 	import WindowTitleBar from "./components/WindowTitleBar.vue";
-	import { BackendAPI, type BridgeError } from "./bridge/api";
+	import { BackendAPI, logError, type BridgeError } from "./bridge/api";
 	import { ref, onMounted } from "vue";
 	import { PhTrayArrowUp, PhTrayArrowDown, PhFileArrowDown, PhGitDiff, PhPlusCircle, PhPlayCircle, PhCalendarDots, PhCalendarBlank, PhGear, PhDatabase } from "@phosphor-icons/vue";
 	import { useTimelineStore } from '@/stores/timelineStore';
@@ -54,7 +54,7 @@
 				dbImportPreview.value = result.preview
 			}
 		} catch (e) {
-			console.error('[BrowseAndPreviewImport]', e)
+			void logError('App: BrowseAndPreviewImport', e)
 			notice('That database could not be read', why(e))
 		}
 	}
@@ -74,7 +74,7 @@
 					(res.logPath ? `\n\nWhat was skipped is listed in the error log:\n${res.logPath}` : ''))
 			}
 		} catch (e) {
-			console.error('[ImportDB]', e)
+			void logError('App: ImportDB', e)
 			// reported: the backend already showed its own error-report dialog for this failure
 			if (!(e as BridgeError).payload?.reported) {
 				notice('Database import failed', why(e))
@@ -94,7 +94,7 @@
 		try {
 			await BackendAPI.ExportFullDB(exportDbMedia.value)
 		} catch (e) {
-			console.error('[ExportFullDB]', e)
+			void logError('App: ExportFullDB', e)
 			notice('Database export failed', why(e))
 		}
 	}
@@ -113,7 +113,7 @@
 			await HandleGetTimelines()
 		} else {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
-			console.error('[ImportTimeline]', msg)
+			void logError('App: ImportTimeline', new Error(msg))
 			notice('Timeline import failed', msg)
 		}
 	}
@@ -125,7 +125,7 @@
 			sessionImportPreview.value = result.preview
 		} else if (result?.status !== 'cancelled') {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
-			console.error('[BrowseAndPreviewSessionChanges]', msg)
+			void logError('App: BrowseAndPreviewSessionChanges', new Error(msg))
 			notice('Could not read that changes file', msg)
 		}
 	}
@@ -145,7 +145,7 @@ ${dropped} link(s) were dropped — this copy has no matching character, story o
 			)
 		} else {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
-			console.error('[ApplySessionChanges]', msg)
+			void logError('App: ApplySessionChanges', new Error(msg))
 			notice('Applying the changes failed', msg)
 		}
 	}

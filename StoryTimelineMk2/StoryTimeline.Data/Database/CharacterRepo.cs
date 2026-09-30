@@ -388,24 +388,25 @@ namespace StoryTimelineMk2.Database
                 ORDER BY r.id", new { Id = timelineId });
         }
 
+        private const string InsertRelationship = @"
+            INSERT INTO character_relationships (
+                character_1_id, character_2_id, relationship_type, notes, timeline_id,
+                start_year, start_granularity, end_year, end_granularity,
+                absolute_start, absolute_end,
+                relationship_strength, relationship_modifier, relationship_degree
+            ) VALUES (
+                @Character1Id, @Character2Id, @RelationshipType, @Notes, @TimelineId,
+                @StartYear, @StartGranularity, @EndYear, @EndGranularity,
+                @AbsoluteStart, @AbsoluteEnd,
+                @RelationshipStrength, @RelationshipModifier, @RelationshipDegree
+            );";
+
         /// <summary>Insert or update; the new row's id comes back either way.</summary>
         public long SaveRelationship(CharacterRelationship r)
         {
             using var db = new SqliteConnection(_connString);
             if (r.Id == 0)
-                return db.QuerySingle<long>(@"
-                    INSERT INTO character_relationships (
-                        character_1_id, character_2_id, relationship_type, notes, timeline_id,
-                        start_year, start_granularity, end_year, end_granularity,
-                        absolute_start, absolute_end,
-                        relationship_strength, relationship_modifier, relationship_degree
-                    ) VALUES (
-                        @Character1Id, @Character2Id, @RelationshipType, @Notes, @TimelineId,
-                        @StartYear, @StartGranularity, @EndYear, @EndGranularity,
-                        @AbsoluteStart, @AbsoluteEnd,
-                        @RelationshipStrength, @RelationshipModifier, @RelationshipDegree
-                    );
-                    SELECT last_insert_rowid();", r);
+                return db.QuerySingle<long>($"{InsertRelationship} SELECT last_insert_rowid();", r);
 
             db.Execute(@"
                 UPDATE character_relationships SET
@@ -426,6 +427,76 @@ namespace StoryTimelineMk2.Database
         {
             using var db = new SqliteConnection(_connString);
             db.Execute("DELETE FROM character_relationships WHERE id = @Id", new { Id = id });
+        }
+
+        /// <summary>BL-88: one relation given to many characters at once, from the Archive.</summary>
+        public class BulkRelation
+        {
+            public List<string> Ids { get; set; } = new();
+            /// <summary>The one character they are all related to.</summary>
+            public string OtherId { get; set; } = "";
+            public string RelationshipType { get; set; } = "";
+            /// <summary>True when each of them is A, the end the kind reads from ("parent of").</summary>
+            public bool TickedFirst { get; set; }
+            public string? RelationshipModifier { get; set; }
+            public string? RelationshipDegree { get; set; }
+            /// <summary>Drop the ties of this kind each already has at the same end, to anyone else.</summary>
+            public bool Replace { get; set; }
+            public int TimelineId { get; set; }
+        }
+
+        /// <summary>
+        /// BL-88: every one of them gets the same relation to one other character, in one transaction.
+        /// A tie that already exists takes the modifier and degree and keeps its dates and notes, rather
+        /// than being written twice. Replace first drops the ties of the kind each has at the same end to
+        /// anyone else: a reparent. A kind that reads the same both ways (siblings) has no ends, so either
+        /// counts. The other character is skipped if ticked too. Returns how many it related.
+        /// </summary>
+        public int BulkRelate(BulkRelation b)
+        {
+            if (string.IsNullOrEmpty(b.OtherId)) throw new InvalidOperationException("Pick who they are related to.");
+            using var db = new SqliteConnection(_connString);
+            db.Open();
+            using var tx = db.BeginTransaction();
+            var type = db.QuerySingleOrDefault<RelationshipType>(
+                "SELECT * FROM relationship_types WHERE id = @Id", new { Id = b.RelationshipType }, tx)
+                ?? throw new InvalidOperationException($"There is no relation kind '{b.RelationshipType}'.");
+            bool mirrored = string.Equals(type.AToB?.Trim(), type.BToA?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+            int related = 0;
+            foreach (string id in b.Ids.Distinct().Where(id => id != b.OtherId))
+            {
+                var ties = db.Query<CharacterRelationship>(@"
+                    SELECT * FROM character_relationships
+                    WHERE relationship_type = @Type AND (character_1_id = @Id OR character_2_id = @Id)",
+                    new { Type = b.RelationshipType, Id = id }, tx)
+                    .Where(r => mirrored || (b.TickedFirst ? r.Character1Id : r.Character2Id) == id)
+                    .ToList();
+                var same = ties.Where(r => r.Character1Id == b.OtherId || r.Character2Id == b.OtherId).Select(r => r.Id).ToList();
+
+                if (b.Replace)
+                    db.Execute("DELETE FROM character_relationships WHERE id IN @Ids",
+                        new { Ids = ties.Select(r => r.Id).Except(same) }, tx);
+                if (same.Count > 0)
+                    db.Execute(@"
+                        UPDATE character_relationships
+                        SET relationship_modifier = @RelationshipModifier, relationship_degree = @RelationshipDegree,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id IN @Ids", new { b.RelationshipModifier, b.RelationshipDegree, Ids = same }, tx);
+                else
+                    db.Execute(InsertRelationship, new CharacterRelationship
+                    {
+                        Character1Id = b.TickedFirst ? id : b.OtherId,
+                        Character2Id = b.TickedFirst ? b.OtherId : id,
+                        RelationshipType = b.RelationshipType,
+                        RelationshipModifier = b.RelationshipModifier,
+                        RelationshipDegree = b.RelationshipDegree,
+                        TimelineId = b.TimelineId,
+                    }, tx);
+                related++;
+            }
+            tx.Commit();
+            return related;
         }
 
         /// <summary>The kinds on offer, seeded by migration 13 and extendable by the user.</summary>

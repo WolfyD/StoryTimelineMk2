@@ -9,6 +9,7 @@ vi.spyOn(console, 'error').mockImplementation(() => {})
 
 // Mock BackendAPI so loadTimelines() can be exercised without a real bridge
 vi.mock('@/bridge/api', () => ({
+  logError: vi.fn(),
   BackendAPI: {
     request: vi.fn(),
     send: vi.fn(),
@@ -148,6 +149,55 @@ describe('timelineStore (extended)', () => {
   })
 
   // Ã¢â€â‚¬Ã¢â€â‚¬ setHiddenRanges Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+
+  describe('syncStories', () => {
+    it('renames linked stories and drops the links to a deleted one', () => {
+      const store = useTimelineStore()
+      store.itemStoryMap = new Map([['i1', [
+        { ItemId: 'i1', StoryId: 's1', StoryTitle: 'Old' },
+        { ItemId: 'i1', StoryId: 'gone', StoryTitle: 'Gone' },
+      ]]])
+      store.allTimelineStories = [{ StoryId: 's1', StoryTitle: 'Old' }, { StoryId: 'gone', StoryTitle: 'Gone' }]
+      store.syncStories([{ Id: 's1', Title: 'New' }])
+      expect(store.itemStoryMap.get('i1')).toEqual([{ ItemId: 'i1', StoryId: 's1', StoryTitle: 'New' }])
+      expect(store.allTimelineStories).toEqual([{ StoryId: 's1', StoryTitle: 'New' }])
+    })
+  })
+
+  describe('syncTag / syncNote', () => {
+    const link = (ItemId: string, TagId: number, TagName: string) => ({ ItemId, TagId, TagName })
+
+    it('renames, merges without doubling, and deletes', () => {
+      const store = useTimelineStore()
+      store.itemTagMap = new Map([
+        ['a', [link('a', 1, 'dragon'), link('a', 2, 'dragons')]],
+        ['b', [link('b', 1, 'dragon')]],
+      ])
+      store.allTimelineTags = [{ TagId: 1, TagName: 'dragon' }, { TagId: 2, TagName: 'dragons' }]
+
+      store.syncTag(2, { TagId: 2, TagName: 'wyrms' })   // rename
+      expect(store.allTimelineTags.map(t => t.TagName)).toEqual(['dragon', 'wyrms'])
+
+      store.syncTag(1, { TagId: 2, TagName: 'wyrms' })   // merge: a had both, keeps one
+      expect(store.itemTagMap.get('a')).toEqual([link('a', 2, 'wyrms')])
+      expect(store.itemTagMap.get('b')).toEqual([link('b', 2, 'wyrms')])
+      expect(store.allTimelineTags).toEqual([{ TagId: 2, TagName: 'wyrms' }])
+
+      store.syncTag(2, null)   // delete
+      expect(store.itemTagMap.get('a')).toEqual([])
+      expect(store.allTimelineTags).toEqual([])
+    })
+
+    it("adds or updates this timeline's notes, and ignores another timeline's", () => {
+      const store = useTimelineStore()
+      store.currentProject = { Id: 7 } as never
+      const note = { Id: 'n', NoteContents: 'x', ConnectedItemId: '', TimelineId: 7, NearestYear: 1, AbsoluteTime: 1, UpdatedAt: '' }
+      store.syncNote(note)
+      store.syncNote({ ...note, NoteContents: 'y' })
+      store.syncNote({ ...note, Id: 'other', TimelineId: 8 })
+      expect(store.notes).toEqual([{ ...note, NoteContents: 'y' }])
+    })
+  })
 
   describe('setHiddenRanges', () => {
     it('sets hiddenRanges to the provided array', () => {

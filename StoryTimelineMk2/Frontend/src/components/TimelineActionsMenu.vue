@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { PhDotsThreeOutlineVertical, PhX, PhPlus, PhTrash, PhArrowsHorizontal, PhEye } from '@phosphor-icons/vue'
 import type { HiddenRange } from '@/types/models'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 import { ALL_LODS_MASK } from '@/utils/timelinePrefs'
 import LodMaskModal from './LodMaskModal.vue'
@@ -15,7 +15,9 @@ const open        = ref(false)
 const rootEl      = ref<HTMLElement | null>(null)
 
 // --- hidden ranges ---
-const hiddenRanges  = ref<HiddenRange[]>([...store.hiddenRanges])
+// The store's list, not a copy: the Archive can restore a range while this menu is open, and the
+// HiddenRangesChanged push lands in the store.
+const hiddenRanges  = computed<HiddenRange[]>(() => store.hiddenRanges)
 const newStart      = ref<number | null>(null)
 const newEnd        = ref<number | null>(null)
 const newLabel      = ref('')
@@ -52,23 +54,27 @@ async function addRange() {
     const e = newEnd.value
     if (s === null || e === null || isNaN(s) || isNaN(e)) { rangeError.value = 'Enter both years.'; return }
     if (e <= s) { rangeError.value = 'End must be greater than start.'; return }
-    const result = await BackendAPI.SaveHiddenRange(store.currentProject!.Id, s, e, newLabel.value.trim() || null)
-    if (result?.status === 'ok' && result.range) {
-        hiddenRanges.value = [...hiddenRanges.value, result.range].sort((a, b) => a.StartYear - b.StartYear)
-        store.setHiddenRanges(hiddenRanges.value)
+    try {
+        const result = await BackendAPI.SaveHiddenRange(store.currentProject!.Id, s, e, newLabel.value.trim() || null)
+        if (!result?.range) throw new Error('The range came back empty.')
+        store.setHiddenRanges([...store.hiddenRanges, result.range].sort((a, b) => a.StartYear - b.StartYear))
         newStart.value = null
         newEnd.value   = null
         newLabel.value = ''
-    } else {
-        rangeError.value = 'Failed to save range.'
+    } catch (ex) {
+        void logError('TimelineActionsMenu: SaveHiddenRange failed', ex)
+        rangeError.value = `Failed to save range: ${ex instanceof Error ? ex.message : String(ex)}`
     }
 }
 
 async function deleteRange(id: number) {
-    const result = await BackendAPI.DeleteHiddenRange(id)
-    if (result?.status === 'ok') {
-        hiddenRanges.value = hiddenRanges.value.filter(r => r.Id !== id)
-        store.setHiddenRanges(hiddenRanges.value)
+    rangeError.value = ''
+    try {
+        await BackendAPI.DeleteHiddenRange(id)
+        store.setHiddenRanges(store.hiddenRanges.filter(r => r.Id !== id))
+    } catch (ex) {
+        void logError('TimelineActionsMenu: DeleteHiddenRange failed', ex)
+        rangeError.value = `Failed to remove range: ${ex instanceof Error ? ex.message : String(ex)}`
     }
 }
 
@@ -84,14 +90,16 @@ async function shiftItems() {
     const delta = shiftDelta.value
     if (delta === null || isNaN(delta) || delta === 0) { shiftError.value = 'Enter a non-zero year offset.'; return }
     shiftBusy.value = true
-    const result = await BackendAPI.ShiftTimelineItems(store.currentProject!.Id, delta)
-    shiftBusy.value = false
-    if (result?.status === 'ok') {
-        shiftSuccess.value = `Shifted ${result.affected ?? store.items.length} items by ${delta > 0 ? '+' : ''}${delta} years.`
+    try {
+        const result = await BackendAPI.ShiftTimelineItems(store.currentProject!.Id, delta)
+        shiftSuccess.value = `Shifted ${result?.affected ?? store.items.length} items by ${delta > 0 ? '+' : ''}${delta} years.`
         shiftDelta.value = null
         emit('shiftComplete', delta)
-    } else {
-        shiftError.value = 'Shift failed.'
+    } catch (ex) {
+        void logError('TimelineActionsMenu: ShiftTimelineItems failed', ex)
+        shiftError.value = `Shift failed: ${ex instanceof Error ? ex.message : String(ex)}`
+    } finally {
+        shiftBusy.value = false
     }
 }
 
@@ -112,16 +120,17 @@ function openLodModal() {
 async function applyLodMask(mask: number) {
     lodError.value = ''
     lodBusy.value  = true
-    const result = await BackendAPI.SetTimelineItemsLodMask(store.currentProject!.Id, mask)
-    if (result?.status === 'ok') {
+    try {
+        const result = await BackendAPI.SetTimelineItemsLodMask(store.currentProject!.Id, mask)
         await store.loadTimelineData(store.currentProject!.Id)
-        lodSuccess.value = `Updated ${result.affected ?? store.items.length} items.`
+        lodSuccess.value = `Updated ${result?.affected ?? store.items.length} items.`
         showLodModal.value = false
-    } else {
-        console.error('[TimelineActionsMenu] SetTimelineItemsLodMask failed:', result)
-        lodError.value = `Update failed${result?.message ? ': ' + result.message : '.'}`
+    } catch (ex) {
+        void logError('TimelineActionsMenu: SetTimelineItemsLodMask failed', ex)
+        lodError.value = `Update failed: ${ex instanceof Error ? ex.message : String(ex)}`
+    } finally {
+        lodBusy.value = false
     }
-    lodBusy.value = false
 }
 </script>
 

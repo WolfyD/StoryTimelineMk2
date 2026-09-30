@@ -80,6 +80,17 @@ export function relationWhen(rel: CharacterRelationship): string {
 	return ''
 }
 
+/** The kinds grouped for a picker's optgroups; ungrouped ones land under 'other'. */
+export function groupRelationTypes(types: RelationshipType[]): [string, RelationshipType[]][] {
+	const groups = new Map<string, RelationshipType[]>()
+	for (const t of types) {
+		const key = t.Type?.trim() || 'other'
+		if (!groups.has(key)) groups.set(key, [])
+		groups.get(key)!.push(t)
+	}
+	return [...groups.entries()]
+}
+
 /** A new relation from `focusId`, undated: the pair goes in the order the sentence reads. */
 export function blankRelation(
 	focusId: string,

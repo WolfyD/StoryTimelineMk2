@@ -37,6 +37,8 @@ public class DataActionsTests
         "ListAchievementKeys", "SkipVersion", "ExecuteImportDB",
         // Phase 3: the dialog-free half of a file action — the host picks, this one reads.
         "PreviewImportDb", "PreviewTimelineImport", "ImportCalendarFile", "AddImagesToItem",
+        // BL-88: the Archive's bulk edit and session tidying.
+        "BulkEditItems", "GetSessionHistory", "PruneSessionDays", "MergeSessionDays", "BulkRelate", "BulkEditPlaces", "BulkEditMedia",
         // "CheckForUpdates" is dispatched here too, but stays out of the sweep: it hands off to
         // a background task that calls GitHub, and a test suite has no business doing that.
     };
@@ -48,7 +50,7 @@ public class DataActionsTests
         "OpenAddEditItemWindow", "OpenTimeline", "ImportDB", "AddImageToItem", "ExportTimeline",
         "GetSystemFonts", "WindowMinimize", "WindowMaximizeRestore", "WindowGetMaximized",
         "WindowClose", "WindowStartDrag", "WindowGetTopMost", "WindowSetTopMost",
-        "ExportCalendar", "ImportCalendar", "OpenCalendarEditorWindow", "OpenYearCalendarWindow",
+        "ExportCalendar", "ImportCalendar", "OpenCalendarEditorWindow", "OpenYearCalendarWindow", "OpenFamilyTreeWindow",
         "SetCalendarYear", "BrowseDataFolder", "OpenDataFolder", "ExportFullDB",
         "BrowseAndPreviewImport", "OpenBackupsFolder", "BrowseAndPreviewTimelineImport",
         "OpenExternalUrl", "ExportSessionChanges", "BrowseAndPreviewSessionChanges",

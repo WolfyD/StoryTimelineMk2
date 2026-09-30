@@ -112,9 +112,50 @@ All tables are created in `StoryTimeline.Data/Database/Migrations/MainDbMigratio
 |---|---|---|
 | `id` | TEXT | PRIMARY KEY |
 | `title` | TEXT | NOT NULL |
-| `description` | TEXT | |
+| `description` | TEXT | the summary |
 | `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 | `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
+| `status` | TEXT | `Idea` / `Drafting` / `Done`, or NULL *(step 27)* |
+| `tense` | TEXT | `Past` / `Present` / `Future` / `Mixed`, or NULL *(step 27)* |
+| `person` | TEXT | `First` / `Second` / `Third limited` / `Third omniscient` / `Mixed`, or NULL *(step 27)* |
+| `genre` | TEXT | free text *(step 27)* |
+| `color` | TEXT | *(step 27)* |
+| `reading_order` | INTEGER | NULL sorts last *(step 27)* |
+| `previous_story_id` | TEXT | no FK; the next story is derived by looking this up backwards, and `SaveStory` keeps it to one follower per story. It refuses a story as its own previous, `DeleteStory` nulls the pointers at it *(step 27)* |
+| `quotes` | TEXT | JSON array of quotes, each an array of `{ "text", "speaker" }` lines (more than one is an exchange; the speaker is a name as typed, not a character id). The first shape, an array of strings, is still read *(step 27)* |
+| `notes` | TEXT | *(step 27)* |
+
+The fixed choices are enforced by the Archive's selects, not by a CHECK constraint.
+
+### `story_characters` — junction, owner: `StoryRepo` (`MainDbMigrations.cs`, step 27)
+
+| Column | Type | Constraints |
+|---|---|---|
+| `story_id` | TEXT | NOT NULL, composite PK |
+| `character_id` | TEXT | NOT NULL, composite PK |
+| `pov` | INTEGER | NOT NULL DEFAULT 0 — 1 = a point-of-view character |
+
+### `story_locations` — junction, owner: `StoryRepo` (`MainDbMigrations.cs`, step 27)
+
+| Column | Type | Constraints |
+|---|---|---|
+| `story_id` | TEXT | NOT NULL, composite PK |
+| `location_id` | TEXT | NOT NULL, composite PK |
+
+### `story_chapters` — junction, owner: `StoryRepo` (`MainDbMigrations.cs`, step 28)
+
+| Column | Type | Constraints |
+|---|---|---|
+| `story_id` | TEXT | NOT NULL, composite PK |
+| `chapter_id` | TEXT | NOT NULL, composite PK |
+
+The chapters of a book a story is told in. No rows for a book in `book_stories` means the whole book.
+`SaveStory` inserts only chapters whose book the story is in, so dropping a book drops its chapters.
+
+None of the three junctions declares FKs (FKs are off in the app); `StoryRepo.DeleteStory` clears all
+three, and `BookRepo.DeleteBook` / `DeleteChapter` clear `story_chapters` for their chapters. Stories are
+global but characters and places are per timeline, so `SaveStory` only replaces the rows the saving
+timeline can see — another timeline's links survive the save.
 
 ### `item_types` — seeded lookup table, no repo; written only by `DbInitializer.SeedDefaultData` (`MainDbMigrations.cs`)
 
@@ -413,7 +454,7 @@ given under `characters`.
 | `description` | TEXT | |
 | `created_at` / `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP |
 
-### `book_stories` — junction, no repo owner; only copied by importer (`MainDbMigrations.cs`)
+### `book_stories` — junction, owner: `StoryRepo` (`MainDbMigrations.cs`)
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -600,6 +641,10 @@ lod_profiles ──< calendars ──< timelines >── layout_settings
         ├──< item_story_refs >── stories (global)   [items.story_id = primary story FK]
         ├──< item_chapters >── chapters ──< books
         │                                    └──< book_stories >── stories
+        │                                  stories ──< story_characters >── characters (pov flag)
+        │                                  stories ──< story_locations >── locations
+        │                                  stories ──< story_chapters >── chapters
+        │                                  stories.previous_story_id ··> stories (no FK)
         │
         └── location_id ··> locations       (no FK; trg_locations_clear_items nulls it on delete)
 
@@ -691,8 +736,9 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 | Method | Signature | Behaviour |
 |---|---|---|
 | `GetAllStories` | `IEnumerable<StoryItem> GetAllStories()` | Ordered by title (`StoryRepo.cs:18-22`). |
-| `SaveStory` | `void SaveStory(StoryItem story)` | Upsert on id; bumps `updated_at` (`StoryRepo.cs:24-36`). |
-| `DeleteStory` | `void DeleteStory(string id)` | DELETE; `item_story_refs`/`book_stories` cascade. Note `items.story_id` has **no** cascade — those FKs become dangling references (`StoryRepo.cs:38-42`). |
+| `GetArchiveStories` | `List<StoryItem> GetArchiveStories(int timelineId)` | BL-88. Every story (they are global), ordered by `reading_order` (NULLs last) then title, with `OtherTimelineRefs` counted, `NextStoryId` looked up (the story whose `previous_story_id` is this one; the first by title if old data has two) and `Characters` / `LocationIds` / `BookIds` / `ChapterIds` filled — characters limited to this timeline's and shared ones, places to this timeline's maps. The page decides which stories to list (`StoryRepo.cs:29-70`). |
+| `SaveStory` | `void SaveStory(StoryItem story, int? timelineId = null)` | GUID if `Id` is empty. One transaction: upserts every column, bumps `updated_at`, drops a self-referencing `previous_story_id`, and unlinks any other story that followed the same previous — stories make one chain. With a `timelineId` it also writes `NextStoryId` back (the old follower lets go, the new one gets `previous_story_id` = this story; a next equal to the previous or itself is dropped) and replaces the links **as that timeline sees them** — its own and shared characters, its own places, and all `book_stories` and `story_chapters` rows — keeping only chapters of the books it names. Without one it leaves the links and the next story alone (the item editor's quick create) (`StoryRepo.cs:78-150`). |
+| `DeleteStory` | `void DeleteStory(string id)` | Transactional, spelled out because FKs are off: removes `item_story_refs`, `book_stories`, `story_characters`, `story_locations`, `story_chapters`, nulls `items.story_id` and other stories' `previous_story_id`, then the story. Reaches every timeline (`StoryRepo.cs:141-156`). |
 
 ### `BookRepo` — `StoryTimeline.Data/Database/BookRepo.cs`
 
@@ -700,8 +746,11 @@ Nested helper DTOs: `ItemCharacterAppearanceRow` (`ItemRepo.cs:127-133`), `ItemS
 |---|---|---|
 | `SearchBooks` | `IEnumerable<BookItem> SearchBooks(string query)` | Title `LIKE %query%`, LIMIT 20 (`BookRepo.cs:16-21`). |
 | `GetChaptersForBook` | `IEnumerable<ChapterItem> (string bookId)` | Ordered by chapter number (`BookRepo.cs:23-28`). |
-| `SaveBook` | `string SaveBook(BookItem book)` | Upsert; returns the ID (`BookRepo.cs:30-41`). |
-| `SaveChapter` | `string SaveChapter(ChapterItem chapter)` | Upsert (updates number/title only on conflict); returns the ID (`BookRepo.cs:43-52`). |
+| `SaveBook` | `string SaveBook(BookItem book)` | GUID if `Id` is empty; upsert; returns the ID (`BookRepo.cs:30-42`). |
+| `SaveChapter` | `string SaveChapter(ChapterItem chapter)` | GUID if `Id` is empty; upsert (updates number/title only on conflict); returns the ID (`BookRepo.cs:44-54`). |
+| `GetArchiveBooks` | `List<BookItem> GetArchiveBooks(int timelineId)` | BL-88. Every book (global) by title, with `OtherTimelineRefs`, its `Chapters` by number, and each chapter's `ItemIds` limited to this timeline's items (`BookRepo.cs:60-91`). |
+| `DeleteBook` | `void DeleteBook(string id)` | Transactional: `item_chapters` and `story_chapters` for its chapters, the chapters, `book_stories`, the book (`BookRepo.cs:94-106`). |
+| `DeleteChapter` | `void DeleteChapter(string id)` | Transactional: its `item_chapters` and `story_chapters`, then the chapter (`BookRepo.cs:108-118`). |
 
 ### `CalendarRepo` — `StoryTimeline.Data/Database/CalendarRepo.cs`
 
@@ -742,12 +791,15 @@ Constructor also creates the media folder (`<DataRoot>\Media`) if missing (`Medi
 | Method | Signature | Behaviour |
 |---|---|---|
 | `GetAllMedia` | `IEnumerable<MediaItem> GetAllMedia()` | Newest first (`MediaRepo.cs:24-28`). |
+| `GetArchiveMedia` | `List<MediaItem> GetArchiveMedia(int timelineId)` | The Archive's Media tab (BL-88). Newest first, each with `Uses` filled: every item, map and character portrait showing it, in any timeline, `Here` set on the ones in this timeline (a shared character's portrait counts as here). Lists a picture with a use here, or with none at all (`MediaRepo.cs:38-60`). |
+| `SavePictureInfo` | `void (string id, string? title, string? description)` | Updates `title` and `description` (`MediaRepo.cs:62-67`). |
+| `ShownItemsUsing` | `List<string> (string pictureId, int timelineId)` | Ids of this timeline's items showing the picture, hidden characters' birth/death items left out — the ones a delete re-broadcasts (`MediaRepo.cs:74-81`). |
 | `ImportAndSaveMedia` | `MediaItem ImportAndSaveMedia(string sourceFilePath, string title, string description)` | Copies the file into the media folder renamed to `<new-GUID><ext>`, then inserts a `pictures` row storing the **filename only** (full path resolved at runtime). Returns the new `MediaItem` (`MediaRepo.cs:30-63`). Throws `FileNotFoundException` if source missing. |
 | `GetItemPictures` | `IEnumerable<MediaItem> GetItemPictures(string itemId)` | Pictures linked to an item via `item_pictures`, ordered by creation (`MediaRepo.cs:65-73`). |
 | `LinkPictureToItem` | `void (string pictureId, string itemId)` | `INSERT OR IGNORE` into `item_pictures` (`MediaRepo.cs:75-80`). |
 | `UnlinkAndPruneImage` | `void (string pictureId, string itemId)` | Removes the link, then if the picture has **zero** remaining links, deletes it entirely (row + physical file) via `DeleteMedia` (`MediaRepo.cs:82-92`). |
 | `GetFullPath` | `string GetFullPath(string fileNameOrPath)` | Returns rooted paths as-is (legacy), otherwise joins with the media folder (`MediaRepo.cs:94-99`). |
-| `DeleteMedia` | `void DeleteMedia(string id)` | Deletes the DB row (cascade cleans `item_pictures`) and then deletes the physical file (`MediaRepo.cs:101-116`). |
+| `DeleteMedia` | `void DeleteMedia(string id)` | In one transaction: removes its `item_pictures` links, clears `maps.picture_id` and `characters.portrait_picture_id` pointing at it, deletes the row. Then deletes the physical file (`MediaRepo.cs:380-411`). |
 
 ### `NoteRepo` — `StoryTimeline.Data/Database/NoteRepo.cs`
 
@@ -831,11 +883,11 @@ The only repo that does **not** set `MatchNamesWithUnderscores` (it only queries
 | `SettingsItem` (`SettingsItem.cs`) | `settings` | `Id` (GUID — note the table PK is INTEGER), `Font`, `FontSizeScale`, `PixelsPerSubtick`, `CustomCss`, `UseCustomCss`, `IsFullscreen`, `ShowGuides`, `WindowSizeX/Y`, `WindowPositionX/Y`, `UseCustomScaling`, `CustomScale`, `DisplayRadius`, `CanvasSettings`, `UpdatedAt`, `TimelineId` |
 | `CalendarItem` (`CalendarItem.cs`) | `calendars` | `Id` (GUID), `Name`, `AlternateName`, `ShortName`, `NameBefore0`, `NameAfter0`, `LodProfileId`, `YearDefinition` (JSON string), `LodProfile` (`LodItem`, hydrated by `CalendarRepo.GetCalendarById`) |
 | `LodItem` (`LodItem.cs`) | `lod_profiles` | `Id` (GUID), `Name`, `Profile` (JSON string) |
-| `StoryItem` (`StoryItem.cs`) | `stories` | `Id` (GUID), `Title`, `Description`, `CreatedAt`, `UpdatedAt` |
+| `StoryItem` (`StoryItem.cs`) | `stories` | `Id` (GUID), `Title`, `Description`, `Status`, `Tense`, `Person`, `Genre`, `Color`, `ReadingOrder?`, `PreviousStoryId`, `Quotes` (JSON), `Notes`, `CreatedAt`, `UpdatedAt`; filled by `GetArchiveStories` only: `OtherTimelineRefs`, `NextStoryId`, `Characters` (`StoryCharacterLink` — `CharacterId`, `Pov`), `LocationIds`, `BookIds`, `ChapterIds` |
 | `TagItem` (`TagItem.cs`) | `tags` | `Id` (int), `Name`, `CreatedAt` |
-| `BookItem` (`BookItem.cs`) | `books` | `Id` (GUID), `Title`, `Author`, `Description`, `CreatedAt`, `UpdatedAt` |
-| `ChapterItem` (`ChapterItem.cs`) | `chapters` | `Id` (GUID), `BookId`, `Number`, `Title` |
-| `MediaItem` (`MediaItem.cs`) | `pictures` | `Id`, `FilePath`, `FileName`, `FileSize`, `FileType`, `Width`, `Height`, `Title`, `Description`, `CreatedAt` |
+| `BookItem` (`BookItem.cs`) | `books` | `Id` (GUID), `Title`, `Author`, `Description`, `CreatedAt`, `UpdatedAt`; filled by `GetArchiveBooks` only: `OtherTimelineRefs`, `Chapters` |
+| `ChapterItem` (`ChapterItem.cs`) | `chapters` | `Id` (GUID), `BookId`, `Number`, `Title`; filled by `GetArchiveBooks` only: `ItemIds` |
+| `MediaItem` (`MediaItem.cs`) | `pictures` | `Id`, `FilePath`, `FileName`, `FileSize`, `FileType`, `Width`, `Height`, `Title`, `Description`, `CreatedAt`; `Uses` (`MediaUse[]`, not a column — `GetArchiveMedia` only) |
 | `NoteItem` (`NoteItem.cs`) | `notes` | `Id` (GUID), `NoteContents`, `TimelineId`, `ConnectedItemId`, `NearestYear`, `AbsoluteTime` (=0.0), `UpdatedAt` |
 | `HiddenRangeItem` (`HiddenRangeItem.cs`) | `timeline_hidden_ranges` | `Id` (int), `TimelineId`, `StartYear`, `EndYear`, `Label?` |
 | `RelationshipTypeItem` (`RelationshipTypeItem.cs`) | `relationship_types` | `Id` (GUID), `Name`, `Type`, `AToB`, `BToA`, `OneWay` — model exists but no repo uses it |

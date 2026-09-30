@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed, nextTick } from 'vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { useShortcuts } from '@/utils/shortcuts'
 import { backdropClose } from '@/utils/modal'
@@ -447,7 +447,7 @@ function parseYearDefinition(json: string) {
         // This one has to speak. A year definition that will not parse leaves the form showing
         // defaults that look like a real calendar — and saving from there writes those defaults
         // over the calendar the user actually had.
-        console.error('Failed to parse YearDefinition', e)
+        void logError('CalendarApp: Failed to parse YearDefinition', e)
         loadError.value =
             'This calendar\'s year definition could not be read, so the fields below are showing ' +
             'defaults rather than your settings.\n\nSaving now would overwrite the calendar with ' +
@@ -474,7 +474,14 @@ onMounted(async () => {
                 try {
                     const raw = cal.LodProfile.Profile
                     lodLevels.value = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as LodLevel[])
-                } catch { lodLevels.value = [] }
+                } catch (e) {
+                    // Same danger as the year definition below: a save from here writes no zoom levels.
+                    void logError('CalendarApp: Failed to parse the LOD profile', e)
+                    lodLevels.value = []
+                    loadError.value =
+                        'This calendar\'s zoom levels could not be read, so none are showing.\n\nSaving now ' +
+                        'would save it without them. Close this window without saving unless you mean to rebuild them.'
+                }
             }
             parseYearDefinition(cal.YearDefinition)
             // A level the sync would add but the saved profile lacks was removed on purpose — keep it out.
@@ -570,7 +577,8 @@ async function save() {
         if (result?.status === 'ok') window.close()
         else saveError.value = result?.message ?? 'Save failed'
     } catch (e) {
-        saveError.value = String(e)
+        void logError('CalendarApp: save failed', e)
+        saveError.value = `Save failed: ${e instanceof Error ? e.message : String(e)}`
     } finally {
         isSaving.value = false
     }
@@ -583,7 +591,7 @@ async function exportCalendar() {
     try {
         await BackendAPI.ExportCalendar({ calendar: buildPayload() })
     } catch (e) {
-        console.error('[CalendarApp] export failed:', e)
+        void logError('CalendarApp: export failed', e)
         saveError.value = `Export failed: ${e instanceof Error ? e.message : String(e)}`
     }
 }

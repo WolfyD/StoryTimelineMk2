@@ -5,14 +5,14 @@
  * Every save goes straight to the backend; the panel behind reloads on `changed`.
  */
 import { ref, computed } from 'vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import BaseModal from '@/components/BaseModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import LodDateInput from '@/components/LodDateInput.vue'
 import { mediaUrl } from '@/utils/mediaUrl'
 import { effectiveState, initials, lifespan } from '@/utils/characterItems'
 import {
-    blankRelation, relationLabel, relationOtherId, relationWhen, slugifyTypeId,
+    blankRelation, groupRelationTypes, relationLabel, relationOtherId, relationWhen, slugifyTypeId,
     RELATION_DEGREES, RELATION_MODIFIERS,
 } from '@/utils/characterRelations'
 import { holdDate, placeDate, type HeldDate } from '@/utils/lodDates'
@@ -87,16 +87,7 @@ const matches = computed(() => {
         [c.Name, c.Nicknames, c.Aliases, c.Race].some(f => f?.toLowerCase().includes(needle)))
 })
 
-/** The kinds, grouped for the picker's optgroups; ungrouped ones land under 'other'. */
-const typeGroups = computed(() => {
-    const groups = new Map<string, RelationshipType[]>()
-    for (const t of props.types) {
-        const key = t.Type?.trim() || 'other'
-        if (!groups.has(key)) groups.set(key, [])
-        groups.get(key)!.push(t)
-    }
-    return [...groups.entries()]
-})
+const typeGroups = computed(() => groupRelationTypes(props.types))
 
 /**
  * Which end of the draft the person picker writes to. Editing must not flip the pair: swapping A
@@ -124,9 +115,10 @@ function label(r: CharacterRelationship): string {
     return relationLabel(r, props.character.Id, typeById.value.get(r.RelationshipType), props.character.Gender)
 }
 
+/** Shown in the dialog, so logged without the alert. */
 function fail(what: string, ex: unknown) {
     error.value = `${what}: ${ex instanceof Error ? ex.message : String(ex)}`
-    console.error(what, ex)
+    void logError(`CharacterRelateModal: ${what}`, ex)
 }
 
 // ── Relations ─────────────────────────────────────────────────────────────────

@@ -245,10 +245,31 @@ export function foldToDepth(maps: MapItem[], collapsed: ReadonlySet<string>, dep
 export function filterMapTree(maps: MapItem[], query: string): MapTreeRow[] {
   const q = query.trim().toLowerCase()
   if (!q) return []
-  const match = (loc: LocationItem) => loc.Name.toLowerCase().includes(q)
+  return pruneMapTree(maps, loc => loc.Name.toLowerCase().includes(q))
+}
 
+/**
+ * The same pruning by any test. `matchMap` lets a top-level map be a hit of its own: the Archive lists
+ * a map as a place, where the map window's list only finds what is pinned.
+ */
+export function pruneMapTree(
+  maps: MapItem[],
+  match: (loc: LocationItem) => boolean,
+  matchMap: (map: MapItem) => boolean = () => false,
+): MapTreeRow[] {
   return rootMaps(maps).flatMap(root => {
     const below = placeRows(maps, root, 1, root.Id, new Set([root.Id]), new Set(), match)
-    return below.length ? [{ key: root.Id, map: root, depth: 0 }, ...below] : []
+    return below.length || matchMap(root) ? [{ key: root.Id, map: root, depth: 0 }, ...below] : []
   })
+}
+
+/**
+ * Every place on a map and on the maps behind its doors, each once — what "happened in Faerun" is made
+ * of, the inn in the city included.
+ */
+export function placesUnder(maps: MapItem[], mapId: string, seen = new Set<string>()): string[] {
+  if (seen.has(mapId)) return []
+  seen.add(mapId)
+  return (maps.find(m => m.Id === mapId)?.Locations ?? [])
+    .flatMap(l => [l.Id, ...(l.ChildMapId ? placesUnder(maps, l.ChildMapId, seen) : [])])
 }

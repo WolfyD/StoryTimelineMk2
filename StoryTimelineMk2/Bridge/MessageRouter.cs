@@ -30,11 +30,17 @@ namespace StoryTimelineMk2.Bridge
         // Same deal for the relations window (BL-73).
         private static f_Relations? _relationsWindow;
 
+        // BL-88: the family tree — the same page with only the genogram, beside the relations window.
+        private static f_Relations? _familyTreeWindow;
+
         // And the map window (BL-16): one per app, drilling from map to map inside itself.
         private static f_Map? _mapWindow;
 
         // The map's cast window (BL-16). Owned by the map, so it goes when the map does.
         private static f_MapCast? _mapCastWindow;
+
+        // The Archive (BL-88): one per app, owned by the timeline window it was opened from.
+        private static f_Archive? _archiveWindow;
 
         /// <summary>
         /// BL-18 (H1): where data-layer actions run, instead of on the UI thread. One chain for
@@ -66,11 +72,19 @@ namespace StoryTimelineMk2.Bridge
             var rels = _relationsWindow;
             if (rels != null && !rels.IsDisposed && rels.IsHandleCreated)
                 rels.BeginInvoke((MethodInvoker)rels.Close);
+            var tree = _familyTreeWindow;
+            if (tree != null && !tree.IsDisposed && tree.IsHandleCreated)
+                tree.BeginInvoke((MethodInvoker)tree.Close);
 
             // Map window
             var map = _mapWindow;
             if (map != null && !map.IsDisposed && map.IsHandleCreated)
                 map.BeginInvoke((MethodInvoker)map.Close);
+
+            // Archive: without asking — whatever sits in its trash stays undeleted.
+            var archive = _archiveWindow;
+            if (archive != null && !archive.IsDisposed && archive.IsHandleCreated)
+                archive.BeginInvoke((MethodInvoker)archive.ConfirmedClose);
 
             // Calendar editor windows
             var toClose = new List<Form>();
@@ -108,6 +122,9 @@ namespace StoryTimelineMk2.Bridge
             };
             _webView.WebMessageReceived += OnWebMessageReceived;
             BridgeHub.Register(_channel);
+            // Held weakly, the channel outlives its window until a GC — and every broadcast in
+            // between logs a failed post to it. The item editor only ever hides, so it stays.
+            if (parentForm != null) parentForm.FormClosed += (_, _) => BridgeHub.Unregister(_channel);
         }
 
         public void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -228,11 +245,15 @@ namespace StoryTimelineMk2.Bridge
 
                 // Relations window (BL-73)
                 case "OpenRelationsWindow":         HandleOpenRelationsWindow(message); break;
+                case "OpenFamilyTreeWindow":        HandleOpenFamilyTreeWindow(message); break;
 
                 // Map window (BL-16)
                 case "OpenMapWindow":               HandleOpenMapWindow(message); break;
                 case "OpenMapCastWindow":           HandleOpenMapCastWindow(message); break;
                 case "CloseMapCastWindow":          HandleCloseMapCastWindow(message); break;
+
+                // Archive (BL-88)
+                case "OpenArchiveWindow":           HandleOpenArchiveWindow(message); break;
 
                 // Year calendar window
                 case "OpenYearCalendarWindow":      HandleOpenYearCalendarWindow(message); break;
@@ -326,6 +347,11 @@ namespace StoryTimelineMk2.Bridge
             // otherwise AddEditItem_Load picks up the params on first Show().
             addEditItemWindow.ReopenWithParams(timelineId, itemId, typeId, year, granularity);
 
+            // Owned by the timeline, not by the Archive or Characters window the request came from:
+            // closing a form closes the forms it owns, and the editor's half-typed work with them.
+            Form? owner = _parentForm;
+            while (owner?.Owner is Form o) owner = o;
+
             // BL-87: the singleton is hidden, never closed, so a second request can land while the
             // editor is still up — and Form.Show(owner) throws on a visible form. Bring that one
             // forward instead; the LoadItem push above is what asks before dropping half-typed work.
@@ -333,15 +359,15 @@ namespace StoryTimelineMk2.Bridge
             {
                 // A second timeline window can own the editor next; re-point it so hiding the
                 // editor still activates the timeline the item came from.
-                if (_parentForm != null && addEditItemWindow.Owner != _parentForm)
-                    addEditItemWindow.Owner = _parentForm;
+                if (owner != null && addEditItemWindow.Owner != owner)
+                    addEditItemWindow.Owner = owner;
             }
             else
             {
                 // Use Show() instead of ShowDialog(): calling ShowDialog from inside a
                 // WebView2 WebMessageReceived handler creates a nested COM message loop
                 // that causes EnsureCoreWebView2Async in the new window to E_ABORT.
-                addEditItemWindow.Show(_parentForm);
+                addEditItemWindow.Show(owner);
             }
             addEditItemWindow.TopMost = _parentForm?.TopMost ?? false;
             addEditItemWindow.Activate();
@@ -401,6 +427,7 @@ namespace StoryTimelineMk2.Bridge
             _parentForm.BeginInvoke((MethodInvoker)(() =>
             {
                 if (_parentForm is f_AddEditItem addEdit) addEdit.ConfirmedClose();
+                else if (_parentForm is f_Archive archive) archive.ConfirmedClose();
                 else _parentForm.Close();
             }));
         }
@@ -777,6 +804,7 @@ namespace StoryTimelineMk2.Bridge
                 }
                 catch (Exception ex)
                 {
+                    Logger.Error("Bridge/AddImageToItem", ex);
                     ReplyToVue(message.MessageId, new { status = "error", message = ex.Message });
                 }
             }));
@@ -800,6 +828,7 @@ namespace StoryTimelineMk2.Bridge
                 ? cid.GetString()
                 : null;
 
+            if (ClosedByToggle(_charactersWindow, message)) return;
             if (_charactersWindow is { IsDisposed: false })
             {
                 _charactersWindow.Activate();
@@ -820,6 +849,7 @@ namespace StoryTimelineMk2.Bridge
                 if (ReferenceEquals(_charactersWindow, window)) _charactersWindow = null;
                 f_Characters.BeginPrewarm();   // closing it is the best hint it will be opened again
             };
+            Announce(window, "characters");
             window.Show(_parentForm);
             window.TopMost = _parentForm?.TopMost ?? false;
             window.Activate();
@@ -839,6 +869,7 @@ namespace StoryTimelineMk2.Bridge
                 ? cid.GetString()
                 : null;
 
+            if (ClosedByToggle(_relationsWindow, message)) return;
             if (_relationsWindow is { IsDisposed: false })
             {
                 _relationsWindow.Activate();
@@ -857,6 +888,37 @@ namespace StoryTimelineMk2.Bridge
                 if (ReferenceEquals(_relationsWindow, window)) _relationsWindow = null;
                 f_Relations.BeginPrewarm();   // closing it is the best hint it will be opened again
             };
+            Announce(window, "relations");
+            window.Show(_parentForm);
+            window.TopMost = _parentForm?.TopMost ?? false;
+            window.Activate();
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// BL-88: the family tree. The relations page with only the genogram, in a smaller window of
+        /// its own so it can sit beside the relations window. Already open: re-rooted, pushed to it
+        /// alone — the relations window's FocusCharacter is a broadcast this one must not follow.
+        /// ponytail: not pre-warmed and not on the sidebar strip; add both if it earns them.
+        /// </summary>
+        private void HandleOpenFamilyTreeWindow(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            string characterId = message.Payload.GetProperty("characterId").GetString() ?? "";
+
+            if (_familyTreeWindow is { IsDisposed: false })
+            {
+                _familyTreeWindow.ShowTree(characterId);
+                _familyTreeWindow.Activate();
+                ReplyToVue(message.MessageId, new { status = "ok" });
+                return;
+            }
+
+            var window = new f_Relations { TimelineId = timelineId, CharacterId = characterId, TreeOnly = true, Text = "Family tree" };
+            window.ClientSize = window.LogicalToDeviceUnits(new Size(960, 700));
+            _familyTreeWindow = window;
+            window.FormClosed += (_, _) => { if (ReferenceEquals(_familyTreeWindow, window)) _familyTreeWindow = null; };
             window.Show(_parentForm);
             window.TopMost = _parentForm?.TopMost ?? false;
             window.Activate();
@@ -884,6 +946,7 @@ namespace StoryTimelineMk2.Bridge
                 ? cid.GetString()
                 : null;
 
+            if (ClosedByToggle(_mapWindow, message)) return;
             if (_mapWindow is { IsDisposed: false })
             {
                 _mapWindow.Activate();
@@ -905,11 +968,64 @@ namespace StoryTimelineMk2.Bridge
                 if (ReferenceEquals(_mapWindow, window)) _mapWindow = null;
                 f_Map.BeginPrewarm();   // closing it is the best hint it will be opened again
             };
+            Announce(window, "map");
             window.Show(_parentForm);
             window.TopMost = _parentForm?.TopMost ?? false;
             window.Activate();
 
             ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// BL-88: the Archive. One per app like the other views onto the open timeline. Its close
+        /// goes through the page (<see cref="f_Archive"/>), so a toggle may only ask it to close.
+        /// ponytail: no pre-warm — add the TakePrewarmed pair the others have if it opens slowly.
+        /// </summary>
+        private void HandleOpenArchiveWindow(BridgeMessage message)
+        {
+            if (ClosedByToggle(_archiveWindow, message)) return;
+            if (_archiveWindow is { IsDisposed: false })
+            {
+                _archiveWindow.Activate();
+                ReplyToVue(message.MessageId, new { status = "ok" });
+                return;
+            }
+
+            var window = new f_Archive { TimelineId = message.Payload.GetProperty("timelineId").GetInt32() };
+            _archiveWindow = window;
+            window.FormClosed += (_, _) =>
+            {
+                if (ReferenceEquals(_archiveWindow, window)) _archiveWindow = null;
+            };
+            Announce(window, "archive");
+            window.Show(_parentForm);
+            window.TopMost = _parentForm?.TopMost ?? false;
+            window.Activate();
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// The sidebar's second click on a lit window button: <c>toggle: true</c> on an open window
+        /// closes it instead of bringing it forward. Other callers leave toggle off and just open.
+        /// </summary>
+        private bool ClosedByToggle(Form? window, BridgeMessage message)
+        {
+            if (window is not { IsDisposed: false }) return false;
+            if (!message.Payload.TryGetProperty("toggle", out var t) || t.ValueKind != JsonValueKind.True) return false;
+            window.Close();
+            ReplyToVue(message.MessageId, new { status = "ok" });
+            return true;
+        }
+
+        /// <summary>
+        /// Tells every page when a sidebar window comes and goes, whoever opened it — that is what
+        /// lights its button on the timeline's strip.
+        /// </summary>
+        private static void Announce(Form window, string name)
+        {
+            window.FormClosed += (_, _) => BridgeHub.Broadcast("WindowClosed", new { Window = name });
+            BridgeHub.Broadcast("WindowOpened", new { Window = name });
         }
 
         /// <summary>
@@ -1170,20 +1286,15 @@ namespace StoryTimelineMk2.Bridge
         // Update checker handlers
         // -----------------------------------------------------------------------
 
+        /// <summary>No catch: a link that won't open goes to the safety net in Dispatch, which logs
+        /// the stack and tells the user — this used to log one line and leave the click doing nothing.</summary>
         private void HandleOpenExternalUrl(BridgeMessage message)
         {
-            try
+            var url = message.Payload.GetProperty("url").GetString()!;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
             {
-                var url = message.Payload.GetProperty("url").GetString()!;
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
-                {
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn("Bridge/OpenExternalUrl", ex.Message);
-            }
+                UseShellExecute = true
+            });
         }
     }
 }

@@ -7,7 +7,7 @@
  */
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import Konva from 'konva'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import { useSideWidth } from '@/composables/useSideWidth'
 import { mediaUrl } from '@/utils/mediaUrl'
@@ -38,8 +38,11 @@ const types = ref<RelationshipType[]>([])
 const loading = ref(true)
 const error = ref('')
 
+/** BL-88: opened as the family tree window — the genogram alone, no sidebar, re-rooted by the host. */
+const treeOnly = params.get('only') === 'tree'
+
 type Mode = 'clusters' | 'matrix' | 'tree' | 'arc' | 'sociogram' | 'chord' | 'chain'
-const mode = ref<Mode>('clusters')
+const mode = ref<Mode>(treeOnly ? 'tree' : 'clusters')
 
 /** What each view is for, in the sidebar, because none of them explain themselves. */
 const MODE_HINTS: Record<Mode, string> = {
@@ -408,7 +411,7 @@ async function load() {
         groupColours.value = await loadGroupColours(timelineId.value)
     } catch (ex) {
         error.value = `Could not load the relations: ${ex instanceof Error ? ex.message : String(ex)}`
-        console.error('RelationsApp load failed', ex)
+        void logError('RelationsApp: load failed', ex)
     } finally {
         loading.value = false
     }
@@ -422,7 +425,8 @@ async function load() {
  * once the window is actually asked for. Mirrors SetCharactersContext on the characters window.
  */
 const stopContextListener = BackendAPI.onHostMessage(msg => {
-    if (msg?.action === 'FocusCharacter') {
+    // FocusCharacter is broadcast for the relations window; the family tree has its own push.
+    if (msg?.action === (treeOnly ? 'SetTreeRoot' : 'FocusCharacter')) {
         const id = msg.payload?.CharacterId as string | undefined
         if (id) focusCharacter(id)
         return
@@ -452,8 +456,9 @@ async function loadPinned(): Promise<Record<string, { x: number; y: number }>> {
         const parsed = res?.value ? JSON.parse(res.value) : null
         return parsed && typeof parsed === 'object' ? parsed : {}
     } catch (ex) {
-        // A lost layout is not worth an error dialog over the window it was opening.
-        console.error('[RelationsApp] pinned positions unreadable, starting loose:', ex)
+        // A lost layout is not worth an error dialog over the window it was opening: the banner.
+        void logError('RelationsApp: pinned positions unreadable, starting loose', ex)
+        error.value = `Could not read where you put them, so they start loose: ${ex instanceof Error ? ex.message : String(ex)}`
         return {}
     }
 }
@@ -463,7 +468,7 @@ function savePinnedSoon() {
     saveTimer = window.setTimeout(() => {
         BackendAPI.SetMiscSetting(POSITIONS_KEY, JSON.stringify(pinned), timelineId.value).catch(ex => {
             error.value = `Could not remember where you put them: ${ex instanceof Error ? ex.message : String(ex)}`
-            console.error('[RelationsApp] saving pinned positions failed', ex)
+            void logError('RelationsApp: saving pinned positions failed', ex)
         })
     }, 600)
 }
@@ -483,7 +488,8 @@ function rememberedSlider(key: string, what: string, fallback = 50) {
                 return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : fallback
             } catch (ex) {
                 // Same reasoning as the pinned positions: a forgotten slider is not a dialog.
-                console.error(`[RelationsApp] ${what} unreadable, starting at ${fallback}:`, ex)
+                void logError(`RelationsApp: ${what} unreadable, starting at ${fallback}`, ex)
+                error.value = `Could not read the ${what}, so it starts at ${fallback}: ${ex instanceof Error ? ex.message : String(ex)}`
                 return fallback
             }
         },
@@ -492,7 +498,7 @@ function rememberedSlider(key: string, what: string, fallback = 50) {
             timer = window.setTimeout(() => {
                 BackendAPI.SetMiscSetting(key, String(value), timelineId.value).catch(ex => {
                     error.value = `Could not remember the ${what}: ${ex instanceof Error ? ex.message : String(ex)}`
-                    console.error(`[RelationsApp] saving ${what} failed`, ex)
+                    void logError(`RelationsApp: saving ${what} failed`, ex)
                 })
             }, 600)
         },
@@ -749,7 +755,7 @@ function buildNode(c: CharacterItem, draggable: boolean): Konva.Group {
         evt.cancelBubble = true
         BackendAPI.OpenCharactersWindow(timelineId.value, c.Id).catch(ex => {
             error.value = `Could not open the characters window: ${ex}`
-            console.error('OpenCharactersWindow failed', ex)
+            void logError('RelationsApp: OpenCharactersWindow failed', ex)
         })
     })
     group.on('contextmenu', evt => {
@@ -2236,7 +2242,7 @@ async function copyImage() {
         say('Picture copied.')
     } catch (ex) {
         error.value = `Could not copy the picture: ${ex instanceof Error ? ex.message : String(ex)}`
-        console.error('[RelationsApp] copyImage failed', ex)
+        void logError('RelationsApp: copyImage failed', ex)
     }
 }
 
@@ -2253,7 +2259,7 @@ async function saveImage() {
         say('Picture saved.')
     } catch (ex) {
         error.value = `Could not save the picture: ${ex instanceof Error ? ex.message : String(ex)}`
-        console.error('[RelationsApp] saveImage failed', ex)
+        void logError('RelationsApp: saveImage failed', ex)
     } finally {
         // The click is synchronous, so the download has the URL by now; holding it would leak the
         // whole bitmap for as long as the window is open.
@@ -2280,7 +2286,7 @@ function openInCharacters(id: string) {
     menu.value = null
     BackendAPI.OpenCharactersWindow(timelineId.value, id).catch(ex => {
         error.value = `Could not open the characters window: ${ex}`
-        console.error('OpenCharactersWindow failed', ex)
+        void logError('RelationsApp: OpenCharactersWindow failed', ex)
     })
 }
 
@@ -2302,12 +2308,16 @@ function unpinOne(id: string) {
 
 <template>
     <div class="rel-root" @contextmenu="noNativeMenu">
-        <WindowTitleBar title="Relations" :subtitle="`${characters.length}`" :show-maximize="true" />
+        <WindowTitleBar
+            :title="treeOnly ? 'Family tree' : 'Relations'"
+            :subtitle="treeOnly ? (charById.get(treeRootId ?? '')?.Name ?? '') : `${characters.length}`"
+            :show-maximize="true"
+        />
 
         <div v-if="loading" class="rel-loading">Loading…</div>
 
         <div v-else class="rel-body">
-            <aside class="rel-side" :style="{ flexBasis: `${sideWidth}px` }">
+            <aside v-if="!treeOnly" class="rel-side" :style="{ flexBasis: `${sideWidth}px` }">
                 <!-- ── Mode ──────────────────────────────────────────── -->
                 <div class="rel-modes">
                     <button :class="{ 'is-on': mode === 'clusters' }" @click="mode = 'clusters'">
@@ -2566,7 +2576,7 @@ function unpinOne(id: string) {
                     </button>
                 </div>
             </aside>
-            <div class="side-grip" title="Drag to resize" @pointerdown="startResize" />
+            <div v-if="!treeOnly" class="side-grip" title="Drag to resize" @pointerdown="startResize" />
 
             <!-- ── Stage ─────────────────────────────────────────────── -->
             <div class="rel-stage-wrap">
@@ -2632,14 +2642,17 @@ function unpinOne(id: string) {
                     <PhPushPinSlash :size="14" /> Unpin
                 </button>
                 <!-- Always here, in every view: the two ends of the finder are the one thing you
-                     want from a character you have just spotted and may not find again. -->
-                <hr />
-                <button @click="relationSlot('a', menuId)">
-                    <PhPath :size="14" /> Relation A
-                </button>
-                <button @click="relationSlot('b', menuId)">
-                    <PhPath :size="14" /> Relation B
-                </button>
+                     want from a character you have just spotted and may not find again. The family
+                     tree window has no finder to fill. -->
+                <template v-if="!treeOnly">
+                    <hr />
+                    <button @click="relationSlot('a', menuId)">
+                        <PhPath :size="14" /> Relation A
+                    </button>
+                    <button @click="relationSlot('b', menuId)">
+                        <PhPath :size="14" /> Relation B
+                    </button>
+                </template>
             </template>
             <template v-else>
                 <button @click="fitToWindow"><PhFrameCorners :size="14" /> Fit to window</button>

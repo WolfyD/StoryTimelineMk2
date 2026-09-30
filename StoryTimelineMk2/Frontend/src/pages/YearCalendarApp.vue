@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { BackendAPI, type BridgeMessage } from '@/bridge/api'
-import { dayOfYearToMonthDay } from '@/utils/calendarMath'
+import { BackendAPI, logError, type BridgeMessage } from '@/bridge/api'
+import { PhCake, PhCalendarDots, PhCross } from '@phosphor-icons/vue'
+import { dayOfYearToMonthDay, lifeMarks, type LifeMark } from '@/utils/calendarMath'
 import { useAppTheme } from '@/utils/useAppTheme'
 import { useShortcuts } from '@/utils/shortcuts'
 import HelpModal from '@/components/HelpModal.vue'
 import ShortcutsModal from '@/components/ShortcutsModal.vue'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import CalendarMonthGrid, { type ItemDot } from '@/components/CalendarMonthGrid.vue'
-import type { TimelineItem, MemDayMarker } from '@/types/models'
+import HoverTip from '@/components/HoverTip.vue'
+import type { TimelineItem, MemDayMarker, CharacterItem, LodLevel } from '@/types/models'
 
 useAppTheme()
 
@@ -99,6 +101,18 @@ const itemDaysByMonth = computed((): Record<number, Record<number, ItemDot[]>> =
     return result
 })
 
+// ── Birthdays and death anniversaries (BL-88) ─────────────────────────────────
+// ponytail: the cast is read once when the window opens; a character saved while it is open shows
+// at the next open, because the Characters window does not announce its saves.
+const cast          = ref<CharacterItem[]>([])
+const lodProfile    = ref<LodLevel[]>([])
+const showBirthdays = ref(true)
+const showDeaths    = ref(true)
+
+const lifeMarksByMonth = computed((): Record<number, Record<number, LifeMark[]>> =>
+    lifeMarks(cast.value, currentYear.value, yearLength.value, months.value, lodProfile.value,
+        { birth: showBirthdays.value, death: showDeaths.value }))
+
 async function loadYear(year: number) {
     currentYear.value = year
     if (!timelineId) return
@@ -106,7 +120,21 @@ async function loadYear(year: number) {
         const res = await BackendAPI.GetItemsForYear(timelineId, year)
         items.value = res?.items ?? []
     } catch (ex) {
-        console.error('GetItemsForYear failed', ex)
+        void logError('YearCalendarApp: GetItemsForYear failed', ex)
+        warning.value = `Could not load the items for ${year}: ${ex instanceof Error ? ex.message : String(ex)}`
+    }
+}
+
+/** Said in the toolbar: the calendar still draws when the items or the cast did not load. */
+const warning = ref('')
+
+async function loadCast() {
+    if (!timelineId) return
+    try {
+        cast.value = await BackendAPI.GetTimelineCharacters(timelineId) ?? []
+    } catch (ex) {
+        void logError('YearCalendarApp: GetTimelineCharacters failed', ex)
+        warning.value = `Could not load the birthdays: ${ex instanceof Error ? ex.message : String(ex)}`
     }
 }
 
@@ -128,15 +156,19 @@ onMounted(async () => {
             if (cal) {
                 calName.value = cal.Name || 'Year Calendar'
                 parseYD(cal.YearDefinition)
+                // Only to tell a birth picked to the day from one picked to the month or the year.
+                const raw = cal.LodProfile?.Profile as LodLevel[] | string | undefined
+                if (raw) lodProfile.value = typeof raw === 'string' ? JSON.parse(raw) : raw
             }
         }
-    } catch {
-        error.value = 'Failed to load calendar.'
+    } catch (ex) {
+        void logError('YearCalendarApp: GetCalendarById failed', ex)
+        error.value = `Failed to load calendar: ${ex instanceof Error ? ex.message : String(ex)}`
     } finally {
         loading.value = false
     }
 
-    await loadYear(currentYear.value)
+    await Promise.all([loadYear(currentYear.value), loadCast()])
 
     stopListening = BackendAPI.onHostMessage(onBridgeMessage)
 })
@@ -159,15 +191,34 @@ const effectiveDayLabels = computed(() =>
 
         <div class="yc-toolbar">
             <span class="yc-year-label">Year {{ currentYear }}</span>
+            <span v-if="warning" class="yc-warning">{{ warning }}</span>
             <div class="yc-toolbar-right">
                 <button
                     class="yc-toggle"
                     :class="{ active: showItems }"
-                    title="Toggle timeline items on calendar"
+                    data-tip="Toggle timeline items on calendar"
                     @click="showItems = !showItems"
                 >
-                    <i class="ri-calendar-event-line" />
+                    <PhCalendarDots :size="14" />
                     Items
+                </button>
+                <button
+                    class="yc-toggle"
+                    :class="{ active: showBirthdays }"
+                    data-tip="Birthdays of everyone alive this year, with the age they turn"
+                    @click="showBirthdays = !showBirthdays"
+                >
+                    <PhCake :size="14" />
+                    Birthdays
+                </button>
+                <button
+                    class="yc-toggle"
+                    :class="{ active: showDeaths }"
+                    data-tip="Death anniversaries, from the year after"
+                    @click="showDeaths = !showDeaths"
+                >
+                    <PhCross :size="14" />
+                    Deaths
                 </button>
             </div>
         </div>
@@ -189,12 +240,14 @@ const effectiveDayLabels = computed(() =>
                     :weekend-days="weekendDays"
                     :memorable-days="memorableDays"
                     :item-dots="itemDaysByMonth[i]"
+                    :life-marks="lifeMarksByMonth[i]"
                 />
             </div>
         </div>
     </div>
     <HelpModal v-if="showHelp" @close="showHelp = false" />
     <ShortcutsModal v-if="showShortcuts" context="calendar" @close="showShortcuts = false" />
+    <HoverTip />
 </template>
 
 <style scoped lang="scss">
@@ -226,6 +279,16 @@ const effectiveDayLabels = computed(() =>
     color: var(--app-accent-hover, #818cf8);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
+}
+
+.yc-warning {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    color: var(--app-danger, #f87171);
 }
 
 .yc-toolbar-right {

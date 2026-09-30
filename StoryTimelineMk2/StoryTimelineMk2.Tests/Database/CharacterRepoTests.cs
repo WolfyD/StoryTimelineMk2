@@ -661,6 +661,57 @@ public class CharacterRepoTests
     }
 
     /// <summary>
+    /// BL-88: the Archive's batch relation. A reparent with Replace drops the old parent but not a
+    /// sibling, a tie that already exists takes the new modifier rather than being written twice,
+    /// a kind that reads the same both ways has no ends to match, and the other is never tied to itself.
+    /// </summary>
+    [Fact]
+    public void BulkRelate_Reparents_UpdatesInPlace_AndSkipsTheOther()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+
+        var repo = new CharacterRepo();
+        var (oldDad, newDad, kid1, kid2, sib) = (MakeCharacter(tlId, "Old"), MakeCharacter(tlId, "New"),
+            MakeCharacter(tlId, "Kid One"), MakeCharacter(tlId, "Kid Two"), MakeCharacter(tlId, "Sib"));
+        foreach (var c in new[] { oldDad, newDad, kid1, kid2, sib }) repo.SaveCharacter(c);
+        CharacterRepo.CharacterRelationship Tie(string a, string b, string type) =>
+            new() { Character1Id = a, Character2Id = b, RelationshipType = type, TimelineId = tlId };
+        repo.SaveRelationship(Tie(oldDad.Id, kid1.Id, "parent"));
+        repo.SaveRelationship(Tie(newDad.Id, kid2.Id, "parent"));
+        repo.SaveRelationship(Tie(kid1.Id, sib.Id, "sibling"));
+
+        int n = repo.BulkRelate(new CharacterRepo.BulkRelation
+        {
+            Ids = new() { kid1.Id, kid2.Id, newDad.Id },
+            OtherId = newDad.Id,
+            RelationshipType = "parent",
+            TickedFirst = false,
+            RelationshipModifier = "adoptive",
+            Replace = true,
+            TimelineId = tlId,
+        });
+
+        Assert.Equal(2, n);
+        var kid1Ties = repo.GetRelationships(kid1.Id).ToList();
+        Assert.DoesNotContain(kid1Ties, r => r.Character1Id == oldDad.Id);
+        Assert.Contains(kid1Ties, r => r.RelationshipType == "sibling");
+        Assert.Contains(kid1Ties, r => r.Character1Id == newDad.Id && r.RelationshipModifier == "adoptive");
+        var kid2Tie = Assert.Single(repo.GetRelationships(kid2.Id));
+        Assert.Equal("adoptive", kid2Tie.RelationshipModifier);
+        Assert.DoesNotContain(repo.GetRelationships(newDad.Id), r => r.Character1Id == r.Character2Id);
+
+        // Sib is kid1's sibling from the other end; a mirrored kind finds the tie anyway.
+        repo.BulkRelate(new CharacterRepo.BulkRelation
+        {
+            Ids = new() { sib.Id }, OtherId = kid1.Id, RelationshipType = "sibling", TickedFirst = true,
+            RelationshipDegree = "half-", TimelineId = tlId,
+        });
+        var sibTie = Assert.Single(repo.GetRelationships(sib.Id));
+        Assert.Equal("half-", sibTie.RelationshipDegree);
+    }
+
+    /// <summary>
     /// BL-73: the relations window asks for the whole web at once, so the timeline query has to be
     /// the timeline's relations and only those — a second project's ties must not leak in.
     /// </summary>

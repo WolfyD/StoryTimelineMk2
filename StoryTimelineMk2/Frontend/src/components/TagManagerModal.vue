@@ -3,7 +3,7 @@ import { ref, computed, nextTick, onMounted } from 'vue'
 import { PhX, PhPencilSimple, PhTrash, PhArrowsClockwise, PhCheck, PhMagnifyingGlass } from '@phosphor-icons/vue'
 import BaseModal from './BaseModal.vue'
 import ConfirmDeleteModal from './ConfirmDeleteModal.vue'
-import { BackendAPI } from '@/bridge/api'
+import { BackendAPI, logError } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
 
 const emit = defineEmits<{ close: [] }>()
@@ -28,7 +28,7 @@ async function load() {
     try {
         tags.value = (await BackendAPI.GetTagList()) ?? []
     } catch (e) {
-        console.error('[TagManagerModal] load failed:', e)
+        void logError('TagManagerModal: load failed', e)
         error.value = 'Failed to load tags.'
     } finally {
         loading.value = false
@@ -61,7 +61,7 @@ async function commitEdit() {
         await load()
         refreshTimeline()
     } catch (e) {
-        console.error('[TagManagerModal] rename failed:', e)
+        void logError('TagManagerModal: rename failed', e)
         error.value = `Failed to rename tag: ${e instanceof Error ? e.message : String(e)}`
     }
 }
@@ -87,7 +87,7 @@ async function confirmDelete() {
         await load()
         if (result.unlinked) refreshTimeline()
     } catch (e) {
-        console.error('[TagManagerModal] delete failed:', e)
+        void logError('TagManagerModal: delete failed', e)
         error.value = `Failed to delete tag: ${e instanceof Error ? e.message : String(e)}`
     }
 }

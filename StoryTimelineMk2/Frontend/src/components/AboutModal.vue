@@ -98,7 +98,7 @@ const DEPENDENCIES: { group: string; items: { name: string; license: string }[] 
             <p class="about-copy">All art by Dergderg Dorgness &mdash; dergdergdorgness@gmail.com</p>
             <p class="about-copy">
                 Free software under the GNU AGPL v3 &mdash;
-                <button class="source-link" :title="SOURCE_URL" @click="openSource">source for v{{ version }}</button>
+                <button class="source-link" :data-tip="SOURCE_URL" @click="openSource">source for v{{ version }}</button>
             </p>
 
             <div class="update-section">
@@ -126,7 +126,7 @@ const DEPENDENCIES: { group: string; items: { name: string; license: string }[] 
         <div v-show="activeTab === 'licenses'" class="lic-body">
             <p class="lic-lead">
                 Story Timeline is free software under the
-                <button class="source-link" :title="LICENSE_URL" @click="openLicense">GNU Affero General Public License v3</button>.
+                <button class="source-link" :data-tip="LICENSE_URL" @click="openLicense">GNU Affero General Public License v3</button>.
                 You may use, study, change and share it; anything you distribute or serve over a
                 network has to carry the same freedoms and offer its source.
             </p>
