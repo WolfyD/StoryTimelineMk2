@@ -299,27 +299,21 @@ test.describe('DB import — post-import behaviour', () => {
     expect(refreshIdx).toBeGreaterThan(importIdx)
   })
 
-  test('import failure shows an alert with the error message', async ({ page }) => {
+  test('import failure shows a notice with the error message', async ({ page }) => {
     await injectBridgeMock(page, {
       ExecuteImportDB: { status: 'error', message: 'Database file is corrupted' },
     })
     await page.goto('/')
     await page.waitForLoadState('networkidle')
 
-    let alertText = ''
-    page.on('dialog', async dialog => {
-      alertText = dialog.message()
-      await dialog.dismiss()
-    })
-
     await page.locator('#db-menu-btn').click()
     await page.getByText('Import Database').click()
     await expect(page.locator('.bm-title')).toContainText('Import Database')
     await page.locator('.btn-danger').click()
-    await page.waitForTimeout(500)
 
-    expect(alertText).toContain('Database import failed')
-    expect(alertText).toContain('Database file is corrupted')
+    // The import modal closes and the notice takes its place.
+    await expect(page.locator('.bm-title')).toContainText('Database import failed')
+    await expect(page.locator('.confirm-msg')).toContainText('Database file is corrupted')
   })
 
   test('import success closes the modal and shows the project list', async ({ page }) => {

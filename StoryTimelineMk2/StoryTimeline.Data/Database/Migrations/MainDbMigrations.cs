@@ -43,6 +43,7 @@ namespace StoryTimelineMk2.Database.Migrations
             new(23, "which way is north, how far is that", "1.1.1", V23_MapScaleAndFootprint),
             new(24, "what a place looks like on the map", "1.1.1", V24_MarkerStyles),
             new(25, "where the compass sits on a map", "1.1.1", V25_CompassPlacement),
+            new(26, "squares to cite on a map", "1.1.1", V26_MapGrid),
         };
 
         public static int LatestVersion => Steps[^1].Version;
@@ -1680,6 +1681,27 @@ namespace StoryTimelineMk2.Database.Migrations
             AddCol(db, "maps", "compass_x", "REAL NOT NULL DEFAULT 1");
             AddCol(db, "maps", "compass_y", "REAL NOT NULL DEFAULT 0");
             AddCol(db, "maps", "compass_size", "REAL NOT NULL DEFAULT 38");
+        }
+
+        // ── 26: squares to cite on a map ───────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// BL-16, the lettered grid. How many squares across the map is, so a writer can say "the ruins
+        /// are in D7" and mean something — lettered columns across, numbered rows down, the way a
+        /// gazetteer does it.
+        ///
+        /// One number, like <c>locations.footprint_w</c>: the squares are square, so the rows follow from
+        /// the picture's height and the grid cannot come out as stretched rectangles. 0 means the writer
+        /// has not said, and the screen draws its default; whether the grid is <i>shown</i> is a button in
+        /// the map window and is deliberately not stored, because it is a reader looking rather than a
+        /// fact about the map.
+        /// ponytail: squares across rather than "each square is N miles", which the scale columns would
+        /// already allow. Squares-across works on a map whose scale nobody has set and cannot be moved by
+        /// a later recalibration; derive it from the scale the day a writer asks for leagues per square.
+        /// </summary>
+        private static void V26_MapGrid(MigrationDb db)
+        {
+            AddCol(db, "maps", "grid_cols", "INTEGER NOT NULL DEFAULT 0");
         }
     }
 }

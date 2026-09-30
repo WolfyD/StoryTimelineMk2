@@ -94,7 +94,7 @@ async function addNote() {
 
 function noteFailed(what: string, e: unknown) {
     console.error(`[TimelineNotesPanel] ${what} failed:`, e);
-    alert(`${what} failed:\n\n${e instanceof Error ? e.message : String(e)}`);
+    store.loadNotice = { title: `${what} failed`, message: e instanceof Error ? e.message : String(e) };
 }
 
 function startEdit(note: TimelineNote) {

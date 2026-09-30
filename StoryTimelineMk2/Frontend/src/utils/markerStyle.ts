@@ -53,6 +53,14 @@ export interface MarkerStyle {
 	/** A dark card behind the name, for a light map that swallows pale text. */
 	labelPlate: boolean
 	/**
+	 * Whether the name is drawn on the map or on the glass over it. Off — the default, and what a pin's
+	 * tag should be — it is the same size on screen at every zoom, like the marker it belongs to. On, it
+	 * is measured in map pixels and grows and shrinks with the ground, which is the only way a name
+	 * stretched across a valley still spans that valley three zoom steps in. A hand-drawn line's length
+	 * and offset are then map pixels too, so the two modes are not interchangeable after the fact.
+	 */
+	labelScales: boolean
+	/**
 	 * A name placed by hand, on the map itself: the line the writer drew for it, in screen pixels.
 	 * `labelDx`/`labelDy` are its middle, offset from the pin; `labelW` is its length and `labelAngle`
 	 * its tilt. `labelW > 0` is the whole of the flag — a name with a line of its own sits on that line
@@ -79,6 +87,7 @@ export const MARKER_DEFAULTS: MarkerStyle = {
 	labelOutline: null,
 	labelOutlineWidth: 0,
 	labelPlate: true,
+	labelScales: false,
 	labelDx: 0,
 	labelDy: 0,
 	labelW: 0,
@@ -144,6 +153,7 @@ export function parseMarkerOverride(json: string | null | undefined): MarkerOver
 	const font = str(o.labelFont)
 	if (font) out.labelFont = font
 	if (typeof o.labelPlate === 'boolean') out.labelPlate = o.labelPlate
+	if (typeof o.labelScales === 'boolean') out.labelScales = o.labelScales
 
 	return out
 }

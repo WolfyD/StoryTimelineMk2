@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { unitsPerBasePx, distanceInUnits, niceScaleMultiplier, scaleBar, lockAxis } from '@/utils/mapScale'
+import { unitsPerBasePx, distanceInUnits, niceScaleMultiplier, scaleBar, lockAxis, placeDistance } from '@/utils/mapScale'
 import type { MapItem } from '@/types/models'
 
 /** A 1000px-wide map whose middle fifth is 10 miles: 200px = 10 miles, so a mile is 20px. */
@@ -9,7 +9,7 @@ function map(over: Partial<MapItem> = {}): MapItem {
     PictureId: null, PicturePath: null, PictureWidth: 1000, PictureHeight: 800,
     NorthOffset: 0, CompassX: 1, CompassY: 0, CompassSize: 38,
     ScaleLength: 10, ScaleUnit: 'miles', ScaleFraction: 0.2,
-    MarkerStyle: null,
+    GridCols: 0, MarkerStyle: null,
     OverviewPath: null, DetailPath: null, ViewError: null, Locations: [],
     ...over,
   }
@@ -31,6 +31,22 @@ describe('distanceInUnits', () => {
     expect(distanceInUnits(m, 1000, { x: 0, y: 0 }, { x: 400, y: 0 })).toBeCloseTo(20)
     expect(distanceInUnits(m, 1000, { x: 0, y: 0 }, { x: 0, y: 400 })).toBeCloseTo(20)
     expect(distanceInUnits(m, 1000, { x: 0, y: 0 }, { x: 300, y: 400 })).toBeCloseTo(25)
+  })
+})
+
+describe('placeDistance', () => {
+  it('measures on the deepest map that holds both, door to door across it', () => {
+    const loc = (Id: string, MapId: string, X: number, Y: number, ChildMapId: string | null = null) => ({
+      Id, MapId, ChildMapId, Name: Id, Description: null, X, Y, Color: null, FootprintW: null, MarkerStyle: null,
+    })
+    const world = map({ Id: 'w', Locations: [loc('city', 'w', 0, 0, 'c'), loc('port', 'w', 0.3, 0.5)] })
+    const city = map({ Id: 'c', ScaleUnit: 'yards', Locations: [loc('inn', 'c', 0, 0), loc('gate', 'c', 0.4, 0)] })
+    // Two inns of one city: on the city map, in its own unit. 400px at 20px a unit.
+    expect(placeDistance([world, city], 'inn', 'gate')).toEqual({ units: 20, unit: 'yards' })
+    // The inn and the port: on the world, from the city's door. 300 × 400px is 500px, 25 miles.
+    expect(placeDistance([world, city], 'inn', 'port')!.units).toBeCloseTo(25)
+    expect(placeDistance([world, city], 'inn', 'port')!.unit).toBe('miles')
+    expect(placeDistance([world, map({ Id: 'x' })], 'inn', 'port')).toBeNull()
   })
 })
 

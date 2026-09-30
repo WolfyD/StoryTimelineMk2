@@ -30,6 +30,37 @@ export function backdropClose(close: () => void) {
 }
 
 /**
+ * Pulls a menu opened near an edge back inside the window, whole. Measured as drawn, so call it after
+ * the render: a menu is as tall as whatever it holds that time, and a guessed height let the bottom
+ * items fall off the screen.
+ */
+export function keepOnScreen(el: HTMLElement | null | undefined, at: { x: number; y: number }, edge = 4) {
+    if (!el) return
+    const { width, height } = el.getBoundingClientRect()
+    at.x = Math.max(edge, Math.min(at.x, window.innerWidth - width - edge))
+    at.y = Math.max(edge, Math.min(at.y, window.innerHeight - height - edge))
+}
+
+/** How far down from its tip the pointer's arrow reaches, which a tip put under it has to clear. */
+const ARROW = 24
+
+/**
+ * Puts a hover card by the pointer at (x, y) and never under it: above and to the right, clear by
+ * `gap`. At the right edge it goes to the left of the pointer instead, and at the top below the arrow.
+ * Measured as drawn, so call it after the render.
+ */
+export function placeTip(el: HTMLElement | null | undefined, x: number, y: number, gap = 16) {
+    if (!el) return
+    // Measured from the corner: left where it was last time, near an edge it would squeeze to fit.
+    el.style.left = el.style.top = '0px'
+    const { width, height } = el.getBoundingClientRect()
+    const left = x + gap + width <= window.innerWidth - 4 ? x + gap : x - gap - width
+    const top = y - gap - height >= 4 ? y - gap - height : y + ARROW + gap
+    el.style.left = `${Math.max(4, left)}px`
+    el.style.top = `${Math.max(4, Math.min(top, window.innerHeight - height - 4))}px`
+}
+
+/**
  * @param close   what Esc and a backdrop click should do
  * @param confirm optional: what Enter should do. Left out, Enter clicks the footer's
  *                `[data-primary]` button, which is what almost every modal wants.

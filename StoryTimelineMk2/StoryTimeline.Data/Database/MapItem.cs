@@ -44,6 +44,14 @@ namespace StoryTimelineMk2.Database
         public double ScaleFraction { get; set; } = 0.2;
 
         /// <summary>
+        /// How many squares across the lettered grid is — columns A, B, C… across and rows 1, 2, 3… down,
+        /// so a place can be cited as D7. The rows follow from the picture's height, because the squares
+        /// are square. 0 means the writer has not said and the screen draws its own default; whether the
+        /// grid is shown is a button in the map window and is not stored at all.
+        /// </summary>
+        public int GridCols { get; set; }
+
+        /// <summary>
         /// What the places on this map look like by default, as JSON — shape, size, colours, icon and
         /// where the label sits. A pin may override any part of it. Null means the built-in look; the
         /// shape of the object is the frontend's <c>markerStyle.ts</c> and nothing here reads into it.
@@ -125,5 +133,39 @@ namespace StoryTimelineMk2.Database
         public string? MarkerStyle { get; set; }
 
         public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// BL-16, the time scrubber: one thing that happened somewhere, with whoever was actually there.
+    /// Not a table — a join of <c>items</c> and <c>locations</c> trimmed to what the map needs, because
+    /// the scrubber runs a frame at a time and cannot fetch per pin.
+    /// </summary>
+    public class MapEvent
+    {
+        public string ItemId { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public int TypeId { get; set; }
+        public string? Color { get; set; }
+
+        /// <summary>The years it spans. <c>EndYear</c> is 0 on the events that happen in one.</summary>
+        public int Year { get; set; }
+        public int EndYear { get; set; }
+        public double AbsoluteStart { get; set; }
+        public double AbsoluteEnd { get; set; }
+
+        public string LocationId { get; set; } = string.Empty;
+        /// <summary>The map that place is pinned to, so a journey can be drawn without a second lookup.</summary>
+        public string MapId { get; set; } = string.Empty;
+
+        /// <summary>Who was there — the ones marked only mentioned are left out, not flagged.</summary>
+        public List<MapEventCast> Cast { get; set; } = new();
+    }
+
+    /// <summary>A character who was present at a <see cref="MapEvent"/>: enough to draw and name a dot.</summary>
+    public class MapEventCast
+    {
+        public string CharacterId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Color { get; set; }
     }
 }

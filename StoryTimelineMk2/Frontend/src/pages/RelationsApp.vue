@@ -24,6 +24,7 @@ import {
     PhSlidersHorizontal,
 } from '@phosphor-icons/vue'
 import type { CharacterItem, CharacterRelationship, RelationshipType } from '@/types/models'
+import { loadGroupColours } from '@/utils/timelinePrefs'
 
 const params = new URLSearchParams(location.search)
 // A ref, not a const: the host pre-navigates this page before it knows which timeline to show,
@@ -376,6 +377,12 @@ const pathNodes = computed(() => new Set(pathRoute.value))
 
 // ── Loading ───────────────────────────────────────────────────────────────────
 
+/**
+ * Faction colours set by hand in the map's Who is where window, so a faction is one colour in both.
+ * ponytail: read when the window loads; one changed while it is open shows at the next open.
+ */
+const groupColours = ref<Record<string, string>>({})
+
 async function load() {
     loading.value = true
     error.value = ''
@@ -393,11 +400,12 @@ async function load() {
         const span = range.value
         if (span) year.value = span.max
         pinned = await loadPinned()
-        // Three reads in a row rather than one `Promise.all`: they are settings, not the cast,
-        // and the window is already drawn by the time any of them land.
+        // Reads in a row rather than one `Promise.all`: they are settings, not the cast, and the
+        // window is already drawn by the time any of them land.
         arcSpread.value = await arcSpreadPref.load()
         knotRoom.value = await knotRoomPref.load()
         crossFade.value = await crossFadePref.load()
+        groupColours.value = await loadGroupColours(timelineId.value)
     } catch (ex) {
         error.value = `Could not load the relations: ${ex instanceof Error ? ex.message : String(ex)}`
         console.error('RelationsApp load failed', ex)
@@ -1701,6 +1709,7 @@ function buildChord() {
     const R = layout.radius
     const pick = chordPick.value
     const on = (i: number, j: number) => !pick || inPick(i, j, pick)
+    const colourOf = (name: string) => (m.by === 'faction' && groupColours.value[name]) || G.categoryColor(name)
 
     // Fit first, then draw: the names are laid out in whatever world units come to a fixed size
     // on screen, so they stay readable on a big cast instead of shrinking with the circle. The
@@ -1722,7 +1731,7 @@ function buildChord() {
         // every ribbon on the circle its own shade and hide who it is dealing with.
         const lead = (layout.arcs[r.a]?.weight ?? 0) <= (layout.arcs[r.b]?.weight ?? 0) ? r.a : r.b
         nodeGroup.add(new Konva.Shape({
-            fill: G.categoryColor(m.names[lead] ?? ''),
+            fill: colourOf(m.names[lead] ?? ''),
             opacity: pick
                 ? (on(r.a, r.b) ? CHORD_LIT : CHORD_BACKDROP)
                 : (r.a === r.b ? CHORD_SELF : CHORD_REST),
@@ -1746,7 +1755,7 @@ function buildChord() {
 
     for (const arc of layout.arcs) {
         const lit = !pick || pick.a === arc.index || pick.b === arc.index
-        const color = G.categoryColor(arc.name)
+        const color = colourOf(arc.name)
         if (arc.end > arc.start) {
             nodeGroup.add(new Konva.Arc({
                 innerRadius: R, outerRadius: R + L.CHORD_BAND,

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import BaseModal from './BaseModal.vue'
 import { BackendAPI } from '@/bridge/api'
+import { useTimelineStore } from '@/stores/timelineStore'
 import type { SessionChangeSummary, SessionHistory } from '@/types/models'
 
 const props = defineProps<{
@@ -137,7 +138,7 @@ async function confirm() {
         if (result?.status === 'ok') emit('close')
     } catch (e) {
         console.error('[ExportSessionChanges]', e)
-        alert(`Session export failed:\n\n${e instanceof Error ? e.message : String(e)}`)
+        useTimelineStore().loadNotice = { title: 'Session export failed', message: e instanceof Error ? e.message : String(e) }
     } finally {
         isWorking.value = false
     }

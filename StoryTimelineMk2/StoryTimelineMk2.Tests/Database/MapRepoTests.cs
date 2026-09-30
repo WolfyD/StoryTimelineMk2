@@ -190,6 +190,77 @@ public class MapRepoTests
         Assert.Equal(new[] { "early", "late" }, items.Select(i => i.Id).ToArray());
     }
 
+    // ── GetMapEvents: what the year scrubber and the paths read ───────────────
+
+    [Fact]
+    public void GetMapEvents_ReturnsOnlyWhatHappenedSomewhere_WithTheMapItIsOn()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new MapRepo();
+
+        string world = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "World" });
+        string locId = repo.SaveLocation(new LocationItem { MapId = world, Name = "Pelennor" });
+        string placed = InsertItem(ctx, tlId, locId);
+        InsertItem(ctx, tlId, null);   // happened nowhere in particular
+
+        var events = new MapRepo().GetMapEvents(tlId);
+
+        var only = Assert.Single(events);
+        Assert.Equal(placed, only.ItemId);
+        Assert.Equal(locId, only.LocationId);
+        Assert.Equal(world, only.MapId);
+    }
+
+    [Fact]
+    public void GetMapEvents_CarriesWhoWasThere_AndLeavesOutWhoWasOnlyMentioned()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new MapRepo();
+
+        string world = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "World" });
+        string locId = repo.SaveLocation(new LocationItem { MapId = world, Name = "Pelennor" });
+        string itemId = InsertItem(ctx, tlId, locId);
+
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute("INSERT INTO characters (id, name, color, timeline_id) VALUES ('there', 'Éowyn', '#f59e0b', @Tl)", new { Tl = tlId });
+            db.Execute("INSERT INTO characters (id, name, timeline_id) VALUES ('absent', 'Denethor', @Tl)", new { Tl = tlId });
+            db.Execute("INSERT INTO item_character_appearances (item_id, character_id, mentioned_only) VALUES (@I, 'there', 0)", new { I = itemId });
+            db.Execute("INSERT INTO item_character_appearances (item_id, character_id, mentioned_only) VALUES (@I, 'absent', 1)", new { I = itemId });
+        }
+
+        var only = Assert.Single(new MapRepo().GetMapEvents(tlId));
+
+        var who = Assert.Single(only.Cast);
+        Assert.Equal("there", who.CharacterId);
+        Assert.Equal("Éowyn", who.Name);
+        Assert.Equal("#f59e0b", who.Color);
+    }
+
+    [Fact]
+    public void GetMapEvents_LeavesOutTheEventsOfAHiddenCharacter()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new MapRepo();
+
+        string world = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "World" });
+        string locId = repo.SaveLocation(new LocationItem { MapId = world, Name = "Rivendell" });
+        string birth = InsertItem(ctx, tlId, locId);
+
+        using (var db = ctx.OpenConnection())
+        {
+            db.Execute(@"INSERT INTO characters (id, name, timeline_id, show_on_timeline, birth_item_id)
+                         VALUES ('hidden', 'Arwen', @Tl, 0, @Birth)", new { Tl = tlId, Birth = birth });
+        }
+
+        // Show on timeline is off, so nothing draws them — the map included.
+        Assert.Empty(new MapRepo().GetMapEvents(tlId));
+        Assert.Empty(new MapRepo().GetLocationItems(locId));
+    }
+
     // ── Saving ────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -256,6 +327,33 @@ public class MapRepoTests
         Assert.Equal("leagues", again.ScaleUnit);
         Assert.Equal(0.375, again.ScaleFraction, precision: 6);
         Assert.Equal(31.5, again.NorthOffset, precision: 6);
+    }
+
+    // How many squares across the lettered grid is. Nothing until the writer says, because a default
+    // stored as a number would be indistinguishable from one they chose — and what is stored is kept
+    // inside what can be drawn and read, so a grid of one square or of five thousand never reaches a canvas.
+    [Fact]
+    public void SaveMap_KeepsTheGridTheWriterAskedFor_WithinWhatCanBeDrawn()
+    {
+        using var ctx = new DbTestContext();
+        int tlId = InsertTimeline(ctx);
+        var repo = new MapRepo();
+
+        string mapId = repo.SaveMap(new MapItem { TimelineId = tlId, Name = "World" });
+        Assert.Equal(0, repo.GetMap(mapId, ensureViews: false)!.GridCols);
+
+        var fresh = repo.GetMap(mapId, ensureViews: false)!;
+        fresh.GridCols = 16;
+        repo.SaveMap(fresh);
+        Assert.Equal(16, repo.GetMap(mapId, ensureViews: false)!.GridCols);
+
+        fresh.GridCols = 1;
+        repo.SaveMap(fresh);
+        Assert.Equal(2, repo.GetMap(mapId, ensureViews: false)!.GridCols);
+
+        fresh.GridCols = 5000;
+        repo.SaveMap(fresh);
+        Assert.Equal(200, repo.GetMap(mapId, ensureViews: false)!.GridCols);
     }
 
     // The rectangle a child map grows out of when the view descends into it. It lives on the pin,

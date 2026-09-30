@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parentMapIds, rootMaps, pathToMap, hopsBetween, flattenMapTree, rowHasChildren, filterMapTree,
+  parentMapIds, rootMaps, pathToMap, hopsBetween, commonMap, flightRoute, flattenMapTree,
+  rowHasChildren, filterMapTree, pinStandingFor, foldableAt, foldToDepth,
 } from '@/utils/mapTree'
 import type { MapItem, LocationItem } from '@/types/models'
 
@@ -17,7 +18,7 @@ function map(id: string, name: string, locations: LocationItem[] = []): MapItem 
     PictureId: null, PicturePath: null, PictureWidth: null, PictureHeight: null,
     NorthOffset: 0, CompassX: 1, CompassY: 0, CompassSize: 38,
     ScaleLength: 10, ScaleUnit: 'miles', ScaleFraction: 0.2,
-    MarkerStyle: null,
+    GridCols: 0, MarkerStyle: null,
     OverviewPath: null, DetailPath: null, ViewError: null,
     Locations: locations,
   }
@@ -64,6 +65,18 @@ describe('mapTree', () => {
       .toEqual(['world', 'l-aurea', 'l-sea'])
   })
 
+  it('folds to a level: that depth shut, everything above open, deeper folds kept; again opens it', () => {
+    // A second kingdom beside Aurea, so a level has more than one row to fold.
+    const tree = [
+      map('world', 'The world', [...world.Locations, place('l-brin', 'world', 'Brin', 'brin')]),
+      aurea, highgate, map('brin', 'Brin', [place('l-port', 'brin', 'Port')]),
+    ]
+    const shut = foldToDepth(tree, new Set(['world', 'world/l-aurea/l-highgate']), 1)
+    expect([...shut].sort()).toEqual(['world/l-aurea', 'world/l-aurea/l-highgate', 'world/l-brin'])
+    expect([...foldToDepth(tree, shut, 1)]).toEqual(['world/l-aurea/l-highgate'])
+    expect(foldableAt(tree, 3)).toEqual([])
+  })
+
   it('walks up to the root, parent first', () => {
     expect(pathToMap(parentMapIds(nested), 'highgate')).toEqual(['world', 'aurea', 'highgate'])
     expect(pathToMap(parentMapIds(nested), 'world')).toEqual(['world'])
@@ -94,6 +107,56 @@ describe('mapTree', () => {
   it('arrives rather than walks when two maps share no ground', () => {
     const apart = [map('a', 'A'), map('b', 'B')]
     expect(hopsBetween(parentMapIds(apart), 'a', 'b')).toEqual(['b'])
+  })
+
+  // The map a reader has to stand on to keep everyone being followed in sight at once.
+  it('is the deepest map that still holds all of them', () => {
+    const parents = parentMapIds(nested)
+    expect(commonMap(parents, ['highgate'])).toBe('highgate')            // one on its own is itself
+    expect(commonMap(parents, ['highgate', 'highgate'])).toBe('highgate')
+    expect(commonMap(parents, ['highgate', 'aurea'])).toBe('aurea')      // and the way out when they part
+    expect(commonMap(parents, ['highgate', 'world'])).toBe('world')
+    expect(commonMap(parents, [])).toBeNull()
+  })
+
+  it('has no map for two under different roots, so the view stays put', () => {
+    const apart = [map('a', 'A'), map('b', 'B')]
+    expect(commonMap(parentMapIds(apart), ['a', 'b'])).toBeNull()
+  })
+
+  // Nine dissolves on the way out to the world map is eight too many: only the flight that says
+  // where the reader left and the one that says where they arrived carry anything.
+  describe('flightRoute', () => {
+    const long = ['inn', 'city', 'region', 'country', 'world']
+
+    it('flies every level when that is what was asked for', () => {
+      expect(flightRoute(long, 'full')).toEqual(long.map(id => ({ id, fly: true })))
+    })
+
+    it('flies out and in, and jumps to the map the destination hangs under', () => {
+      expect(flightRoute(long, 'ends')).toEqual([
+        { id: 'inn', fly: true },
+        { id: 'country', fly: false },
+        { id: 'world', fly: true },
+      ])
+    })
+
+    it('has no middle to leave out on a short journey, so it flies both', () => {
+      expect(flightRoute(['city', 'region'], 'ends')).toEqual([
+        { id: 'city', fly: true },
+        { id: 'region', fly: true },
+      ])
+      expect(flightRoute(['city'], 'ends')).toEqual([{ id: 'city', fly: true }])
+    })
+
+    it('arrives and nothing else when the flight is off', () => {
+      expect(flightRoute(long, 'cut')).toEqual([{ id: 'world', fly: false }])
+    })
+
+    it('goes nowhere when there is nowhere to go', () => {
+      expect(flightRoute([], 'ends')).toEqual([])
+      expect(flightRoute([], 'cut')).toEqual([])
+    })
   })
 
   // Nothing in the schema stops two pins opening into each other's maps, and a loop must not hang.
@@ -149,5 +212,46 @@ describe('mapTree', () => {
     const rows = filterMapTree([map('root', 'Root', [place('l-r', 'root', 'door to A', 'a')]), a, b], 'well')
     const keys = rows.map(r => r.key)
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+// Someone standing in an inn has to show on the city that holds the inn, and on the world at the
+// kingdom — otherwise a journey between two maps is a dot that blinks out and back.
+describe('pinStandingFor', () => {
+  it('is the place itself on the map it is pinned to', () => {
+    expect(pinStandingFor(nested, 'l-inn', 'highgate')?.Id).toBe('l-inn')
+  })
+
+  it('is the door one level up', () => {
+    expect(pinStandingFor(nested, 'l-inn', 'aurea')?.Id).toBe('l-highgate')
+  })
+
+  it('is the door at the top, however deep the place is', () => {
+    expect(pinStandingFor(nested, 'l-inn', 'world')?.Id).toBe('l-aurea')
+  })
+
+  it('is nothing for a place on another branch, since there is nothing here to draw', () => {
+    const bree = map('bree', 'Bree', [place('l-well', 'bree', 'The Well')])
+    const twoWays = [
+      map('world', 'The world', [
+        place('l-aurea', 'world', 'Aurea', 'aurea'),
+        place('l-bree', 'world', 'Bree', 'bree'),
+      ]),
+      aurea, highgate, bree,
+    ]
+    expect(pinStandingFor(twoWays, 'l-well', 'highgate')).toBeNull()
+    expect(pinStandingFor(twoWays, 'l-well', 'world')?.Id).toBe('l-bree')
+  })
+
+  it('is nothing for a place that is nowhere and for a map that is not above it', () => {
+    expect(pinStandingFor(nested, 'no-such-place', 'world')).toBeNull()
+    expect(pinStandingFor(nested, 'l-aurea', 'highgate')).toBeNull()
+  })
+
+  it('stops instead of looping when two pins open into each other', () => {
+    const a = map('a', 'A', [place('l-a', 'a', 'door to B', 'b')])
+    const b = map('b', 'B', [place('l-b', 'b', 'door to A', 'a'), place('l-x', 'b', 'The Well')])
+    expect(pinStandingFor([a, b], 'l-x', 'a')?.Id).toBe('l-a')
+    expect(pinStandingFor([a, b], 'l-x', 'nowhere')).toBeNull()
   })
 })

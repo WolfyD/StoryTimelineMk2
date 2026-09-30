@@ -14,7 +14,7 @@ function map(markerStyle: string | null = null): MapItem {
     PictureId: null, PicturePath: null, PictureWidth: 1000, PictureHeight: 800,
     NorthOffset: 0, CompassX: 1, CompassY: 0, CompassSize: 38,
     ScaleLength: 10, ScaleUnit: 'miles', ScaleFraction: 0.2,
-    MarkerStyle: markerStyle,
+    GridCols: 0, MarkerStyle: markerStyle,
     OverviewPath: null, DetailPath: null, ViewError: null, Locations: [],
   }
 }

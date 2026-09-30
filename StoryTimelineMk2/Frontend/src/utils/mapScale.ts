@@ -7,6 +7,7 @@
  * miles it was created with.
  */
 import type { MapItem } from '@/types/models'
+import { commonMap, parentMapIds, pinStandingFor } from './mapTree'
 
 /** Fall back to the creation defaults rather than dividing by a zero a bad import could carry in. */
 const fraction = (map: MapItem) =>
@@ -35,6 +36,32 @@ export function distanceInUnits(
 	b: { x: number; y: number },
 ): number {
 	return Math.hypot(b.x - a.x, b.y - a.y) * unitsPerBasePx(map, baseWidth)
+}
+
+/**
+ * How far apart two places are, on the deepest map that holds both: two inns of one city on the city,
+ * two cities on the world, door to door. Null when no map holds both, or its picture's size is unknown.
+ *
+ * ponytail: a straight line between the pins, the way the measuring ruler reads it; roads that wind
+ * would need a drawn road to follow.
+ */
+export function placeDistance(
+	maps: MapItem[],
+	a: string,
+	b: string,
+	parents = parentMapIds(maps),
+): { units: number; unit: string } | null {
+	const homeA = maps.find(m => m.Locations.some(l => l.Id === a))
+	const homeB = maps.find(m => m.Locations.some(l => l.Id === b))
+	const onId = homeA && homeB ? commonMap(parents, [homeA.Id, homeB.Id]) : null
+	const on = maps.find(m => m.Id === onId)
+	const w = on?.PictureWidth
+	const h = on?.PictureHeight
+	if (!on || !w || !h) return null
+	const pa = pinStandingFor(maps, a, on.Id, parents)
+	const pb = pinStandingFor(maps, b, on.Id, parents)
+	if (!pa || !pb) return null
+	return { units: distanceInUnits(on, w, { x: pa.X * w, y: pa.Y * h }, { x: pb.X * w, y: pb.Y * h }), unit: on.ScaleUnit }
 }
 
 /**

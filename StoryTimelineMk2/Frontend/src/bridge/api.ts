@@ -26,10 +26,12 @@ import type {
 	SessionApplyResult,
 	MapItem,
 	LocationItem,
+	MapEvent,
 } from '@/types/models';
 // Type-only: `installErrorReporting` needs the App shape, and importing Vue for real here would
 // pull the runtime into the transport.
 import type { App } from 'vue';
+import type { CastMessage } from '@/utils/mapCast';
 import { useTimelineStore } from '@/stores/timelineStore';
 import * as browserHost from './browserHost';
 
@@ -469,9 +471,27 @@ export const BackendAPI = {
 	async SetMapPicture(mapId: string) {
 		return await this.request<{ status: string; Map?: MapItem }>('SetMapPicture', { mapId });
 	},
-	/** `mapId` opens the window on that map, or points the open one at it. */
-	async OpenMapWindow(timelineId: number, mapId?: string) {
-		return await this.request<{ status: string }>('OpenMapWindow', { timelineId, mapId });
+	/**
+	 * `mapId` opens the window on that map, or points the open one at it. `locationId` goes one step
+	 * further and lands on the pin — the map flies the journey down to it itself. `characterId` comes
+	 * from a character's own timeline and cuts the map's cast down to the people they appear with.
+	 */
+	async OpenMapWindow(timelineId: number, mapId?: string, locationId?: string, characterId?: string) {
+		return await this.request<{ status: string }>(
+			'OpenMapWindow',
+			{ timelineId, mapId, locationId, characterId },
+		);
+	},
+	/** BL-16: the map's cast window. `activate` false leaves the keys with the map. */
+	async OpenMapCastWindow(timelineId: number, activate = true) {
+		return await this.request<{ status: string }>('OpenMapCastWindow', { timelineId, activate });
+	},
+	async CloseMapCastWindow() {
+		return await this.request<{ status: string }>('CloseMapCastWindow', {});
+	},
+	/** Passed on to every page as a `MapCast` push: the map and its cast window talking. */
+	async MapCast(message: CastMessage) {
+		return await this.request<{ status: string }>('MapCast', message);
 	},
 	/**
 	 * The map and its own pins. A pin on another map that opened into this one keeps its place and
@@ -490,6 +510,13 @@ export const BackendAPI = {
 	/** What happened at this place, earliest first. */
 	async GetLocationItems(locationId: string) {
 		return await this.request<TimelineItem[]>('GetLocationItems', { locationId });
+	},
+	/**
+	 * Everything that happened somewhere in this timeline, earliest first, with whoever was present —
+	 * what the year scrubber reads and what the paths across the map are made of.
+	 */
+	async GetMapEvents(timelineId: number) {
+		return await this.request<MapEvent[]>('GetMapEvents', { timelineId });
 	},
 
 	/** Remembers that the user took a character off an item, so the matcher stops re-adding them. */

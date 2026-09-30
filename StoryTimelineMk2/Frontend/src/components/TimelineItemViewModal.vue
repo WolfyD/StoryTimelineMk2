@@ -45,9 +45,7 @@ function openCharacter() {
     BackendAPI.OpenCharactersWindow(props.timelineId, characterId.value)
         .catch(e => {
             console.error('[TimelineItemViewModal] OpenCharactersWindow failed:', e);
-            alert(`Could not open that character:
-
-${e instanceof Error ? e.message : String(e)}`);
+            store.loadNotice = { title: 'Could not open that character', message: e instanceof Error ? e.message : String(e) };
         });
     emit('close');
 }

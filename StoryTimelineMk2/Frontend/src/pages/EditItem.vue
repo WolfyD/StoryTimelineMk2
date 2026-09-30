@@ -6,7 +6,9 @@ import { holdDate, placeDate, type HeldDate } from '@/utils/lodDates'
 import { DEFAULT_CALENDAR_CONFIG, type CalendarFormatConfig } from '@/utils/timelineLayout'
 import { blankCharacter, characterEntity } from '@/utils/characterItems'
 import HighlightedTextarea from '@/components/HighlightedTextarea.vue'
-import { PhMagicWand } from '@phosphor-icons/vue'
+import { findPlaces, type PlaceHit } from '@/utils/placeMatcher'
+import { filterMapTree, flattenMapTree, trailToPlace } from '@/utils/mapTree'
+import { PhMagicWand, PhMapPin, PhMapTrifold } from '@phosphor-icons/vue'
 import { BackendAPI, IS_BROWSER_HOST, type BridgeError } from '@/bridge/api'
 import { useShortcuts, MOD } from '@/utils/shortcuts'
 import HelpModal from '@/components/HelpModal.vue'
@@ -134,6 +136,7 @@ const heldEnd   = ref<HeldDate | null>(null)
 const isLoading         = ref(true)
 const isSaving          = ref(false)
 const isCharExpanded    = ref(true)
+const isPlaceExpanded   = ref(true)
 const isStoryExpanded   = ref(true)
 const isNotesExpanded   = ref(false)
 const saveError         = ref('')
@@ -269,6 +272,8 @@ async function loadData(tId: number, iId: string | null, dtype: number, absTime:
   showImagePicker.value    = false
   showCharPicker.value     = false
   showStoryPicker.value    = false
+  showPlacePicker.value    = false
+  placeFilter.value        = ''
   charPickerFilter.value   = ''
   pendingCharId.value      = ''
   pendingCharRole.value    = ''
@@ -472,8 +477,8 @@ useShortcuts('edit', {
   save: saveShortcut,
   saveEnter: saveShortcut,
   cancel: () => {
-    if (showImagePicker.value || showCharPicker.value || showStoryPicker.value) {
-      showImagePicker.value = showCharPicker.value = showStoryPicker.value = false
+    if (showImagePicker.value || showCharPicker.value || showStoryPicker.value || showPlacePicker.value) {
+      showImagePicker.value = showCharPicker.value = showStoryPicker.value = showPlacePicker.value = false
     } else {
       requestClose()
     }
@@ -574,14 +579,92 @@ function dismissTagSuggestions() {
 // ---------------------------------------------------------------------------
 // Place (BL-16)
 // ---------------------------------------------------------------------------
-/** The `<select>` speaks in strings and "nowhere" is the empty one; the column wants null. */
-const placeId = computed({
-  get: () => item.value.LocationId ?? '',
-  set: (v: string) => { item.value.LocationId = v || null },
+const showPlacePicker = ref(false)
+const placeFilter     = ref('')
+
+/** The picker's rows: the whole tree, or only the branches leading to what was typed. */
+const placeRows = computed(() =>
+  placeFilter.value.trim() ? filterMapTree(maps.value, placeFilter.value) : flattenMapTree(maps.value))
+
+/** The chosen place and the map it is pinned on, or null for nowhere in particular. */
+const selectedPlace = computed(() => {
+  const id = item.value.LocationId
+  if (!id) return null
+  for (const m of maps.value) {
+    const loc = m.Locations.find(l => l.Id === id)
+    if (loc) return { map: m, loc }
+  }
+  return null
 })
 
-/** Maps with at least one pin. A map with no places on it would be an empty group heading. */
-const mapsWithPlaces = computed(() => maps.value.filter(m => m.Locations.length))
+/** Root map → place, in names: `Faerun › Helim › Market`. */
+const placeTrail = computed(() =>
+  item.value.LocationId ? trailToPlace(maps.value, item.value.LocationId) : [])
+
+/**
+ * How far the preview is zoomed in: 4 means a quarter of the map's width is shown around the pin.
+ *
+ * The box is given the map's own aspect, so `400% auto` is exactly 4× the box on both axes and
+ * percentage positioning lines the image's pin up with the dot laid over it — no clamping maths, and
+ * no gutter, since the image is larger than the box whichever corner the pin sits in.
+ *
+ * ponytail: the still overview image, not the canvas. A live Konva preview would cost the map
+ * window's whole draw path here; add it if anyone wants the neighbouring pins visible too.
+ */
+const CROP_ZOOM = 4
+
+const placeCrop = computed(() => {
+  const p = selectedPlace.value
+  const path = p?.map.OverviewPath ?? p?.map.PicturePath
+  if (!p || !path) return null
+  return {
+    backgroundImage: `url("${mediaUrl(path)}")`,
+    backgroundSize: `${CROP_ZOOM * 100}% auto`,
+    backgroundPosition: `${p.loc.X * 100}% ${p.loc.Y * 100}%`,
+    aspectRatio: p.map.PictureWidth && p.map.PictureHeight
+      ? `${p.map.PictureWidth} / ${p.map.PictureHeight}`
+      : '3 / 2',
+  }
+})
+
+/** One colour for every place: there is only ever one, so a hue per place would say nothing. */
+const PLACE_TINT = '#10b981'
+
+const descPlaces    = computed(() => findPlaces(item.value.Description ?? '', maps.value))
+const contentPlaces = computed(() => findPlaces(item.value.Content ?? '', maps.value))
+
+const placeMarks = (hits: PlaceHit[]) => hits.map(h => ({ ...h.match, color: PLACE_TINT }))
+
+/**
+ * What the text seems to point at, best first, minus whatever is already chosen. Only ever offered:
+ * `LocationId` is one column, so a wrong guess would overwrite the writer's answer rather than pile
+ * up next to it the way a detected character does.
+ */
+const placeSuggestions = computed(() => {
+  const out: PlaceHit[] = []
+  for (const hit of [...descPlaces.value, ...contentPlaces.value])
+    if (hit.id !== item.value.LocationId && !out.some(h => h.id === hit.id)) out.push(hit)
+  return out
+})
+
+function openPlacePicker() {
+  placeFilter.value = ''
+  showPlacePicker.value = true
+}
+
+function pickPlace(locId: string) {
+  item.value.LocationId = locId
+  showPlacePicker.value = false
+}
+
+/** Open the map window on the pin — the whole journey down to it, flown by the map itself. */
+function showOnMap() {
+  const p = selectedPlace.value
+  if (!p) return
+  BackendAPI.OpenMapWindow(item.value.TimelineId, p.map.Id, p.loc.Id).catch(err => {
+    saveError.value = `Could not open the map: ${err}`
+  })
+}
 
 
 // ---------------------------------------------------------------------------
@@ -859,6 +942,7 @@ async function removeImage(pictureId: string) {
             ref="descRef"
             v-model="item.Description"
             :entities="charEntities"
+            :extraMatches="placeMarks(descPlaces)"
             :rows="7"
             placeholder="Short description"
             @matched="attachDetectedCharacters"
@@ -967,24 +1051,11 @@ async function removeImage(pictureId: string) {
           <HighlightedTextarea
             v-model="item.Content"
             :entities="charEntities"
+            :extraMatches="placeMarks(contentPlaces)"
             :rows="5"
             placeholder="Full content / notes…"
             @matched="attachDetectedCharacters"
           />
-        </div>
-
-        <!-- Where it happened (BL-16). Grouped by map, so the same town name on two maps is clear. -->
-        <div class="field spaced-field">
-          <label>Place</label>
-          <select v-model="placeId">
-            <option value="">— nowhere in particular —</option>
-            <optgroup v-for="m in mapsWithPlaces" :key="m.Id" :label="m.Name">
-              <option v-for="loc in m.Locations" :key="loc.Id" :value="loc.Id">{{ loc.Name }}</option>
-            </optgroup>
-          </select>
-          <span v-if="!mapsWithPlaces.length" class="field-hint">
-            No places pinned yet — open the Map window and pin some.
-          </span>
         </div>
 
         <div class="row">
@@ -1129,6 +1200,93 @@ async function removeImage(pictureId: string) {
         </div>
         <div v-if="isNotesExpanded" class="collapsible-body field">
           <textarea v-model="item.ItemNotes" rows="5" placeholder="Item notes are not displayed on the timeline or in the data panel." />
+        </div>
+      </div>
+
+      <!-- Place (BL-16): where this happened, and the way down to it from the world map -->
+      <div class="section collapsible-section">
+        <div class="collapsible-header" @click="isPlaceExpanded = !isPlaceExpanded">
+          <h3 class="section-title">Place</h3>
+          <span class="collapse-toggle">{{ isPlaceExpanded ? '▲' : '▼' }}</span>
+        </div>
+        <div v-if="isPlaceExpanded" class="collapsible-body">
+          <div v-if="selectedPlace" class="place-card">
+            <div v-if="placeCrop" class="place-crop" :style="placeCrop">
+              <span
+                class="place-dot"
+                :style="{
+                  left:  selectedPlace.loc.X * 100 + '%',
+                  top:   selectedPlace.loc.Y * 100 + '%',
+                  background: selectedPlace.loc.Color || 'var(--app-accent, #4a90d9)',
+                }"
+              />
+            </div>
+            <div class="place-body">
+              <div class="place-trail">
+                <template v-for="(name, i) in placeTrail" :key="i">
+                  <span v-if="i" class="place-sep">›</span>
+                  <span class="place-step" :class="{ here: i === placeTrail.length - 1 }">{{ name }}</span>
+                </template>
+              </div>
+              <div class="place-actions">
+                <button class="btn btn-secondary btn-sm" @click="showOnMap">
+                  <PhMapTrifold :size="14" /> Show on map
+                </button>
+                <button class="btn btn-secondary btn-sm" @click="openPlacePicker">Change</button>
+                <button class="btn btn-secondary btn-sm" @click="item.LocationId = null">Clear</button>
+              </div>
+            </div>
+          </div>
+          <template v-else>
+            <p class="placeholder-note">Nowhere in particular.</p>
+            <button class="btn btn-secondary btn-sm" @click="openPlacePicker">+ Set place</button>
+          </template>
+
+          <!-- What the text seems to name. Click to take it; nothing is set on the writer's behalf. -->
+          <div v-if="placeSuggestions.length" class="place-suggest">
+            <span class="field-hint">Mentioned in the text:</span>
+            <button
+              type="button"
+              class="chip chip-suggest"
+              v-for="s in placeSuggestions"
+              :key="s.id"
+              :title="`Set the place to ${s.trail.join(' › ')}`"
+              @click="item.LocationId = s.id"
+            >+ {{ s.trail.join(' › ') }}</button>
+          </div>
+
+          <!-- Place picker overlay -->
+          <div class="picker-overlay" v-if="showPlacePicker">
+            <div class="picker-panel">
+              <div class="picker-header">
+                <span>Select place</span>
+                <button class="btn-icon" @click="showPlacePicker = false">×</button>
+              </div>
+              <input type="text" class="picker-search" v-model="placeFilter" placeholder="Search places…" />
+              <div class="picker-list">
+                <div
+                  class="picker-item"
+                  v-for="row in placeRows"
+                  :key="row.key"
+                  :class="{ 'is-map': !row.loc, selected: row.loc?.Id === item.LocationId }"
+                  :style="{ paddingLeft: 6 + row.depth * 14 + 'px' }"
+                  @click="row.loc && pickPlace(row.loc.Id)"
+                >
+                  <PhMapTrifold v-if="!row.loc" :size="14" />
+                  <PhMapPin v-else :size="14" :style="{ color: row.loc.Color || undefined }" />
+                  {{ row.loc?.Name ?? row.map.Name }}
+                </div>
+                <p v-if="!placeRows.length" class="picker-empty">
+                  {{ placeFilter.trim()
+                    ? 'No place by that name.'
+                    : 'No places pinned yet — open the Map window and pin some.' }}
+                </p>
+              </div>
+              <div class="picker-footer">
+                <button class="btn btn-secondary btn-sm" @click="showPlacePicker = false">Cancel</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1753,6 +1911,72 @@ async function removeImage(pictureId: string) {
 .collapse-toggle { color: var(--app-text-dim, #64748b); font-size: 0.8rem; }
 
 .collapsible-body { margin-top: 12px; }
+
+// ---- Place (BL-16) ----
+.place-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+// The crop carries the map's own aspect, so `400% auto` is 4× the box on both axes and the
+// background percentages land the pin exactly under .place-dot.
+.place-crop {
+  position: relative;
+  flex: none;
+  width: 150px;
+  border: 1px solid var(--app-border, #334155);
+  border-radius: 5px;
+  background-repeat: no-repeat;
+  background-color: var(--app-bg, #0f172a);
+  overflow: hidden;
+}
+
+.place-dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px rgba(0,0,0,.55);
+}
+
+.place-body { flex: 1; min-width: 0; }
+
+.place-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--app-text-dim, #64748b);
+}
+
+.place-step.here { color: var(--app-text, #e2e8f0); font-weight: 600; }
+.place-sep { color: var(--app-text-dim, #64748b); }
+
+.place-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.place-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+// A map row is a heading: it names the branch, it is not somewhere anything happened.
+.picker-item.is-map {
+  cursor: default;
+  color: var(--app-text-dim, #64748b);
+  font-weight: 600;
+  &:hover { background: none; }
+}
 
 // ---- Characters ----
 .char-list {

@@ -36,6 +36,45 @@ export function rootMaps(maps: MapItem[], parents = parentMapIds(maps)): MapItem
   return maps.filter(m => !parents.has(m.Id))
 }
 
+/**
+ * The pin that stands for a place while one map is on screen: the place itself when it is pinned on
+ * that map, and otherwise the door on it that leads down to wherever the place really is — so someone
+ * in an inn shows on the city that holds the inn, and on the world map at the city.
+ *
+ * Null when the place is not on this map or anywhere under it, which is a place there is nothing on
+ * this map to draw for.
+ *
+ * ponytail: a place three maps down draws *at the door pin*, not at its own spot inside that pin's
+ * footprint. The footprint is a few percent of the map across, so the error is smaller than the dot
+ * that marks it; projecting through the footprint chain is the upgrade if anyone ever wants a journey
+ * to read as crossing a city it never entered.
+ */
+export function pinStandingFor(
+  maps: MapItem[],
+  locId: string,
+  mapId: string,
+  parents = parentMapIds(maps),
+): LocationItem | null {
+  const home = maps.find(m => m.Locations.some(l => l.Id === locId))
+  if (!home) return null
+  if (home.Id === mapId) return home.Locations.find(l => l.Id === locId) ?? null
+
+  // Up the tree from the place's own map. The moment the map above is the one being looked at, the pin
+  // that opens into the branch below is where the place shows.
+  const seen = new Set([home.Id])
+  let below = home.Id
+  let up = parents.get(below)
+  while (up && !seen.has(up)) {
+    if (up === mapId) {
+      return maps.find(m => m.Id === up)?.Locations.find(l => l.ChildMapId === below) ?? null
+    }
+    seen.add(up)
+    below = up
+    up = parents.get(up)
+  }
+  return null
+}
+
 /** The way down to a map from its root, parent first, so a jump into the middle still has a trail. */
 export function pathToMap(parents: Map<string, string>, id: string): string[] {
   const out = [id]
@@ -47,6 +86,50 @@ export function pathToMap(parents: Map<string, string>, id: string): string[] {
     up = parents.get(up)
   }
   return out
+}
+
+/**
+ * The deepest map that still holds every one of `mapIds` at or under it: where a reader has to stand
+ * to keep all of them in sight at once. One map on its own is itself, two on different branches is
+ * whatever they both hang under, and two under different roots is nothing — there is no view that
+ * has both, so the caller stays where it is.
+ */
+export function commonMap(parents: Map<string, string>, mapIds: string[]): string | null {
+  let shared: string[] | null = null
+  for (const id of mapIds) {
+    const path = pathToMap(parents, id)
+    if (!shared) { shared = path; continue }
+    let same = 0
+    while (same < shared.length && same < path.length && shared[same] === path[same]) same++
+    shared = shared.slice(0, same)
+  }
+  return shared?.[shared.length - 1] ?? null
+}
+
+/**
+ * The way down to a place in names, root map first — `Faerun › Helim › Market`. Each step after the
+ * root is the pin that opens into the map below it, so the trail reads as the doors a reader would
+ * actually go through, and the place itself is the last name.
+ *
+ * Empty when the place is on no map here. It is also what the text matcher scores against: every name
+ * but the last is a qualifier that could be standing in the same sentence as the place.
+ */
+export function trailToPlace(
+  maps: MapItem[],
+  locId: string,
+  parents = parentMapIds(maps),
+): string[] {
+  const home = maps.find(m => m.Locations.some(l => l.Id === locId))
+  if (!home) return []
+
+  const chain = pathToMap(parents, home.Id)
+  const names = [maps.find(m => m.Id === chain[0])?.Name ?? '—']
+  for (let i = 1; i < chain.length; i++) {
+    const door = maps.find(m => m.Id === chain[i - 1])?.Locations.find(l => l.ChildMapId === chain[i])
+    names.push(door?.Name ?? maps.find(m => m.Id === chain[i])?.Name ?? '—')
+  }
+  names.push(home.Locations.find(l => l.Id === locId)!.Name)
+  return names
 }
 
 /**
@@ -64,6 +147,32 @@ export function hopsBetween(parents: Map<string, string>, from: string, to: stri
   while (same < up.length && same < down.length && up[same] === down[same]) same++
   if (!same) return [to]
   return [...up.slice(same - 1, -1).reverse(), ...down.slice(same)]
+}
+
+/**
+ * Which of `hopsBetween`'s hops are flown and which are jumped.
+ *
+ * `full` flies every level. `cut` arrives at the destination and nothing else happens. `ends` flies
+ * out of the map the reader is standing on and into the one they land on, and jumps everything
+ * between in one step: the first flight says where they left and the last says where they arrived,
+ * and on a nine-level journey the other seven only said how far it was — which is the dizzying part.
+ *
+ * A journey of two hops or fewer has no middle to leave out, so `ends` is `full` there.
+ */
+export function flightRoute(
+  hops: string[],
+  mode: 'full' | 'ends' | 'cut',
+): { id: string; fly: boolean }[] {
+  const last = hops[hops.length - 1]
+  if (!last) return []
+  if (mode === 'cut') return [{ id: last, fly: false }]
+  if (mode === 'full' || hops.length <= 2) return hops.map(id => ({ id, fly: true }))
+  // The jump lands on the map the destination hangs under, which is where the last flight starts.
+  return [
+    { id: hops[0]!, fly: true },
+    { id: hops[hops.length - 2]!, fly: false },
+    { id: last, fly: true },
+  ]
 }
 
 /**
@@ -110,6 +219,22 @@ export function flattenMapTree(maps: MapItem[], collapsed: ReadonlySet<string> =
 /** Is there anything under this row to fold away? */
 export function rowHasChildren(row: MapTreeRow): boolean {
   return row.loc ? !!row.childMap?.Locations.length : row.map.Locations.length > 0
+}
+
+/** The rows at one depth that have something to fold: what "fold to this level" folds. */
+export function foldableAt(maps: MapItem[], depth: number): string[] {
+  return flattenMapTree(maps).filter(r => r.depth === depth && rowHasChildren(r)).map(r => r.key)
+}
+
+/**
+ * Fold the list to one depth — every continent folded, say, and the world above them open so they are
+ * all in view. Folds already below that depth are kept for when it opens again. When the depth is
+ * already folded, it opens instead. A row's depth is in its key: the root id, then `/place` per level.
+ */
+export function foldToDepth(maps: MapItem[], collapsed: ReadonlySet<string>, depth: number): Set<string> {
+  const level = foldableAt(maps, depth)
+  if (level.every(k => collapsed.has(k))) return new Set([...collapsed].filter(k => !level.includes(k)))
+  return new Set([...[...collapsed].filter(k => k.split('/').length - 1 > depth), ...level])
 }
 
 /**

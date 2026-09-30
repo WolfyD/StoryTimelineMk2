@@ -360,6 +360,13 @@ export interface MapItem {
 	ScaleUnit: string;
 	ScaleFraction: number;
 	/**
+	 * How many squares across the lettered grid is — A, B, C… across, 1, 2, 3… down, so a place can be
+	 * cited as D7. The rows follow from the picture's height, because the squares are square. 0 means
+	 * the writer has not said and `mapGrid.ts` uses its default; whether the grid is *shown* is a
+	 * button in the map window and is not stored.
+	 */
+	GridCols: number;
+	/**
 	 * What the places on this map look like by default, as JSON — see `markerStyle.ts`. A pin may
 	 * override any part of it. Null means the built-in look.
 	 */
@@ -415,6 +422,35 @@ export interface LocationItem {
 	 * Null means it looks like every other place on the map.
 	 */
 	MarkerStyle: string | null;
+}
+
+/**
+ * BL-16, the time scrubber: one thing that happened somewhere, with whoever was actually there.
+ * Not a table — the join of items and locations the map needs, small enough to hold the whole
+ * timeline's worth in memory and read a frame at a time.
+ */
+export interface MapEvent {
+	ItemId: string;
+	Title: string;
+	TypeId: number;
+	Color: string | null;
+	/** The years it spans; `EndYear` is 0 on the events that happen in one. */
+	Year: number;
+	EndYear: number;
+	AbsoluteStart: number;
+	AbsoluteEnd: number;
+	LocationId: string;
+	/** The map that place is pinned to — a journey is drawn without a second lookup. */
+	MapId: string;
+	/** Who was there. The ones marked only mentioned are left out, not flagged. */
+	Cast: MapEventCast[];
+}
+
+/** A character present at a `MapEvent`: enough to draw and name a dot. */
+export interface MapEventCast {
+	CharacterId: string;
+	Name: string;
+	Color: string | null;
 }
 
 /**

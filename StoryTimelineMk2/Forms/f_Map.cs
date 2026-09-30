@@ -27,6 +27,14 @@ namespace StoryTimelineMk2.Forms
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string? MapId { get; set; }
 
+        /// <summary>Place to land on once <see cref="MapId"/> is up. Null arrives on the map itself.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public string? LocationId { get; set; }
+
+        /// <summary>Opened from one character's timeline: the map shows only who they appear with.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public string? CharacterId { get; set; }
+
         public f_Map()
         {
             InitializeComponent();
@@ -99,6 +107,10 @@ namespace StoryTimelineMk2.Forms
                 var query = $"?timelineId={TimelineId}";
                 if (!string.IsNullOrEmpty(MapId))
                     query += $"&mapId={Uri.EscapeDataString(MapId)}";
+                if (!string.IsNullOrEmpty(LocationId))
+                    query += $"&locationId={Uri.EscapeDataString(LocationId)}";
+                if (!string.IsNullOrEmpty(CharacterId))
+                    query += $"&characterId={Uri.EscapeDataString(CharacterId)}";
 
                 string distPath = Path.Combine(Application.StartupPath, "Frontend", "dist");
                 if (Directory.Exists(distPath))

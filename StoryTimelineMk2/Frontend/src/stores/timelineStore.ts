@@ -72,6 +72,9 @@ export const useTimelineStore = defineStore('timeline', () => {
 	// BL-17: the birth and death items of everyone the focus is related to — a life reads better
 	// with the family in it. Filled from the relations once, at load, and read by belongsToFocus.
 	const focusKinItemIds = ref<Set<string>>(new Set());
+	/** Something the user has to hear about — mostly a failure the window lives with. TimelineApp and
+	 *  App show it in ConfirmModal, so any component on those pages can raise one instead of alert(). */
+	const loadNotice = ref<{ title: string; message: string } | null>(null);
 
 	/** Boundary markers carry the timeline's extent, so they belong to every character. */
 	function belongsToFocus(item: TimelineItem, charLinks?: ItemCharacterLink[]): boolean {
@@ -101,7 +104,10 @@ export const useTimelineStore = defineStore('timeline', () => {
 			// The window still works without the family, so this must not take the whole load down.
 			console.error('Could not load the relations for the character window', ex);
 			const why = ex instanceof Error ? ex.message : String(ex);
-			window.alert(`${focus.Name}'s family could not be loaded, so only their own items are shown.\n\n${why}`);
+			loadNotice.value = {
+				title: `${focus.Name}'s family could not be loaded`,
+				message: `Only their own items are shown.\n\n${why}`,
+			};
 		}
 		return ids;
 	}
@@ -334,10 +340,10 @@ export const useTimelineStore = defineStore('timeline', () => {
 			}
 		} catch (error) {
 			// The window has nothing to show without this, so it cannot be a console line: it used to end
-			// as an empty canvas that looked like an empty timeline. Same remedy as loadKinItemIds above.
+			// as an empty canvas that looked like an empty timeline.
 			console.error("Bridge Error loading timeline:", error, (error as BridgeError).payload?.detail);
 			const why = error instanceof Error ? error.message : String(error);
-			window.alert(`This timeline could not be loaded, so the window is empty.\n\n${why}`);
+			loadNotice.value = { title: 'This timeline could not be loaded', message: `The window is empty.\n\n${why}` };
 		} finally {
 			isLoading.value = false;
 		}
@@ -589,7 +595,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		} catch (ex) {
 			// A preset whose rules will not parse cannot be applied, and clicking it used to do nothing at all.
 			console.error('[timelineStore] filter preset rules could not be read', preset.Id, ex);
-			window.alert(`The filter preset "${preset.Name}" could not be read, so it was not applied.`);
+			loadNotice.value = { title: 'Filter preset not applied', message: `The filter preset "${preset.Name}" could not be read.` };
 			return;
 		}
 		const oldRules = filterRules.value;
@@ -674,7 +680,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 		filterRules, filterAndMode, filterDisplayMode, filterPanelOpen, filterPresets,
 		pulseItemId, performantPanning, onScreenControls, lowResourceMode, readOnly, reference, referenceError,
 		yearOffsetOn, yearOffset,
-		characterFocusId, characterFocus, focusKinItemIds,
+		characterFocusId, characterFocus, focusKinItemIds, loadNotice,
 
 		// functions
 		loadItems, addItem, upsertItem, removeItem, setNowYear, setVisibleItems, setCenterAbsoluteTime, setViewportWidth, setProjects, loadTimelines, loadTimelineData, loadReference, clearReference, setFpsDisplay, lodZoomIn, lodZoomOut,

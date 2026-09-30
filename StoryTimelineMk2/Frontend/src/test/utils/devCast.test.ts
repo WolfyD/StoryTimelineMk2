@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest'
-import { clusters, planCast, planFamily, planKinship, planPlausibleGroup, randomPerson, TEST_MARK } from '@/utils/devCast'
+import { describe, it, expect, afterEach } from 'vitest'
+import { clusters, eraFor, FALLBACK_SPAN, FAMILY_YEARS, planCast, planEvents, planFamily, planKinship, planPlausibleGroup, randomPerson, seedCast, TEST_MARK, timelineSpan } from '@/utils/devCast'
 import { blankRelation, pairKey } from '@/utils/characterRelations'
-import type { CastPlan } from '@/utils/devCast'
-import type { CharacterItem, CharacterRelationship } from '@/types/models'
+import type { CastPlan, Span } from '@/utils/devCast'
+import type { CharacterItem, CharacterRelationship, LocationItem } from '@/types/models'
 
 /** Every invariant the generators have to hold whatever the dice do, checked over many rolls. */
 function expectWellFormed(plan: CastPlan) {
@@ -46,11 +46,31 @@ describe('randomPerson', () => {
 		expect(randomPerson(1).Notes).toBe(TEST_MARK)
 	})
 
+	it('is on the canvas without anyone having to tick a box', () => {
+		expect(randomPerson(1).ShowOnTimeline).toBe(true)
+	})
+
 	it('never dies before it is born', () => {
 		for (let i = 0; i < 200; i++) {
 			const c = randomPerson(1)
 			if (c.DeathYear !== null) expect(c.DeathYear).toBeGreaterThan(c.BirthYear!)
 		}
+	})
+
+	// Birthdays are days of the year: everyone born in one year sharing the first of January is the
+	// one thing about a generated cast that never happens in a real one.
+	it('gives everyone a day inside their birth year, not the first of it', () => {
+		const people = Array.from({ length: 200 }, () => randomPerson(1))
+		for (const c of people) {
+			expect(c.AbsoluteStart).toBeGreaterThanOrEqual(c.BirthYear!)
+			expect(c.AbsoluteStart).toBeLessThan(c.BirthYear! + 1)
+			if (c.DeathYear === null) expect(c.AbsoluteEnd).toBeNull()
+			else {
+				expect(c.AbsoluteEnd).toBeGreaterThanOrEqual(c.DeathYear)
+				expect(c.AbsoluteEnd).toBeLessThan(c.DeathYear + 1)
+			}
+		}
+		expect(new Set(people.map(c => c.AbsoluteStart! - c.BirthYear!)).size).toBeGreaterThan(50)
 	})
 })
 
@@ -95,6 +115,118 @@ describe('planCast', () => {
 		expectWellFormed(plan)
 		// Loose, not complete: some of the cast are meant to be left out of the web entirely.
 		expect(plan.relations.length).toBeGreaterThan(10)
+	})
+})
+
+describe('spreading a cast over the timeline it is generated onto', () => {
+	const SPAN: Span = [-2000, 8000]
+
+	/**
+	 * Fixed dice, for the claims in here about the *spread* of a cast rather than an invariant of one.
+	 * "Every tenth of the span has somebody born in it" is a claim about a distribution, and a
+	 * distribution rolled fresh every run misses its own tail every so often — this one came back 9
+	 * about once in fifty runs, and a suite that fails on a green build is one people re-run instead of
+	 * read. Only the tests that ask for it get them: an invariant, a rule that has to hold whatever the
+	 * dice do, wants the dice to keep moving, and two wrong bounds in this very file were caught by
+	 * exactly that.
+	 */
+	const SEED = 20260928
+	afterEach(() => seedCast(null))
+
+	/** How many tenths of the span have somebody born in them. */
+	const covered = (plan: CastPlan): number => {
+		const tenths = new Set<number>()
+		for (const c of plan.characters)
+			tenths.add(Math.min(9, Math.floor(((c.BirthYear! - SPAN[0]) / (SPAN[1] - SPAN[0])) * 10)))
+		return tenths.size
+	}
+
+	it('reads the span off the items, boundaries and all', () => {
+		const at = (Year: number, EndYear: number | null = null) => ({ Year, EndYear })
+		expect(timelineSpan([at(40), at(-10, 5), at(12, 900)])).toEqual([-10, 900])
+		// A period that outruns its own end year must not shorten the span.
+		expect(timelineSpan([at(50, 10)])).toEqual([50, 50])
+		expect(timelineSpan([])).toBeNull()
+	})
+
+	it('puts a cast across the whole span instead of one clump', () => {
+		seedCast(SEED)
+		const plan = planCast(1, 120, SPAN)
+		expect(plan.characters.length).toBe(120)
+		expect(covered(plan)).toBe(10)
+		// A founder's spouse may be a few years the elder, so the start is a guide, not a wall.
+		for (const c of plan.characters) expect(c.BirthYear).toBeGreaterThan(SPAN[0] - 10)
+		expectWellFormed(plan)
+	})
+
+	// The two halves of "it still doesn't quite cover the whole range": a jitter narrower than the
+	// group it places puts every family at the head of its own slot, and a reserve meant for five
+	// generations leaves the last two centuries of the timeline empty.
+	it('jitters a group across its own share of the span, not just the head of it', () => {
+		const span: Span = [0, 1000]
+		const wide = Array.from({ length: 200 }, () => eraFor(span, 0, 50, 0, 5))
+		expect(Math.max(...wide)).toBeGreaterThan(80)
+		expect(Math.max(...wide)).toBeLessThanOrEqual(100)
+		// One person still lands inside one person's worth of the span.
+		expect(Math.max(...Array.from({ length: 200 }, () => eraFor(span, 0, 50)))).toBeLessThanOrEqual(20)
+	})
+
+	it('runs a cast to the end of the span rather than stopping short of it', () => {
+		seedCast(SEED)
+		const latest = Math.max(...planCast(1, 120, SPAN).characters.map(c => c.BirthYear!))
+		expect(SPAN[1] - latest).toBeLessThan((SPAN[1] - SPAN[0]) / 10)
+	})
+
+	it('gives a long timeline several plausible groups rather than one stretched one', () => {
+		seedCast(SEED)
+		const plan = planPlausibleGroup(1, 300, SPAN)
+		expect(plan.characters.length).toBeGreaterThanOrEqual(300)
+		expect(covered(plan)).toBe(10)
+		expectWellFormed(plan)
+		// Each group still has to hold together: nobody is tied to somebody centuries away.
+		const born = new Map(plan.characters.map(c => [c.Id, c.BirthYear!]))
+		for (const r of plan.relations)
+			expect(Math.abs(born.get(r.Character1Id)! - born.get(r.Character2Id)!)).toBeLessThan(FAMILY_YEARS)
+	})
+
+	it('keeps one family in one era, wherever in the span it lands', () => {
+		const plan = planFamily(1, 40, { span: SPAN })
+		const years = plan.characters.map(c => c.BirthYear!)
+		// Against the family's own depth rather than the flat `FAMILY_YEARS`, which is the five-generation
+		// figure the *reservation* uses and its own doc calls "roughly". Forty people fit in three or four
+		// generations when the widths come out generous and in a dozen when they come out 1 every time,
+		// and a dozen generations really is three hundred years — that is what a family is, not a fault.
+		// What must hold is that the span is no more than its descent costs: a generation apiece at the
+		// most (`rnd(20, 31)`), plus the last generation's siblings staggered up to three years each
+		// (`i * rnd(1, 4)`, four kids at the widest) and a spouse up to four years either side.
+		const worst = (generations(plan) - 1) * 30 + 9 + 4 + 4
+		expect(Math.max(...years) - Math.min(...years)).toBeLessThanOrEqual(worst)
+		expect(Math.min(...years)).toBeGreaterThan(SPAN[0] - 10)
+	})
+
+	it('dates its events across the span too, because they follow the cast', () => {
+		seedCast(SEED)
+		const where = [{
+			Id: 'l-inn', MapId: 'm', ChildMapId: null, Name: 'The Inn', Description: null,
+			X: 0.5, Y: 0.5, Color: null, Icon: null, FootprintW: null, MarkerStyle: null,
+		} as LocationItem]
+		const cast = planCast(1, 120, SPAN).characters
+		const years = planEvents(1, cast, where, 600).map(p => p.item.Year)
+		const tenths = new Set(years.map(y => Math.min(9, Math.floor(((y - SPAN[0]) / 10000) * 10))))
+		expect(tenths.size).toBe(10)
+	})
+
+	it('falls back to its own era when the timeline has nothing dated on it', () => {
+		for (const plan of [planCast(1, 30), planPlausibleGroup(1, 30), planFamily(1, 20)])
+			for (const c of plan.characters) {
+				// A generation's slack either side, not ten years. `planPlausibleGroup` founds each
+				// in-marrying family a generation *above* the person it marries into the web, and a family
+				// that has joined can be married into in its turn — so a chain of them walks backwards out
+				// of the era about as fast as descent walks forwards out of it. Ten years only ever covered
+				// a founder's spouse being the elder.
+				expect(c.BirthYear).toBeGreaterThan(FALLBACK_SPAN[0] - FAMILY_YEARS)
+				expect(c.BirthYear).toBeLessThan(FALLBACK_SPAN[1] + FAMILY_YEARS)
+			}
 	})
 })
 
@@ -247,6 +379,68 @@ describe('planPlausibleGroup', () => {
 		expect(plan.characters.length).toBeGreaterThanOrEqual(14)
 		// Even the smallest group gets the second line of descent, so it still has cousins in it.
 		expect(plan.relations.some(r => r.RelationshipType === 'cousin')).toBe(true)
+	})
+})
+
+describe('planEvents', () => {
+	const places = ['l-inn', 'l-gate', 'l-market'].map((Id, i) => ({
+		Id, MapId: 'm', ChildMapId: null, Name: `Place ${i}`, Description: null,
+		X: 0.5, Y: 0.5, Color: null, Icon: null, FootprintW: null, MarkerStyle: null,
+	}) as LocationItem)
+
+	it('puts people somewhere they could have been, and says who was there', () => {
+		const cast = planCast(1, 40).characters
+		const byId = new Map(cast.map(c => [c.Id, c]))
+		const plans = planEvents(1, cast, places, 200)
+		expect(plans.length).toBeGreaterThan(150)
+
+		for (const { item, cast: who } of plans) {
+			const place = places.find(p => p.Id === item.LocationId)
+			expect(place).toBeDefined()
+			// The place is named in the writing as well as linked, so the place matcher has work too.
+			expect(item.Title).toContain(place!.Name)
+			expect(item.Description).toContain(place!.Name)
+			// The scrubber reads the absolutes, and a period that ends before it starts hangs it.
+			expect(item.AbsoluteStart).toBeGreaterThanOrEqual(item.Year)
+			expect(item.AbsoluteStart).toBeLessThan(item.Year + 1)
+			expect(item.AbsoluteEnd).toBeGreaterThanOrEqual(item.EndYear!)
+			expect(item.AbsoluteEnd).toBeLessThan(item.EndYear! + 1)
+			expect(item.AbsoluteEnd).toBeGreaterThanOrEqual(item.AbsoluteStart!)
+			expect(item.EndYear).toBeGreaterThanOrEqual(item.Year)
+			// clearTestCast finds them by this and nothing else.
+			expect(item.ItemNotes).toBe(TEST_MARK)
+
+			const present = who.filter(c => !c.MentionedOnly)
+			expect(present.length).toBeGreaterThan(0)
+			for (const c of present) {
+				const person = byId.get(c.CharacterId)!
+				expect(person).toBeDefined()
+				expect(item.Year).toBeGreaterThanOrEqual(person.BirthYear! + 14)
+				expect(item.Year).toBeLessThanOrEqual(person.DeathYear ?? person.BirthYear! + 80)
+			}
+			// Being talked about must not also count as being there, or the map walks them across it.
+			const mentionedIds = new Set(who.filter(c => c.MentionedOnly).map(c => c.CharacterId))
+			expect(present.some(c => mentionedIds.has(c.CharacterId))).toBe(false)
+			expect(new Set(who.map(c => c.CharacterId)).size).toBe(who.length)
+		}
+	})
+
+	it('dates events to a day inside the year rather than the first of it', () => {
+		const days = planEvents(1, planCast(1, 40).characters, places, 200)
+			.map(p => p.item.AbsoluteStart! - p.item.Year)
+		expect(new Set(days).size).toBeGreaterThan(50)
+		expect(Math.max(...days)).toBeGreaterThan(0.5)
+	})
+
+	it('spreads over every place and both kinds of item', () => {
+		const plans = planEvents(1, planCast(1, 40).characters, places, 300)
+		expect(new Set(plans.map(p => p.item.LocationId)).size).toBe(places.length)
+		expect(new Set(plans.map(p => p.item.TypeId))).toEqual(new Set([1, 2]))
+	})
+
+	it('has nothing to say without places or without dated people', () => {
+		expect(planEvents(1, planCast(1, 10).characters, [], 50)).toEqual([])
+		expect(planEvents(1, [], places, 50)).toEqual([])
 	})
 })
 

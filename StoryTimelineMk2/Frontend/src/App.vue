@@ -40,8 +40,12 @@
 
 	const showExportDb = ref(false)
 	const exportDbMedia = ref(false)
-	/** Set when an import finished but left something behind; see `executeImport`. */
-	const importNotice = ref<string | null>(null)
+
+	/** The page's notice dialog, shared with the store so its components can raise one too. */
+	function notice(title: string, message: string) {
+		store.loadNotice = { title, message }
+	}
+	const why = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 	async function HandleImportDatabase() {
 		try {
@@ -51,7 +55,7 @@
 			}
 		} catch (e) {
 			console.error('[BrowseAndPreviewImport]', e)
-			alert(`That database could not be read:\n\n${e instanceof Error ? e.message : String(e)}`)
+			notice('That database could not be read', why(e))
 		}
 	}
 
@@ -64,16 +68,16 @@
 			// is a notice and not an error — but missing items have to be explained, or they read
 			// as a bug in the app instead of the age of the file.
 			if (res?.skipped) {
-				importNotice.value =
+				notice('Import finished, with gaps',
 					`${res.skipped} part(s) of that backup could not be imported — it is an older file ` +
 					`than this version of Story Timeline expects. Everything else came across.` +
-					(res.logPath ? `\n\nWhat was skipped is listed in the error log:\n${res.logPath}` : '')
+					(res.logPath ? `\n\nWhat was skipped is listed in the error log:\n${res.logPath}` : ''))
 			}
 		} catch (e) {
 			console.error('[ImportDB]', e)
 			// reported: the backend already showed its own error-report dialog for this failure
 			if (!(e as BridgeError).payload?.reported) {
-				alert(`Database import failed:\n\n${e instanceof Error ? e.message : String(e)}`)
+				notice('Database import failed', why(e))
 			}
 		} finally {
 			dbImportPreview.value = null
@@ -91,7 +95,7 @@
 			await BackendAPI.ExportFullDB(exportDbMedia.value)
 		} catch (e) {
 			console.error('[ExportFullDB]', e)
-			alert(`Database export failed:\n\n${e instanceof Error ? e.message : String(e)}`)
+			notice('Database export failed', why(e))
 		}
 	}
 
@@ -110,7 +114,7 @@
 		} else {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
 			console.error('[ImportTimeline]', msg)
-			alert(`Timeline import failed:\n\n${msg}`)
+			notice('Timeline import failed', msg)
 		}
 	}
 
@@ -122,9 +126,7 @@
 		} else if (result?.status !== 'cancelled') {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
 			console.error('[BrowseAndPreviewSessionChanges]', msg)
-			alert(`Could not read that changes file:
-
-${msg}`)
+			notice('Could not read that changes file', msg)
 		}
 	}
 
@@ -134,7 +136,7 @@ ${msg}`)
 		if (result?.status === 'ok' && result.result) {
 			const { applied, kept, dropped } = result.result
 			await HandleGetTimelines()
-			alert(
+			notice('Changes applied',
 				`Applied ${applied} change(s).` +
 					(kept ? `
 Kept ${kept} of your own version(s).` : '') +
@@ -144,9 +146,7 @@ ${dropped} link(s) were dropped — this copy has no matching character, story o
 		} else {
 			const msg = result?.message ?? 'No response from the backend — check the application log.'
 			console.error('[ApplySessionChanges]', msg)
-			alert(`Applying the changes failed:
-
-${msg}`)
+			notice('Applying the changes failed', msg)
 		}
 	}
 
@@ -337,12 +337,12 @@ ${msg}`)
 		</label>
 	</ConfirmModal>
 	<ConfirmModal
-		v-if="importNotice"
-		title="Import finished, with gaps"
-		:message="importNotice"
+		v-if="store.loadNotice"
+		:title="store.loadNotice.title"
+		:message="store.loadNotice.message"
 		hide-cancel
-		@confirm="importNotice = null"
-		@cancel="importNotice = null"
+		@confirm="store.loadNotice = null"
+		@cancel="store.loadNotice = null"
 	/>
 	<div id="db-menu-backdrop" v-if="dbMenuOpen" @click="dbMenuOpen = false"></div>
 	</div>

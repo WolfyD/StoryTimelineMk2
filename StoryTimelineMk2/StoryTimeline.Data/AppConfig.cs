@@ -139,6 +139,13 @@ namespace StoryTimelineMk2
         [JsonPropertyName("skippedVersion")]
         public string? SkippedVersion { get; set; } = null;
 
+        /// <summary>
+        /// BL-16: where the map's cast window was last left, as x, y, width, height. Per machine
+        /// rather than per timeline: it is about which screen is where, not about the story.
+        /// </summary>
+        [JsonPropertyName("mapCastBounds")]
+        public int[]? MapCastBounds { get; set; } = null;
+
         public static string DefaultDataRoot => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "StoryTimelineMk2_Data");

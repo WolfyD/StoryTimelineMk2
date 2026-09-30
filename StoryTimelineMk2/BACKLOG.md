@@ -2014,6 +2014,13 @@ with a voice-over planned over it. The recut is **shot and scored** (2026-09-26)
 105.4s, one unattributed 404 and no other page error, at
 `video/final/china-20260926-1812-ishikari_lore.mp4`. It waits on a viewing.
 
+**Stills too, from the same rig** (2026-09-28). `video/capture/mapshots.mjs` photographs the map
+window and every tool in it against the real database — 22 subjects, each as a full window and a
+close-up of the panel it is about, dated into `video/out`. It reuses `clock.js` and `rig.js` and
+settles the same way `shot.mjs` does; a fresh page per subject, and nothing on the list touches a
+control that saves. The time scrubber and the follow-list are the two it cannot photograph yet:
+they need a dated item attached to a place, and no live timeline has one.
+
 **The trailer is written and shot beat by beat**, and then recut twice — now 22 beats, 1:18.8, four
 windows, `video/script-trailer.md`. **The Characters film is written, probed and shot** — 23 beats,
 1:58.4, 7,104 frames, `video/script-characters.md`. **Build-a-timeline is written, probed and
@@ -2530,10 +2537,312 @@ Today the DevTools console exposes `window.__stl` helpers (`devHelpers.ts`). Two
 
 ## [BL-16] The Map feature
 
-**Status:** In progress, targeted at **1.3.0**. Design sprint done (2026-09-26) — data model, renderer
-and scope are all settled below, and the full feature ships: static maps, the time scrubber and
-animated character movement. **Static display is done** as of 2026-09-27, including all three cleanup
-batches; view rotation and the lettered grid are deliberately out. Next: the scrubber, then movement.
+**Status:** **Done**, shipping in **1.2.0**. Design sprint done (2026-09-26) — data model, renderer and
+scope are all settled below. **Static display is done** as of 2026-09-27, including all three cleanup
+batches. The user asked for all four remaining phases in order (2026-09-28) and all four landed that day:
+the time scrubber ✔, character movement ✔, view rotation ✔, the lettered grid ✔ — so rotation and the grid
+came back in rather than staying out. Two follow-ups the user asked for the same day also landed: the
+rotation **dial** ✔ and the **Place section** in the item editor ✔ — a searchable modal picker, the
+breadcrumb, a map crop with the pin, *Show on map*, and place names read out of the item's own prose
+(`placeMatcher.ts`). Two more rounds followed on 2026-09-28 from the first real use of the scrubber: a
+searchable, sectioned follow list, a map that opens on one character's circle and a flight that stops
+dissolving through every level ✔, then the time model itself — real dates instead of whole years, ⏮/⏭
+stepping between the moments something happens, play that walks those moments, and a two-handle date
+range ✔. Then the look of the movement itself — *Flowing trail* and *Comet* as two more Map Movement
+styles, bowed legs, dwell rings and a marked gathering where several paths converge ✔. And last, the
+things that run a long time: a quiet pin state for an age still in force, told apart from the amber
+ring of something actually happening, and a strip above the clock naming what is running ✔. Nothing on
+the map's time model is designed-but-unbuilt any more. Two screen-space fixes followed the same day: a
+switch that takes the driving controls off the map ✔, and a places list capped at half the sidebar so the
+cast under it is always on screen ✔. A day later, the rest of the screen: everything that talks along the
+bottom stacked into one column instead of piling up on one anchor ✔, the strips reshaped from pills to
+rounded rectangles ✔, the selected place given a panel of its own at the foot of the bar ✔, the Vue
+devtools handle removed from over the clock ✔ — and one model change, `labelScales`, a per-map setting
+for whether a name is a tag on the glass or writing on the ground ✔.
+
+**2026-09-29 — the cast moves to its own window, part 1 ✔.** The sidebar was getting too busy, so
+*Who to follow* and the range summary moved out to a detached `f_MapCast` window (`mapCast.html` →
+`MapCastApp.vue`), which can sit on a second screen. The map still owns the state. It broadcasts a
+`CastState` snapshot through the `MapCast` data action (`BridgeHub.Broadcast`, so the browser build
+works too), throttled to one every 150 ms with a trailing send. The window sends `CastCommand`s back
+(hello, follow, group, unfocus, who — the character sheet included, so it is owned by the map and not
+by the window). The map sends only between the window's hello and the host's `MapCastClosed`. Only the
+search box and the folded sections are local to it.
+Lifecycle follows Time: it opens without taking focus when Time goes on and closes when Time goes off,
+and it is owned by the map form. A time-bar button reopens it. Its bounds are saved per machine in
+`AppConfig.MapCastBounds`. Shared types and helpers are in `utils/mapCast.ts` (tested). Part 2 was
+built the same day; see the section after the range work.
+Also 2026-09-29: opened from a character's timeline, the scrubber is theirs. Its ticks and its ends come
+from `clockEvents` = `onTheirTimeline` (mapTime.ts, tested), the same set `belongsToFocus` draws: every
+item linked to them, mentioned-only included (`GetCharacterAppearances`), plus their own and their
+kin's birth/death items (the relations web, `ensureWeb`). Until that loads, the events they were
+present at stand in; the mount awaits it so the scrubber starts on their first event. Someone with
+nothing placed falls back to the whole timeline. The cast and the dots stay present-only. `longEnough`
+still measures the whole story, and pins still light for everyone's events. A watch on `span` clamps
+both handles when the focus changes, and a companion's next/previous/journey is clipped to the track.
+Scrubber fixes the same day: the date and the count are stacked over their widest readings
+(`dateSizers`) so the track stops shifting; `TimeTrack.down` cancels the pointerdown, because the
+browser's selection drag gave a no-entry cursor on the handle; the dock is resizable from a grip at its
+right end, centre held, stored as `mapDockWidth` and still capped by the CSS `calc(100% - 210px)`.
+Later the same day, two map changes. First, ages as progress rings (option A of three; the other two
+were not picked). `paintTime` draws a ring in each long event's colour around its pin, filling clockwise
+from its start to its end at `now`. Up to `AGE_RINGS` = 3 rings, earliest innermost, then a "+N". The grey
+quiet ring is gone, but the 'quiet' state still keeps the pin undimmed. Not built: a doorway pin lighting
+for events inside its sub-map (`placeStates` does not roll up), and the bottom-strip change.
+Second, left-click on a cast dot picks them out (`spotlight`). Everyone else's heads, roads, dwell rings
+and range lanes drop to `SPOTLIT_DIM`. Their route across this map (`routeWalked` / `routeAhead`) is
+drawn solid up to `now` and dashed after, whatever the movement style. The clock is left alone.
+Clearing: click the same dot again, or click the empty map; it also clears when that person is
+unfollowed. Synced to the cast window in part 2 (below).
+
+**2026-09-29 — the range at scale, and the map's settings in the cast window ✔.** Aimed at the user's
+real baseline: about 1000 events and 101 people.
+
+- **Drag cost.** `summarise` no longer runs on every pointer move. `summaryJob` → `queueSummary`
+  computes it in a rAF, and the latest request wins. While a TimeTrack handle is held (the new `hold`
+  emit), the previous summary stays up at `STALE_ALPHA` and the full one is drawn on release.
+- **Dev timing.** A dev-only `CastTiming` (frame, summary, build, paint) prints in the settings footer.
+  Paint is measured from Konva's layer `beforeDraw`/`draw` events.
+- **Range views.** Parties are labelled "Name + N" on their longest road on screen (`partyAt`).
+  *Roads shown* (all/10/25/50, `map_roads_shown`) draws the busiest N lanes in full and the rest faint,
+  still hoverable, and the range block reports "+N minor roads drawn faint". *Places show*
+  (`map_places_show`) swaps the time-spent discs for arrivals vs departures: sized by traffic and tinted
+  orange→blue by the share of arrivals.
+- **Storyline tab.** One row per used place, sorted by Y, and one line per followed person
+  (`storyRuns`/`layoutStory` in `utils/storyline.ts`, tested). It is computed only while the tab is open
+  (`storyOpen`). A click sends `clock` → `setClock`: without a range it glides there, with one it slides
+  the range and keeps its length.
+- **Settings.** Map Movement, Trail Length, Map Flight and Descent Fade moved out of
+  TimelineSettingsModal into a *Map settings* footer in the cast window, beside the two new ones. They
+  stay per-timeline prefs under the same keys, so nothing is lost. The window sends `prefs` commands and
+  the map applies them in `setPrefs`.
+- **Alerts.** The last `window.alert`s outside the transports became ConfirmModal notices through
+  `timelineStore.loadNotice`, rendered by TimelineApp and App. App's one-off `importNotice` folded into
+  it. api.ts and browserHost.ts keep theirs on purpose, because a transport has no component to render
+  into.
+
+**2026-09-29 — the cast window, part 2: one person in full ✔.**
+
+- **Picking out syncs.** `CastState` carries `spotlight`, `hover` and `detail`. The window sends `spot`
+  (someone who is not followed gets followed first) and `hover`. In the list the box follows and the
+  name picks out: the rows are an `li` holding a checkbox and a `button.who`, no longer a `label`.
+  Hover swells the map dot (`hovered` → `swellDot`, `HOVER_SWELL`), and a dot hovered on the map lights
+  its row. When the pick comes from the map, the row scrolls into view. `reveal` scrolls only the list,
+  never the `overflow: hidden` root.
+- **Detail panel** (`castDetail` in MapApp, a `CastDetail` in mapCast.ts):
+  - where the clock finds them (at a place, on the road from A to B arriving on a date, not yet on the
+    map, last seen), and the event behind it;
+  - trips, places, time on the road and distance, from `personFacts` (mapSummary.ts, tested), over the
+    range if one is open and their whole story if not;
+  - the most frequent company, as chips that pick that person out;
+  - every stop, where a click sets the clock. Stops outside the range, or still to come, are faint,
+    and the current one is kept in view.
+- **Distance.** `placeDistance` (mapScale.ts, tested) is the straight line between the pins on the
+  deepest map that holds both, in that map's unit. It is memoised per pair in `legLength`. Mixed units
+  are listed side by side, never converted.
+- **Company is limited to the cast list**, so in focus mode it is only the focus circle.
+- **Storyline.** Picking someone out dims everyone else's line (`storyDim`) and draws theirs last and
+  thicker. Each line has a 9 px transparent hit stroke; a click picks the person out and hover syncs.
+- **No-select.** A global rule in `main.scss` puts `user-select: none` on button, summary, label,
+  select and role=button/tab/slider. The cast window's group heads and storyline also have it. Clickable
+  `div`s elsewhere are not covered.
+- **Layout, per machine.** The detail card is resized by a 6 px grip in the gap under it. The height
+  is stored in localStorage `mapCastCardHeight`; double-click clears it back to "up to half the
+  window". The list below keeps 100 px. *In this range* folds from its header, stored in
+  `mapCastRangeFolded`. The list is `flex: 1 1 0`: with an `auto` basis it shared every drag with the
+  card, which then moved half as far as the pointer.
+- **Speed.** The 327 ms summary and the 335 ms single-clock frame, on the user's 1000-event,
+  100-person list, had one cause: `pinStandingFor` reran `parentMapIds` and a `maps.find` over Vue
+  proxies for every trail stop, every frame. `standingPin` (a computed in MapApp) now memoises it per
+  place, runs on `toRaw` maps, and resets when the doors, the places or the map on screen change.
+  `pointFor` and `pinsHere` both go through it. Not yet re-measured by the user.
+- **Fold all.** With a grouping on, one button in the cast tools folds every group, or opens them all
+  when they are all folded. Folds belonging to another grouping are left alone.
+- **Search and folds per timeline.** misc_settings `map_cast_view` (`loadMapCastView` /
+  `saveMapCastView`) holds `{ query, closed }`, saved 500 ms after a change.
+- **Clock keys from the cast window.** Space, ← and → are sent as a `key` command and run the map's
+  `timeKey`. Both windows use `clockKey` (mapCast.ts) for the same filter: no modifiers, not in a field
+  or slider. Not during a range.
+- **Double-click a name to go to them** (`fly` → `flyToWho`). It follows and picks them out. If they
+  are not in the story at the clock, the clock goes to their next stop, or their last. The view flies
+  to `followTarget([id], at)` and centres on their pin. The second click of the double-click does not
+  toggle the pick again.
+- **Fold to this level.** Right-clicking a row in the places list gives *Fold to this level*: every row
+  at that depth that has children folds and the rows above open (`foldToDepth`, `foldableAt` in
+  mapTree.ts, tested). When they are all folded already, it is *Unfold this level*. No menu on a depth
+  with nothing to fold, or during a search.
+- **Browser build.**
+  - The cast pop-up remembers where it was left (localStorage `mapCastWindowPlace`, recorded by the
+    close poll).
+  - Chromium is asked once for the `window-management` permission, so the pop-up can reopen on
+    another screen. Safari and Firefox have no such permission.
+  - It closes on the map's `pagehide`.
+  - An automatic open that the browser blocks (Time left on, no click) returns `{ status: 'blocked' }`
+    and the map shows an 8 s notice instead of an error.
+  - The path from the button to `window.open` has no await, only the one microtask of
+    `browserHost.run`, so Safari still sees the click.
+
+**2026-09-29 — the cast window, part 3: charts ✔.** Nine charts, each an icon tab beside *People*. Every
+one covers the people followed, over the range if one is open and the whole story if not.
+
+- **Which tabs.** A button at the right end of the tab strip opens *Charts with a tab*, which ticks
+  charts in and out. The pick is stored per machine in localStorage `mapCastCharts`, and the default is
+  the Storyline alone. The range work's Storyline tab is now one of the nine, and `storyOpen` gave way to
+  `chartOpen`.
+- **Only the open one is worked out.** The window sends a `tab` command carrying the chart's `ask`: the
+  place for *At one place*, the pair for *How far apart*. The map works out only that chart (`chartJob` →
+  `buildChart` in `mapCharts.ts`) and sends it as a `ChartState` (kind `'chart'`). Sends are throttled like
+  the list (`CAST_SEND_MS`), held while a scrubber handle is down and sent on release (`chartStale`). The
+  spotlight goes into the job only for *How far apart*, so picking someone out re-works no other chart.
+- **The nine**, drawn by `CastCharts.vue`:
+  - *Storyline*: as before. `storyRuns` now runs in `buildChart` and `layoutStory` in the window.
+  - *Life strips*: a bar per person, coloured by place (`categoryColor` of the pin), with slate for
+    somewhere this map has no pin for.
+  - *Busy places*: heads per place across `SLICES` = 48 slices. `busyCounts` counts someone once in a
+    slice however often they come and go in it.
+  - *Tables*:
+    - people: trips, places, time on the road, distance, first seen and last seen (`personFacts`);
+    - places: people, visits, time spent and most at once (`mostAtOnce`, which counts a stay cut by an
+      errand as one head);
+    - both sortable, with a sticky name column. The people table scrolls sideways at 380 px.
+  - *Who met whom*: a matrix of events shared, in the relations window's `matrixOrder`.
+  - *At one place*: one place's heads per slice, and who was there when. The place is picked from a
+    list, busiest first.
+  - *How far apart*: 200 samples of the straight line between two people, in the map's unit
+    (`distanceInUnits`). There are gaps where either one is off this map. It starts from whoever is
+    picked out.
+  - *Weave*: a thread per person across `COLUMNS` = 32 columns, and people at one place run together
+    (`weaveLayout`). The names sit in the left gutter (`weaveNames`), and a thread that starts late gets
+    a dotted lead from its name.
+  - *Flows*: the range summary's lanes (`summarise`) as a two-column sankey (`sankeyLayout`).
+- **Picking out and the clock.** Every name and line picks the person out, and hover syncs, as on the
+  Storyline. Over the whole story, a click on a time chart sets the map's clock. During a range the click
+  does nothing, because it would slide the range out from under the pointer.
+- **Tested.** `mapCharts.test.ts` covers `busyCounts`, `mostAtOnce`, `weaveLayout`, `weaveNames`,
+  `sankeyLayout`, and one `buildChart` pass over all nine. The charts were checked in a headless render
+  with synthetic data at 380 px, not yet in the app on real data.
+- **Ceilings (ponytail).**
+  - The weave takes the stay nearest each column's middle, so a visit shorter than a column, between
+    two longer ones, can drop out. More columns fixes it, at the price of a busier weave.
+  - The sankey stacks places busiest first and does not reorder them to untangle the bands. A band is
+    at most 6 px a trip.
+  - *Who met whom* shows the 26 best-connected people and *Flows* the 30 busiest roads, until the
+    reader presses "+N more".
+  - The life strips have no colour key; the place is in the hover.
+
+**2026-09-30 — the charts, read and linked ✔.** Five things the user asked for after first use.
+
+- **Drag lag.** Dragging a map that had hundreds of trail lines on it stuttered. Two changes fix it:
+  - The heads' `shadowBlur` glow became a radial-gradient circle (`halo`), and the lit ring became a
+    gradient `Ring`.
+  - `freezeTrails` / `thawTrails` swap the trail or summary group for one snapshot `Konva.Image` for
+    the length of a stage drag.
+  - Measured on a headless bench: 269 → 27.5 ms a frame at 300 roads, and 511 → 46 ms at 1000.
+  - Not touched: the pin labels' `shadowBlur` (mapMarker.ts). It is the next suspect if a drag with
+    many named pins is still slow.
+- **How to read this.** A fold-out under every chart holds a few plain sentences and one made-up
+  example (Ada, Bo, the Mill). Time charts get a line about click and zoom. There is one open state
+  for all nine, kept in localStorage `mapCastHelpOpen`, and it starts folded.
+- **Zoom.** Dragging across one of the six time charts zooms into that stretch, and it can be done
+  again inside the zoom. *Zoom out* in the header, where the scope label was, goes back.
+  - The window holds the zoom and sends it as `ask.from` / `ask.to` for timed charts only (`isTimed`).
+  - `buildChart` cuts it to what the map has open. A stretch wholly outside is no zoom.
+  - A range change drops it. So does a link from a chart that ignores it (Tables, Who met whom,
+    Flows).
+  - A click still sets the clock. A drag swallows its own click, through a capture-phase
+    `stopPropagation`.
+- **Never met.** *How far apart* says "Ada never met anyone else on the map." (worded "anyone you follow" until the UX pass below) or "Ada and Bo never met."
+  under the pickers. "Met" means the same event (place and times, `eventKey`), the same as in *Who met
+  whom*. It is worked out over the whole range, so a zoom never makes two people strangers.
+- **Charts lead into charts.** Each link opens the target's tab, adding it if it had none.
+  - A *Who met whom* square opens *How far apart* for that pair.
+  - A place opens *At one place* on it. That covers Storyline and Busy places row names, Life strips
+    bars (which no longer set the clock, though the gaps between them still do), Tables → Places rows
+    and Flows nodes.
+- **Tested.** `mapCharts.test.ts` covers the zoom clamp and the three `met` answers. Type-check and
+  lint are clean. Nothing was checked visually in the app.
+
+**2026-09-30 — UX pass over both windows ✔.** A read-through for friction (map findings M1–M15, cast
+window findings 1–8), all of it approved by the user in one go.
+
+- **One word for who is drawn.** "Follow" meant two things: who is on the map, and the camera going
+  with them. Who is drawn is now *shown* everywhere, in both windows: "Show only Ada", "Hide from the
+  map", "Who is on the map", "3 of 12 on the map", "Nobody shown…". The camera button (a
+  `PhVideoCamera`, not Fit's crosshair) says "fly with". The map's menu gained *Show everyone again*, and a chip over the
+  clock says "Showing 3 of 12 · Show all" while anyone is left off.
+- **The map stops fighting the reader.**
+  - A modal open pauses play, and the view no longer chases the cast while a modal, a menu, a mode, a
+    pick or a placing is up (`modalOpen`, the guard in `chaseCast`).
+  - Escape backs out one thing: the menu, the date box, a pick, placing, then a mode. A mode is
+    *finished*, not cancelled, because its drags are already saved.
+  - The clock keys are off while a modal or menu is up. Space on a button the mouse left focused
+    plays; on one reached by Tab it presses the button (`:focus-visible`, a deviation from M11's
+    "always play").
+  - Pressing a handle no longer focuses it, so ← → step the story after a drag instead of nudging the
+    handle a day. `clockKey` lets Space past a focused handle; the handle keeps its arrows.
+  - An error stays until its X dismisses it, and the flash sits at the top of the dock instead of
+    floating over the map.
+  - Closed while the clock is on, the cast window stays closed until opened by hand (`castDismissed`).
+- **Small things said out loud.** *Time* never changes width. ⏮ / ⏭ grey out at the ends. The date box
+  selects its year on open and says when a date was clamped to the story. Turning *fly with* on says why
+  nothing moves when nobody is anywhere to fly to. The handles' tooltips name Alt and PgUp/PgDn.
+  "Window" is "date range" in every label. The dock's grip has a notch, and widening the clock stops
+  short of the corner controls (340 px kept clear). The stage hint explains the clock while it is on.
+- **What happened here** lights the events going on at the clock's date, and each of those is a link
+  that takes the clock to it. The count reads "3 events", with their titles in its tooltip.
+- **The cast window's charts.**
+  - A readout line above every chart says what is under the pointer at once: a heat cell, a bar, a
+    band, a square, a line, a name. It replaces those elements' tooltips, and the plot's own
+    click/zoom tip is what it says at rest.
+  - Double-click anyone in a chart (a name, a line, a *Who met whom* name, a Tables row) to fly to
+    them, as on People; right-click for the same menu.
+  - Zoom is a stack: *Zoom out* and Escape go back one step, and its tooltip says where to.
+  - "Nobody is on the map" and *How far apart*'s "Show two people…" have a *Show everyone* button.
+  - The chart picker reads *Charts*, not a bare icon.
+- **Tested.** `mapCast.test.ts` covers `clockKey`. Type-check and lint clean, 1150 unit tests pass (one
+  full run tripped `transport.test.ts` on timing; it passes alone and on the rerun). Nothing was
+  checked visually in the app.
+
+**2026-09-30 — Tabs that read, and a weave that says where ✔.** Two things from the user's look at the
+cast window.
+
+- **Tabs.** Chart icons are 18 px and People's is 16 px, with a brighter muted colour and more padding. *Charts* is outlined in the accent and filled while its picker is open, so
+  it reads as a button and not as another tab.
+- **Weave bands.** The weave's height looked like a scale of places, but it only keeps threads from
+  crossing. Now each run of threads at one place sits on a faint band in that place's colour
+  (`weaveBands`), and the weave chart carries `places` so the bands can be named.
+  - A band's name is written where it starts, but only on runs of three columns or more. A shorter
+    run is named by the readout.
+  - Pointing along a thread reads where that person was in that column (`pointThread`).
+  - Bands only read out on hover. A click still goes through them to set the clock, and a band's name
+    is a button that opens *At one place* on that place.
+  - The rows were spaced out to make room for band edges and labels: `WEAVE_BETWEEN` 22 → 28 and
+    `WEAVE_PAD` 8 → 18.
+  - The help text, the tab's description and the example all say height means nothing.
+- **Tested.** `mapCharts.test.ts` covers `weaveBands` (spans, breaks where a place empties, leaves out
+  off-map) and the chart's `places`. Type-check and lint are clean, and all 1151 unit tests pass.
+  Nothing was checked visually in the app.
+
+**2026-09-30 — Fold all by the folds, a colour per group, tips clear of the pointer ✔.**
+
+- **Fold all.** The button is no longer at the end of the grouping row. It is now a labelled *Fold all* / *Open all* chip in a new `.list-head` row above the list, next to the "N of M on the map" count.
+- **Group colours, everywhere and for every grouping.**
+  - `group_colours` (misc_settings, per timeline) maps a group's name to a `#rrggbb` (`loadGroupColours` / `saveGroupColours`). It is keyed by name alone, as `categoryColor` is.
+  - The map colours by group under any grouping except flat, *By who is moving* included. A group's colour is the one set by hand, else `categoryColor(name)`, else `UNSIDED` for the rest group (`REST`).
+  - `sideColours` returns its previous map when nothing in it changed. A running clock under *By who is moving* therefore doesn't rebuild the dots every frame, only when someone sets off or arrives.
+  - `CastSection` carries `colour` and `own`, and `bySide` is gone. The heading has a pencil (a colour input laid invisibly over it, so the picker opens there) and, when the colour was set by hand, a reset arrow. The command is `{ kind: 'colour' }`, and the map validates the hex before saving.
+  - The relations window's chord uses the same colours for factions, both ribbons and arcs. It reads them only when it loads, so a colour changed while it is open shows on the next open.
+- **Tips.**
+  - `placeTip` (modal.ts) puts the map's hover card above and to the right of the pointer, 16 px clear. At the right edge it flips left, and at the top edge it goes below the arrow.
+  - The timeline canvas and mini-mode tooltips already sit above and right of the pointer, and were left alone.
+  - Native `title` tooltips are placed by the browser and can't be moved.
+- **Tested.** `modal.test.ts` covers `placeTip`'s three placements, and `mapCast.test.ts` covers `listSections` carrying colour. Type-check and lint are clean, and all 1152 unit tests pass. Nothing was checked visually in the app.
+
+**To load it up:** `video/seeds/world.py` seeds Earth five levels deep — 68 maps, 666 places, real
+Wikimedia imagery, pins on their real coordinates where Wikipedia publishes the map's placement rule
+— and `__stl.createEvents(n)` hangs events with a cast on those places, which is
+what the scrubber and the movement paths read. Both are dev-only and both undo themselves; see the
+2026-09-28 section of **BL-74**.
 
 **Schema and data layer done (2026-09-27).** Migration 22 creates `maps` and `locations`, indexes
 `items.location_id`, adds `item_character_appearances.mentioned_only`, and drops the two dead
@@ -2951,8 +3260,504 @@ same-scale flight is a plain linear pan. Full suites green — 949 Vitest across
   (`if (band) stage.stopDrag()`), which Konva fires before it moves anything and re-checks `isDragging()`
   after, so cancelling there moves the map not at all — and there is no state left to restore.
 
-Remaining: view rotation and the lettered grid, both deliberately out of the 2026-09-27 round;
-then scrubber, then movement. Build order is static display → scrubber → movement.
+**The time scrubber (2026-09-28).** *Time* in the top bar turns the map into one year: whole years, like
+the relations scrubber, because a year is the unit a writer scrubs in. A bottom-centre strip carries
+play/pause, the year, a range slider and a years-per-second speed, and it has a `raised` variant so it
+never fights the pick strip that shares that corner. Places with something running that year keep their
+colour and wear an amber ring; everything else drops to 0.28 opacity, and the right of the strip counts
+how much of that year is on *this* map.
+
+One new bridge action, `GetMapEvents(timelineId)`, serves this **and** the movement phase, because the
+paths need exactly the same rows plus the present cast — two queries in `MapRepo`: the located items,
+then their `mentioned_only = 0` appearances folded onto them. Loaded once when the window opens, since a
+scrubber cannot round-trip per frame. The year arithmetic is `utils/mapTime.ts` (`eventYears`,
+`happeningAt`, `yearSpan`, `eventsAt`, `litLocations`), pure and covered by 13 cases including year-0
+timelines, negative years, and a span whose latest *end* is not its latest start. `paintTime()` only sets
+group opacity and adds or destroys `.lit-ring` nodes, so a year change never rebuilds a pin, and
+`redrawPins` calls it so a rebuild restores the year's state.
+
+Two corrections fell out of it: `GetLocationItems` ignored `ExcludeHiddenCharacterItems`, so a hidden
+character's birth showed in the pin panel — the fragment is now `internal` and shared with `MapRepo`.
+Ceiling, named in `mapTime.ts`: nothing knows when a place was **founded or abandoned**, because
+`locations` has no columns for it. The user asked for those explicitly as a later item (2026-09-28), and
+that function is where "the city is not there yet" belongs.
+
+**Character movement (2026-09-28).** With the year on, everyone with a placed appearance is a named dot
+that walks the map. Whereabouts are derived exactly as the 2026-09-26 decision says — present at an
+event, the event has a place — and `GetMapEvents` already carries the present-only cast, so this phase
+added no bridge action and no query.
+
+The arithmetic is the rest of `utils/mapTime.ts`: `castOf` (everyone once, alphabetical, keeping a colour
+given on one event when another omits it), `stopsFor` (one character's places, earliest first, same place
+twice left as two stops), `legAt` (standing at a stop, or `t` of the way to the next — travel fills the
+gap between one event's *end* and the next's *start*, which is all the story says about the road) and
+`pathSoFar`. `legAt` prefers the latest stop that has started, so a character who arrives somewhere while
+an age runs on around them is at the place they arrived at rather than in the age. Before their first
+placed event and after their last they are `null` and simply not drawn, instead of frozen where they died.
+
+Where a place shows on the map being looked at is `mapTree.ts`'s `pinStandingFor`: the place itself when
+it is pinned here, otherwise the door pin that leads down to it, so someone in an inn shows on the city
+and on the world map at the kingdom. One tree walk with the usual `seen` set. **Ceiling, named there:** a
+place three maps down draws *at the door pin*, not at its own spot inside that pin's footprint — the
+footprint is a few percent of the map across, so the error is smaller than the dot. Projecting through
+the footprint chain is the upgrade if a journey ever needs to read as crossing a city it never entered.
+The second ceiling, in `paintCast`: a leg with either end on another branch of the tree is not drawn at
+all, because walking to the edge of the picture needs a point outside it to walk to.
+
+Rendering follows the scrubber's rule — build once, paint per year. `drawCast()` rebuilds only when *who*
+is drawn changes (the map, the cast, the follow list, the style); `paintCast()` moves heads and sets trail
+points. The head group is inverse-scaled by `scalePins`, which is also what makes the crowd fan work:
+Konva applies `offset` inside the group's own scale, so the ring offsets are already screen pixels and
+never re-space on zoom. The head tweens only while playing, at `min(0.35, 0.9 / speed)` — always shorter
+than the interval, so tweens never overlap — and a dragged scrubber is the reader's hand and follows it
+exactly.
+
+*Who to follow* starts with every box ticked, so the first click is an **un**tick that leaves everyone
+else in; unticking the last name lands back on everyone, which says the same thing. The style is a
+per-timeline pref, `map_movement_style` (`glide` | `trail`), beside *Map Descent Fade* in the Animation
+grid. 19 new cases across `mapTime.test.ts` and `mapTree.test.ts`.
+
+**The trail has a length, and the view can chase the cast (2026-09-28).** Two things the user asked for
+after watching it run.
+
+- **Trail Length (%)**, a second per-timeline pref (`map_trail_length`, default 15) that appears under
+  *Map Movement* only when the style is the dashed trail. **A percentage of the whole story, not a count
+  of years** — that was the user's own framing and it is the whole point: a tale told over three days and
+  one told over three millennia both get a tail about a sixth of themselves long, where a fixed number of
+  years would be the entirety of the first and invisible on the second. 0 leaves a walker no trail at all,
+  100 draws every step they ever took. `pathSoFar` is gone, replaced by `trailFade(stops, year, back)`,
+  which returns each reached stop with how solid it should be drawn — full where they are standing,
+  nothing `back` years behind. A stop still running is at full strength, because the fade is measured
+  from the last moment they were *there*, not from when they arrived.
+  - The line became a `Konva.Group` of one dashed segment per leg, each at its own opacity, and
+    `paintTrail` reuses the lines already in the group rather than rebuilding per frame — same
+    build-once-paint-per-year rule as everything else on this screen. **Ceiling, named there:** the fade
+    steps down per leg instead of running smoothly along one. A stroke gradient per segment is the
+    upgrade and it needs the character's colour parsed into rgba, which nothing here does yet.
+  - A floor of one year on the computed length, or a story told inside a single year would have a trail
+    of zero and the setting would look broken on exactly the timelines that want the shortest tail.
+- **Follow the cast**, a crosshair toggle on the time strip, off by default because it takes the map out
+  of the reader's hands. On, the view stands on the deepest map that still holds everyone being followed:
+  in through a door the moment they all go through it, back out the moment they part. That is
+  `mapTree.commonMap` — the longest shared prefix of the `pathToMap` of each — and it returns null for two
+  maps under different roots, which is a view that does not exist, so the caller stays put. Both ends of a
+  journey count, so someone crossing from one kingdom to another pulls the view out to the map that holds
+  both rather than walking off the edge of this one. A `chasing` flag keeps the year ticking on from
+  stacking a second flight on the one in the air.
+
+**View rotation (2026-09-28).** The map can be turned: two curved arrows and a straighten button under
+the zoom pad, ±15° a press, plus dragging the compass rose for any angle and double-clicking it to square
+up. It is **one angle per window and it is never saved** — `viewRot`, a ref synced off `stage.rotation()`
+— because it is how the reader is holding the map and not a fact about the map. The fact about the map is
+`NorthOffset`, which the rose still sets, but only inside *Place the compass*; outside it the rose turns
+the view instead, which also fixes the old hazard of a compass rewriting a world's north when brushed.
+Keeping the angle across a descent is what makes a flight into a child map seamless while turned.
+
+All of it reduces to one primitive in `mapFootprint.ts`: **`anchoredAt(x, y, at, scale, rot)`** — "put
+this point of the map under this point of the screen". That is Konva's own
+`translate(pos) · rotate · scale` read backwards, so `centredOn`, `throughFootprint`, `betweenViews` and
+`descentTransform` are all one call to it and came out *shorter* than before while gaining rotation.
+`turnedBy` is the only trigonometry; `turnedExtent` is why *Fit* no longer crops a turned map's corners.
+
+Three things fell out for free and are worth knowing before the grid goes in:
+
+- **Hit testing needed no changes at all.** `getRelativePointerPosition()` goes through the inverse
+  absolute transform, so pin drags, the footprint handle, the ruler and the context menu were already
+  correct at an angle.
+- **`scalePins` was already the one place the view publishes itself**, so counter-rotating there
+  (`n.rotation(-stage.rotation())` beside the existing inverse scale) keeps every label, grip and cast
+  mark upright — and keeps the label designer honest, because a drag inside an upright group is still
+  screen pixels. No edit mode was touched.
+- **The shift-drag band** is drawn at `rotation: -viewRot`, so the reader's box stays square to the
+  screen. Only its size follows the pointer, in that frame, and negative sizes are left alone because
+  canvas draws them the same either way — which saves normalising a corner that is turned with the map.
+
+11 new cases in `mapFootprint.test.ts`, the load-bearing one being that zooming about a point keeps that
+point fixed at a non-zero angle. Full suite 993 Vitest green; type-check and lint clean.
+
+**The dial replaced the hunt for the rose** (2026-09-28, user's ask). Any angle was already reachable by
+dragging the compass rose, which nothing on screen said — so the nav pad now carries a **dial**: a ring
+with a grip on it, the angle in the middle, drag it anywhere. `aimedAt(box, ev)` is the rose's own
+pointer-to-angle reading, lifted out and shared by both. Near north it snaps to exactly 0 (`DIAL_SNAP`,
+5°), because square is the one angle a reader means precisely and no pointer lands on 0.0°. The ±15°
+buttons stay under it — they are the keyboard's only way to turn the map, and a reader who wants to count
+steps still can. No test: the snap is `deg < 5 || deg > 355 ? 0 : deg` and the trigonometry is the rose's,
+already on screen daily; it was checked by driving a real drag to 135° and back to 3° off north.
+
+**The Place section, and reading places out of prose (2026-09-28, user's ask).** The `<select>` in
+*Details* is gone; `EditItem` has a **Place** section above Characters with a modal picker (the same
+`.picker-*` shell as characters and stories, rows from `flattenMapTree`/`filterMapTree`, map rows as
+headings), the `trailToPlace` breadcrumb, a crop of the map with the pin on it, and *Show on map*.
+
+The crop is **CSS, not Konva**: the box is given the map's own aspect, so `background-size: 400% auto`
+is exactly 4× the box on both axes, and `background-position: X*100% Y*100%` puts the image's pin under
+a dot at `left: X*100%; top: Y*100%`. Percentage positioning makes those coincide by definition — no
+clamping maths, and no gutter at any corner. `ponytail:` the still overview image, not a live canvas.
+
+*Show on map* needed `locationId` threaded through the five places a window-opening action lives:
+`api.ts` → `browserHost.ts` query → `MessageRouter.HandleOpenMapWindow` (query string when new,
+`ShowMap` broadcast with `LocationId` when already open) → `f_Map.LocationId` → `MapApp`'s URL param and
+`onBridgeMessage`. Both ends land on the existing `goTo(mapId, locId)`, so the journey is the flight
+that was already there.
+
+**`placeMatcher.ts` is the part worth reading.** A character's name is a proper noun; *Market*, *Gate*,
+*the docks* are words. So a name match is a **candidate** that has to score ≥ 2 on: a locational
+preposition within three words before (`LOCATIONAL`, a lookup not a grammar), capitalised but not
+sentence-initial, a multi-word name, a name unique in the timeline, and — worth 2 on its own — **an
+ancestor's name in the same sentence**.
+
+That last one is the whole design. "the Helim market", "the market in Helim" and "the market on the
+outskirts of Helim" are not three phrase patterns, they are one shape: *the place's name plus an
+ancestor's name nearby*. The map tree does the disambiguating grammar would otherwise have to, which is
+why there is no pattern list and why `trailToPlace` returns the ancestors as names. When two matches sit
+on one chain the deeper wins — "Helim" scored, but it was the qualifier, and the market is the answer.
+
+`findEntities` is deliberately not reused: it keeps **one entity per name**, which is right for
+characters and wrong here, where two towns owning a Market is the ordinary case and the thing the score
+exists to settle. `namedPlaces()` maps name → *every* id and scores each. Suggestions are chips only —
+`LocationId` is one column, so a wrong guess would overwrite the writer rather than pile up beside them
+like a detected character. `HighlightedTextarea` grew an `extraMatches` prop for the same reason: only
+scored hits light up, and an extra that overlaps a character's words gives way to it.
+
+**A place is not painted like a character** (user's ask): no wash and no ring, just the underline and a
+dot beside it. The dot is `.is-place::before`, absolutely positioned against a `position: relative`
+inline span — anything in flow would shift the glyphs off the textarea above. It sits *on the underline*
+(`left: -8px; bottom: -2px`, 6px with a 2px field-coloured ring) rather than between the words: the
+inter-word space is only about 4px and the mirror cannot take any of it, so a dot big enough to read
+would always be touching the letter before it — the user's second note was that it "needs padding to not
+overflow onto text". Dropped to the baseline it has the line's own leading to breathe in. `tint()` now
+takes the kind and `hslOf()` is the shared colour maths.
+
+`findPlaces` returns **every** scored mention of a place it has decided on, not the best one per place.
+Best-per-place still decides *whether* a place is meant (and orders the chips, which dedupe by id), but
+collapsing there meant a place named twice was underlined once.
+
+**Qualifiers add up, and one word is one place** (user's report, same day). Two things were wrong. The
+ancestor bonus was binary — *any* ancestor named, +2 — so three inns in three cities of one country all
+scored the same on "the inn in the Country", and every one of them painted its own span over the same
+word: `runs` walked them in start order, emitted the word once per match and pushed the rest of the
+mirror out of line with the textarea. Now each ancestor named in the sentence counts (`steps * 2`), so
+"the inn, in Country's City" has two confirmed steps and beats one, in either word order and for any
+number of qualifiers; ties are then broken by **how close** the nearest qualifier stands to the name,
+which is what tells "from Triboar to the market in Waterdeep" whose market it is. What survives is one
+candidate where the sentence singles one out, and all of them where it genuinely does not — the user's
+ambiguity rule, three distinct chips with full paths. `HighlightedTextarea.runs` skips a match that
+starts inside one already taken, so a tie is painted once whatever the caller sends.
+
+**How close "show me this place" goes** (user's ask). The arrival was `min(2, fitScale * 4)` — a quarter
+of the world with a pin in the middle of it, not a look at the place. The multiplier is now ten, but a
+multiplier alone is wrong: it is a ratio and sharpness is not. Ten times the fit of Waterdeep (4016 ×
+8386) is 0.95 and reads cleanly; ten times the fit of Waterdeep - North (2406 × 992) is 4.5× and is a
+blur with a pin in it. `closeScaleFor(fit, longEdge)` in `mapFootprint.ts` therefore caps the stretch at
+**twice the sharpest copy's own pixels** — `MapViews.DetailCap`, repeated frontend-side because the
+bridge sends paths and not sizes — and floors the whole thing at `fit`, since a picture smaller than the
+window is already magnified just to fill it. Four cases in `mapFootprint.test.ts`, one per size of map,
+built from the real dimensions in the Ariad database.
+
+`centreOn` had its own copy of the old expression, and the copy contradicted its own comment: the outer
+`min(2, …)` capped the *reader's current* scale too, so asking where something was from 5× pulled them
+back out to 2×. It calls `closeScale()` now and caps nothing but the distance it travels.
+
+13 cases in `placeMatcher.test.ts` including all three of the user's sentence shapes. Full suite green;
+type-check and lint clean. Driven against the real Ariad database as well: *Faerun › Waterdeep 2 ›
+Waterdeep - North › Troll Gate* came back as the only chip for "She was born at the Troll Gate in
+Waterdeep - North", on a timeline that has two places called Market; a three-line worst case rendered at
+3× confirmed the dot clears a descender before it and stays whole at the very start of a line.
+
+**The lettered grid (2026-09-28).** Columns A, B, C… across, rows 1, 2, 3… down, so a place has a name a
+reader can be sent to: the selected place's panel shows its square beside it, which is the whole point of
+ruling one on. A `PhGridFour` toggle under the zoom pad shows and hides it; **whether it is shown is not
+stored**, for the same reason the angle is not — it is a reader looking, not a fact about the map.
+
+Migration 26 adds **`maps.grid_cols`**, one number, and the rows follow from the picture's height, exactly
+as `locations.footprint_w` stores one width. Two numbers would be a grid of rectangles, and a cited square
+has to measure the same distance everywhere. `0` means the writer has not said, so the screen draws
+`DEFAULT_GRID_COLS` (12) without that default becoming indistinguishable from a choice; stored values are
+clamped 2..200 in `MapRepo.SaveMap` as well as in the modal, since the repo is what the bridge reaches.
+
+`utils/mapGrid.ts` is the testable part — `columnName` (spreadsheet letters, so Z is followed by AA),
+`gridOf` (squares square, rows rounded *up* so the map is covered) and `squareOf` (a pin's 0..1 fractions
+to `'D7'`, with a point on or past the edge named by the edge square rather than by nothing). 11 cases.
+
+Two decisions worth keeping:
+
+- **The whole grid is one `Konva.Shape` with a `sceneFunc`**, not a few hundred lines and labels. Not for
+  the node count itself but for what it would cost per frame: nodes would each need inverse-scaling and
+  counter-rotating in `scalePins` on every wheel tick, and a flight would drag four hundred of them through
+  sixty frames. Drawn by hand they are arithmetic on a path the canvas already walks — and it buys the
+  thing printed margins cannot, the label **repeated in every visible square**, so a reader zoomed into one
+  square is told which it is instead of counting columns back to an off-screen edge. Only the squares in
+  view are lettered (the four stage corners inverse-transformed), and below 34 screen pixels a square is
+  left bare rather than smeared over.
+- **Turning the map moves the writing, not the corner.** The name sits just inside each square's own
+  top-left corner on the paper, which on a turned map is not the top-left a reader sees — so the text is
+  laid out *towards* the square (`turnedBy(1, 1, deg)` picks the `textAlign`/`textBaseline`) and
+  counter-rotated upright, the same bargain the pins strike. A first attempt walked the anchor round to
+  whichever corner came out topmost; that ties at every right angle and lands the name in the neighbouring
+  square, so it went in the bin.
+
+ponytail: squares across rather than "each square is N leagues", which would move every citation the day
+someone recalibrates the scale bar. Derive it from `ScaleFraction` if a writer asks for leagues per square.
+
+Full suites green: 493 .NET, 1004 Vitest; type-check and both linters clean.
+
+Build order was: static display → scrubber → movement → rotation → grid. All five are in.
+
+**Finding one name in a hundred and fifty, and a flight that stops being dizzying (2026-09-28).** The
+first real use of the movement scrubber turned up three things at once, all of them about scale.
+
+- **The follow list was a wall.** A hundred and fifty ticked boxes is searched by eye and nothing else.
+  It gained a search box, *All* / *None*, and a picker that cuts it into sections: **by who is moving**
+  (on the road / standing somewhere / not in the story now, recomputed as the clock runs), **by
+  family**, and **by faction**. Each section folds and has its own tri-state tick box. The grouping
+  itself is `utils/castGroups.ts` — `kinGroups` walks the relation web and unions everyone joined by a
+  **family**-category relation, however many steps apart, so a brother's wife's mother lands in the same
+  house; only the family kinds join, because one rivalry between two houses would otherwise fold the
+  whole cast into a single group one hop at a time. `kinNames` names a house for the surname most of its
+  members share, so a spouse who kept their own does not rename it. `GetTimelineRelations` is fetched
+  lazily, the first time family or faction is asked for — most map opens never want it.
+- **`following` became `Set | null`.** The old "an empty set means everyone" sentinel made *nobody* an
+  unrepresentable state, so an All/None pair was impossible to write. Null is everyone now, and an empty
+  set is nobody.
+- **The map opened from a character's timeline shows their circle.** `characterId` rides `OpenMapWindow`
+  through both hosts (query string on a new window, the `ShowMap` broadcast on an open one) and
+  `castAround` cuts the cast to the people that character was actually somewhere with. Time mode turns
+  itself on, since the question being asked is where they went. A dismissible chip in the sidebar says
+  whose circle it is, and clearing it gives the whole timeline back.
+- **A nine-level flight said "still further" eight times.** `travelTo` flew every hop, so a trip from an
+  inn out to the world map dissolved through every level in between. `flightRoute` in `mapTree.ts` picks
+  which hops are flown: **ends only** (the new default) flies out of the map the reader is standing on
+  and into the one they land on and jumps the middle in one silent step, **every level** is the old
+  behaviour, **arrive** does no flying at all. The two flights worth watching are the one that says
+  where they left and the one that says where they arrived. A journey of two hops or fewer has no middle
+  to leave out, so *ends* is *full* there, and the leg duration now divides by the count of *flown* hops
+  rather than all of them. The setting lives in Timeline Settings → Animation as **Map Flight**, and
+  both it and the existing dissolve toggle also sit in the map's own nav pad — a reader works out that
+  nine dissolves are too many while watching the ninth, not while setting the map up.
+
+Full suites green: 493 .NET, 1063 Vitest; type-check clean, lint unchanged (14 pre-existing).
+
+**The scrubber learned to tell the time (2026-09-28).** The year was the wrong unit. A person can be in
+a hundred places in one year, and a scrubber that only knows the year stacks all hundred on one spot and
+calls it standing still. `mapTime.ts` moved off integer years onto the rows' own fractional absolutes —
+already on `MapEvent` as `AbsoluteStart`/`AbsoluteEnd` straight out of `items`, so no schema or backend
+change. Frontend only; 44 tests in `mapTime.test.ts`.
+
+- **`eventSpan` is the one place an event's stretch of time is read**, and it has to consult both
+  columns. A point event stores a zero in `EndYear` *and* `AbsoluteEnd` — absent, not year zero. Testing
+  the absolute alone reads a battle in 500 BC as a thousand-year age ending at the reckoning; testing
+  `EndYear` alone reads a range that opens and closes inside year 0 as an instant. So `hasEnd =
+  ev.EndYear !== 0 || ev.AbsoluteEnd !== 0`, and only then is the absolute what measures it. The second
+  half of that was a live bug before this work; both cases have a test.
+- **Every "what is happening" function takes a window, `(from, to = from)`.** An instant is a window of
+  no width, so the scrubber sitting on a date and a range painting everything between two dates ask the
+  same question — `happeningAt`, `eventsAt`, `litLocations` needed no branch for the range at all.
+- **`moments` + `stepTo` are what ⏮/⏭ walk**: every instant where something starts or stops, deduped
+  with an epsilon that scales with the year (an absolute carries the float error of a number its own
+  size). `stepTo` returning null at the end of the list is also what stops the play loop — no separate
+  bounds check. *ponytail:* `beats` is every moment in the timeline, not only those on this map or
+  belonging to the followed cast; "the next thing that happens" is the honest reading of the button, and
+  narrowing it would skip the map the reader is about to be flown to.
+- **Play walks moments, not years.** A 3000-year story at 2 years a second is 25 minutes of mostly empty
+  scrubbing; a fortnight-long story is over before it starts. The speed select is moments a second now.
+- **The date range is one extra computed.** `window0` is the near end (`now` when the range is shut),
+  and the two-handle strip turns the near handle down in colour because the far one is still where the
+  story is. Inside a range `trailBack` becomes the window itself and `trailFade`'s new `fade` flag goes
+  off — a window someone dragged open on purpose is drawn evenly, not with its far half faded to
+  invisible. Two sliders had to line up to read as one window, which is `display: grid` on the strip plus
+  `display: contents` on each row, so both tracks share columns without hardcoding the button widths.
+- **A character whose story ends inside the window still gets their road drawn.** The trail used to be
+  cleared whenever `legAt` found nobody, which emptied a dragged-open window of exactly the people it was
+  dragged open to find.
+- **Dates, not numbers.** `GetTimelineCalendar` → `parseCalendarConfig` → `buildFormatRegistry` gives the
+  timeline's own calendar. A position exactly on a year boundary still prints the bare year, so a story
+  written in whole years reads as it always did. The calendar load is wrapped: a failure is logged and
+  shown and leaves `DEFAULT_CALENDAR_CONFIG` standing, because a worse label beats a map that will not
+  open. `oneDay` is the scrubber's step, and it also replaced the one-*year* floor on the trail length,
+  which would have swallowed any story told inside a year.
+
+Full suites green: 493 .NET, 1076 Vitest; type-check clean, lint unchanged (14 pre-existing).
+
+**Making the movement worth watching (2026-09-28).** The user's own words for the dashed trail were
+"flimsy" — a bunch of straight dashed lines between pins does not say a journey happened, and ten of
+them converging says nothing about the gathering at the end. Geometry went in `utils/mapPaths.ts` with
+22 tests; the Konva side stayed in `MapApp`.
+
+- **Map Movement grew from two values to four.** `glide` and `trail` are untouched, so no existing
+  timeline changes under its writer. `flow` is the whole journey as a bowed ribbon that thins and fades
+  behind, with a ring at each place they stayed — "where has this person been". `comet` is the same
+  ribbon with the fade raised to the third power, so only the last stretch is bright — "where is
+  everyone going right now". The two are one draw path and one `TRAIL_LOOK` row each: dash, width,
+  taper, falloff, bow, rings. A style that is really another style's parameters does not get its own
+  function.
+- **`arc` bows a leg off the straight line** by a share of its own length, so a road across the world
+  bends as much as it is long and a hop across a city stays a hop. `leanOf` hashes the character's id
+  for a stable side and size — hashed rather than taken from their position in the list, or unticking
+  one person would flip every path on the map at once. A lean of zero short-circuits to the two ends,
+  which is how `trail` keeps its ruler-straight look through the same function.
+- **`dwellRadius` sizes a ring by the root of how long they stayed**, against the trail's reach, so it
+  is the ring's *area* that tracks the time and a short stay is still a ring rather than a dot. Point
+  events have no length and get nothing, which is also what keeps the node count down — the ring pool
+  only ever holds as many as the character has *period* events in reach.
+- **`fanRadius` fixes the crowd, and is the gathering answer.** The fan was a fixed 13px ring whatever
+  the count, so ten people regrouping were ten labels in a heap — the exact moment the map exists to
+  show. The ring now grows to give everyone `FAN_GAP` of arc to themselves, and three or more in one
+  place also get a dashed amber ring round the lot with the count in it, in the same amber as a pin
+  with something going on, because it is the same thing being said.
+- **`movers` gained three storeys.** A comet's tail is seven pixels wide where the dashed line was two,
+  so "whoever was drawn last wins" stopped being good enough: roads and dwell rings under, gathering
+  marks over them, names on top. Dwell rings and gathering marks are `.cast-mark` groups, so `scalePins`
+  already holds them at a fixed size on screen and turns them upright — and `paintCast` calls
+  `scalePins` itself on any pass that pooled a new node, which would otherwise sit at map scale until
+  the next time the view moved.
+
+The default is still **Glide**. Changing it would redraw every existing timeline's map without being
+asked; the user can say otherwise.
+
+Full suites green: 493 .NET, 1098 Vitest; type-check clean, lint unchanged (14 pre-existing).
+
+**The things that run a long time (2026-09-28).** The user's last question on the map's time model was
+how an age would be represented — something that runs for a third of the story is not an event, and an
+amber "happening now" ring that never goes off says nothing at all. Chosen with the user over a
+territory wash: a quiet pin plus a context strip. A wash would have to claim a border, and the story
+never drew one — most ages have no edge on any map.
+
+- **`placeStates` replaced `litLocations`**, returning `'loud'` or `'quiet'` per place rather than a
+  bare set. Something long that is merely still running gets a thin cool ring at 60%; something that
+  actually happens keeps the amber glow. A place with a war on *and* a council sitting reads as the
+  council — the loud one wins, because the long one is the backdrop it is happening against.
+- **`ongoing` names what is in force**, earliest first, across the whole timeline and not only the map
+  in front of the reader: an age is a fact about the world, not about the patch of it being looked at.
+- **Long is a share of the story, not a count of years.** `LONG_SHARE = 0.05`, the same way the trail
+  length is a percentage — a fixed number of years would make the whole of a fortnight-long story an
+  age and none of a three-millennia one. `isLong` is false at a threshold of zero, so a timeline with
+  no span does not go quiet all at once.
+- **The strip is a second chip above the clock**, naming three and counting the rest, with all of them
+  in its tooltip. Positioning moved off `.time-strip` onto a new `.time-dock` wrapper, so a strip that
+  is one row, two rows, with or without the ages above it grows upward off a fixed bottom edge instead
+  of shifting the clock about under the reader's hand.
+
+Type-check, build and lint clean (14 pre-existing lint errors, all in test files); 1108 Vitest green.
+
+**Room to look at the map (2026-09-28).** Two complaints from the same use, both about the screen rather
+than the model.
+
+- **The controls come off.** A third round button joins the ⓘ and the ruler in the bottom-right row —
+  the ruler slides out to `right: 78px` to make room — and takes the nav pad and the drag/zoom hint away
+  with it. A drawn map is a picture as well as an instrument, and showing someone the world should not
+  mean showing them the dial too. The compass and the scale bar stay: those are how a map is read, and
+  they belong on it the way they belong on a printed one. The three buttons themselves stay put too: a
+  switch that hides the way back to itself is a trap. Remembered in `localStorage` under `mapChrome`,
+  like the ⓘ card's own state.
+- **Places stops at half the bar.** With two hundred places the cast list and the selected place were
+  off the bottom of the screen and the only route to the people was to scroll past every town. The
+  places block is now capped at `max-height: 50%` with its own list scrolling inside it, so whatever is
+  under it is always on screen. The cap is hung off `:has(.side-block + .side-block)`, so a sidebar
+  showing nothing but places still fills — no second state to keep in sync in script.
+
+**The bottom of the map, and a name that belongs to the ground (2026-09-29).** Six more from the same
+use, five of them about the screen and one about the model.
+
+- **The Vue devtools are gone.** `vite-plugin-vue-devtools` out of `vite.config.ts` and out of
+  `package.json`. Its floating handle sat over the bottom-centre of every page, which is exactly where
+  the map keeps its clock.
+- **Everything that speaks along the bottom is one column.** The hint, whichever edit is running, the
+  ages in force and the clock were four separate overlays all anchored to the same `bottom: 8px`, and
+  the label designer's strip — which says four things and wraps to three lines — landed underneath the
+  scrubber. They now share one `.map-dock` flex column that grows upward off the bottom edge, so
+  whatever is showing sits above whatever is under it. The old `.raised` hack that shoved the clock up
+  48px is gone with it: stacking makes raising unnecessary. The column is `pointer-events: none` with
+  `auto` on its children, or a band of empty gap across the map would eat drags that belong to the map.
+- **The strips are rounded rectangles.** A `999px` radius on a card that wraps to three lines is a
+  lozenge the size of a hand. 12px on the pick strip, 10px on the hint, and the hint's `nowrap` dropped
+  so it wraps inside the dock instead of running out under the scale bar.
+- **The selected place is a panel of its own, and the one that does not give.** It was third in the
+  sidebar's single column and went off the bottom whenever time was on and the cast list was between
+  them. It is now `flex: 0 0 auto` — the answer to a click is read whole or it is no answer — and the
+  places and cast lists above it squeeze to make room. Its own two unbounded parts scroll inside it
+  (`.place-desc` at 7em, `.here-items` at 116px), or one long description would have the bar to itself.
+- **A name can be written on the ground.** New `labelScales` on the marker style, set per map in Edit
+  map (and per place, since the same panel serves both). Off — the default, and what a pin's tag is —
+  the name is the same size on screen at every zoom, like the marker it hangs off. On, it is measured in
+  map pixels and grows and shrinks with the ground, which is the only way a name stretched across a
+  range of hills still spans those hills three zoom steps in.
+
+  The mechanism is the inverse of the one that holds markers still. `buildMarker` wraps the plate and
+  the text in a `.map-label` group, and `scalePins` — the one place that knows the current zoom — sets
+  that group to `+zoom`/`+rotation` inside a pin group already at `1/zoom`/`−rotation`. The two net out
+  to identity in map space, which scales the name's *offset* from the pin as well as its size, and that
+  is what a hand-drawn line across a valley needs. The outline width follows: held to the glass it stays
+  the width it was given, written on the ground it grows with the letters, or a name that size is drawn
+  in a hairline.
+
+  The designer still works in screen pixels like every other overlay, so the two units meet at its edge:
+  `labelUnit` is the zoom when `labelScales` is on and 1 when it is not, multiplied into `labelEnds` on
+  the way in and divided out in `saveLabelDesign`. A line being drawn for the first time was measured off
+  the text itself and is screen pixels already, so it is not converted — which makes the first drag of a
+  ground-written name the moment its scale is decided. The two modes are therefore not interchangeable
+  after the fact: turning the setting on for a name that already has a drawn line re-reads its numbers as
+  map pixels. Left as is rather than converted on the way through, since the fix is one drag.
+
+**Two flakes fixed in `devCast.test.ts` on the way past** (found by the full run, nothing to do with the
+map). Both were `FAMILY_YEARS` being read as a hard bound on where a family's years can reach, which
+nothing enforces — its own doc calls it "roughly", and it is the *reservation* width, not a ceiling.
+
+- *keeps one family in one era* asserted a spread under 200 years. Forty people fit in three or four
+  generations when the widths come out generous and in a dozen when the dice give 1 every time, and a
+  dozen generations really is three hundred years — that is what a family is, not a fault. Now measured
+  against the depth the plan actually came out at: a generation apiece at the most, plus the last
+  generation's sibling stagger and a spouse's few years either side. Held over 150 rolls.
+- *falls back to its own era* allowed ten years below the era's start. But `planPlausibleGroup` founds
+  each in-marrying family a generation *above* the person marrying it into the web, and a family that has
+  joined can be married into in its turn — so a chain of them walks backwards out of the era about as
+  fast as descent walks forwards out of it. Seen as low as 865 against a wall of 890. The margin is now a
+  generation's slack either side, matching the slack the upper wall always had.
+
+**And then the dice themselves.** Two `covered(plan) === 10` assertions — "every tenth of the span has
+somebody born in it" — came back 9 about once in fifty runs. Unlike the two above they were not wrong,
+just statistical: claims about a distribution, rolled fresh every run, missing their own tail every so
+often. `seedCast(n)` fixes them — mulberry32 behind a module-level `roll()` that `pick`, `rnd`,
+`chance`, `eraFor` and the kinship shuffle all draw from, `null` to hand the dice back. `Math.random` in
+the app, always; a generated cast that came out the same every time would be a strange thing to offer a
+writer.
+
+Only the four spread tests ask for a seed, with an `afterEach` putting the dice back. The invariant
+tests keep rolling free on purpose — a rule that has to hold whatever the dice do wants the dice to keep
+moving, and that is exactly what caught the two wrong bounds above. Whole file held over 80 rolls.
+
+That closes the four rounds of map work the user asked for on 2026-09-28. Nothing on the time model is
+left designed-but-unbuilt.
+
+**The scrubber, the range and the arrows, reworked (2026-09-29).** Six asks from one message, built in the
+order the user picked (B→A→C→E→D→F).
+
+- **B: stepping and play animate.** The clock is what moves, not the heads: `glideTo` runs `now` to its
+  target on requestAnimationFrame (eased for a step, linear for a play hop), so trails, rings and counts
+  move in step with the people. `step` counts on from `glideGoal`, so two quick presses land on two
+  moments. Play is a chain of `hop()` glides of `1000/speed` ms; the interval timer is gone.
+- **A: one track.** `TimeTrack.vue` replaces the stacked sliders: one or two handles, event ticks as a
+  density strip (`tickDensity`), snapping within 6px (`snapTo`, Alt to skip), the band between two
+  handles drags the window, handles are `role=slider` with arrows / PageUp-Down (to the next tick) /
+  Home-End. The date is a button that opens a day / month / year editor. Space and ←/→ on the window.
+  Stepper and play are hidden while the range is open. Speeds read ¼×…4×.
+- **C: travelling together fuses.** A leg's key is the pair of stop events at its ends; legs with one key
+  are one road (`bundleLegs`), width `strandWeight(n)`, one strand per colour laid side by side
+  (`strandOffsets`/`sideways`, re-laid on zoom since the gap is screen pixels on map-unit lines).
+  ponytail: exact event identity, not a time-and-place tolerance — that is what "together" means in a
+  story told in events.
+- **E: side colours.** Grouped by family or faction, each character is drawn in `categoryColor` of their
+  group (the relations window's own hue), in the list and on the map.
+- **D: a range is a summary.** `mapSummary.summarise` folds the followed journeys into pins on the current
+  map: a lane per direction between two pins, strands of distinct people, trips counted separately
+  (the ×N tag), time spent per pin clipped to the window, and meetings (≥ `GATHER_MIN` at one event). The
+  `summary` layer draws lanes as bowed lines (both directions bow to their own left, so a two-way road is
+  two lanes), chevrons, stay discs and amber meeting rings, all hoverable into a `.map-tip`. The trails
+  and swells stand down in range mode. "In this range" in the sidebar says the same in words.
+  ponytail: rebuilt from scratch on every change; pool the nodes if dragging a handle ever stutters.
+- **F: a character's own menu,** on their head (`movers` listens now; the ground under the heads does
+  not) and on their row in the list: character sheet (`OpenCharactersWindow`), follow only / add /
+  remove, whole journey (range first to last appearance, only them), next / previous appearance
+  (`stepTo` over their stop starts, animated).
 
 A multi-layer interactive map screen: a world map containing regions, each region drillable into a sub-map, locations pinned on each map, locations linked to items/events, time-scrubbing to animate events and character movement across the map over time.
 
@@ -3000,7 +3805,7 @@ Consequences, both to be handled in the step that builds locations:
 `characters.birth_location_id` and `characters.death_location_id` have nothing left to hold.
 Migration 22 drops them. `items.location_id` stays and becomes real.
 
-**The whole feature is in for 1.3.0.** Static maps, the time scrubber and animated character
+**The whole feature is in for 1.2.0.** Static maps, the time scrubber and animated character
 movement, not a static-only first cut. The backlog's old advice to ship static display first is
 superseded — it stands as *build order*, not as a smaller release.
 
@@ -4860,6 +5665,11 @@ The shapes are in `utils/devCast.ts`, pure and tested (`src/test/utils/devCast.t
 sizes, no self-ties, no duplicate pairs, children born after their parents, connected components,
 the derived kinds and their pair order, and the five-generation and cousin guarantees).
 
+`seedCast(n)` (2026-09-28) fixes the dice and `seedCast(null)` hands them back — mulberry32 behind a
+module-level `roll()` that `pick`, `rnd`, `chance`, `eraFor` and the kinship shuffle all draw from. Only
+the tests asserting something about a cast's *spread* use it; the invariant tests roll free on purpose.
+`Math.random` in the app, always. See the note under BL-16 for what it was fixing.
+
 Two things are worth knowing about the group. `planFamily` takes a `minGenerations` and holds back a
 child and a spouse for every generation still owed, or a wide first generation spends the whole
 budget and the line stops three deep; it holds back three more for a second line of descent, because
@@ -4928,6 +5738,147 @@ written for the chart rather than for the fixture — counts the same rows back.
 
 ponytail: one round trip per row, so a 200-strong cast takes a second or two. A batch bridge action
 if that ever stops being fast enough.
+
+### A cast that shows up, events at places, and a world to put them in, 2026-09-28
+
+The generators made people the *relations* window could use. The map window (BL-16) needs three
+things they did not have: to be visible on the timeline, to be somewhere, and for there to be a
+somewhere big enough to hurt. All three, dev and test only — nothing here ships.
+
+- **Generated people are on the canvas from the start.** `randomPerson` sets `ShowOnTimeline`, and
+  `saveCast` now goes through `SaveCharacterFull` — the same call the character editor makes —
+  rather than `SaveCharacter`, so the `TypeId: 7` birth and death items are minted and written in
+  the same transaction. The dates were always there; only the drawing was missing. Nothing new was
+  needed to clean them up: `DeleteCharacter` already takes both generated items with it.
+- **`__stl.createEvents(n)`** — n events at the places the timeline already has, cast from the
+  people it already has (default 200). Each one starts from one person and a year inside their
+  grown life, so the dates land where the cast is rather than spread flat across the era, and the
+  others at it are drawn from whoever else was alive that year. About one in seven is a period
+  rather than an event, so the scrubber has bars as well as marks, and about a third carry someone
+  `mentioned_only` — the flag `GetMapEvents` filters on, so a seed that never set it would never
+  exercise the filter. The place is named in the description as well as linked, which gives the
+  place matcher something to find too.
+- **`clearTestCast` sweeps the events as well**, by the same `[__stl test cast]` marker in
+  `ItemNotes`. Events go first: deleting a character takes their birth and death items with it, and
+  an event pointing at one of those would only have to be found again afterwards.
+- **A cast covers the timeline it is generated onto.** The base years used to be
+  hardcoded — everyone born between 880 and 1100 whatever the timeline ran between, so 300 people on
+  a ten-thousand-year timeline were one mark on the scrubber. `timelineSpan()` reads the first and
+  last year off the items already there (boundary items included — they exist to say how far the
+  timeline runs), `devSpan()` hands it to the three creators, and each family is founded where the
+  headcount has got to through the span. Even by construction rather than by uniform draw: n random
+  starts over a long span leave centuries empty and pile three families onto one decade, which is
+  the clustering this is fixing. An empty timeline falls back to `FALLBACK_SPAN`.
+  - **A plausible group is one web of blood and marriage, so it cannot be stretched** — a group
+    spread over ten thousand years would marry a woman to her own great-grandchild. A long timeline
+    gets *more groups* instead, one per `FAMILY_YEARS` it has room for and capped by what the
+    headcount can fill (`MIN_GROUP` each), every one built exactly as before inside its own slice.
+    `createPlausibleGroup(300)` on a ten-thousand-year timeline is fifty clans, not one.
+  - **Events needed nothing**: they are already dated from a person's grown life, so a cast that
+    covers the timeline drags them along with it. That is asserted rather than assumed.
+  - **It still stopped short, in two different ways** (user, 2026-09-28), both in `planCast` and both
+    now fixed. **The jitter was narrower than the thing it was placing**: `eraFor` scattered each
+    founding across *one person's* share of the span while consecutive families were a whole family
+    apart, so every family landed at the head of its own slot and the cast came out in stripes — a
+    century of people, four centuries of nobody. It takes a `width` now, which is how many of `total`
+    this one placement accounts for, and `planCast` decides the group's size before its year so it can
+    pass it. **And the reserve at the end was the wrong one**: `FAMILY_YEARS` is the five-generation
+    figure, but `planCast` builds families of three to ten, so holding back 200 years for a family that
+    covers sixty left the last stretch of every timeline empty. `SMALL_FAMILY_YEARS` (60) is what it
+    reserves. Gaps *between* family eras are not a bug and stay — a cast is families, not a fog.
+- **Nobody is born on the first of January.** People and events used to store the bare year as their
+  absolute, so a generated cast shared one birthday and every event in a year happened at the same
+  instant. `dayOfYear()` puts a day's fraction on `AbsoluteStart`/`AbsoluteEnd` — a single-year event
+  gets one instant at both ends, a period one day in each of its two years, and a period's end year is
+  always later than its start so the two days cannot invert it. **Ceiling, named there:**
+  `CreationGranularity` stays at years and `DAYS_IN_YEAR` is a plain 365, because this module is pure
+  and the real year length lives on the timeline's calendar. The editor therefore opens on the year and
+  `holdDate` keeps the fraction it found untouched. Passing the timeline's own day rung in is the
+  upgrade.
+
+The planner is `planEvents` in `devCast.ts`, pure and tested alongside the rest (`devCast.test.ts`,
+36 in the file: everyone present is alive and grown at the year, nobody is both present and
+mentioned, the absolutes sit inside their own years and never invert, a period never ends before it
+starts, every place gets used and both item types appear; and for the spread, every tenth of a
+ten-thousand-year span holds somebody, a cast reaches the last tenth of it, `eraFor` jitters across
+the whole share it is given, no relation reaches more than `FAMILY_YEARS` across, and one family
+stays in one era).
+
+ponytail: the place is drawn at random rather than from where that person already was, so nobody's
+life is a sensible itinerary. Plenty for making the scrubber work; a journey generator is the
+upgrade if the paths ever need to make geographical sense as well as exist.
+
+**`video/seeds/world.py`** is the somewhere: Earth, nested five deep — 1 world, 6 continents, 18
+countries, 26 regions, 17 cities — with **68 maps and 666 places**, the bottom level being the
+cities' bars, gates and markets with no map under them. Real Wikimedia imagery, capped at 4096 (what
+`MapViews.DetailCap` draws from, so anything larger is download for nothing). It is Python and not a
+console command for one reason: **no bridge action accepts image bytes**, so a map cannot be given a
+picture without a file dialog — direct SQLite is the only way to seed sixty-eight of them.
+
+Worth knowing if it is touched again:
+
+- **It only ever touches its own work.** Every map it writes is marked in its description, it clears
+  that mark before writing (so a second run replaces the first rather than doubling it), and
+  `--clear` removes those and nothing else. It runs against the *live* database and the timeline
+  currently open, so it must never do what `china_maps.py` does and `DELETE FROM maps WHERE
+  timeline_id = ?`.
+- **A map that cannot get a picture is still made.** `picture_id` stays null, it draws blank and its
+  pins still work — a better failure than a hole in the tree.
+- **Where a picture comes from depends on the level.** Wikidata's locator map (`P242`) is right and
+  cropped for a country or a region, but for a continent it is a globe with the continent painted
+  red, which is useless to pin four places on. Below the continents the locator maps win; a search
+  is the fallback, because "Tuscany map" is a lucky dip. Search hits whose *file name* says map are
+  preferred but the others are not thrown away — "Dunedin map" offers an orchestra rehearsing in
+  the town hall, and plenty of real maps are called "Europe in 1923.jpg".
+- **Earth is pinned outright** in a `PICTURES` table, because a lucky dip is no way to pick the map
+  everything else is reached through. Left to the search, "Earth map" won an ornamental 1689 double
+  hemisphere — two circles in a painted border, so half the pins landed in the decoration and the
+  two halves were different maps. It is now Strebe's **Robinson** (one uninterrupted frame, which
+  Goode's is not, and honest poles, which Mercator's are not — swap `WORLD_PROJECTION`). An
+  overridden map caches under the file it was told to take, so swapping the projection refetches
+  rather than silently handing back the last one.
+- **Pins go where the places really are** *(2026-09-28)*. They used to be laid out on a grid, which
+  was invisible while the world map was ornamental and obvious the moment it was a real projection:
+  Europe over North America, Oceania in the Indian Ocean. Wikipedia already solves this for its own
+  locator pins and publishes the answer in `Module:Location map/data/<Place>` — either the map's
+  lon/lat box or, where the map is not a plain rectangle, a pair of `#expr` strings in latitude
+  (`$1`) and longitude (`$2`) giving a percentage across and down. Wikidata's `P625` supplies the
+  points. 61 of the 666 places are now exactly placed: every continent, most countries, and the
+  world's own features.
+  - **The rule and the picture have to be the same map**, so the module's `image1` (relief or
+    satellite; `image` is the blank political one, same geometry) *becomes* the picture, and the
+    rule is kept only when the file that actually arrived is that one. A named file that has been
+    renamed on Commons, or a stale cache entry, falls back to the search — and then the rule is for
+    a different picture and is dropped. This is why the continents are no longer in `PICTURES`:
+    pinning a picture there means no rule to go with it.
+  - **The fetched expressions are a trust boundary.** They come off a page anyone can edit and then
+    get evaluated, so: arithmetic characters only, every name whitelisted to a `math` function, a
+    length cap, no builtins. Anything rejected falls back to scatter. `<`, `>` and `=` are allowed
+    because these are `#expr` and a map in two pieces — Japan with the Ryukyus in a box beside it —
+    is written as `($1>30.9)*(…) + ($1<=30.9)*(…)`, one branch times 1 and the other times 0, which
+    Python agrees with. It disagrees on chained comparisons and on `#expr`'s `=` and `<>`, but those
+    raise a `SyntaxError` and scatter, which is the safe way to be wrong.
+  - **Robinson has no formula** — Robinson defined it as a 19-row table of parallel lengths and
+    distances, so interpolating between the steps *is* the projection (`ROBINSON_TABLE`). Adding a
+    projection means adding its forward function next to its file name in `PROJECTIONS`, not just a
+    file name.
+  - **A pin that falls outside the picture says so** rather than clamping to the border: Wikidata's
+    point for a country is its centre and a few of these maps are cropped tighter than the thing
+    they are named after. Off the edge scatters.
+- **What is left scatters honestly** from a `random.Random` seeded on the map's path — the invented
+  leaves (a fictional abbey is wherever the writer says it is) and the maps with no rule, mostly
+  regions and cities. Unplaced doors still take grid spots so their footprints tile.
+- Flags: `--no-images` for an instant network-free structure test (no geography either — it is
+  network work, so everything scatters), `--scale` to multiply the pins per map, `--timeline` taking
+  an id or a title (left out, it lists them and stops), `--self-check` for the placement maths.
+
+ponytail: one footprint size for every exactly-placed door. The real answer is the child's extent in
+the parent's degrees, which needs a bounding box Wikidata does not hand out cheaply.
+
+Unlike the film seeds it takes whatever licence Commons holds rather than public domain only,
+because these pictures never leave the machine that ran it. `WORLD_CREDITS.md` records the licence
+anyway, so one that later *is* wanted can be checked. Like everything under `video/`, it is not in
+git.
 
 ---
 

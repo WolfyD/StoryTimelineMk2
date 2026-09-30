@@ -2,7 +2,6 @@ import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueDevTools from 'vite-plugin-vue-devtools'
 import { resolve } from 'path'
 import pkg from './package.json' with { type: 'json' }
 
@@ -14,7 +13,6 @@ export default defineConfig({
   },
   plugins: [
     vue(),
-    vueDevTools(),
   ],
   resolve: {
     alias: {
@@ -31,7 +29,8 @@ export default defineConfig({
         yearCalendar: resolve(__dirname, 'yearCalendar.html'),
         characters: resolve(__dirname, 'characters.html'),
         relations: resolve(__dirname, 'relations.html'),
-        map: resolve(__dirname, 'map.html')
+        map: resolve(__dirname, 'map.html'),
+        mapCast: resolve(__dirname, 'mapCast.html')
       }
     }
   }

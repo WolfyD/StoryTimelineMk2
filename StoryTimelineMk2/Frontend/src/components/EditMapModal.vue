@@ -12,6 +12,7 @@ import { PhImage, PhUploadSimple, PhTrash, PhRuler, PhCompass } from '@phosphor-
 import {
     MARKER_DEFAULTS, diffMarker, mapMarkerStyle, serializeMarker,
 } from '@/utils/markerStyle'
+import { DEFAULT_GRID_COLS, MAX_GRID_COLS, MIN_GRID_COLS } from '@/utils/mapGrid'
 import type { MapItem } from '@/types/models'
 
 const props = defineProps<{ map: MapItem; canImport?: boolean }>()
@@ -31,6 +32,7 @@ const draft = reactive({
     Description: props.map.Description ?? '',
     ScaleLength: props.map.ScaleLength,
     ScaleUnit:   props.map.ScaleUnit,
+    GridCols:    props.map.GridCols || DEFAULT_GRID_COLS,
 })
 
 /** What every place on this map looks like unless the pin itself says otherwise. */
@@ -57,6 +59,8 @@ function save() {
         // A scale of nothing would divide every distance by zero; the map keeps the one it had.
         ScaleLength: draft.ScaleLength > 0 ? draft.ScaleLength : props.map.ScaleLength,
         ScaleUnit:   draft.ScaleUnit.trim() || 'miles',
+        // A grid of one square is not one, and past two hundred the letters are thinner than the lines.
+        GridCols:    Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(draft.GridCols || DEFAULT_GRID_COLS))),
         MarkerStyle: serializeMarker(diffMarker(marker, MARKER_DEFAULTS)),
     })
 }
@@ -101,6 +105,26 @@ function save() {
                 <p class="note">
                     Zooming in or out keeps the bar honest — it counts down to a mile and up to a thousand.
                     Setting it from the map saves the name too, then asks you to click two places.
+                </p>
+            </div>
+            <!--
+                The squares a writer cites. One number, because the squares are square and the rows
+                follow from the picture's shape — a grid with two numbers is a grid of rectangles.
+            -->
+            <div class="field">
+                <label>Grid</label>
+                <div class="scale-row">
+                    <span class="lead">The map is</span>
+                    <input
+                        class="s-input num" type="number" :min="MIN_GRID_COLS" :max="MAX_GRID_COLS" step="1"
+                        v-model.number="draft.GridCols"
+                    />
+                    <span class="lead">squares across</span>
+                </div>
+                <p class="note">
+                    Columns are lettered A, B, C… and rows numbered 1, 2, 3…, so a place can be cited as
+                    D7 — its square shows beside its name. The grid button under the zoom controls shows
+                    and hides it.
                 </p>
             </div>
             <div class="field">

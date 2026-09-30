@@ -90,6 +90,13 @@ export const labelDesigned = (style: MarkerStyle) => style.labelW > 0
 export const LABEL_LIFT = 3
 
 /**
+ * The name of the group a map-scaled label is wrapped in. Its pin is held at a fixed size on screen,
+ * so the wrapper is where that gets handed back — `scalePins` in `MapApp` is the one place that knows
+ * the current zoom, and this is how it finds the labels that asked to live on the map.
+ */
+export const MAP_LABEL = 'map-label'
+
+/**
  * The font size at which one line of text spans a drawn line: exactly as long as it, no taller. `perPx`
  * is the text's width at one pixel of font size, which is the one thing only the text engine can say —
  * and text width is linear in font size, so it is measured once and divided into.
@@ -148,7 +155,9 @@ export function labelStartLine(style: MarkerStyle, name: string, isDoor = false)
  * The nodes for one marker, in draw order, to be added to a pin's group. `name` is drawn unless the
  * style says nowhere; `isDoor` adds the dashed ring that says there is another map behind this place.
  */
-export function buildMarker(style: MarkerStyle, name: string, isDoor = false): Konva.Shape[] {
+export function buildMarker(
+	style: MarkerStyle, name: string, isDoor = false,
+): (Konva.Shape | Konva.Group)[] {
 	const def = MARKER_SHAPE_DEFS[style.shape]
 	const k = style.size / DESIGN
 	const colour = style.fill ?? '#6366f1'
@@ -158,7 +167,7 @@ export function buildMarker(style: MarkerStyle, name: string, isDoor = false): K
 	const outline = style.strokeWidth > 0
 		? { stroke: plate, strokeWidth: style.strokeWidth, strokeScaleEnabled: false }
 		: {}
-	const nodes: Konva.Shape[] = []
+	const nodes: (Konva.Shape | Konva.Group)[] = []
 	const shapeBox = markerBox(style)
 
 	if (isDoor) {
@@ -237,10 +246,13 @@ export function buildMarker(style: MarkerStyle, name: string, isDoor = false): K
 				? style.labelOutlineWidth
 				: Math.max(1, text.fontSize() / 7))
 			text.fillAfterStrokeEnabled(true)
-			text.strokeScaleEnabled(false)
+			// A name pinned to the glass keeps the edge width it was given; one that grows with the
+			// ground takes its edge along, or a name spanning a valley is drawn in a hairline.
+			text.strokeScaleEnabled(style.labelScales)
 		}
+		const label: Konva.Shape[] = []
 		if (style.labelPlate) {
-			nodes.push(new Konva.Rect({
+			label.push(new Konva.Rect({
 				x: at.x, y: at.y, width: w + 8, height: h + 4,
 				offsetX: w / 2 + 4, offsetY: lift + 2,
 				rotation: style.labelAngle, cornerRadius: 3,
@@ -251,7 +263,15 @@ export function buildMarker(style: MarkerStyle, name: string, isDoor = false): K
 			text.shadowColor('#0f172a')
 			text.shadowBlur(4)
 		}
-		nodes.push(text)
+		label.push(text)
+		// A name that belongs to the ground goes in a group `scalePins` hands the zoom back to: the pin's
+		// own group is held at 1/zoom, so a wrapper at the zoom nets out to map space — which scales the
+		// name's offset from the pin as well as its size. The marker itself stays the size it was.
+		if (style.labelScales) {
+			nodes.push(new Konva.Group({ name: MAP_LABEL, listening: false }).add(...label))
+		} else {
+			nodes.push(...label)
+		}
 	}
 
 	return nodes

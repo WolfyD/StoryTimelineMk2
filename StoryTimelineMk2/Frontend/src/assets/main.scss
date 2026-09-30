@@ -57,6 +57,13 @@ html, body, #app {
 	color: var(--app-text);
 }
 
+// Controls are clicked and grabbed, never read off: a quick double-click or a drag that starts on one
+// must not paint its words blue. A text field inside a label stays selectable — `auto` on anything
+// editable resolves to `contain`.
+button, summary, label, select, [role='button'], [role='tab'], [role='slider'] {
+	user-select: none;
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--app-border, #2d3a56); border-radius: 3px; }

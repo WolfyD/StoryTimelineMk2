@@ -50,6 +50,7 @@ namespace StoryTimelineMk2.Bridge
                 case "DeleteCharacter":          HandleDeleteCharacter(message); break;
                 case "GetCharacterAppearances":  HandleGetCharacterAppearances(message); break;
                 case "FocusTimelineItem":        HandleFocusTimelineItem(message); break;
+                case "MapCast":                  HandleMapCast(message); break;
                 case "DismissCharacterLink":     HandleDismissCharacterLink(message); break;
                 case "GetCharacterIdForItem":    HandleGetCharacterIdForItem(message); break;
                 case "GetCharacterRelations":    HandleGetCharacterRelations(message); break;
@@ -115,6 +116,7 @@ namespace StoryTimelineMk2.Bridge
                 case "SaveLocation":             HandleSaveLocation(message); break;
                 case "DeleteLocation":           HandleDeleteLocation(message); break;
                 case "GetLocationItems":         HandleGetLocationItems(message); break;
+                case "GetMapEvents":             HandleGetMapEvents(message); break;
                 // BL-33. The baseline these diff against is taken in HandleGetTimelineData.
                 case "GetSessionChanges":        HandleGetSessionChanges(message); break;
                 case "GetSessionHistory":        HandleGetSessionHistory(message); break;
@@ -536,6 +538,16 @@ namespace StoryTimelineMk2.Bridge
                 ItemId = message.Payload.GetProperty("itemId").GetString(),
                 AbsoluteStart = message.Payload.GetProperty("absoluteStart").GetDouble(),
             });
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// BL-16: the map and its cast window, which may be on different screens, talking. Passed on
+        /// untouched — what is in it is theirs (see mapCast.ts); the host only carries it.
+        /// </summary>
+        private void HandleMapCast(BridgeMessage message)
+        {
+            BridgeHub.Broadcast("MapCast", message.Payload);
             ReplyToVue(message.MessageId, new { status = "ok" });
         }
 
@@ -1284,6 +1296,16 @@ namespace StoryTimelineMk2.Bridge
             string locationId = message.Payload.GetProperty("locationId").GetString()
                 ?? throw new InvalidOperationException("GetLocationItems received no locationId.");
             ReplyToVue(message.MessageId, new MapRepo().GetLocationItems(locationId).ToList());
+        }
+
+        /// <summary>
+        /// Everything that happened somewhere, with whoever was there — the year scrubber and the paths
+        /// it moves people along. The whole timeline in one call: the year reads the same on every map.
+        /// </summary>
+        private void HandleGetMapEvents(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            ReplyToVue(message.MessageId, new MapRepo().GetMapEvents(timelineId));
         }
 
         private static void CopyDirectory(string src, string dst)

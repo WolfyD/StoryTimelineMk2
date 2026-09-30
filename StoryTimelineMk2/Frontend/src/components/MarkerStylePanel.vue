@@ -255,6 +255,15 @@ const backTo = computed(() => (props.scope === 'pin' ? "Back to this map's look"
                         <label class="check">
                             <input type="checkbox" v-model="draft.labelPlate" /> card behind it
                         </label>
+                        <!--
+                            Off, a name is a tag on the glass and stays the size it is at every zoom. On,
+                            it is written on the ground and grows with it, which is what a name stretched
+                            across a range of hills is. Set on the map, since it is how that map reads.
+                        -->
+                        <label class="check">
+                            <input type="checkbox" v-model="draft.labelScales" />
+                            grows with the map
+                        </label>
                     </div>
                 </div>
                 <div class="field">

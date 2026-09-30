@@ -47,6 +47,22 @@ describe('HighlightedTextarea', () => {
 		}
 	})
 
+	// Three inns all answering to "the inn in the Country" arrive as three matches over one word. The
+	// mirror has to stay character-for-character identical to the textarea above it, so the second and
+	// third are dropped rather than emitting the word three times.
+	it('paints overlapping matches once, keeping the mirror text intact', () => {
+		const text = 'She was born near Maegon.'
+		const wrapper = mount(HighlightedTextarea, {
+			props: {
+				modelValue: text,
+				entities: [],
+				extraMatches: [0, 1, 2].map(() => ({ id: 'p', start: 18, end: 24, text: 'Maegon', color: '#10b981' })),
+			},
+		})
+		expect(wrapper.find('.hl-mirror').text()).toBe(text)
+		expect(wrapper.findAll('.hl-mirror span.is-place')).toHaveLength(1)
+	})
+
 	it('reports the entities it found when the field loses focus', async () => {
 		const wrapper = mountWith('#ff0000')
 		await wrapper.find('textarea').trigger('blur')

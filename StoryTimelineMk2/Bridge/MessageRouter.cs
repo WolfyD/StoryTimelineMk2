@@ -33,6 +33,9 @@ namespace StoryTimelineMk2.Bridge
         // And the map window (BL-16): one per app, drilling from map to map inside itself.
         private static f_Map? _mapWindow;
 
+        // The map's cast window (BL-16). Owned by the map, so it goes when the map does.
+        private static f_MapCast? _mapCastWindow;
+
         /// <summary>
         /// BL-18 (H1): where data-layer actions run, instead of on the UI thread. One chain for
         /// every window's router, so messages still run one at a time and in arrival order —
@@ -228,6 +231,8 @@ namespace StoryTimelineMk2.Bridge
 
                 // Map window (BL-16)
                 case "OpenMapWindow":               HandleOpenMapWindow(message); break;
+                case "OpenMapCastWindow":           HandleOpenMapCastWindow(message); break;
+                case "CloseMapCastWindow":          HandleCloseMapCastWindow(message); break;
 
                 // Year calendar window
                 case "OpenYearCalendarWindow":      HandleOpenYearCalendarWindow(message); break;
@@ -870,12 +875,21 @@ namespace StoryTimelineMk2.Bridge
             string? mapId = message.Payload.TryGetProperty("mapId", out var mid)
                 ? mid.GetString()
                 : null;
+            // Optional: the pin to land on once it is there.
+            string? locationId = message.Payload.TryGetProperty("locationId", out var lid)
+                ? lid.GetString()
+                : null;
+            // Optional: opened from a character's own timeline, so the map shows their circle only.
+            string? characterId = message.Payload.TryGetProperty("characterId", out var cid)
+                ? cid.GetString()
+                : null;
 
             if (_mapWindow is { IsDisposed: false })
             {
                 _mapWindow.Activate();
-                if (!string.IsNullOrEmpty(mapId))
-                    BridgeHub.Broadcast("ShowMap", new { MapId = mapId });
+                if (!string.IsNullOrEmpty(mapId) || !string.IsNullOrEmpty(characterId))
+                    BridgeHub.Broadcast("ShowMap",
+                        new { MapId = mapId, LocationId = locationId, CharacterId = characterId });
                 ReplyToVue(message.MessageId, new { status = "ok" });
                 return;
             }
@@ -883,6 +897,8 @@ namespace StoryTimelineMk2.Bridge
             var window = f_Map.TakePrewarmed() ?? new f_Map();
             window.TimelineId = timelineId;
             window.MapId = mapId;
+            window.LocationId = locationId;
+            window.CharacterId = characterId;
             _mapWindow = window;
             window.FormClosed += (_, _) =>
             {
@@ -893,6 +909,45 @@ namespace StoryTimelineMk2.Bridge
             window.TopMost = _parentForm?.TopMost ?? false;
             window.Activate();
 
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        /// <summary>
+        /// BL-16: the cast window, asked for by the map when its clock comes on. Owned by the map window
+        /// (the one asking), so it closes with it and stays above it — on another screen, if that is
+        /// where it was left. Already open: brought forward, without taking the focus off the map
+        /// when it is only the clock being turned on again.
+        /// </summary>
+        private void HandleOpenMapCastWindow(BridgeMessage message)
+        {
+            int timelineId = message.Payload.GetProperty("timelineId").GetInt32();
+            bool activate = !message.Payload.TryGetProperty("activate", out var act) || act.ValueKind != JsonValueKind.False;
+
+            if (_mapCastWindow is { IsDisposed: false })
+            {
+                if (activate) _mapCastWindow.Activate();
+                ReplyToVue(message.MessageId, new { status = "ok" });
+                return;
+            }
+
+            // Opened by the clock coming on, the keys the clock uses stay with the map.
+            var window = new f_MapCast { TimelineId = timelineId, ActivateOnShow = activate };
+            _mapCastWindow = window;
+            window.FormClosed += (_, _) =>
+            {
+                if (ReferenceEquals(_mapCastWindow, window)) _mapCastWindow = null;
+                // The map sends to it only while it is there.
+                if (_parentForm is { IsDisposed: false }) SendToVue("MapCastClosed", new { });
+            };
+            window.Show(_parentForm);
+            window.TopMost = _parentForm?.TopMost ?? false;
+
+            ReplyToVue(message.MessageId, new { status = "ok" });
+        }
+
+        private void HandleCloseMapCastWindow(BridgeMessage message)
+        {
+            _mapCastWindow?.Close();
             ReplyToVue(message.MessageId, new { status = "ok" });
         }
 

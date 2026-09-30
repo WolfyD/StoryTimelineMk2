@@ -24,7 +24,7 @@ namespace StoryTimelineMk2.Database
         /// every read that feeds a display, so a new screen cannot forget it. Requires the items
         /// table to be aliased <c>i</c>.
         /// </summary>
-        private const string ExcludeHiddenCharacterItems = @"
+        internal const string ExcludeHiddenCharacterItems = @"
                 AND NOT EXISTS (
                     SELECT 1 FROM characters hc
                     WHERE hc.show_on_timeline = 0

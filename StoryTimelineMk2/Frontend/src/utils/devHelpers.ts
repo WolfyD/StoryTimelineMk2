@@ -1,8 +1,9 @@
 import { BackendAPI } from '@/bridge/api'
 import { useTimelineStore } from '@/stores/timelineStore'
+import { buildGeneratedItem, planGeneratedItems } from '@/utils/characterItems'
 import { blankRelation, pairKey } from '@/utils/characterRelations'
-import type { CastPlan } from '@/utils/devCast'
-import { clusters, pick, planCast, planFamily, planPlausibleGroup, rnd, SOCIAL_KINDS, TEST_MARK } from '@/utils/devCast'
+import type { CastPlan, Span } from '@/utils/devCast'
+import { clusters, pick, planCast, planEvents, planFamily, planPlausibleGroup, rnd, SOCIAL_KINDS, TEST_MARK, timelineSpan } from '@/utils/devCast'
 
 /** Whichever timeline this window is on: the store knows on the timeline page, the query elsewhere. */
 function devTimelineId(): number | null {
@@ -13,15 +14,39 @@ function devTimelineId(): number | null {
 }
 
 /**
+ * The years this timeline already runs between, so a generated cast covers it instead of landing in
+ * one century — and the events, which are dated from the cast's lifetimes, follow. Undefined on an
+ * empty timeline, and the generators fall back to their own era.
+ */
+async function devSpan(tlId: number): Promise<Span | undefined> {
+	const span = timelineSpan((await BackendAPI.LoadTimelineData(tlId))?.Items ?? [])
+	if (span) console.log(`[__stl] spreading across years ${span[0]} to ${span[1]}`)
+	else console.warn('[__stl] nothing dated on this timeline yet — using the generators\' own era')
+	return span ?? undefined
+}
+
+/**
  * Writes a planned cast — characters first, so every relation has both of its ends to point at.
+ *
+ * The *full* save, the one the character editor uses: generated people are born and die on the
+ * canvas like anyone else's, which is what `ShowOnTimeline` on them is for. `DeleteCharacter` takes
+ * those two items away again, so `clearTestCast` needs to know nothing about them.
+ *
  * ponytail: one round trip per row, so a 200-strong cast takes a second or two. A batch bridge
  * action if that ever stops being fast enough.
  */
 async function saveCast(plan: CastPlan, what: string): Promise<void> {
-	for (const c of plan.characters) await BackendAPI.SaveCharacter(c)
+	let items = 0
+	for (const c of plan.characters) {
+		const dropped = planGeneratedItems(c)
+		const birth = c.BirthItemId ? buildGeneratedItem('Birth', c, c.BirthItemId) : null
+		const death = c.DeathItemId ? buildGeneratedItem('Death', c, c.DeathItemId) : null
+		items += (birth ? 1 : 0) + (death ? 1 : 0)
+		await BackendAPI.SaveCharacterFull(c, dropped, birth, death)
+	}
 	for (const r of plan.relations) await BackendAPI.SaveCharacterRelation(r)
 	console.log(
-		`%c✓ ${what}: ${plan.characters.length} characters, ${plan.relations.length} relations — reopen the characters or relations window to see them`,
+		`%c✓ ${what}: ${plan.characters.length} characters, ${plan.relations.length} relations, ${items} birth/death items — reopen the characters or relations window to see them`,
 		'color:#4ade80;font-weight:bold',
 	)
 }
@@ -45,12 +70,13 @@ export function installDevHelpers(): void {
 				{ call: '__stl.listKeys()',                 description: 'List all keys, titles and tiers in the DB' },
 				{ call: '__stl.lodLevels()',                description: 'List the LOD level names of the open timeline' },
 				{ call: "__stl.setAllLodMask(levels)",      description: "Make every item of the open timeline visible at exactly these levels, e.g. ['years','decades'] or 'all' (names as in lodLevels(), prefixes ok)" },
-				{ call: '__stl.createCharacters(n)',        description: 'Generate n test characters — small families plus loose social ties (default 30)' },
+				{ call: '__stl.createCharacters(n)',        description: 'Generate n test characters — small families plus loose social ties, spread evenly over the years the timeline already covers (default 30)' },
 				{ call: '__stl.createFamily(n, gens)',      description: 'Generate one family of n people (default 8). `gens` spreads them over exactly that many generations — left out, it is one generation per eight people; capped at n/2, since a generation costs a couple' },
-				{ call: '__stl.createPlausibleGroup(n)',    description: 'Generate n people as one believable group — a five-generation main line, families married into it, aunts/cousins/in-laws, and some friends and rivals (default 40)' },
+				{ call: '__stl.createPlausibleGroup(n)',    description: 'Generate n people as believable groups — a five-generation main line, families married into it, aunts/cousins/in-laws, friends and rivals (default 40). A long timeline gets several groups, one per era it has room for, rather than one group stretched across it' },
+				{ call: '__stl.createEvents(n)',            description: 'Generate n events at the places this timeline has, with whoever was alive to be at them (default 200) — seed maps first with `python video/seeds/world.py`' },
 				{ call: '__stl.connectCharacters()',        description: 'Tie two random unrelated characters together' },
 				{ call: '__stl.connectClusters()',          description: 'Tie the two biggest disconnected groups together, through one pair' },
-				{ call: '__stl.clearTestCast()',            description: 'Delete every character the generators above made, and their relations' },
+				{ call: '__stl.clearTestCast()',            description: 'Delete every character and event the generators above made, and their relations' },
 				{ call: '__stl.clearCharacters(n)',         description: 'Delete EVERY character on this timeline, generated or not — pass the count back to confirm' },
 			])
 			console.groupEnd()
@@ -166,19 +192,47 @@ export function installDevHelpers(): void {
 		async createCharacters(count = 30) {
 			const tlId = devTimelineId()
 			if (!tlId) return
-			await saveCast(planCast(tlId, count), 'cast')
+			await saveCast(planCast(tlId, count, await devSpan(tlId)), 'cast')
 		},
 
 		async createFamily(size = 8, generations = 0) {
 			const tlId = devTimelineId()
 			if (!tlId) return
-			await saveCast(planFamily(tlId, size, { generations }), 'family')
+			// One family is one line of descent, so it sits somewhere in the span rather than filling it.
+			await saveCast(planFamily(tlId, size, { generations, span: await devSpan(tlId) }), 'family')
 		},
 
 		async createPlausibleGroup(count = 40) {
 			const tlId = devTimelineId()
 			if (!tlId) return
-			await saveCast(planPlausibleGroup(tlId, count), 'group')
+			await saveCast(planPlausibleGroup(tlId, count, await devSpan(tlId)), 'group')
+		},
+
+		/**
+		 * Events at the places this timeline already has, with the cast it already has. Seed the maps
+		 * first (`python video/seeds/world.py`) and the people second; this ties the two together.
+		 */
+		async createEvents(count = 200) {
+			const tlId = devTimelineId()
+			if (!tlId) return
+			const cast = (await BackendAPI.GetTimelineCharacters(tlId)) ?? []
+			if (!cast.length) {
+				console.error('[__stl] this timeline has no characters — run __stl.createPlausibleGroup() first')
+				return
+			}
+			const places = ((await BackendAPI.GetMaps(tlId)) ?? []).flatMap(m => m.Locations ?? [])
+			if (!places.length) {
+				console.error('[__stl] this timeline has no places — seed a map first: python video/seeds/world.py')
+				return
+			}
+			const plans = planEvents(tlId, cast, places, count)
+			for (const p of plans) await BackendAPI.SaveItem(p.item, [], p.cast, [], [])
+			const at = new Set(plans.map(p => p.item.LocationId)).size
+			const who = new Set(plans.flatMap(p => p.cast.map(c => c.CharacterId))).size
+			console.log(
+				`%c✓ events: ${plans.length} across ${at} of ${places.length} places, ${who} people at them`,
+				'color:#4ade80;font-weight:bold',
+			)
 		},
 
 		async connectCharacters() {
@@ -224,10 +278,19 @@ export function installDevHelpers(): void {
 			if (!tlId) return
 			const cast = (await BackendAPI.GetTimelineCharacters(tlId)) ?? []
 			const mine = cast.filter(c => c.Notes?.includes(TEST_MARK))
-			if (!mine.length) { console.warn('[__stl] this timeline has no generated characters'); return }
+			// Generated events carry the same mark in their notes. They go first: deleting a character
+			// takes their birth and death items with it, and an event still pointing at one of those
+			// people would only have to be found again afterwards.
+			const events = ((await BackendAPI.LoadTimelineData(tlId))?.Items ?? [])
+				.filter(i => i.ItemNotes?.includes(TEST_MARK))
+			if (!mine.length && !events.length) { console.warn('[__stl] this timeline has nothing generated on it'); return }
+			for (const i of events) await BackendAPI.DeleteItem(i.Id)
 			// Their relations go with them: character_relationships cascades on delete.
 			for (const c of mine) await BackendAPI.DeleteCharacter(c.Id)
-			console.log(`%c✓ deleted ${mine.length} generated characters`, 'color:#4ade80;font-weight:bold')
+			console.log(
+				`%c✓ deleted ${mine.length} generated characters and ${events.length} generated events`,
+				'color:#4ade80;font-weight:bold',
+			)
 		},
 
 		/**

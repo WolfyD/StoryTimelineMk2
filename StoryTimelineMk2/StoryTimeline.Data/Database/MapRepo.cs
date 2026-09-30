@@ -82,11 +82,11 @@ namespace StoryTimelineMk2.Database
                 INSERT INTO maps (id, timeline_id, name, description, picture_id,
                                   north_offset, compass_x, compass_y, compass_size,
                                   scale_length, scale_unit, scale_fraction,
-                                  marker_style, updated_at)
+                                  grid_cols, marker_style, updated_at)
                 VALUES (@Id, @TimelineId, @Name, @Description, @PictureId,
                         @NorthOffset, @CompassX, @CompassY, @CompassSize,
                         @ScaleLength, @ScaleUnit, @ScaleFraction,
-                        @MarkerStyle, CURRENT_TIMESTAMP)
+                        @GridCols, @MarkerStyle, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                     name           = excluded.name,
                     description    = excluded.description,
@@ -98,6 +98,7 @@ namespace StoryTimelineMk2.Database
                     scale_length   = excluded.scale_length,
                     scale_unit     = excluded.scale_unit,
                     scale_fraction = excluded.scale_fraction,
+                    grid_cols      = excluded.grid_cols,
                     marker_style   = excluded.marker_style,
                     updated_at     = CURRENT_TIMESTAMP;",
                 new
@@ -108,6 +109,8 @@ namespace StoryTimelineMk2.Database
                     CompassSize = map.CompassSize >= 16 ? map.CompassSize : 38,
                     map.ScaleLength, map.ScaleFraction,
                     ScaleUnit = string.IsNullOrWhiteSpace(map.ScaleUnit) ? "miles" : map.ScaleUnit.Trim(),
+                    // 0 is "the writer has not said"; anything else is kept inside what can be drawn and read.
+                    GridCols = map.GridCols <= 0 ? 0 : Math.Clamp(map.GridCols, 2, 200),
                     MarkerStyle = Blank(map.MarkerStyle),
                 });
             return map.Id;
@@ -178,9 +181,71 @@ namespace StoryTimelineMk2.Database
         public IEnumerable<TimelineItem> GetLocationItems(string locationId)
         {
             using var db = new SqliteConnection(_connString);
-            return db.Query<TimelineItem>(
-                "SELECT * FROM items WHERE location_id = @LocationId ORDER BY absolute_start",
-                new { LocationId = locationId });
+            return db.Query<TimelineItem>($@"
+                SELECT i.* FROM items i
+                WHERE i.location_id = @LocationId {ItemRepo.ExcludeHiddenCharacterItems}
+                ORDER BY i.absolute_start", new { LocationId = locationId });
+        }
+
+        /// <summary>
+        /// Every dated thing that happened somewhere in the timeline, earliest first, with whoever was
+        /// present at it. The year scrubber and the paths characters walk both read from this: one list
+        /// for the whole timeline rather than per map, because a year means the same thing on every map
+        /// and a journey crosses them.
+        ///
+        /// Two queries, like <see cref="GetMaps"/> — a writer has hundreds of located events and the
+        /// scrubber cannot afford a round trip per pin per frame.
+        /// </summary>
+        public List<MapEvent> GetMapEvents(int timelineId)
+        {
+            using var db = new SqliteConnection(_connString);
+
+            var events = db.Query<MapEvent>($@"
+                SELECT i.id AS ItemId, i.title AS Title, i.type_id AS TypeId, i.color AS Color,
+                       i.year AS Year, i.end_year AS EndYear,
+                       i.absolute_start AS AbsoluteStart, i.absolute_end AS AbsoluteEnd,
+                       i.location_id AS LocationId, l.map_id AS MapId
+                FROM items i
+                JOIN locations l ON l.id = i.location_id
+                WHERE i.timeline_id = @TimelineId {ItemRepo.ExcludeHiddenCharacterItems}
+                ORDER BY i.absolute_start", new { TimelineId = timelineId }).ToList();
+
+            if (events.Count == 0) return events;
+
+            // An item sits at one place, so its id is a key. Only the present ones: being talked about
+            // in a letter must not drag someone across the map.
+            var byId = events.ToDictionary(e => e.ItemId);
+            var cast = db.Query<CastRow>($@"
+                SELECT ica.item_id AS ItemId, c.id AS CharacterId, c.name AS Name, c.color AS Color
+                FROM item_character_appearances ica
+                JOIN characters c ON c.id = ica.character_id
+                JOIN items i ON i.id = ica.item_id
+                WHERE i.timeline_id = @TimelineId
+                  AND i.location_id IS NOT NULL
+                  AND COALESCE(ica.mentioned_only, 0) = 0
+                  {ItemRepo.ExcludeHiddenCharacterItems}
+                ORDER BY c.name", new { TimelineId = timelineId });
+
+            foreach (var row in cast)
+            {
+                if (byId.TryGetValue(row.ItemId, out var ev))
+                    ev.Cast.Add(new MapEventCast
+                    {
+                        CharacterId = row.CharacterId,
+                        Name = row.Name,
+                        Color = row.Color,
+                    });
+            }
+            return events;
+        }
+
+        /// <summary>One row of the cast query: which item, and who was at it.</summary>
+        private class CastRow
+        {
+            public string ItemId { get; set; } = string.Empty;
+            public string CharacterId { get; set; } = string.Empty;
+            public string Name { get; set; } = string.Empty;
+            public string? Color { get; set; }
         }
     }
 }

@@ -30,27 +30,74 @@ export function useBackend(request: RawRequest) {
 
 const popups = new Map<string, Window>()
 
-function openPopup(name: string, url: string, width: number, height: number): Window {
+const BLOCKED = 'The browser blocked the window. Allow pop-ups for this page and try again.'
+
+/** `place` is extra window features — where to put it — for a pop-up that remembers its spot. */
+function openPopup(name: string, url: string, width: number, height: number, place = ''): Window {
 	const existing = popups.get(name)
 	if (existing && !existing.closed) {
 		existing.location.replace(url)
 		existing.focus()
 		return existing
 	}
-	const opened = window.open(url, name, `popup=yes,width=${width},height=${height}`)
-	if (!opened) throw new Error('The browser blocked the window. Allow pop-ups for this page and try again.')
+	const opened = window.open(url, name, `popup=yes,width=${width},height=${height}${place}`)
+	if (!opened) throw new Error(BLOCKED)
 	popups.set(name, opened)
 	return opened
 }
 
-/** Polling is the only way a browser reports that someone closed a pop-up. */
-function whenClosed(popup: Window, then: () => void) {
+/** Polling is the only way a browser reports that someone closed a pop-up. `tick` runs while it is open. */
+function whenClosed(popup: Window, then: () => void, tick?: () => void) {
 	const timer = window.setInterval(() => {
-		if (!popup.closed) return
+		if (!popup.closed) {
+			tick?.()
+			return
+		}
 		window.clearInterval(timer)
 		then()
 	}, 500)
 }
+
+// The cast window is the one meant for a second screen, so it alone remembers where it was left. Its
+// desktop form keeps its bounds in the app's config; a browser has only this page's storage.
+const CAST_PLACE_KEY = 'mapCastWindowPlace'
+
+function castPlace(): string {
+	try {
+		const p = JSON.parse(localStorage.getItem(CAST_PLACE_KEY) ?? 'null') as { x: number; y: number; w: number; h: number } | null
+		return p ? `,left=${p.x},top=${p.y},width=${p.w},height=${p.h}` : ''
+	} catch (err) {
+		console.warn('[Browser Host] Ignoring the stored cast window position.', err)
+		return ''
+	}
+}
+
+function keepCastPlace(popup: Window) {
+	try {
+		const place = { x: popup.screenX, y: popup.screenY, w: popup.innerWidth, h: popup.innerHeight }
+		localStorage.setItem(CAST_PLACE_KEY, JSON.stringify(place))
+	} catch (err) {
+		console.warn('[Browser Host] Could not store the cast window position.', err)
+	}
+}
+
+/**
+ * Chromium keeps a pop-up on the opener's screen unless the page may manage windows on every screen,
+ * so it is asked once. Declined or unsupported (Safari, Firefox), the window opens where the browser
+ * puts it, which is all it could do before.
+ */
+async function askForScreens() {
+	if (!('getScreenDetails' in window)) return
+	try {
+		const status = await navigator.permissions.query({ name: 'window-management' as PermissionName })
+		if (status.state === 'prompt') await (window as unknown as { getScreenDetails(): Promise<unknown> }).getScreenDetails()
+	} catch (err) {
+		console.warn('[Browser Host] Window management was not allowed.', err)
+	}
+}
+
+// The cast window belongs to the map that opened it: it goes when the map does, as its desktop form does.
+window.addEventListener('pagehide', () => popups.get('storytimeline-map-cast')?.close())
 
 /** Delivers a push into this page the way the socket would, so api.ts routes it as usual. */
 function pushToSelf(action: string, payload: unknown) {
@@ -279,10 +326,41 @@ const handlers: Record<string, (payload: Payload) => unknown> = {
 		// rather than needing the ShowMap broadcast the desktop host uses.
 		openPopup(
 			'storytimeline-map',
-			`map.html${query({ timelineId: p.timelineId as number, mapId: p.mapId as string })}`,
+			`map.html${query({
+				timelineId: p.timelineId as number,
+				mapId: p.mapId as string,
+				locationId: p.locationId as string,
+				characterId: p.characterId as string,
+			})}`,
 			1280,
 			860,
 		)
+	},
+
+	OpenMapCastWindow: (p) => {
+		const open = popups.get('storytimeline-map-cast')
+		// Already up: the desktop host only brings it forward, and navigating would lose its search.
+		if (open && !open.closed) {
+			if (p.activate !== false) open.focus()
+			return
+		}
+		let popup: Window
+		try {
+			popup = openPopup('storytimeline-map-cast', `mapCast.html${query({ timelineId: p.timelineId as number })}`, 380, 760, castPlace())
+		} catch (err) {
+			// Opened by itself (Time was left on) there was no click to allow a pop-up. That is not a
+			// failure: the map says so and its button opens the window.
+			if (p.activate === false && (err as Error).message === BLOCKED) return { status: 'blocked' }
+			throw err
+		}
+		// The map stops sending once nobody is listening, the way the desktop host tells it.
+		whenClosed(popup, () => pushToSelf('MapCastClosed', {}), () => keepCastPlace(popup))
+		void askForScreens()
+	},
+
+	CloseMapCastWindow: () => {
+		popups.get('storytimeline-map-cast')?.close()
+		popups.delete('storytimeline-map-cast')
 	},
 
 	OpenYearCalendarWindow: (p) => {

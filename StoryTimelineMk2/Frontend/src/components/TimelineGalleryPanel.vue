@@ -52,9 +52,15 @@ watch(inRangeItems, (items) => {
     _galleryTimer = setTimeout(async () => {
         _galleryTimer = null;
         const fetched: GalleryEntry[] = [];
+        // One picture can hang off several items -- a painting pinned as a Picture item and also
+        // attached to the event it illustrates -- and the panel lists pictures, not items, so each
+        // one appears once, under the first item in range that carries it.
+        const seen = new Set<string>();
         for (const item of items) {
             const data = await getItemDetails(item);
             for (const pic of data?.Pictures ?? []) {
+                if (seen.has(pic.Id)) continue;
+                seen.add(pic.Id);
                 fetched.push({
                     url: mediaUrl(pic.FilePath),
                     thumbUrl: mediaUrl(pic.ThumbPath),

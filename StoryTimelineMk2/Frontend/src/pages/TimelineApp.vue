@@ -22,6 +22,7 @@ import ExportTimelineModal from "@/components/ExportTimelineModal.vue";
 import ShortcutsModal from "@/components/ShortcutsModal.vue";
 import ItemTypePickerModal from "@/components/ItemTypePickerModal.vue";
 import ReferenceTimelineModal from "@/components/ReferenceTimelineModal.vue";
+import ConfirmModal from "@/components/ConfirmModal.vue";
 import { useShortcuts, type ShortcutHandler } from '@/utils/shortcuts';
 import TimelineNotesPanel from "@/components/TimelineNotesPanel.vue";
 import TimelineDataPanel from "@/components/TimelineDataPanel.vue";
@@ -52,9 +53,7 @@ async function exportTimeline(includeIds: boolean, includeMedia: boolean) {
         await BackendAPI.ExportTimeline(id, includeIds, includeMedia, store.characterFocus?.Id)
     } catch (e) {
         console.error('[ExportTimeline]', e)
-        alert(`Timeline export failed:
-
-${e instanceof Error ? e.message : String(e)}`)
+        store.loadNotice = { title: 'Timeline export failed', message: e instanceof Error ? e.message : String(e) }
     } finally {
         showExport.value = false
     }
@@ -176,9 +175,7 @@ async function onCharacterTimeline(itemId: string) {
         BackendAPI.OpenCharacterTimeline(store.currentProject!.Id, characterId)
     } catch (e) {
         console.error('[onCharacterTimeline]', e)
-        alert(`Could not open that character's timeline:
-
-${e instanceof Error ? e.message : String(e)}`)
+        store.loadNotice = { title: "Could not open that character's timeline", message: e instanceof Error ? e.message : String(e) }
     }
 }
 
@@ -189,9 +186,7 @@ async function onEditCharacter(itemId: string) {
         await BackendAPI.OpenCharactersWindow(store.currentProject!.Id, characterId)
     } catch (e) {
         console.error('[onEditCharacter]', e)
-        alert(`Could not open that character:
-
-${e instanceof Error ? e.message : String(e)}`)
+        store.loadNotice = { title: 'Could not open that character', message: e instanceof Error ? e.message : String(e) }
     }
 }
 
@@ -470,7 +465,10 @@ onBeforeUnmount(() => {
                 @toggle-year-calendar="toggleYearCalendar"
                 @open-characters="BackendAPI.OpenCharactersWindow(store.currentProject?.Id ?? 0)"
                 @open-relations="BackendAPI.OpenRelationsWindow(store.currentProject?.Id ?? 0)"
-                @open-map="BackendAPI.OpenMapWindow(store.currentProject?.Id ?? 0)"
+                @open-map="BackendAPI.OpenMapWindow(
+                    store.currentProject?.Id ?? 0, undefined, undefined,
+                    store.characterFocusId ?? undefined,
+                )"
             >
                 <template #actions>
                     <TimelineActionsMenu ref="actionsMenuRef" @shift-complete="onShiftComplete" />
@@ -523,6 +521,7 @@ onBeforeUnmount(() => {
     />
     <ItemTypePickerModal v-if="showTypePicker" :last-type-id="lastTypeId" @pick="onTypePicked" @close="showTypePicker = false" />
     <ReferenceTimelineModal v-if="showReference" :current-id="store.currentProject?.Id" @close="showReference = false" />
+    <ConfirmModal v-if="store.loadNotice" :title="store.loadNotice.title" :message="store.loadNotice.message" confirm-label="I understand" hide-cancel @confirm="store.loadNotice = null" @cancel="store.loadNotice = null" />
 
     <div v-if="store.filterPanelOpen" class="filter-area">
         <TimelineFilterPanel :flashed-rule-id="flashedRuleId" :setup-open="showFilterSetup" @open-setup="showFilterSetup = !showFilterSetup" />
