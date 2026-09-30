@@ -10,6 +10,7 @@ import WindowTitleBar from '@/components/WindowTitleBar.vue'
 import type { LodLevel } from '@/types/models'
 import MemorableDaysModal, { type MemorableDay } from '@/components/MemorableDaysModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import HoverTip from '@/components/HoverTip.vue'
 import { defaultRelativeRule, type RelativeRule } from '@/utils/relativeRule'
 
 useAppTheme()
@@ -620,7 +621,7 @@ function toggleWeekend(d: number) {
         <span class="id-label">{{ isNew ? 'New Calendar' : calId.slice(0, 8) }}</span>
         <input class="name-input" type="text" v-model="calName" placeholder="Calendar name…" />
         <div class="header-actions">
-          <button class="btn btn-secondary btn-export" title="Export this calendar to a file" @click="exportCalendar">Export</button>
+          <button class="btn btn-secondary btn-export" data-tip="Export this calendar to a file" @click="exportCalendar">Export</button>
           <button class="btn btn-secondary" @click="BackendAPI.WindowClose()">Cancel</button>
           <button class="btn btn-primary" :disabled="isSaving" @click="save">
             {{ isSaving ? 'Saving…' : 'Save' }}
@@ -642,7 +643,7 @@ function toggleWeekend(d: number) {
               <span class="collapse-chevron" :class="{ expanded: !collapsed['info'] }">›</span>
               <h3 class="section-title">Calendar Info</h3>
             </div>
-            <button class="info-btn" :class="{ active: openHelp === 'info' }" @click.stop="toggleHelp('info')" title="Help">i</button>
+            <button class="info-btn" :class="{ active: openHelp === 'info' }" @click.stop="toggleHelp('info')" data-tip="Help">i</button>
           </div>
           <div v-show="!collapsed['info']">
             <div v-if="openHelp === 'info'" class="help-bubble">{{ helpTexts.info }}</div>
@@ -675,9 +676,9 @@ function toggleWeekend(d: number) {
               <h3 class="section-title">LOD Profile</h3>
             </div>
             <div class="header-right">
-              <button class="btn btn-secondary btn-sm" @click.stop="sortLodByStep" title="Sort levels by step fraction (broadest first)">Sort</button>
-              <button class="btn btn-secondary btn-sm" @click.stop="autoSetLod" title="Reset LOD to defaults">Auto LOD</button>
-              <button class="info-btn" :class="{ active: openHelp === 'lod' }" @click.stop="toggleHelp('lod')" title="Help">i</button>
+              <button class="btn btn-secondary btn-sm" @click.stop="sortLodByStep" data-tip="Sort levels by step fraction (broadest first)">Sort</button>
+              <button class="btn btn-secondary btn-sm" @click.stop="autoSetLod" data-tip="Reset LOD to defaults">Auto LOD</button>
+              <button class="info-btn" :class="{ active: openHelp === 'lod' }" @click.stop="toggleHelp('lod')" data-tip="Help">i</button>
             </div>
           </div>
           <div v-show="!collapsed['lod']">
@@ -698,7 +699,7 @@ function toggleWeekend(d: number) {
                       class="frac-btn"
                       :class="{ active: useFractions }"
                       @click="useFractions = !useFractions"
-                      :title="useFractions ? 'Switch to decimal' : 'Switch to fraction (N/D)'"
+                      :data-tip="useFractions ? 'Switch to decimal' : 'Switch to fraction (N/D)'"
                     >{{ useFractions ? '1.0' : '½' }}</button>
                   </th>
                   <th></th>
@@ -713,7 +714,7 @@ function toggleWeekend(d: number) {
                   @drop.prevent="onLodDrop(i)"
                   @dragend="onLodDragEnd"
                 >
-                  <td class="drag-handle" title="Drag to reorder">⠿</td>
+                  <td class="drag-handle" data-tip="Drag to reorder">⠿</td>
                   <td class="num-cell">{{ i }}</td>
                   <td>
                     <input type="text" class="tbl-input" v-model="lod.formatKey" list="format-keys"
@@ -743,7 +744,7 @@ function toggleWeekend(d: number) {
                   </td>
                   <td>
                     <button v-if="lod.formatKey !== 'YEARS'" class="btn-icon" @click="removeLodLevelManual(i)">×</button>
-                    <span v-else class="years-lock" title="YEARS level cannot be removed">🔒</span>
+                    <span v-else class="years-lock" data-tip="YEARS level cannot be removed">🔒</span>
                   </td>
                 </tr>
               </tbody>
@@ -769,9 +770,9 @@ function toggleWeekend(d: number) {
                 <h4 class="sub-section-title">Tick Distance</h4>
                 <div class="header-right">
                   <button class="btn btn-secondary btn-sm" @click="autoSetTickDistances"
-                    title="Fill in the standard spread and clear the rest">Auto</button>
+                    data-tip="Fill in the standard spread and clear the rest">Auto</button>
                   <button class="info-btn" :class="{ active: openHelp === 'tickdist' }"
-                    @click.stop="toggleHelp('tickdist')" title="Help">i</button>
+                    @click.stop="toggleHelp('tickdist')" data-tip="Help">i</button>
                 </div>
               </div>
               <div v-if="openHelp === 'tickdist'" class="help-bubble">{{ helpTexts.tickdist }}</div>
@@ -801,7 +802,7 @@ function toggleWeekend(d: number) {
               <span class="collapse-chevron" :class="{ expanded: !collapsed['months'] }">›</span>
               <h3 class="section-title">Months</h3>
             </div>
-            <button class="info-btn" :class="{ active: openHelp === 'months' }" @click.stop="toggleHelp('months')" title="Help">i</button>
+            <button class="info-btn" :class="{ active: openHelp === 'months' }" @click.stop="toggleHelp('months')" data-tip="Help">i</button>
           </div>
           <div v-show="!collapsed['months']">
             <div v-if="openHelp === 'months'" class="help-bubble">{{ helpTexts.months }}</div>
@@ -862,7 +863,7 @@ function toggleWeekend(d: number) {
                 <input type="checkbox" v-model="hasWeekDef" />
                 {{ hasWeekDef ? 'Enabled' : 'Disabled' }}
               </label>
-              <button class="info-btn" :class="{ active: openHelp === 'weeks' }" @click.stop="toggleHelp('weeks')" title="Help">i</button>
+              <button class="info-btn" :class="{ active: openHelp === 'weeks' }" @click.stop="toggleHelp('weeks')" data-tip="Help">i</button>
             </div>
           </div>
           <div v-show="!collapsed['weeks']">
@@ -924,7 +925,7 @@ function toggleWeekend(d: number) {
                 <input type="checkbox" v-model="hasSeasons" />
                 {{ hasSeasons ? 'Enabled' : 'Disabled' }}
               </label>
-              <button class="info-btn" :class="{ active: openHelp === 'seasons' }" @click.stop="toggleHelp('seasons')" title="Help">i</button>
+              <button class="info-btn" :class="{ active: openHelp === 'seasons' }" @click.stop="toggleHelp('seasons')" data-tip="Help">i</button>
             </div>
           </div>
           <div v-show="!collapsed['seasons']">
@@ -937,7 +938,7 @@ function toggleWeekend(d: number) {
                   :key="i"
                   class="season-seg"
                   :style="{ flex: seg.length, background: seg.color }"
-                  :title="seg.name + ' · ' + seg.length + ' days'"
+                  :data-tip="seg.name + ' · ' + seg.length + ' days'"
                 >
                   <span class="season-seg-label">{{ seg.name }}</span>
                 </div>
@@ -947,7 +948,7 @@ function toggleWeekend(d: number) {
                   <input type="checkbox" v-model="seasonsHaveShortName" />
                   Short names
                 </label>
-                <button class="btn btn-secondary btn-sm" @click="openSeasonDoyModal" :disabled="seasons.length === 0" title="Auto-calculate season start/end days">Auto DOY</button>
+                <button class="btn btn-secondary btn-sm" @click="openSeasonDoyModal" :disabled="seasons.length === 0" data-tip="Auto-calculate season start/end days">Auto DOY</button>
               </div>
               <table class="data-table mt-8">
                 <thead>
@@ -997,7 +998,7 @@ function toggleWeekend(d: number) {
           <div v-show="!collapsed['memdays']">
             <template v-if="hasMemorableDays">
               <div v-if="memorableDays.length" class="mem-day-list">
-                <button v-for="md in memorableDays" :key="md.id" type="button" class="mem-day-chip" title="Edit" @click="openMemDays(md.id)">
+                <button v-for="md in memorableDays" :key="md.id" type="button" class="mem-day-chip" data-tip="Edit" @click="openMemDays(md.id)">
                   <span class="mem-day-dot" :style="{ background: md.color }" />{{ md.name || 'Unnamed' }}
                 </button>
               </div>
@@ -1060,6 +1061,7 @@ function toggleWeekend(d: number) {
     @confirm="loadError = null"
     @cancel="loadError = null"
   />
+  <HoverTip />
 </template>
 
 <style scoped lang="scss">

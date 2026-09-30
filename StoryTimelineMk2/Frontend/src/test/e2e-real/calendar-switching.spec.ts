@@ -23,7 +23,7 @@ async function closeAny(mainPage: Page, appContext: BrowserContext) {
   }
   const modal = mainPage.locator('.bm-panel')
   if (await modal.isVisible({ timeout: 500 }).catch(() => false)) {
-    const closeBtn = modal.locator('.icon-btn[title="Close"]')
+    const closeBtn = modal.locator('.icon-btn[data-tip="Close"]')
     if (await closeBtn.isVisible().catch(() => false)) {
       await closeBtn.click().catch(() => {})
     } else {
@@ -50,7 +50,7 @@ async function createCalendar(
   pageErrors: string[],
   name: string,
 ) {
-  await mainPage.locator('[title="Manage Calendars"]').click()
+  await mainPage.locator('[data-tip="Manage Calendars"]').click()
   const managerModal = mainPage.locator('.bm-panel')
   await expect(managerModal).toBeVisible({ timeout: 5000 })
 
@@ -92,7 +92,7 @@ async function createCalendar(
   }
 
   if (await managerModal.isVisible({ timeout: 500 }).catch(() => false)) {
-    await managerModal.locator('.icon-btn[title="Close"]').click().catch(() => {})
+    await managerModal.locator('.icon-btn[data-tip="Close"]').click().catch(() => {})
     await mainPage.waitForTimeout(300)
   }
 }
@@ -121,7 +121,7 @@ async function openRowMenu(mainPage: Page) {
  */
 async function getFirstTimelineCalendar(mainPage: Page) {
   const row = await openRowMenu(mainPage)
-  await row.locator('.row-action-button[title="Edit"]').click()
+  await row.locator('.row-action-button[data-tip="Edit"]').click()
   const modal = mainPage.locator('.bm-panel')
   await expect(modal).toBeVisible({ timeout: 3000 })
   // option:checked gives the text of the currently selected option — no evaluate cast needed
@@ -134,7 +134,7 @@ async function getFirstTimelineCalendar(mainPage: Page) {
 /** Assign a calendar (by label) to the first timeline row via the Edit modal. */
 async function setFirstTimelineCalendar(mainPage: Page, calendarLabel: string) {
   const row = await openRowMenu(mainPage)
-  await row.locator('.row-action-button[title="Edit"]').click()
+  await row.locator('.row-action-button[data-tip="Edit"]').click()
   const modal = mainPage.locator('.bm-panel')
   await expect(modal).toBeVisible({ timeout: 3000 })
   await modal.locator('select.cal-select').selectOption({ label: calendarLabel })
@@ -196,13 +196,13 @@ test.describe('Calendar creation and timeline switching — real backend', () =>
   }) => {
     await createCalendar(mainPage, appContext, pageErrors, CALENDAR_NAME)
 
-    await mainPage.locator('[title="Manage Calendars"]').click()
+    await mainPage.locator('[data-tip="Manage Calendars"]').click()
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 5000 })
     await expect(
       modal.locator('.cal-name', { hasText: CALENDAR_NAME }).first(),
     ).toBeVisible({ timeout: 3000 })
-    await modal.locator('.icon-btn[title="Close"]').click()
+    await modal.locator('.icon-btn[data-tip="Close"]').click()
   })
 
   // ── Step 2: assign to the first timeline (which has real data) ────────────
@@ -263,7 +263,7 @@ test.describe('Calendar creation and timeline switching — real backend', () =>
   }) => {
     // Find any calendar that is not the one we just assigned
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Edit"]').click()
+    await row.locator('.row-action-button[data-tip="Edit"]').click()
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
 

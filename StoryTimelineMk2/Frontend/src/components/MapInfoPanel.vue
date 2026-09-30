@@ -57,10 +57,10 @@ function startDrag(e: PointerEvent) {
 
 <template>
     <div ref="card" class="info-card" :style="{ left: `${pos.x}px`, top: `${pos.y}px` }">
-        <header class="info-head" title="Drag to move" @pointerdown="startDrag">
+        <header class="info-head" data-tip="Drag to move" @pointerdown="startDrag">
             <PhMapTrifold :size="14" class="head-icon" />
             <span class="head-name">{{ map.Name }}</span>
-            <button class="icon-btn" title="Hide this panel" @pointerdown.stop @click="emit('close')">
+            <button class="icon-btn" aria-label="Hide this panel" data-tip="Hide this panel" @pointerdown.stop @click="emit('close')">
                 <PhX :size="12" />
             </button>
         </header>

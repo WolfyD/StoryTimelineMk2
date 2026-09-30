@@ -226,7 +226,7 @@ function formatApproximate(dist: number): string {
                 <i class="ri-ruler-line"></i> Distance
                 <i v-if="store.distanceFrom !== null || store.distanceTo !== null"
                    class="ri-close-line dist-tab-clear"
-                   title="Clear both points"
+                   data-tip="Clear both points"
                    @click.stop="store.setDistanceFrom(null); store.setDistanceTo(null)"
                 ></i>
             </button>
@@ -277,13 +277,13 @@ function formatApproximate(dist: number): string {
                         <div v-else class="note-content">{{ note.NoteContents }}</div>
                     </div>
                     <div class="note-actions" v-if="editingId !== note.Id">
-                        <button v-if="!store.readOnly" class="note-action-btn" @click="startEdit(note)" title="Edit">
+                        <button v-if="!store.readOnly" class="note-action-btn" @click="startEdit(note)" data-tip="Edit">
                             <i class="ri-edit-line" /><span>Edit</span>
                         </button>
-                        <button class="note-action-btn" @click="viewingNote = note" title="View">
+                        <button class="note-action-btn" @click="viewingNote = note" data-tip="View">
                             <i class="ri-eye-line" /><span>View</span>
                         </button>
-                        <button v-if="!store.readOnly" class="note-action-btn danger" @click="deleteNote(note.Id)" title="Delete">
+                        <button v-if="!store.readOnly" class="note-action-btn danger" @click="deleteNote(note.Id)" data-tip="Delete">
                             <i class="ri-delete-bin-line" /><span>Trash</span>
                         </button>
                     </div>
@@ -308,7 +308,8 @@ function formatApproximate(dist: number): string {
                     <button
                         v-if="store.distanceFrom !== null"
                         class="dist-clear-btn"
-                        title="Clear"
+                        aria-label="Clear"
+                        data-tip="Clear"
                         @click="store.setDistanceFrom(null)"
                     >
                         <i class="ri-close-line"></i>
@@ -326,7 +327,8 @@ function formatApproximate(dist: number): string {
                     <button
                         v-if="store.distanceTo !== null"
                         class="dist-clear-btn"
-                        title="Clear"
+                        aria-label="Clear"
+                        data-tip="Clear"
                         @click="store.setDistanceTo(null)"
                     >
                         <i class="ri-close-line"></i>

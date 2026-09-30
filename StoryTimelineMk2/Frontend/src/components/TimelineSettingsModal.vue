@@ -458,12 +458,12 @@ async function save() {
                     </div>
 
                     <span class="s-label">Color Swatches <SettingHint tip="The quick-pick colors offered in the edit item window" /></span>
-                    <button class="swatch-preview" type="button" title="Edit swatches" @click="showSwatchEditor = true">
+                    <button class="swatch-preview" type="button" aria-label="Edit swatches" data-tip="Edit swatches" @click="showSwatchEditor = true">
                         <span v-for="(c, i) in swatches" :key="i" class="swatch-dot" :style="{ background: c }" />
                     </button>
 
                     <span class="s-label">Visible At <SettingHint tip="LOD levels a newly created item is visible at; changeable per item in the edit window" /></span>
-                    <button class="lod-summary" type="button" title="Choose levels" @click="showLodPicker = true">{{ lodSummary }}</button>
+                    <button class="lod-summary" type="button" data-tip="Choose levels" @click="showLodPicker = true">{{ lodSummary }}</button>
 
                     <span class="s-label">Attached Characters <SettingHint tip="Whether a character added to an item starts as present at it or only mentioned in it; changeable per character in the edit window. Only characters who were present are drawn moving across the map" /></span>
                     <div class="radio-group">
@@ -556,7 +556,7 @@ async function save() {
                             </option>
                             <option v-for="p in layoutPresets" :key="p.Id" :value="p.Id">{{ p.Name }}</option>
                         </select>
-                        <button class="icon-btn" type="button" title="New preset" @click="showNewPreset = !showNewPreset">
+                        <button class="icon-btn" type="button" aria-label="New preset" data-tip="New preset" @click="showNewPreset = !showNewPreset">
                             <PhPlus :size="14" />
                         </button>
                     </div>
@@ -568,7 +568,7 @@ async function save() {
                             type="button"
                             :disabled="isResetting"
                             @click="resetPreset"
-                            title="Reset this built-in preset to its default values"
+                            data-tip="Reset this built-in preset to its default values"
                         >
                             {{ isResetting ? 'Resetting…' : 'Reset to defaults' }}
                         </button>

@@ -15,7 +15,7 @@ import { ref } from 'vue'
  * ```
  * const { width, startResize } = useSideWidth('charactersSideWidth')
  * <aside :style="{ flexBasis: `${width}px` }"> … </aside>
- * <div class="side-grip" title="Drag to resize" @pointerdown="startResize" />
+ * <div class="side-grip" data-tip="Drag to resize" @pointerdown="startResize" />
  * ```
  */
 export function useSideWidth(key: string, fallback = 260, min = 200, max = 560) {

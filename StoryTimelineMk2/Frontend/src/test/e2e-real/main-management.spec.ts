@@ -136,10 +136,10 @@ test.describe('Main app — project management', () => {
   test('row action menu contains Edit, Export, Duplicate, and Delete buttons', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
     const group = row.locator('.hidden-buttons-group')
-    await expect(group.locator('.row-action-button[title="Edit"]')).toBeVisible()
-    await expect(group.locator('.row-action-button[title="Export"]')).toBeVisible()
-    await expect(group.locator('.row-action-button[title="Duplicate"]')).toBeVisible()
-    await expect(group.locator('.row-action-button[title="Delete"]')).toBeVisible()
+    await expect(group.locator('.row-action-button[data-tip="Edit"]')).toBeVisible()
+    await expect(group.locator('.row-action-button[data-tip="Export"]')).toBeVisible()
+    await expect(group.locator('.row-action-button[data-tip="Duplicate"]')).toBeVisible()
+    await expect(group.locator('.row-action-button[data-tip="Delete"]')).toBeVisible()
   })
 
   test('clicking ellipsis again closes the action menu', async ({ mainPage }) => {
@@ -156,7 +156,7 @@ test.describe('Main app — project management', () => {
 
   test('Delete button opens the confirm-delete modal', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Delete"]').click()
+    await row.locator('.row-action-button[data-tip="Delete"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -168,7 +168,7 @@ test.describe('Main app — project management', () => {
   test('Cancel button in delete modal dismisses it without deleting', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
     const rowTitle = await row.locator('.project-timeline-row').textContent()
-    await row.locator('.row-action-button[title="Delete"]').click()
+    await row.locator('.row-action-button[data-tip="Delete"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -181,7 +181,7 @@ test.describe('Main app — project management', () => {
 
   test('close button (X) in delete modal dismisses it', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Delete"]').click()
+    await row.locator('.row-action-button[data-tip="Delete"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -191,7 +191,7 @@ test.describe('Main app — project management', () => {
 
   test('clicking backdrop of delete modal dismisses it', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Delete"]').click()
+    await row.locator('.row-action-button[data-tip="Delete"]').click()
 
     const backdrop = mainPage.locator('.bm-backdrop')
     await expect(backdrop).toBeVisible({ timeout: 3000 })
@@ -203,7 +203,7 @@ test.describe('Main app — project management', () => {
 
   test('Edit button opens the edit-timeline modal', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Edit"]').click()
+    await row.locator('.row-action-button[data-tip="Edit"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -212,7 +212,7 @@ test.describe('Main app — project management', () => {
 
   test('edit modal has input fields for title and author', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Edit"]').click()
+    await row.locator('.row-action-button[data-tip="Edit"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -222,7 +222,7 @@ test.describe('Main app — project management', () => {
 
   test('cancel closes the edit modal', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Edit"]').click()
+    await row.locator('.row-action-button[data-tip="Edit"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -234,7 +234,7 @@ test.describe('Main app — project management', () => {
 
   test('Duplicate button opens the duplicate modal', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Duplicate"]').click()
+    await row.locator('.row-action-button[data-tip="Duplicate"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -244,7 +244,7 @@ test.describe('Main app — project management', () => {
   test('duplicate modal shows a pre-filled title input with _duplicate suffix', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
     const originalTitle = await row.locator('.project-timeline-row').textContent()
-    await row.locator('.row-action-button[title="Duplicate"]').click()
+    await row.locator('.row-action-button[data-tip="Duplicate"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -257,7 +257,7 @@ test.describe('Main app — project management', () => {
 
   test('cancel closes the duplicate modal without creating a copy', async ({ mainPage }) => {
     const row = await openRowMenu(mainPage)
-    await row.locator('.row-action-button[title="Duplicate"]').click()
+    await row.locator('.row-action-button[data-tip="Duplicate"]').click()
 
     const modal = mainPage.locator('.bm-panel')
     await expect(modal).toBeVisible({ timeout: 3000 })
@@ -272,7 +272,7 @@ test.describe('Main app — project management', () => {
   })
 
   test('app settings and calendar manager icons are present', async ({ mainPage }) => {
-    await expect(mainPage.locator('[title="App Settings"]')).toBeVisible({ timeout: 8000 })
-    await expect(mainPage.locator('[title="Manage Calendars"]')).toBeVisible({ timeout: 8000 })
+    await expect(mainPage.locator('[data-tip="App Settings"]')).toBeVisible({ timeout: 8000 })
+    await expect(mainPage.locator('[data-tip="Manage Calendars"]')).toBeVisible({ timeout: 8000 })
   })
 })

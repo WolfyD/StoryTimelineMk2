@@ -8,6 +8,7 @@
 	import { useTimelineStore } from '@/stores/timelineStore';
 	import AppSettingsModal from './components/AppSettingsModal.vue';
 	import NotificationContainer from './components/NotificationContainer.vue';
+	import HoverTip from '@/components/HoverTip.vue';
 	import AuthorReminderModal from './components/AuthorReminderModal.vue';
 	import SelectCalendarModal from './components/SelectCalendarModal.vue';
 	import CalendarManagerModal from './components/CalendarManagerModal.vue';
@@ -230,7 +231,7 @@ ${dropped} link(s) were dropped — this copy has no matching character, story o
 		<div id="bottom-menu-container">
 			<div id="import-export-container">
 				<div id="db-menu-container">
-					<div id="db-menu-btn" @click="toggleDbMenu" :title="dbMenuOpen ? 'Close DB menu' : 'Database'">
+					<div id="db-menu-btn" @click="toggleDbMenu" :data-tip="dbMenuOpen ? 'Close DB menu' : 'Database'">
 						<PhDatabase
 							class="button-icon"
 							:class="{ 'db-active': dbMenuOpen }"
@@ -239,28 +240,28 @@ ${dropped} link(s) were dropped — this copy has no matching character, story o
 						/>
 					</div>
 					<div id="db-menu-panel" :class="{ open: dbMenuOpen }">
-						<div v-on:click="HandleImportDatabase()" title="Import / restore database">
+						<div v-on:click="HandleImportDatabase()" data-tip="Import / restore database">
 							<PhTrayArrowDown class="button-icon" :size="36" color="#79876b" />
 							<span class="menu-label">Import Database</span>
 						</div>
-						<div v-on:click="HandleExportDatabase()" title="Export full database">
+						<div v-on:click="HandleExportDatabase()" data-tip="Export full database">
 							<PhTrayArrowUp class="button-icon" :size="36" color="#79876b" />
 							<span class="menu-label">Export Database</span>
 						</div>
-						<div v-on:click="HandleImportTimeline()" title="Import timeline (.stlm)">
+						<div v-on:click="HandleImportTimeline()" data-tip="Import timeline (.stlm)">
 							<PhFileArrowDown class="button-icon" :size="36" color="#79876b" />
 							<span class="menu-label">Import Timeline</span>
 						</div>
-						<div v-on:click="HandleImportSessionChanges()" title="Import session changes (.stlc)">
+						<div v-on:click="HandleImportSessionChanges()" data-tip="Import session changes (.stlc)">
 							<PhGitDiff class="button-icon" :size="36" color="#79876b" />
 							<span class="menu-label">Import Changes</span>
 						</div>
 					</div>
 				</div>
-				<div @click="showCalendarManager = true" title="Manage Calendars">
+				<div @click="showCalendarManager = true" data-tip="Manage Calendars">
 					<PhCalendarBlank class="button-icon" :size="36" color="#79876b" />
 				</div>
-				<div id="app-settings-btn" @click="showAppSettings = true" title="App Settings">
+				<div id="app-settings-btn" @click="showAppSettings = true" data-tip="App Settings">
 					<PhGear class="button-icon" :size="36" color="#79876b" />
 				</div>
 			</div>
@@ -282,8 +283,8 @@ ${dropped} link(s) were dropped — this copy has no matching character, story o
 					<input id="new-project-title" type="text" placeholder="Project name..." v-model="newProjectTitle" />
 
 					<div id="checkbox-div">
-						<input name="CustomCal" id="custom-cal" type="checkbox" v-model="hasCustomCal" />
-						<label class="cal-icon-label" title="Has custom calendar" for="custom-cal">
+						<input name="CustomCal" id="custom-cal" type="checkbox" v-model="hasCustomCal" aria-label="Has custom calendar" />
+						<label class="cal-icon-label" data-tip="Has custom calendar" for="custom-cal">
 							<PhCalendarDots :size="24" />
 						</label>
 					</div>
@@ -345,6 +346,7 @@ ${dropped} link(s) were dropped — this copy has no matching character, story o
 		@cancel="store.loadNotice = null"
 	/>
 	<div id="db-menu-backdrop" v-if="dbMenuOpen" @click="dbMenuOpen = false"></div>
+	<HoverTip />
 	</div>
 </template>
 

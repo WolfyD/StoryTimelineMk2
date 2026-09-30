@@ -126,7 +126,7 @@ const pic = (item: TimelineItem): Pic | null => pictureCache.get(item) ?? null;
             <!-- Ages -->
             <template v-for="item in ages" :key="item.Id">
                 <div class="data-age" :class="{ highlighted: highlightedItemId === item.Id }">
-                    <button class="data-item-focus-btn" title="Locate & preview" @click.stop="focusItem(item)">
+                    <button class="data-item-focus-btn" aria-label="Locate & preview" data-tip="Locate & preview" @click.stop="focusItem(item)">
                         <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
                             <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
                             <circle cx="8" cy="8" r="2.8" stroke="currentColor" stroke-width="1.2"/>
@@ -140,7 +140,7 @@ const pic = (item: TimelineItem): Pic | null => pictureCache.get(item) ?? null;
             <!-- Periods -->
             <template v-for="item in periods" :key="item.Id">
                 <div class="data-period" :class="{ highlighted: highlightedItemId === item.Id }">
-                    <button class="data-item-focus-btn" title="Locate & preview" @click.stop="focusItem(item)">
+                    <button class="data-item-focus-btn" aria-label="Locate & preview" data-tip="Locate & preview" @click.stop="focusItem(item)">
                         <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
                             <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
                             <circle cx="8" cy="8" r="2.8" stroke="currentColor" stroke-width="1.2"/>
@@ -154,7 +154,7 @@ const pic = (item: TimelineItem): Pic | null => pictureCache.get(item) ?? null;
             <!-- Other items -->
             <template v-for="item in others" :key="item.Id">
                 <div class="data-item" :class="{ highlighted: highlightedItemId === item.Id }">
-                    <button class="data-item-focus-btn" title="Locate & preview" @click.stop="focusItem(item)">
+                    <button class="data-item-focus-btn" aria-label="Locate & preview" data-tip="Locate & preview" @click.stop="focusItem(item)">
                         <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
                             <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
                             <circle cx="8" cy="8" r="2.8" stroke="currentColor" stroke-width="1.2"/>
@@ -184,7 +184,7 @@ const pic = (item: TimelineItem): Pic | null => pictureCache.get(item) ?? null;
             </div>
             <div v-if="refItems.length === 0" class="data-empty data-ref-empty">Nothing in range</div>
             <div v-for="item in refItems" :key="'ref:' + item.Id" class="data-ref-item">
-                <button class="data-item-focus-btn" title="View" @click.stop="viewingRefItem = item">
+                <button class="data-item-focus-btn" aria-label="View" data-tip="View" @click.stop="viewingRefItem = item">
                     <PhEye :size="14" />
                 </button>
                 <div class="data-item-body">

@@ -61,7 +61,7 @@ onMounted(() => store.loadFilterPresets())
         <div class="filter-panel-inner">
 
             <!-- Gear: opens setup modal -->
-            <button class="fp-icon-btn" title="Filter setup" @click="emit('openSetup')">
+            <button class="fp-icon-btn" aria-label="Filter setup" data-tip="Filter setup" @click="emit('openSetup')">
                 <PhGear :size="15" />
             </button>
 
@@ -84,7 +84,7 @@ onMounted(() => store.loadFilterPresets())
                     <!-- Cycle-state area (click cycles neutral→positive→negative→neutral) -->
                     <div
                         class="chip-body"
-                        :title="rule.State === 'neutral' ? 'Click to activate (positive)' : rule.State === 'positive' ? 'Click to negate' : 'Click to deactivate'"
+                        :data-tip="rule.State === 'neutral' ? 'Click to activate (positive)' : rule.State === 'positive' ? 'Click to negate' : 'Click to deactivate'"
                         @click="cycleState(rule.Id, rule.State)"
                     >
                         <span class="chip-state-dot"></span>
@@ -96,7 +96,8 @@ onMounted(() => store.loadFilterPresets())
                         v-if="props.setupOpen || rule.State !== 'neutral'"
                         class="chip-remove"
                         :class="{ 'chip-remove--delete': props.setupOpen }"
-                        :title="props.setupOpen ? 'Remove filter' : 'Deactivate filter'"
+                        :aria-label="props.setupOpen ? 'Remove filter' : 'Deactivate filter'"
+                        :data-tip="props.setupOpen ? 'Remove filter' : 'Deactivate filter'"
                         @click="props.setupOpen ? removeRule(rule.Id) : store.setFilterRuleState(rule.Id, 'neutral')"
                     >
                         <PhX :size="10" />
@@ -110,7 +111,7 @@ onMounted(() => store.loadFilterPresets())
                 <button
                     class="and-toggle"
                     :class="{ 'and-on': store.filterAndMode }"
-                    :title="store.filterAndMode ? 'AND mode: item must match ALL positive rules — click for OR' : 'OR mode: item must match ANY positive rule — click for AND'"
+                    :data-tip="store.filterAndMode ? 'AND mode: item must match ALL positive rules — click for OR' : 'OR mode: item must match ANY positive rule — click for AND'"
                     @click="store.setFilterAndMode(!store.filterAndMode)"
                 >
                     {{ store.filterAndMode ? 'AND' : 'OR' }}
@@ -123,7 +124,7 @@ onMounted(() => store.loadFilterPresets())
             <button
                 v-if="anyActive"
                 class="fp-icon-btn fp-icon-btn--clear"
-                title="Clear all active filters"
+                data-tip="Clear all active filters"
                 @click="store.clearAllFilters()"
             >
                 <PhX :size="13" /> Clear
@@ -133,7 +134,8 @@ onMounted(() => store.loadFilterPresets())
             <div class="preset-area">
                 <button
                     class="fp-icon-btn"
-                    title="Save current filter as preset"
+                    aria-label="Save current filter as preset"
+                    data-tip="Save current filter as preset"
                     @click="showPresetPanel = !showPresetPanel"
                 >
                     <PhFloppyDisk :size="14" />
@@ -158,7 +160,7 @@ onMounted(() => store.loadFilterPresets())
                             <span class="preset-name" @click="onLoadPreset(p.Id)">
                                 <PhFolderOpen :size="12" /> {{ p.Name }}
                             </span>
-                            <button class="preset-del-btn" title="Delete preset" @click.stop="onDeletePreset(p.Id)">
+                            <button class="preset-del-btn" aria-label="Delete preset" data-tip="Delete preset" @click.stop="onDeletePreset(p.Id)">
                                 <PhTrash :size="11" />
                             </button>
                         </div>

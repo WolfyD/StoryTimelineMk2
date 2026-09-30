@@ -88,7 +88,7 @@ async function save() {
                     <div class="color-row">
                         <input class="s-color" type="color" v-model="local.color" />
                         <span class="color-hex">{{ local.color || 'none' }}</span>
-                        <button v-if="local.color" class="clear-color" @click="local.color = ''" title="Clear color">×</button>
+                        <button v-if="local.color" class="clear-color" @click="local.color = ''" aria-label="Clear color" data-tip="Clear color">×</button>
                     </div>
                 </div>
             </div>
@@ -101,13 +101,13 @@ async function save() {
                     </select>
                     <button
                         class="cal-btn"
-                        title="Edit selected calendar"
+                        data-tip="Edit selected calendar"
                         :disabled="!local.calendarId"
                         @click="openCalendarEditor(local.calendarId)"
                     >Edit</button>
                     <button
                         class="cal-btn cal-btn--new"
-                        title="Create new calendar"
+                        data-tip="Create new calendar"
                         @click="openCalendarEditor(null)"
                     >+ New</button>
                 </div>

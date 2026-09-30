@@ -263,7 +263,7 @@ export async function deleteTimelineRow(mainPage: Page, title: string): Promise<
   const row = mainPage.locator('.project-timeline-row-container', { hasText: title })
   await expect(row).toBeVisible({ timeout: 8000 })
   await row.locator('.ellipsis-button').click()
-  await row.locator('.row-action-button[title="Delete"]').click()
+  await row.locator('.row-action-button[data-tip="Delete"]').click()
   const modal = mainPage.locator('.bm-panel')
   await expect(modal).toBeVisible({ timeout: 3000 })
   await modal.locator('.btn-danger').click()

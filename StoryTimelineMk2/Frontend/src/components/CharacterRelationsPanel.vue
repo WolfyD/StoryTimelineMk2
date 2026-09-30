@@ -111,9 +111,9 @@ defineExpose({ open })
                 <span class="rl-name">{{ name(relationOtherId(r, character.Id)) }}</span>
                 <span class="rl-tail">
                     <span v-if="relationWhen(r)" class="rl-when">{{ relationWhen(r) }}</span>
-                    <span v-if="r.Notes" class="rl-notes" :title="r.Notes">{{ r.Notes }}</span>
+                    <span v-if="r.Notes" class="rl-notes" :data-tip="r.Notes">{{ r.Notes }}</span>
                 </span>
-                <button class="rl-icon" title="Edit"><PhPencilSimple :size="13" /></button>
+                <button class="rl-icon" aria-label="Edit" data-tip="Edit"><PhPencilSimple :size="13" /></button>
             </li>
         </ul>
 

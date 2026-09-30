@@ -152,7 +152,7 @@ function key(e: KeyboardEvent, what: 'at' | 'from') {
         <div
             class="band"
             :style="{ left: from === null ? '0%' : pct(from), right: `calc(100% - ${pct(at)})` }"
-            :title="from === null ? undefined : 'Drag to slide the whole date range'"
+            :data-tip="from === null ? undefined : 'Drag to slide the whole date range'"
             @pointerdown.stop="from !== null && down($event, 'band')"
         />
         <div
@@ -166,7 +166,7 @@ function key(e: KeyboardEvent, what: 'at' | 'from') {
             :aria-valuenow="from"
             :aria-valuetext="label(from)"
             aria-label="Where the date range starts"
-            :title="label(from) + TIP"
+            :data-tip="label(from) + TIP"
             @pointerdown.stop="down($event, 'from')"
             @keydown="key($event, 'from')"
         />
@@ -180,7 +180,7 @@ function key(e: KeyboardEvent, what: 'at' | 'from') {
             :aria-valuenow="at"
             :aria-valuetext="label(at)"
             :aria-label="from === null ? 'The date the map is showing' : 'Where the date range ends'"
-            :title="label(at) + TIP"
+            :data-tip="label(at) + TIP"
             @pointerdown.stop="down($event, 'at')"
             @keydown="key($event, 'at')"
         />

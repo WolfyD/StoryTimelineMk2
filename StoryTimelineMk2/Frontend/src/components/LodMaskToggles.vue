@@ -14,7 +14,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', v: number): void }>()
       type="button"
       class="lod-toggle-btn"
       :class="{ active: modelValue & (1 << lod.index) }"
-      :title="lod.formatKey"
+      :data-tip="lod.formatKey"
       @click="emit('update:modelValue', modelValue ^ (1 << lod.index))"
     >{{ lod.formatKey.slice(0, 3) }}</button>
   </div>

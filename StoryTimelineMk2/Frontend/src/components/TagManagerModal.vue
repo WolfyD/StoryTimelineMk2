@@ -101,10 +101,10 @@ onMounted(load)
             <template #header>
                 <span class="modal-title">Tags</span>
                 <div class="modal-header-actions">
-                    <button class="icon-btn" title="Refresh" :disabled="loading" @click="load">
+                    <button class="icon-btn" aria-label="Refresh" data-tip="Refresh" :disabled="loading" @click="load">
                         <PhArrowsClockwise :size="15" />
                     </button>
-                    <button class="icon-btn" title="Close" @click="emit('close')">
+                    <button class="icon-btn" aria-label="Close" data-tip="Close" @click="emit('close')">
                         <PhX :size="16" />
                     </button>
                 </div>
@@ -133,7 +133,7 @@ onMounted(load)
                                 @blur="commitEdit"
                             />
                             <div class="row-actions">
-                                <button class="action-btn edit" title="Save name" @mousedown.prevent @click="commitEdit">
+                                <button class="action-btn edit" data-tip="Save name" @mousedown.prevent @click="commitEdit">
                                     <PhCheck :size="14" />
                                     Save
                                 </button>
@@ -141,13 +141,13 @@ onMounted(load)
                         </template>
                         <template v-else>
                             <span class="tag-name">{{ t.Name }}</span>
-                            <span class="usage-badge" :title="`Used by ${usageText(t.UsageCount)}`">{{ usageText(t.UsageCount) }}</span>
+                            <span class="usage-badge" :data-tip="`Used by ${usageText(t.UsageCount)}`">{{ usageText(t.UsageCount) }}</span>
                             <div class="row-actions">
-                                <button class="action-btn edit" title="Rename tag" @click="startEdit(t)">
+                                <button class="action-btn edit" data-tip="Rename tag" @click="startEdit(t)">
                                     <PhPencilSimple :size="14" />
                                     Edit
                                 </button>
-                                <button class="action-btn delete" title="Delete tag" @click="deleteTarget = t">
+                                <button class="action-btn delete" data-tip="Delete tag" @click="deleteTarget = t">
                                     <PhTrash :size="14" />
                                     Delete
                                 </button>

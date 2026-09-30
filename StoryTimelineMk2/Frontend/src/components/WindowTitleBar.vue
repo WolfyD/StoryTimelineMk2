@@ -93,7 +93,7 @@ function cancelDrag() {
 
 <template>
     <div class="title-bar" :class="{ 'title-bar--web': !isDesktop }">
-        <button v-if="showBack" class="tb-back" title="Back to the project list" @click="close">
+        <button v-if="showBack" class="tb-back" data-tip="Back to the project list" @click="close">
             <PhArrowLeft :size="15" weight="bold" />
             <span>Back</span>
         </button>
@@ -117,29 +117,31 @@ function cancelDrag() {
                 tabindex="-1"
                 class="tb-btn tb-btn--pin"
                 :class="{ 'tb-btn--pin-active': isTopmost }"
-                :title="isTopmost ? 'Unpin window (stay on top)' : 'Pin window (stay on top)'"
+                :aria-label="isTopmost ? 'Unpin window (stay on top)' : 'Pin window (stay on top)'"
+                :data-tip="isTopmost ? 'Unpin window (stay on top)' : 'Pin window (stay on top)'"
                 @click="toggleTopmost"
             >
                 <i :class="isTopmost ? 'ri-pushpin-fill' : 'ri-pushpin-line'"></i>
             </button>
             <div class="tb-controls-sep" aria-hidden="true"></div>
-            <button tabindex="-1" class="tb-btn tb-btn--min"   title="Minimize"                              @click="minimize">
+            <button tabindex="-1" class="tb-btn tb-btn--min"   aria-label="Minimize" data-tip="Minimize"     @click="minimize">
                 <i class="ri-subtract-line"></i>
             </button>
             <button
                 v-if="showMaximize"
                 tabindex="-1"
                 class="tb-btn tb-btn--max"
-                :title="isMaximized ? 'Restore' : 'Maximize'"
+                :aria-label="isMaximized ? 'Restore' : 'Maximize'"
+                :data-tip="isMaximized ? 'Restore' : 'Maximize'"
                 @click="toggleMaximize"
             >
                 <i :class="isMaximized ? 'ri-contract-up-down-line' : 'ri-expand-up-down-line'"></i>
             </button>
-            <button tabindex="-1" class="tb-btn tb-btn--close" title="Close"                                 @click="close">
+            <button tabindex="-1" class="tb-btn tb-btn--close" aria-label="Close" data-tip="Close"           @click="close">
                 <i class="ri-close-line"></i>
             </button>
         </div>
-        <button v-else-if="isPopup" class="tb-btn tb-btn--close tb-btn--web" title="Close" @click="close">
+        <button v-else-if="isPopup" class="tb-btn tb-btn--close tb-btn--web" aria-label="Close" data-tip="Close" @click="close">
             <PhX :size="15" weight="bold" />
         </button>
     </div>

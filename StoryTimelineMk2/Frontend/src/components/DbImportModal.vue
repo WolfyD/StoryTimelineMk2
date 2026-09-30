@@ -22,7 +22,7 @@ function formatPath(p: string) {
 <template>
     <BaseModal title="Import Database" width="min(480px, 92vw)" @close="emit('close')">
         <div class="modal-body">
-            <p class="source-path" :title="preview.sourcePath">{{ formatPath(preview.sourcePath) }}</p>
+            <p class="source-path" :data-tip="preview.sourcePath">{{ formatPath(preview.sourcePath) }}</p>
 
             <div class="stat-row">
                 <span class="stat-label">Version</span>

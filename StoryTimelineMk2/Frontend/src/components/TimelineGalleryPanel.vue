@@ -105,19 +105,22 @@ const cascadeOrder = computed(() => {
                 class="gallery-mode-btn"
                 :class="{ active: mode === 'grid' }"
                 @click="mode = 'grid'"
-                title="Grid view"
+                aria-label="Grid view"
+                data-tip="Grid view"
             ><i class="ri-grid-fill" /></button>
             <button
                 class="gallery-mode-btn"
                 :class="{ active: mode === 'cascade' }"
                 @click="mode = 'cascade'"
-                title="Stack view"
+                aria-label="Stack view"
+                data-tip="Stack view"
             ><i class="ri-stack-fill" /></button>
             <button
                 class="gallery-mode-btn"
                 :class="{ active: mode === 'calendar' }"
                 @click="mode = 'calendar'"
-                title="Calendar view"
+                aria-label="Calendar view"
+                data-tip="Calendar view"
             ><i class="ri-calendar-line" /></button>
         </div>
 
@@ -134,7 +137,7 @@ const cascadeOrder = computed(() => {
                 v-for="(entry, idx) in entries"
                 :key="idx"
                 class="gallery-grid-item"
-                :title="entry.itemTitle + (entry.title ? ' – ' + entry.title : '')"
+                :data-tip="entry.itemTitle + (entry.title ? ' – ' + entry.title : '')"
                 @click="openLightbox($event, entry.url, entries.map(e => e.url))"
             >
                 <img :src="entry.thumbUrl" :alt="entry.title" />

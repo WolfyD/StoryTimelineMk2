@@ -132,7 +132,7 @@ onBeforeUnmount(stopCapture)
                                                 <span v-if="j > 0" class="sc-plus">+</span><kbd>{{ part }}</kbd>
                                             </template>
                                         </template>
-                                        <span v-if="isRemapped(s)" class="sc-changed" title="Changed from the default">•</span>
+                                        <span v-if="isRemapped(s)" class="sc-changed" data-tip="Changed from the default">•</span>
                                     </template>
                                 </component>
                             </td>

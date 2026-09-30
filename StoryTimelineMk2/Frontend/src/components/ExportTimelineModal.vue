@@ -192,7 +192,7 @@ const dayTotal = (d: { added: number; changed: number; removed: number }) => d.a
                 <div class="pick-row">
                     <button
                         v-if="history.lastExportedAt" class="pick-btn pick-btn--primary"
-                        :title="`Everything after the last export, which covered up to ${history.lastExportDay}`"
+                        :data-tip="`Everything after the last export, which covered up to ${history.lastExportDay}`"
                         @click="pickSinceLastExport"
                     >Everything since the last export on {{ sinceLabel }}</button>
                     <button class="pick-btn" @click="pickAll">All of it</button>

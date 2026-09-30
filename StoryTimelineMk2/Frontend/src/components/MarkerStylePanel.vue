@@ -125,7 +125,7 @@ const backTo = computed(() => (props.scope === 'pin' ? "Back to this map's look"
                     <button
                         v-for="s in MARKER_SHAPES" :key="s" type="button"
                         class="pill shape" :class="{ on: draft.shape === s }"
-                        :title="SHAPE_LABELS[s]" @click="draft.shape = s"
+                        :aria-label="SHAPE_LABELS[s]" :data-tip="SHAPE_LABELS[s]" @click="draft.shape = s"
                     >
                         <svg :viewBox="previewBox(s)" width="18" height="20" preserveAspectRatio="xMidYMid meet">
                             <circle v-if="s === 'dot'" r="12" fill="currentColor" />
@@ -147,7 +147,8 @@ const backTo = computed(() => (props.scope === 'pin' ? "Back to this map's look"
                         <input class="s-color" type="color" v-model="strokeColour" />
                         <input
                             class="s-input num narrow" type="number" min="0" max="12" step="0.5"
-                            v-model.number="draft.strokeWidth" title="0 turns the outline off"
+                            v-model.number="draft.strokeWidth"
+                            aria-label="0 turns the outline off" data-tip="0 turns the outline off"
                         />
                     </div>
                 </div>
@@ -168,7 +169,7 @@ const backTo = computed(() => (props.scope === 'pin' ? "Back to this map's look"
                 <div class="icons">
                     <button
                         type="button" class="pill icon" :class="{ on: !draft.icon }"
-                        title="No icon" @click="draft.icon = null"
+                        aria-label="No icon" data-tip="No icon" @click="draft.icon = null"
                     >
                         <PhProhibit :size="15" />
                     </button>
@@ -176,7 +177,7 @@ const backTo = computed(() => (props.scope === 'pin' ? "Back to this map's look"
                         <button
                             v-for="(comp, name) in group.icons" :key="name" type="button"
                             class="pill icon" :class="{ on: draft.icon === name }"
-                            :title="group.label" @click="draft.icon = name"
+                            :aria-label="group.label" :data-tip="group.label" @click="draft.icon = name"
                         >
                             <component :is="comp" :size="15" weight="fill" />
                         </button>
@@ -240,13 +241,17 @@ const backTo = computed(() => (props.scope === 'pin' ? "Back to this map's look"
                     <div class="field">
                         <label>Text outline</label>
                         <div class="inline">
-                            <input type="checkbox" v-model="hasLabelOutline" title="An edge around the letters" />
+                            <input
+                                type="checkbox" v-model="hasLabelOutline"
+                                aria-label="An edge around the letters" data-tip="An edge around the letters"
+                            />
                             <input class="s-color" type="color" v-model="labelOutlineColour" :disabled="!hasLabelOutline" />
                             <!-- 0 is the sane default: an edge a seventh of the text, at any size. -->
                             <input
                                 class="s-input num thin" type="number" min="0" max="12" step="0.5"
                                 v-model.number="draft.labelOutlineWidth" :disabled="!hasLabelOutline"
-                                title="How thick, in pixels — 0 follows the text size"
+                                aria-label="How thick, in pixels — 0 follows the text size"
+                                data-tip="How thick, in pixels — 0 follows the text size"
                             />
                         </div>
                     </div>

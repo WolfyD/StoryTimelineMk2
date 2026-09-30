@@ -70,7 +70,7 @@ const panelStyle = computed(() => ({
     <Teleport to="body">
         <div class="view-modal-backdrop" ref="root" @mousedown="onMousedown" @click="onClick">
             <div class="view-modal" :style="panelStyle">
-                <button class="vm-close" title="Close (Esc)" @click="emit('close')">
+                <button class="vm-close" aria-label="Close (Esc)" data-tip="Close (Esc)" @click="emit('close')">
                     <i class="ri-close-line"></i>
                 </button>
 
@@ -144,7 +144,8 @@ const panelStyle = computed(() => ({
                             <div class="vm-images">
                                 <img v-for="pic in data.Pictures" :key="pic.Id"
                                      :src="mediaUrl(pic.FilePath)"
-                                     :title="pic.Title || pic.FileName"
+                                     :alt="pic.Title || pic.FileName"
+                                     :data-tip="pic.Title || pic.FileName"
                                      class="vm-thumb" />
                             </div>
                         </div>

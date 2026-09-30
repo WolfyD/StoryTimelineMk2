@@ -2344,7 +2344,7 @@ defineExpose({
 
             <!-- Right-click on item -->
             <template v-else-if="contextMenu.type === 'item'">
-                <div class="menu-header" :title="contextMenu.itemTitle">{{ contextMenu.itemTitle }}</div>
+                <div class="menu-header" :data-tip="contextMenu.itemTitle">{{ contextMenu.itemTitle }}</div>
                 <template v-if="!store.readOnly">
                 <button class="menu-item" @click="emit('itemClick', contextMenu.itemId!); closeContextMenu()">
                     <i class="ri-edit-line"></i> Edit

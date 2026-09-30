@@ -86,10 +86,21 @@ const calendarMismatch = computed(() =>
                     <span class="rt-title">{{ t.Title || 'Untitled' }}</span>
                     <span v-if="t.Author" class="rt-author">{{ t.Author }}</span>
                 </span>
-                <button class="rt-btn rt-under" title="Show underneath this timeline" :disabled="busy" @click="showUnderneath(t.Id)">
+                <button
+                    class="rt-btn rt-under"
+                    aria-label="Show underneath this timeline"
+                    data-tip="Show underneath this timeline"
+                    :disabled="busy"
+                    @click="showUnderneath(t.Id)"
+                >
                     <PhStack :size="18" />
                 </button>
-                <button class="rt-btn rt-open" title="Open read-only in a new window" @click="openWindow(t.Id)">
+                <button
+                    class="rt-btn rt-open"
+                    aria-label="Open read-only in a new window"
+                    data-tip="Open read-only in a new window"
+                    @click="openWindow(t.Id)"
+                >
                     <PhAppWindow :size="18" />
                 </button>
             </div>

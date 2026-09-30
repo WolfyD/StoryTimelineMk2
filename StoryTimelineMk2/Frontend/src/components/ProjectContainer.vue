@@ -11,16 +11,16 @@
 					</div>
 
 					<div class="hidden-buttons-group" v-show="openMenuId === tl.Id">
-						<div class="row-action-button" title="Edit" @click.stop="openEdit(tl)">
+						<div class="row-action-button" data-tip="Edit" @click.stop="openEdit(tl)">
 							<PhPencilSimple class="button-icon" :size="24" />
 						</div>
-						<div class="row-action-button" title="Export" @click.stop="openExport(tl)">
+						<div class="row-action-button" data-tip="Export" @click.stop="openExport(tl)">
 							<PhDatabase class="button-icon" :size="24" />
 						</div>
-						<div class="row-action-button" title="Duplicate" @click.stop="openDuplicate(tl)">
+						<div class="row-action-button" data-tip="Duplicate" @click.stop="openDuplicate(tl)">
 							<PhCopySimple class="button-icon" :size="24" />
 						</div>
-						<div class="row-action-button" title="Delete" @click.stop="openDelete(tl)">
+						<div class="row-action-button" data-tip="Delete" @click.stop="openDelete(tl)">
 							<PhTrashSimple class="button-icon button-icon--danger" :size="24" />
 						</div>
 					</div>

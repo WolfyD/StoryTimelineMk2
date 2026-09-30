@@ -67,7 +67,7 @@ function formatPath(p: string) {
 <template>
     <BaseModal title="Import Session Changes" width="min(780px, 94vw)" @close="emit('close')">
         <div class="modal-body">
-            <p class="source-path" :title="preview.sourcePath">{{ formatPath(preview.sourcePath) }}</p>
+            <p class="source-path" :data-tip="preview.sourcePath">{{ formatPath(preview.sourcePath) }}</p>
 
             <div class="head-row">
                 <div class="stats">
@@ -126,14 +126,14 @@ function formatPath(p: string) {
                         <div class="picker" role="group" :aria-label="`Which version of ${entry.title || 'this item'} to keep`">
                             <label
                                 class="pick" :class="{ on: choices[entry.id] === 'incoming' }"
-                                :title="means(entry, 'incoming')"
+                                :data-tip="means(entry, 'incoming')"
                             >
                                 <input type="radio" :name="`pick-${entry.id}`" value="incoming" v-model="choices[entry.id]" />
                                 <span class="box" aria-hidden="true">✓</span>Incoming
                             </label>
                             <label
                                 class="pick" :class="{ on: choices[entry.id] === 'local' }"
-                                :title="means(entry, 'local')"
+                                :data-tip="means(entry, 'local')"
                             >
                                 <input type="radio" :name="`pick-${entry.id}`" value="local" v-model="choices[entry.id]" />
                                 <span class="box" aria-hidden="true">✓</span>Local

@@ -9,6 +9,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import Konva from 'konva'
 import { BackendAPI, logError } from '@/bridge/api'
 import WindowTitleBar from '@/components/WindowTitleBar.vue'
+import HoverTip from '@/components/HoverTip.vue'
 import { useSideWidth } from '@/composables/useSideWidth'
 import { mediaUrl } from '@/utils/mediaUrl'
 import { initials, lifespan } from '@/utils/characterItems'
@@ -2568,29 +2569,30 @@ function unpinOne(id: string) {
                 </section>
 
                 <div class="rel-tools">
-                    <button title="Reset the zoom and the pan" @click="resetView">
+                    <button data-tip="Reset the zoom and the pan" @click="resetView">
                         <PhArrowsOut :size="14" /> Reset view
                     </button>
-                    <button v-if="isForce" title="Let the layout loose again" @click="unpinAll">
+                    <button v-if="isForce" data-tip="Let the layout loose again" @click="unpinAll">
                         <PhPushPinSlash :size="14" /> Unpin all
                     </button>
                 </div>
             </aside>
-            <div v-if="!treeOnly" class="side-grip" title="Drag to resize" @pointerdown="startResize" />
+            <div v-if="!treeOnly" class="side-grip" data-tip="Drag to resize" @pointerdown="startResize" />
 
             <!-- ── Stage ─────────────────────────────────────────────── -->
             <div class="rel-stage-wrap">
                 <div ref="stageHost" class="rel-stage" />
                 <div class="rel-shots">
-                    <button title="Copy the picture to the clipboard" @click="copyImage">
+                    <button aria-label="Copy the picture to the clipboard" data-tip="Copy the picture to the clipboard" @click="copyImage">
                         <PhCopy :size="15" />
                     </button>
-                    <button title="Save the picture as a PNG" @click="saveImage">
+                    <button aria-label="Save the picture as a PNG" data-tip="Save the picture as a PNG" @click="saveImage">
                         <PhDownloadSimple :size="15" />
                     </button>
                     <button
                         :class="{ on: shotOpen }"
-                        title="How the picture comes out"
+                        aria-label="How the picture comes out"
+                        data-tip="How the picture comes out"
                         @click="shotOpen = !shotOpen"
                     >
                         <PhSlidersHorizontal :size="15" />
@@ -2662,6 +2664,7 @@ function unpinOne(id: string) {
             </template>
         </div>
         <div v-if="menu" class="rel-menu-backdrop" @click="menu = null" @contextmenu.prevent="menu = null" />
+        <HoverTip />
     </div>
 </template>
 

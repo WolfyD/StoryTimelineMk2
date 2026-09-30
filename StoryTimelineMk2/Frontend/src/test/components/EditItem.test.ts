@@ -189,7 +189,7 @@ describe('EditItem page', () => {
     await flushPromises()
 
     const active = wrapper.findAll('.lod-toggle-btn.active')
-    expect(active.map(b => b.attributes('title'))).toEqual(['Years'])
+    expect(active.map(b => b.attributes('data-tip'))).toEqual(['Years'])
     wrapper.unmount()
   })
 

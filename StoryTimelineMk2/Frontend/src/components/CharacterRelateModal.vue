@@ -269,12 +269,12 @@ async function removeType() {
                             <span class="rm-rel-label">{{ label(r) }}</span>
                             <b>{{ name(relationOtherId(r, character.Id)) }}</b>
                             <em v-if="relationWhen(r)">{{ relationWhen(r) }}</em>
-                            <em v-if="r.Notes" :title="r.Notes">{{ r.Notes }}</em>
+                            <em v-if="r.Notes" :data-tip="r.Notes">{{ r.Notes }}</em>
                         </span>
-                        <button class="rm-icon" title="Edit" @click="edit(r)">
+                        <button class="rm-icon" aria-label="Edit" data-tip="Edit" @click="edit(r)">
                             <PhPencilSimple :size="13" />
                         </button>
-                        <button class="rm-icon rm-icon--danger" title="Remove" :disabled="busy" @click="removeRelation(r)">
+                        <button class="rm-icon rm-icon--danger" aria-label="Remove" data-tip="Remove" :disabled="busy" @click="removeRelation(r)">
                             <PhTrash :size="13" />
                         </button>
                     </li>
@@ -287,10 +287,10 @@ async function removeType() {
                     <li v-for="t in types" :key="t.Id">
                         <span class="rm-t-name">{{ t.Name }}</span>
                         <span class="rm-t-read">{{ t.AToB || '—' }} / {{ t.BToA || '—' }}</span>
-                        <button class="rm-icon" title="Edit" @click="typeDraft = { ...t }">
+                        <button class="rm-icon" aria-label="Edit" data-tip="Edit" @click="typeDraft = { ...t }">
                             <PhPencilSimple :size="13" />
                         </button>
-                        <button class="rm-icon rm-icon--danger" title="Delete" :disabled="busy" @click="typeToRemove = t">
+                        <button class="rm-icon rm-icon--danger" aria-label="Delete" data-tip="Delete" :disabled="busy" @click="typeToRemove = t">
                             <PhTrash :size="13" />
                         </button>
                     </li>
@@ -362,7 +362,12 @@ async function removeType() {
                                 <option v-for="t in list" :key="t.Id" :value="t.Id">{{ t.Name }}</option>
                             </optgroup>
                         </select>
-                        <button class="rm-icon" title="Swap the two — reverses how it reads" @click="swap">
+                        <button
+                            class="rm-icon"
+                            aria-label="Swap the two — reverses how it reads"
+                            data-tip="Swap the two — reverses how it reads"
+                            @click="swap"
+                        >
                             <PhArrowsLeftRight :size="14" />
                         </button>
                         <p class="rm-reads">

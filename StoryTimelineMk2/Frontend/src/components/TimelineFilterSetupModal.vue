@@ -358,7 +358,8 @@ function selectColorFromPalette(hex: string) {
                                     v-for="hex in store.allTimelineColors" :key="hex"
                                     class="palette-swatch"
                                     :style="{ background: hex }"
-                                    :title="hex"
+                                    :aria-label="hex"
+                                    :data-tip="hex"
                                     :class="{ selected: colorForm.hex === hex }"
                                     @click="selectColorFromPalette(hex)"
                                 />

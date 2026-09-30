@@ -11,7 +11,7 @@ async function closeAny(mainPage: Page, appContext: BrowserContext) {
   }
   const modal = mainPage.locator('.bm-panel')
   if (await modal.isVisible({ timeout: 500 }).catch(() => false)) {
-    const closeBtn = modal.locator('.icon-btn[title="Close"]')
+    const closeBtn = modal.locator('.icon-btn[data-tip="Close"]')
     if (await closeBtn.isVisible().catch(() => false)) {
       await closeBtn.click().catch(() => {})
     } else {
@@ -23,7 +23,7 @@ async function closeAny(mainPage: Page, appContext: BrowserContext) {
 }
 
 async function openManagerModal(mainPage: Page) {
-  await mainPage.locator('[title="Manage Calendars"]').click()
+  await mainPage.locator('[data-tip="Manage Calendars"]').click()
   const modal = mainPage.locator('.bm-panel')
   await expect(modal).toBeVisible({ timeout: 5000 })
   await expect(modal.locator('.modal-title')).toContainText('Calendars', { timeout: 3000 })
@@ -62,7 +62,7 @@ test.describe('Calendar Manager Modal — real backend', () => {
   })
 
   test('"Manage Calendars" button opens the modal', async ({ mainPage }) => {
-    await mainPage.locator('[title="Manage Calendars"]').click()
+    await mainPage.locator('[data-tip="Manage Calendars"]').click()
     await expect(mainPage.locator('.bm-panel')).toBeVisible({ timeout: 5000 })
   })
 
@@ -96,7 +96,7 @@ test.describe('Calendar Manager Modal — real backend', () => {
 
   test('close button (X) dismisses the modal', async ({ mainPage }) => {
     const modal = await openManagerModal(mainPage)
-    await modal.locator('.icon-btn[title="Close"]').click()
+    await modal.locator('.icon-btn[data-tip="Close"]').click()
     await expect(mainPage.locator('.bm-panel')).not.toBeVisible({ timeout: 2000 })
   })
 
@@ -108,7 +108,7 @@ test.describe('Calendar Manager Modal — real backend', () => {
 
   test('Refresh button reloads the list without error', async ({ mainPage }) => {
     const modal = await openManagerModal(mainPage)
-    await modal.locator('.icon-btn[title="Refresh"]').click()
+    await modal.locator('.icon-btn[data-tip="Refresh"]').click()
     await mainPage.waitForTimeout(1000)
     await expect(modal.locator('.cal-row').first()).toBeVisible({ timeout: 5000 })
   })

@@ -28,16 +28,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
     <div class="lb-backdrop" @click="emit('close')">
-        <button class="lb-close" title="Close (Esc)" @click.stop="emit('close')">
+        <button class="lb-close" aria-label="Close (Esc)" data-tip="Close (Esc)" @click.stop="emit('close')">
             <i class="ri-close-line"></i>
         </button>
-        <button v-if="hasPrev" class="lb-nav lb-nav--prev" title="Previous" @click.stop="emit('prev')">
+        <button v-if="hasPrev" class="lb-nav lb-nav--prev" aria-label="Previous" data-tip="Previous" @click.stop="emit('prev')">
             <i class="ri-arrow-left-s-line"></i>
         </button>
         <Transition name="lb-swap" mode="out-in">
             <img :key="src" :src="src" class="lb-img" @click.stop />
         </Transition>
-        <button v-if="hasNext" class="lb-nav lb-nav--next" title="Next" @click.stop="emit('next')">
+        <button v-if="hasNext" class="lb-nav lb-nav--next" aria-label="Next" data-tip="Next" @click.stop="emit('next')">
             <i class="ri-arrow-right-s-line"></i>
         </button>
     </div>

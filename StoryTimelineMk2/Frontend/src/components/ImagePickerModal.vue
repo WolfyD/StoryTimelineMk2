@@ -149,7 +149,7 @@ function formatSize(bytes: number) {
                             'thumb-cell--linked':   isLinked(pic.Id),
                         }"
                         @click="select(pic.Id)"
-                        :title="isLinked(pic.Id) ? 'Already attached' : (pic.Title || pic.FileName)"
+                        :data-tip="isLinked(pic.Id) ? 'Already attached' : (pic.Title || pic.FileName)"
                     >
                         <div class="thumb-img-wrap">
                             <img

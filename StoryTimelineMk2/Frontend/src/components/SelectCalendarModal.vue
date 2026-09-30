@@ -52,10 +52,10 @@ onUnmounted(() => window.removeEventListener('calendars-changed', refresh))
 						</option>
 						<option v-for="c in calendars" :key="c.Id" :value="c.Id">{{ c.Name }}</option>
 					</select>
-					<button class="cal-btn" title="Refresh list" @click="refresh">
+					<button class="cal-btn" aria-label="Refresh list" data-tip="Refresh list" @click="refresh">
 						<PhArrowsClockwise :size="14" />
 					</button>
-					<button class="cal-btn cal-btn--new" title="Create new calendar" @click="createNew">
+					<button class="cal-btn cal-btn--new" data-tip="Create new calendar" @click="createNew">
 						+ Create New
 					</button>
 				</div>

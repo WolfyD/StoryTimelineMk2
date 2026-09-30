@@ -96,7 +96,8 @@ const navItems = [
         <button
             class="strip-btn strip-btn--filter"
             :class="{ 'strip-btn--tool-active': filterActive }"
-            title="Filter"
+            aria-label="Filter"
+            data-tip="Filter"
             @click="emit('toggle-filter')"
         >
             <PhFunnel :size="20" :weight="filterActive ? 'fill' : 'regular'" />
@@ -106,7 +107,8 @@ const navItems = [
         <button
             class="strip-btn strip-btn--mini"
             :class="{ 'strip-btn--tool-active': miniMode }"
-            :title="miniMode ? 'Expand timeline' : 'Minimise timeline'"
+            :aria-label="miniMode ? 'Expand timeline' : 'Minimise timeline'"
+            :data-tip="miniMode ? 'Expand timeline' : 'Minimise timeline'"
             @click="emit('toggle-mini')"
         >
             <PhArrowsIn v-if="!miniMode" :size="20" />
@@ -118,24 +120,25 @@ const navItems = [
             v-if="!readOnly"
             class="strip-btn strip-btn--year-cal"
             :class="{ 'strip-btn--tool-active': yearCalendarOpen }"
-            title="Year calendar"
+            aria-label="Year calendar"
+            data-tip="Year calendar"
             @click="emit('toggle-year-calendar')"
         >
             <PhCalendarDots :size="20" :weight="yearCalendarOpen ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── Tags ───────────────────────────────────────────────── -->
-        <button v-if="!readOnly" class="strip-btn strip-btn--tags" :class="{ 'strip-btn--tool-active': openTools?.has('tags') }" title="Tags" @click="emit('open-tags')">
+        <button v-if="!readOnly" class="strip-btn strip-btn--tags" :class="{ 'strip-btn--tool-active': openTools?.has('tags') }" aria-label="Tags" data-tip="Tags" @click="emit('open-tags')">
             <PhTag :size="20" :weight="openTools?.has('tags') ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── Mass add ───────────────────────────────────────────── -->
-        <button v-if="!readOnly" class="strip-btn strip-btn--mass-add" :class="{ 'strip-btn--tool-active': openTools?.has('massAdd') }" title="Mass add items" @click="emit('open-mass-add')">
+        <button v-if="!readOnly" class="strip-btn strip-btn--mass-add" :class="{ 'strip-btn--tool-active': openTools?.has('massAdd') }" aria-label="Mass add items" data-tip="Mass add items" @click="emit('open-mass-add')">
             <PhListPlus :size="20" :weight="openTools?.has('massAdd') ? 'fill' : 'regular'" />
         </button>
 
         <!-- ── Reference timeline (BL-66) ─────────────────────────── -->
-        <button v-if="!readOnly" class="strip-btn strip-btn--reference" :class="{ 'strip-btn--tool-active': referenceActive || openTools?.has('reference') }" title="Reference timeline (R)" @click="emit('open-reference')">
+        <button v-if="!readOnly" class="strip-btn strip-btn--reference" :class="{ 'strip-btn--tool-active': referenceActive || openTools?.has('reference') }" aria-label="Reference timeline (R)" data-tip="Reference timeline (R)" @click="emit('open-reference')">
             <PhBooks :size="20" :weight="referenceActive || openTools?.has('reference') ? 'fill' : 'regular'" />
         </button>
 
@@ -154,7 +157,8 @@ const navItems = [
                 'strip-btn--disabled': !item.available,
                 [`strip-btn--nav-${item.id}`]: true,
             }"
-            :title="item.available ? item.label : `${item.label} (coming soon)`"
+            :aria-label="item.available ? item.label : `${item.label} (coming soon)`"
+            :data-tip="item.available ? item.label : `${item.label} (coming soon)`"
             :tabindex="item.available ? 0 : -1"
             @click="navClick(item.id)"
         >
@@ -169,7 +173,7 @@ const navItems = [
         <div class="strip-spacer" />
 
         <!-- ── Export (whole timeline / my work) ────────────────── -->
-        <button v-if="!readOnly || allowExport" class="strip-btn strip-btn--export" :class="{ 'strip-btn--tool-active': openTools?.has('export') }" title="Export…" @click="emit('open-export')">
+        <button v-if="!readOnly || allowExport" class="strip-btn strip-btn--export" :class="{ 'strip-btn--tool-active': openTools?.has('export') }" aria-label="Export…" data-tip="Export…" @click="emit('open-export')">
             <PhExport :size="20" :weight="openTools?.has('export') ? 'fill' : 'regular'" />
         </button>
 
@@ -178,7 +182,8 @@ const navItems = [
             <button
                 class="strip-btn strip-btn--about"
                 :class="{ 'strip-btn--tool-active': helpMenuOpen || openTools?.has('help') }"
-                title="Help / About"
+                aria-label="Help / About"
+                data-tip="Help / About"
                 @click="helpMenuOpen = !helpMenuOpen"
             >
                 <PhQuestion :size="20" :weight="helpMenuOpen || openTools?.has('help') ? 'fill' : 'regular'" />
@@ -207,7 +212,8 @@ const navItems = [
             v-if="!readOnly"
             class="strip-btn strip-btn--settings"
             :class="{ 'strip-btn--tool-active': openTools?.has('settings') }"
-            title="Settings"
+            aria-label="Settings"
+            data-tip="Settings"
             @click="emit('open-settings')"
         >
             <PhGear :size="20" :weight="openTools?.has('settings') ? 'fill' : 'regular'" />

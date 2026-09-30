@@ -152,7 +152,12 @@ async function save() {
                             <option v-for="t in list" :key="t.Id" :value="t.Id">{{ t.Name }}</option>
                         </optgroup>
                     </select>
-                    <button class="fm-icon" title="Swap the two — reverses how it reads" @click="swap(row)">
+                    <button
+                        class="fm-icon"
+                        aria-label="Swap the two — reverses how it reads"
+                        data-tip="Swap the two — reverses how it reads"
+                        @click="swap(row)"
+                    >
                         <PhArrowsLeftRight :size="13" />
                     </button>
 

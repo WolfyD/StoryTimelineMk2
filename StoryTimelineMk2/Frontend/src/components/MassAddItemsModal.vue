@@ -170,7 +170,7 @@ function tryClose() {
             <template #header>
                 <span class="modal-title">Mass Add Items</span>
                 <div class="modal-header-actions">
-                    <button class="icon-btn" title="Close" @click="tryClose">
+                    <button class="icon-btn" aria-label="Close" data-tip="Close" @click="tryClose">
                         <PhX :size="16" />
                     </button>
                 </div>
@@ -196,11 +196,11 @@ function tryClose() {
                     <div class="field">
                         <span>{{ isRange ? 'From year' : 'Year' }}</span>
                         <div class="year-stepper">
-                            <button type="button" class="icon-btn ma-year-minus" title="Previous year (Shift −)" @click="stepYear(-1)">
+                            <button type="button" class="icon-btn ma-year-minus" aria-label="Previous year (Shift −)" data-tip="Previous year (Shift −)" @click="stepYear(-1)">
                                 <PhMinus :size="14" />
                             </button>
                             <input v-model.number="year" class="s-input ma-year" type="number" step="1" placeholder="Year" />
-                            <button type="button" class="icon-btn ma-year-plus" title="Next year (Shift +)" @click="stepYear(1)">
+                            <button type="button" class="icon-btn ma-year-plus" aria-label="Next year (Shift +)" data-tip="Next year (Shift +)" @click="stepYear(1)">
                                 <PhPlus :size="14" />
                             </button>
                         </div>
@@ -208,11 +208,11 @@ function tryClose() {
                     <div v-if="isRange" class="field">
                         <span>To year</span>
                         <div class="year-stepper">
-                            <button type="button" class="icon-btn ma-end-minus" title="Previous year" @click="stepEndYear(-1)">
+                            <button type="button" class="icon-btn ma-end-minus" aria-label="Previous year" data-tip="Previous year" @click="stepEndYear(-1)">
                                 <PhMinus :size="14" />
                             </button>
                             <input v-model.number="endYear" class="s-input ma-end-year" type="number" step="1" placeholder="End year" @input="endTouched = true" />
-                            <button type="button" class="icon-btn ma-end-plus" title="Next year" @click="stepEndYear(1)">
+                            <button type="button" class="icon-btn ma-end-plus" aria-label="Next year" data-tip="Next year" @click="stepEndYear(1)">
                                 <PhPlus :size="14" />
                             </button>
                         </div>
@@ -234,11 +234,11 @@ function tryClose() {
                         <li
                             v-for="(d, i) in queue" :key="i"
                             class="queue-row" :class="{ editing: editIndex === i }"
-                            title="Click to edit" @click="edit(i)"
+                            data-tip="Click to edit" @click="edit(i)"
                         >
-                            <span class="q-title" :title="d.title">{{ d.title }}</span>
+                            <span class="q-title" :data-tip="d.title">{{ d.title }}</span>
                             <span class="q-meta">{{ typeName(d.typeId) }} · {{ d.year }}{{ d.endYear !== d.year ? ' – ' + d.endYear : '' }}</span>
-                            <button class="icon-btn q-remove" title="Remove" :disabled="busy" @click.stop="remove(i)">
+                            <button class="icon-btn q-remove" aria-label="Remove" data-tip="Remove" :disabled="busy" @click.stop="remove(i)">
                                 <PhTrash :size="14" />
                             </button>
                         </li>

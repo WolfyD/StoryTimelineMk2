@@ -240,11 +240,11 @@ async function createBackup() {
                 <h4 class="section-label">Data Folder</h4>
 
                 <div class="current-path-row">
-                    <div class="path-box" :title="currentRoot">
+                    <div class="path-box" :data-tip="currentRoot">
                         <PhFolderOpen :size="14" class="path-icon" />
                         <span class="path-text">{{ currentRoot || '…' }}</span>
                     </div>
-                    <button class="btn btn-ghost" @click="openDataFolder" :title="`Open in ${FILE_MANAGER}`">
+                    <button class="btn btn-ghost" @click="openDataFolder" :data-tip="`Open in ${FILE_MANAGER}`">
                         <PhArrowSquareOut :size="15" />
                         Open
                     </button>
@@ -302,7 +302,7 @@ async function createBackup() {
                         <PhFloppyDisk :size="15" />
                         Create Backup Now
                     </button>
-                    <button class="btn btn-ghost" @click="BackendAPI.OpenBackupsFolder()" :title="`Open backups folder in ${FILE_MANAGER}`">
+                    <button class="btn btn-ghost" @click="BackendAPI.OpenBackupsFolder()" :data-tip="`Open backups folder in ${FILE_MANAGER}`">
                         <PhArrowSquareOut :size="14" />
                         Open folder
                     </button>
@@ -312,7 +312,7 @@ async function createBackup() {
                     <p class="backup-list-label">Recent backups</p>
                     <div class="recent-backups">
                         <div v-for="b in recentBackups.slice(0, 8)" :key="b.FileName" class="backup-entry">
-                            <span class="backup-name" :title="b.FileName">{{ b.FileName }}</span>
+                            <span class="backup-name" :data-tip="b.FileName">{{ b.FileName }}</span>
                             <span class="backup-meta">{{ formatBytes(b.SizeBytes) }} · {{ formatDate(b.CreatedAt) }}</span>
                         </div>
                     </div>

@@ -139,7 +139,8 @@ async function applyLodMask(mask: number) {
         <button
             class="actions-trigger"
             :class="{ active: open }"
-            title="Actions"
+            aria-label="Actions"
+            data-tip="Actions"
             @click="toggle"
         >
             <PhDotsThreeOutlineVertical :size="20" />
@@ -161,7 +162,7 @@ async function applyLodMask(mask: number) {
                 <div v-for="r in hiddenRanges" :key="r.Id" class="range-row">
                     <span class="range-years">{{ r.StartYear }} – {{ r.EndYear }}</span>
                     <span class="range-label">{{ r.Label || '' }}</span>
-                    <button class="icon-btn icon-btn--danger" title="Remove" @click="deleteRange(r.Id)">
+                    <button class="icon-btn icon-btn--danger" aria-label="Remove" data-tip="Remove" @click="deleteRange(r.Id)">
                         <PhTrash :size="13" />
                     </button>
                 </div>

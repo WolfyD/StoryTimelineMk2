@@ -107,10 +107,10 @@ onUnmounted(() => window.removeEventListener('calendars-changed', load))
             <template #header>
                 <span class="modal-title">Calendars</span>
                 <div class="modal-header-actions">
-                    <button class="icon-btn" title="Refresh" :disabled="loading" @click="load">
+                    <button class="icon-btn" aria-label="Refresh" data-tip="Refresh" :disabled="loading" @click="load">
                         <PhArrowsClockwise :size="15" />
                     </button>
-                    <button class="icon-btn" title="Close" @click="emit('close')">
+                    <button class="icon-btn" aria-label="Close" data-tip="Close" @click="emit('close')">
                         <PhX :size="16" />
                     </button>
                 </div>
@@ -125,23 +125,23 @@ onUnmounted(() => window.removeEventListener('calendars-changed', load))
                 <ul v-else class="cal-list">
                     <li v-for="c in calendars" :key="c.Id" class="cal-row" :class="{ 'in-use': c.UsageCount > 0 }">
                         <span class="cal-name">{{ c.Name }}</span>
-                        <span v-if="c.UsageCount > 0" class="usage-badge" :title="usageText(c.UsageCount)">{{ c.UsageCount }}</span>
+                        <span v-if="c.UsageCount > 0" class="usage-badge" :data-tip="usageText(c.UsageCount)">{{ c.UsageCount }}</span>
                         <div class="row-actions">
-                            <button class="action-btn" title="View calendar" @click="viewingId = c.Id">
+                            <button class="action-btn" data-tip="View calendar" @click="viewingId = c.Id">
                                 <PhEye :size="14" />
                                 View
                             </button>
-                            <button class="action-btn edit" title="Edit calendar" @click="openEditor(c.Id)">
+                            <button class="action-btn edit" data-tip="Edit calendar" @click="openEditor(c.Id)">
                                 <PhPencilSimple :size="14" />
                                 Edit
                             </button>
-                            <button class="action-btn export" title="Export calendar to a file" @click="exportCalendar(c)">
+                            <button class="action-btn export" data-tip="Export calendar to a file" @click="exportCalendar(c)">
                                 <PhExport :size="14" />
                                 Export
                             </button>
                             <button
                                 v-if="c.Id !== DEFAULT_CALENDAR_ID"
-                                class="action-btn delete" title="Delete calendar" @click="deleteTarget = c">
+                                class="action-btn delete" data-tip="Delete calendar" @click="deleteTarget = c">
                                 <PhTrash :size="14" />
                                 Delete
                             </button>
@@ -157,7 +157,7 @@ onUnmounted(() => window.removeEventListener('calendars-changed', load))
                         <PhPlus :size="14" />
                         New Calendar
                     </button>
-                    <button class="import-btn" title="Import a calendar from a file (always creates a new calendar)" @click="importCalendar">
+                    <button class="import-btn" data-tip="Import a calendar from a file (always creates a new calendar)" @click="importCalendar">
                         <PhDownloadSimple :size="14" />
                         Import Calendar
                     </button>

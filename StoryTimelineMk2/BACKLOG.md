@@ -1497,6 +1497,13 @@ Phase 8, the timeline's search (same day). The user chose a floating panel.
   - CalendarManagerModal's load;
   - Export's session summary;
   - TimelineSettingsModal's save, which also left the button stuck on "Saving…".
+- **Tooltips.** Every native `title` tooltip is now `data-tip`, and every page mounts `HoverTip`.
+  Icon-only buttons got an `aria-label`, and the e2e selectors changed to `[data-tip=…]`. Props
+  named `title` (BaseModal, ConfirmModal, WindowTitleBar) stay.
+  - **Known gap.** The clickable divs in App.vue's DB menu and ProjectContainer's row actions lost
+    the accessible name `title` gave them. The fix is to make them `<button>`s.
+  - **Not checked in the app.** Tips on disabled buttons depend on a recent WebView2 passing mouse
+    moves through.
 
 A management window opened from the timeline sidebar. It stays open while you work in it, and it
 closes when its timeline does. It follows the old version's Archive layout, built with the app's

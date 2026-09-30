@@ -124,7 +124,7 @@ test.describe('Timeline notes panel — real backend', () => {
     await expect(noteEntry).toBeVisible({ timeout: 5000 })
 
     // Click the edit button
-    await noteEntry.locator('.note-action-btn[title="Edit"]').click()
+    await noteEntry.locator('.note-action-btn[data-tip="Edit"]').click()
 
     // .note-edit-area is v-if'd into the entry when edit mode is active
     const editArea = panel.locator('.note-edit-area')

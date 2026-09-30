@@ -23,7 +23,7 @@ async function closeFilterPanel(tl: Page) {
 /** Open filter panel then the slide-down setup panel (assumes timeline page already open). */
 async function openFilterSetup(tl: Page) {
   await openFilterPanel(tl)
-  await tl.locator('.fp-icon-btn[title="Filter setup"]').click()
+  await tl.locator('.fp-icon-btn[data-tip="Filter setup"]').click()
   await expect(tl.locator('.fsetup-panel')).toBeVisible({ timeout: 3000 })
 }
 
@@ -90,8 +90,8 @@ test.describe('Timeline filter panel — real backend', () => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterPanel(tl)
     const panel = tl.locator('.filter-panel')
-    await expect(panel.locator('.fp-icon-btn[title="Filter setup"]')).toBeVisible()
-    await expect(panel.locator('.fp-icon-btn[title="Save current filter as preset"]')).toBeVisible()
+    await expect(panel.locator('.fp-icon-btn[data-tip="Filter setup"]')).toBeVisible()
+    await expect(panel.locator('.fp-icon-btn[data-tip="Save current filter as preset"]')).toBeVisible()
   })
 
   // ── Filter setup modal ────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(chip).toBeVisible({ timeout: 3000 })
 
     // Setup panel open: X is the delete affordance, even on a neutral chip
-    await expect(chip.locator('.chip-remove')).toHaveAttribute('title', 'Remove filter')
+    await expect(chip.locator('.chip-remove')).toHaveAttribute('data-tip', 'Remove filter')
 
     // Setup panel closed: neutral chip has no X
     await tl.locator('.fsetup-close').click()
@@ -187,7 +187,7 @@ test.describe('Timeline filter panel — real backend', () => {
     // Activate → X appears and deactivates
     await chip.locator('.chip-body').click()
     await expect(chip).toHaveClass(/chip--positive/)
-    await expect(chip.locator('.chip-remove')).toHaveAttribute('title', 'Deactivate filter')
+    await expect(chip.locator('.chip-remove')).toHaveAttribute('data-tip', 'Deactivate filter')
 
     // X deactivates back to neutral — the chip itself STAYS (rule not deleted)
     await chip.locator('.chip-remove').click()
@@ -196,7 +196,7 @@ test.describe('Timeline filter panel — real backend', () => {
     await expect(chip.locator('.chip-remove')).not.toBeVisible()
 
     // Reopen setup → X deletes the rule — chip gone, store agrees
-    await tl.locator('.fp-icon-btn[title="Filter setup"]').click()
+    await tl.locator('.fp-icon-btn[data-tip="Filter setup"]').click()
     await expect(tl.locator('.fsetup-panel')).toBeVisible({ timeout: 3000 })
     await chip.locator('.chip-remove').click()
     await expect(chip).toHaveCount(0)
@@ -307,7 +307,7 @@ test.describe('Timeline filter panel — real backend', () => {
     const tl = findPageByRole(appContext, 'timeline')!
     await openFilterPanel(tl)
     const panel = tl.locator('.filter-panel')
-    await panel.locator('.fp-icon-btn[title="Save current filter as preset"]').click()
+    await panel.locator('.fp-icon-btn[data-tip="Save current filter as preset"]').click()
     await expect(panel.locator('.preset-dropdown')).toBeVisible({ timeout: 2000 })
     await expect(panel.locator('.preset-name-input')).toBeVisible()
     await expect(panel.locator('.preset-save-btn')).toBeVisible()
@@ -322,7 +322,7 @@ test.describe('Timeline filter panel — real backend', () => {
     const panel = tl.locator('.filter-panel')
 
     // Open preset dropdown
-    await panel.locator('.fp-icon-btn[title="Save current filter as preset"]').click()
+    await panel.locator('.fp-icon-btn[data-tip="Save current filter as preset"]').click()
     await expect(panel.locator('.preset-dropdown')).toBeVisible({ timeout: 2000 })
 
     // Save a preset
@@ -332,7 +332,7 @@ test.describe('Timeline filter panel — real backend', () => {
     await tl.waitForTimeout(1000)
 
     // Open dropdown again and verify preset row appears
-    await panel.locator('.fp-icon-btn[title="Save current filter as preset"]').click()
+    await panel.locator('.fp-icon-btn[data-tip="Save current filter as preset"]').click()
     await expect(panel.locator('.preset-dropdown')).toBeVisible({ timeout: 2000 })
     const presetRow = panel.locator('.preset-row', { hasText: presetName })
     await expect(presetRow).toBeVisible({ timeout: 3000 })
